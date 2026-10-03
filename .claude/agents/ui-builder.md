@@ -7,6 +7,9 @@ model: sonnet
 
 Du baust die Oberfläche für kushim.
 
+Lies zuerst den Skill `kushim-ui-design` (`.claude/skills/kushim-ui-design/SKILL.md`): Designsprache, Tokens, Avatar-Zustände,
+Bildschirme, Sicherheitsregeln der UI und Abnahme-Checkliste. Seine Regeln gehen den Gestaltungsangaben unten vor.
+
 Vorgaben:
 - Tauri + Web-UI (React, Canvas/WebGL oder Three.js). Verbindung zum Python-Backend nur per WebSocket auf 127.0.0.1 mit Token; nie im Netzwerk lauschen.
 - Avatar in der Mitte mit Zuständen: ruhend, hört zu (Lautstärke), denkt, spricht (Wellenform), Alarm (rot bei unbekannter Stimme).
