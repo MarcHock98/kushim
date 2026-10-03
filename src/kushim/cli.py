@@ -203,7 +203,8 @@ def main(argv: list[str] | None = None) -> int:
             wait_ms = int(wcfg.settings.listen_seconds * 1000)
             end_ms = int(wcfg.settings.end_silence_seconds * 1000)
             max_ms = int(wcfg.settings.max_seconds * 1000)
-            out = lambda r: print(f"Du: {r.heard}\nkushim: {r.reply or '(' + r.outcome + ')'}")
+            out = lambda r: print(f"Du: {r.heard}\nkushim: {r.reply or '(' + r.outcome + ')'}"
+                                  + (f"  [{r.detail}]" if r.detail else ""))
             loop = TalkLoop(mic, pipeline, kill, wake=lambda f: det.process(f) is not None, ack=ack,
                             flush=mic.flush, new_collector=lambda: UtteranceCollector(wait_ms=wait_ms, silence_ms=end_ms, max_ms=max_ms),
                             on_result=out)
