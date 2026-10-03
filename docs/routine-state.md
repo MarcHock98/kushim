@@ -3,17 +3,19 @@
 Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
 
 - Letzter Durchlauf: 2026-10-03 (/loop kushim-routine, STT)
-- Aktueller Branch: master (routine/p1-wake, p1-stt, p1-speaker gemerged, Branches bleiben)
+- Aktueller Branch: master (routine/p1-wake, p1-stt, p1-speaker, p1-dialog gemerged, Branches bleiben)
 - Erledigt: Wake-Word-Logik + Push-to-Talk (src/kushim/voice/trigger.py), 21 Tests grün, Modell hey_jarvis (ONNX) lädt
 - Erledigt zusätzlich: STT-Logik voice/stt.py, 25 Tests grün, faster-whisper 1.2.1 gepinnt
 - Erledigt zusätzlich: Sprecherverifikation-Logik, 33 Tests grün
-- Nächster Schritt: Phase 1, Lokales LLM (Ollama) Anbindung nur über localhost; Modell-Download erfragen
+- Erledigt zusätzlich: Dialog-/Barge-in-Zustandslogik, 37 Tests grün
+- Nächster Schritt: Lokale Stimme (TTS) nur nach Lizenzprüfung (piper-tts ist GPL), sonst warten auf Nutzerentscheidungen
 - Branches bereit zum Push durch den Nutzer: master, routine/p1-wake, routine/p1-stt, routine/p1-speaker
 
 ## Slack
-- Nutzer-ID / Kanal-ID: (noch nicht ermittelt)
+- Nutzer-ID / Kanal-ID: nicht verwendet. Verbundenes Slack-Konto hat andere Mail (Arbeits-Workspace) als die Git-/Claude-Mail, Empfänger unsicher, daher nichts gesendet
 
 ## Offene Fragen an den Nutzer
+- LLM: localhost-HTTP (Ollama) in ALLOWLIST erlauben oder In-Process llama-cpp-python? (nur im Terminal, blockiert Lokales LLM)
 - Whisper-Modell: welches (z. B. large-v3-turbo, >1 GB) und Download freigeben? (noch nicht gesendet, nicht blockierend)
 - Wake Word: "hey_jarvis" nutzen oder eigenes "Hey Kushim" trainieren? (noch nicht gesendet, nicht blockierend)
 
