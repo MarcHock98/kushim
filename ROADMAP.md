@@ -17,9 +17,10 @@ Oberste Regel: Schäden jeder Art sind verboten. Lokal zuerst (Modus A), Claude 
 - [ ] Echtes Whisper-Modell lokal ablegen und STT mit Aufnahme prüfen (neu 2026-10-03: Modell-Download >1 GB und Mikrofon, Nutzer entscheidet/testet)
 - [x] Sprecherverifikation-Logik (`voice/speaker.py`, fail-closed, Cosine-Score), mit synthetischen Embeddings getestet
 - [ ] Embedding-Modell wählen (lokal, z. B. ECAPA/Resemblyzer), Profil im Vault speichern und mit echter Stimme prüfen (neu 2026-10-03: Modellwahl/Download und Live-Test durch den Nutzer)
-- [ ] Lokales LLM (Ollama, 7-8B)
+- [ ] Lokales LLM (Ollama, 7-8B): BLOCKIERT, localhost-HTTP braucht Eintrag in ALLOWLIST von `tests/test_no_egress.py` (nur mit Nutzerzustimmung); Alternative: In-Process-Bibliothek (llama-cpp-python) statt Server (2026-10-03)
 - [ ] Lokale Stimme (Piper/Kokoro)
-- [ ] Streaming, Barge-in, Latenz unter 1,5 s
+- [x] Barge-in/Gesprächszustand (`voice/dialog.py`), mit Tests
+- [ ] Streaming und Latenz unter 1,5 s (braucht echte Komponenten und Messung)
 
 ## Phase 2: Oberfläche
 - [ ] Backend-API (WebSocket, 127.0.0.1, Token)
