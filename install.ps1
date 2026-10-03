@@ -11,6 +11,7 @@
       -Llm <name>     Anderes Ollama-Modell laden (z. B. qwen3.5:9b) und in config.toml eintragen.
                       Ohne Angabe: das Modell aus config.toml ([llm] model), sonst qwen2.5:7b.
       -SkipShortcuts  Keine Desktop-Verknuepfungen anlegen.
+      -SkipPath       Den Befehl `kushim` NICHT in den Benutzer-PATH eintragen (siehe scripts\add-path.ps1).
 
   Das Skript ist wiederholbar: Was schon da und geprueft ist, wird uebersprungen.
   Netzwerk nur waehrend der Installation und nur zu: pypi.org (Python-Pakete), github.com
@@ -23,7 +24,8 @@ param(
     [switch]$NoPrompt,
     [switch]$SkipLlm,
     [string]$Llm = "",
-    [switch]$SkipShortcuts
+    [switch]$SkipShortcuts,
+    [switch]$SkipPath
 )
 
 $ErrorActionPreference = "Stop"
@@ -191,6 +193,11 @@ elseif (Test-Path $Py) {
         Ok "$($d.Name) auf dem Desktop"
     }
 }
+
+# Befehl `kushim` im Terminal: nur <Projekt>\bin im PATH des aktuellen Benutzers (kein Administrator, nichts systemweit).
+if ($SkipPath) { Info "Befehl 'kushim' im PATH uebersprungen (-SkipPath)" }
+elseif ($Check) { & (Join-Path $Root "scripts\add-path.ps1") -Check }
+else { & (Join-Path $Root "scripts\add-path.ps1"); Ok "Befehl 'kushim' (neues Terminal oeffnen)" }
 
 # ---------------------------------------------------------------- 8. Vault und Stimme
 Step "8/8 Vault und deine Stimme (nur du)"

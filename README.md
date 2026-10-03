@@ -64,6 +64,7 @@ Schalter:
 | `-NoPrompt` | keine Rückfragen (Vault und Stimme werden dann nicht angelegt) |
 | `-SkipLlm` | LLM (4,7 GB) nicht laden |
 | `-SkipShortcuts` | keine Desktop-Verknüpfungen |
+| `-SkipPath` | den Befehl `kushim` nicht in den Benutzer-PATH eintragen (nachträglich: `.\scripts\add-path.ps1`, entfernen: `-Remove`) |
 
 Danach weiter bei [Erster Start](#erster-start).
 
