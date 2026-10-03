@@ -1,0 +1,17 @@
+# Kopiere nach config.toml (oder %APPDATA%\kushim\config.toml)
+
+[memory]
+# Einziger Ort, der den Speicherort des Gedächtnisses festlegt.
+# Lokal:  "local:C:/Users/march/kushim-vault"
+# Später: "remote:https://nas.local:8443"  (noch nicht implementiert)
+location = "local:~/kushim-vault"
+
+[backup]
+# Verschlüsselte Snapshots, z.B. aufs NAS (SMB-Pfad). Leer = aus.
+target = ""
+keep = 10
+
+[privacy]
+# Modus A: alles lokal (Standard).
+# Modus C: Claude nur auf ausdrücklichen Befehl, mit Vorschau + Bestätigung.
+claude_enabled = false

@@ -1,0 +1,25 @@
+[project]
+name = "kushim"
+version = "0.1.0"
+description = "Persönlicher, lokal-first KI-Assistent"
+requires-python = ">=3.11"
+dependencies = [
+    "sqlcipher3-wheels",
+    "keyring",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+kushim = "kushim.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
