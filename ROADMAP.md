@@ -24,7 +24,8 @@ Oberste Regel: Schäden jeder Art sind verboten. Lokal zuerst (Modus A), Claude 
 - [ ] Streaming und Latenz unter 1,5 s (braucht echte Komponenten und Messung)
 
 ## Phase 2: Oberfläche
-- [ ] Backend-API (WebSocket, 127.0.0.1, Token)
+- [x] Backend-API-Kern (`api/protocol.py`: Token, Default-Deny-Dispatch, neutrale Fehler), getestet
+- [ ] WebSocket-Transport nur auf 127.0.0.1: BLOCKIERT, braucht Netzwerk-Import und damit ALLOWLIST-Eintrag (nur mit Nutzerzustimmung) (neu 2026-10-03)
 - [ ] Tauri-UI mit animiertem Avatar
 - [ ] Live-Transkript mit Feedback
 - [ ] Freigabe-Leiste und Claude-Vorschau
