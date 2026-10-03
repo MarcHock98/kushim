@@ -18,6 +18,12 @@ gebaut (Tauri steht in Phase 2); dieser Plan legt Bildschirm, Ablauf und Backend
    bereits installierten Modellen braucht kein Netz.
 6. **Ehrliche Anzeige.** Größe, Geschwindigkeit und Speicherbedarf als gemessene Zahlen, nicht als Versprechen.
 
+7. **Speicherort bleibt Ollamas Struktur** (Entscheidung 2026-10-04): alle Modelle in `models/ollama` (`blobs` nach Prüfsumme,
+   `manifests` je Modell). Die UI und das Backend verwalten Modelle **nur über die Ollama-Schnittstelle** (`/api/tags`,
+   `/api/pull`, `/api/delete`) und löschen oder verschieben nie selbst Dateien in diesem Ordner. Ein Ordner je Modell wurde
+   verworfen: Wechsel bräuchten einen Ollama-Neustart (Pause), geteilte Blobs würden doppelt gespeichert, und eigenes Löschen
+   von Ordnern wäre ein unnötiges Risiko.
+
 ## Bildschirm: Einstellungen > Sprachmodell
 Aufbau von oben nach unten:
 1. **Aktuelles Modell** (Karte): Name, Größe auf der Platte, Status ("Geladen", "Bereit", "Nicht installiert"), letzte
