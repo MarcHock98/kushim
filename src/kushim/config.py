@@ -8,30 +8,18 @@ from pathlib import Path
 
 
 def config_path() -> Path:
-    env = os.environ.get("KUSHIM_CONFIG") or os.environ.get("KUSHIMA_CONFIG")
+    env = os.environ.get("KUSHIM_CONFIG")
     if env:
         return Path(env)
     local = Path("config.toml")
     if local.exists():
         return local
-    base = Path(os.environ.get("APPDATA", Path.home()))
-    main = base / "kushim" / "config.toml"
-    alt = base / "kushima" / "config.toml"            # kurzzeitiger Name (2026-10-03)
-    return alt if alt.exists() and not main.exists() else main
-
-
-def default_memory_location() -> str:
-    """Standard `~/kushim-vault`; existiert nur ein Vault unter dem kurzzeitigen Namen `~/kushima-vault`,
-    wird er weiter benutzt (nichts wird automatisch verschoben)."""
-    home = Path.home()
-    if (home / "kushima-vault").exists() and not (home / "kushim-vault").exists():
-        return "local:~/kushima-vault"
-    return "local:~/kushim-vault"
+    return Path(os.environ.get("APPDATA", Path.home())) / "kushim" / "config.toml"
 
 
 @dataclass
 class Config:
-    memory_location: str = field(default_factory=default_memory_location)
+    memory_location: str = "local:~/kushim-vault"
     backup_target: str = ""
     backup_keep: int = 10
     claude_enabled: bool = False
@@ -47,7 +35,7 @@ class Config:
         mem, bak, priv = data.get("memory", {}), data.get("backup", {}), data.get("privacy", {})
         voice = data.get("voice", {})
         return cls(
-            memory_location=mem.get("location", default_memory_location()),
+            memory_location=mem.get("location", cls.memory_location),
             backup_target=bak.get("target", ""),
             backup_keep=int(bak.get("keep", 10)),
             claude_enabled=bool(priv.get("claude_enabled", False)),

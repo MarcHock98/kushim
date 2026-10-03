@@ -22,7 +22,7 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
 - openwakeword braucht `requests` trotz --no-deps (gelöst, in pyproject-Extra `voice`)
 
 ## Entscheidungen des Nutzers
-- 2026-10-03: Umbenennung auf kushima wurde zurückgenommen. Name bleibt **kushim** (Paket `kushim`, CLI `python -m kushim.cli`, Verknüpfungen kushim*). Schlüssel/Vault: `kushima-vault` und `~/kushima-vault` werden nur noch als Rückfall gelesen. GitHub-Repo wurde nie umbenannt
+- 2026-10-03: Eine kurzzeitige Umbenennung wurde zurückgenommen, alle Reste entfernt. Name bleibt **kushim** (Paket `kushim`, CLI `python -m kushim.cli`). Das zusätzliche Schlüsselbund-Duplikat hat der Nutzer selbst gelöscht; der Hauptschlüssel `kushim-vault` ist vorhanden
 - 2026-10-03: Nutzer pusht selbst (kein Push durch die Routine, auch nicht auf Zuruf; Befehl wurde abgebrochen); README mit 1:1-Anleitung und Installationsskript gewünscht, umgesetzt; Umbenennung auf kushim (inkl. GitHub-Repo) gewünscht, noch offen. Der Vault existiert bereits (`~/kushim-vault`, Schlüssel unter Service `kushim-vault`): beim Umbenennen Rückwärts-Kompatibilität nötig
 - 2026-10-03: Wake Words per Sprache: Auswahl vortrainierter Wörter plus eigenes lokales Training neuer Wörter (Hintergrund, nur verifizierte Stimme, Bestätigung)
 - 2026-10-03: Wake Words sollen per Sprache an kushim gesagt und gespeichert werden können (Umsetzungsweg offen)

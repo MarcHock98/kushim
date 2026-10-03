@@ -164,11 +164,6 @@ elseif ($Check) { Info "(im Check-Modus nicht angelegt)" }
 elseif (Test-Path $Py) {
     $desk = [Environment]::GetFolderPath("Desktop")
     $ws = New-Object -ComObject WScript.Shell
-    # Verknuepfungen des kurzzeitigen Namens kushima (zeigen auf ein nicht mehr vorhandenes Paket) entfernen
-    foreach ($old in @("kushima.lnk", "kushima sprechen.lnk", "kushima NOTAUS.lnk")) {
-        $o = Join-Path $desk $old
-        if (Test-Path $o) { Remove-Item $o -Force; Info "alte Verknuepfung entfernt: $old" }
-    }
     $defs = @(
         @{ Name = "kushim.lnk";         Args = "-m kushim.cli start"; Desc = "kushim starten (lokale Dienste, nur 127.0.0.1)"; Icon = $ico },
         @{ Name = "kushim sprechen.lnk"; Args = "-m kushim.cli talk";  Desc = "kushim sprechen (Wake Word)";                       Icon = $ico },
