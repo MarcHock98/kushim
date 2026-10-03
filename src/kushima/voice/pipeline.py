@@ -35,9 +35,11 @@ class Result:
 class Pipeline:
     def __init__(self, stt: SpeechToText, chat: ChatStream, speaker: Speaker, dialog: Dialog,
                  kill: KillSwitch, verifier: SpeakerVerifier | None = None,
-                 embed: Callable[[Any], Any] | None = None, history_limit: int = 6):
+                 embed: Callable[[Any], Any] | None = None, history_limit: int = 6,
+                 commands: Any = None):
         self.stt, self.chat, self.speaker, self.dialog, self.kill = stt, chat, speaker, dialog, kill
         self.verifier, self.embed = verifier, embed
+        self.commands = commands          # z. B. WakeWordCommands (Sprachbefehle ohne LLM)
         self.history: list[dict[str, str]] = []
         self.history_limit = history_limit
 
@@ -51,9 +53,16 @@ class Pipeline:
             self.kill.on_transcript(text)
             self.dialog.halt()
             return Result(text, "", "killed")
+        verified = False
         if self.verifier is not None and self.verifier.enrolled:
             if self.embed is None or not self.verifier.verify(self.embed(pcm)).accepted:
                 return Result(text, "", "rejected_speaker")
+            verified = True
+        if self.commands is not None:
+            answer = self.commands.handle(text, verified)
+            if answer is not None:                       # Befehl oder Bestätigung: kein LLM
+                self.speaker.say([answer])
+                return Result(text, answer, "command")
         if not self.dialog.triggered():
             return Result(text, "", "halted")
         self.dialog.utterance_done()

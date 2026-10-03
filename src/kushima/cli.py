@@ -127,7 +127,12 @@ def main(argv: list[str] | None = None) -> int:
         if is_triggered(root):
             print("Notaus ist aktiv. Erst bewusst aufheben: kushima resume")
             return 1
-        words = args.wake_words.split(",") if args.wake_words else cfg.wake_words
+        from .voice import wakewords_store
+        from .voice.wake_commands import WakeWordCommands
+        with _vault(cfg) as wstore:
+            vault_words = wakewords_store.load(wstore, root)
+        words = args.wake_words.split(",") if args.wake_words else (vault_words or cfg.wake_words)
+        current = list(words)           # Stand für Sprachbefehle; der Detektor nutzt `words` bis zum nächsten Start
         try:
             models = resolve_wake_words(words, root)
         except ValueError as e:
@@ -141,12 +146,17 @@ def main(argv: list[str] | None = None) -> int:
             print("Kein Stimmprofil. kushima hört nur auf deine Stimme: erst `kushima voice enroll`.")
             return 1
         embed = SherpaEmbedder.from_local(str(root / "models" / "speaker" / "wespeaker_en_voxceleb_CAM++_LM.onnx"))
+        def save_words(new: list[str]) -> None:
+            current[:] = new
+            with _vault(cfg) as s:
+                wakewords_store.save(s, new, root)
         launcher = Launcher(root)
         try:
             launcher.start_ollama()
             pipeline, kill, mic, ack = build_live(root, audio.find_device(args.out, "output"),
                                                   audio.find_device(args.mic, "input"),
-                                                  verifier=verifier, embed=embed)
+                                                  verifier=verifier, embed=embed,
+                                                  commands=WakeWordCommands(lambda: list(current), save_words))
             det = WakeWordDetector.from_openwakeword(models)
             out = lambda r: print(f"Du: {r.heard}\nkushima: {r.reply or '(' + r.outcome + ')'}")
             loop = TalkLoop(mic, pipeline, kill, wake=lambda f: det.process(f) is not None,
