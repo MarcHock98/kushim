@@ -3,7 +3,7 @@
 Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
 
 - Letzter Durchlauf: 2026-10-03 (/loop kushim-routine, STT)
-- Aktueller Branch: master (routine/p1-wake, p1-stt, p1-speaker, p1-dialog, p1-tts, p2-api-core, p2-approvals, p4-bandit, p2-loopback, p1-llm, p1-whisper-model, p1-ollama-setup, branding, p1-piper, p2b-launcher, p2b-icon, p2b-killswitch, p1-pipeline, p1-audio, p1-talk, p1-streaming, p1-wake-only, p1-speaker-model gemerged, Branches bleiben)
+- Aktueller Branch: master (routine/p1-wake, p1-stt, p1-speaker, p1-dialog, p1-tts, p2-api-core, p2-approvals, p4-bandit, p2-loopback, p1-llm, p1-whisper-model, p1-ollama-setup, branding, p1-piper, p2b-launcher, p2b-icon, p2b-killswitch, p1-pipeline, p1-audio, p1-talk, p1-streaming, p1-wake-only, p1-speaker-model, voice-record, readme-installer gemerged, Branches bleiben)
 - Erledigt: Wake-Word-Logik + Push-to-Talk (src/kushim/voice/trigger.py), 160 Tests grün, Modell hey_jarvis (ONNX) lädt
 - Erledigt zusätzlich: Dialog-/Barge-in-Logik, TTS-Logik, API-Kern (Token/Dispatch), Freigabe-Warteschlange, 136 Tests grün
 - Erledigt zusätzlich: Dialog-/Barge-in-Logik, TTS-Logik, API-Kern (Token/Dispatch), Freigabe-Warteschlange, 136 Tests grün
@@ -24,6 +24,7 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
 - openwakeword braucht `requests` trotz --no-deps (gelöst, in pyproject-Extra `voice`)
 
 ## Entscheidungen des Nutzers
+- 2026-10-03: Nutzer pusht selbst (kein Push durch die Routine, auch nicht auf Zuruf; Befehl wurde abgebrochen); README mit 1:1-Anleitung und Installationsskript gewünscht, umgesetzt; Umbenennung auf kushima (inkl. GitHub-Repo) gewünscht, noch offen. Der Vault existiert bereits (`~/kushim-vault`, Schlüssel unter Service `kushim-vault`): beim Umbenennen Rückwärts-Kompatibilität nötig
 - 2026-10-03: Wake Words per Sprache: Auswahl vortrainierter Wörter plus eigenes lokales Training neuer Wörter (Hintergrund, nur verifizierte Stimme, Bestätigung)
 - 2026-10-03: Wake Words sollen per Sprache an kushim gesagt und gespeichert werden können (Umsetzungsweg offen)
 - 2026-10-03: Stimme: eigene Stimme klonen (Einsprechen, lokales Training/Klon, nur eigene Aufnahmen); Stimmprofil für die Sprecherverifikation im verschlüsselten Vault, Einschreiben per `kushim voice enroll`

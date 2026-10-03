@@ -49,6 +49,7 @@ def main(argv: list[str] | None = None) -> int:
     rec = vo.add_parser("record", help="Absätze für den Stimmklon aufnehmen (nur lokal, voice-data/)")
     rec.add_argument("--mic", help="Namensteil des Mikrofons, sonst Systemstandard")
     rec.add_argument("--redo", action="store_true", help="Schon vorhandene Aufnahmen neu sprechen")
+    sub.add_parser("doctor", help="Prüft, ob alles installiert und eingerichtet ist")
     args = p.parse_args(argv)
     cfg = Config.load()
 
@@ -62,6 +63,20 @@ def main(argv: list[str] | None = None) -> int:
             killswitch.clear(root)
             print("Notaus aufgehoben.")
         return 0
+    if args.cmd == "doctor":
+        from .doctor import run_checks
+        from .voice import voiceprint
+
+        def vault_state() -> str:
+            try:
+                with open_store(cfg) as store:
+                    return "ok" if voiceprint.load(store) else "kein-profil"
+            except FileNotFoundError:
+                return "kein-vault"
+        results = run_checks(root, vault_state)
+        for c in results:
+            print(("[ok]    " if c.ok else "[FEHLT] ") + c.name + ("" if c.ok else f"  -> {c.hint}"))
+        return 0 if all(c.ok for c in results) else 1
     if args.cmd == "voice" and args.sub == "record":
         from .voice import audio
         from .voice.recorder import record_session
