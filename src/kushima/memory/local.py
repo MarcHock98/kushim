@@ -42,7 +42,7 @@ class LocalStore(MemoryStore):
         else:
             raise FileNotFoundError(f"Kein Vault in {root}")
         if self.manifest.schema_version > SCHEMA_VERSION:
-            raise RuntimeError("Vault stammt von einer neueren kushim-Version")
+            raise RuntimeError("Vault stammt von einer neueren kushima-Version")
         self.key = key or get_or_create_key(self.manifest.vault_id, create=create)
         self.con = _connect(root / DB_FILE, self.key)
         self.con.executescript(SCHEMA)

@@ -2,7 +2,7 @@
 import ast
 from pathlib import Path
 
-SRC = Path(__file__).resolve().parents[1] / "src" / "kushim"
+SRC = Path(__file__).resolve().parents[1] / "src" / "kushima"
 FORBIDDEN = {"requests", "httpx", "urllib3", "aiohttp", "socket", "ftplib", "smtplib", "imaplib",
              "http.client", "urllib.request", "anthropic", "openai", "websockets", "paramiko"}
 # Zentrale, geprüfte Stellen. Neue Einträge nur mit ausdrücklicher Nutzerfreigabe.

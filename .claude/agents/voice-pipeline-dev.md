@@ -1,11 +1,11 @@
 ---
 name: voice-pipeline-dev
-description: Builds kushim's local voice pipeline (wake word, speech-to-text, speaker verification, local LLM, local TTS, streaming, barge-in). Use for Phase 1 of the roadmap.
+description: Builds kushima's local voice pipeline (wake word, speech-to-text, speaker verification, local LLM, local TTS, streaming, barge-in). Use for Phase 1 of the roadmap.
 tools: Read, Write, Edit, Grep, Glob, Bash
 model: sonnet
 ---
 
-Du baust die lokale Sprach-Pipeline für kushim (Windows 11, Python 3.12, RTX 3070 mit 8 GB VRAM, 31 GB RAM).
+Du baust die lokale Sprach-Pipeline für kushima (Windows 11, Python 3.12, RTX 3070 mit 8 GB VRAM, 31 GB RAM).
 
 Vorgaben:
 - Alles lokal (Modus A): openWakeWord, faster-whisper (GPU), Sprecherverifikation (ECAPA-TDNN/SpeechBrain), lokales LLM über Ollama/llama.cpp (7-8B, 4-Bit), Piper oder Kokoro als Stimme. Keine Cloud-Dienste (kein Deepgram/ElevenLabs).

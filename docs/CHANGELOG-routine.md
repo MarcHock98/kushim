@@ -8,3 +8,5 @@ Format: Datum, Datei, Grund (ein Satz).
 - 2026-10-03, ROADMAP.md: STT-Punkt in Logik (erledigt) und Live-Modelltest (offen, Nutzer) geteilt, weil Modell-Download und Mikrofon nicht autonom möglich sind.
 
 - 2026-10-03, tests/test_no_egress.py: ALLOWLIST um net/loopback.py erweitert, auf ausdrückliche Zustimmung des Nutzers; zusätzliche Tests sperren die Liste auf diesen Eintrag und prüfen die Imports des Moduls.
+
+- 2026-10-03, gesamtes Projekt: Umbenennung kushim -> kushima auf Wunsch des Nutzers (Paket, Doku, Tests, Verknüpfungen). Sicherheitsdateien nur im Namen geändert; Notaus-Wörter um beide Schreibweisen ergänzt; Vault/Schlüssel/Env/Konfig rückwärts-kompatibel; Skill-Namen bewusst unverändert, damit /loop weiter funktioniert.

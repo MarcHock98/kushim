@@ -2,10 +2,10 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from kushim.safety import killswitch
-from kushim.safety.killswitch import KillSwitch
-from kushim.voice.audio import FRAME, UtteranceCollector
-from kushim.voice.talk import TalkLoop
+from kushima.safety import killswitch
+from kushima.safety.killswitch import KillSwitch
+from kushima.voice.audio import FRAME, UtteranceCollector
+from kushima.voice.talk import TalkLoop
 
 LOUD = (np.ones(FRAME) * 3000).astype(np.int16)
 QUIET = np.zeros(FRAME, dtype=np.int16)

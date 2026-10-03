@@ -1,21 +1,21 @@
-# Vorlesetext für kushim (Stimmprofil und Stimmklon)
+# Vorlesetext für kushima (Stimmprofil und Stimmklon)
 
 Nur für dich: Die Aufnahmen bleiben lokal auf deinem PC und gehören in `models/` bzw. `voice-data/` (beides nicht im Git).
 
 ## So nimmst du auf
 - Ruhiger Raum, keine Musik, kein Lüfterrauschen. Immer dasselbe Mikrofon und derselbe Abstand (ca. 15 bis 20 cm).
-- Natürlich und freundlich sprechen, so wie kushim später klingen soll. Nicht flüstern, nicht übertreiben.
+- Natürlich und freundlich sprechen, so wie kushima später klingen soll. Nicht flüstern, nicht übertreiben.
 - Pro Absatz eine eigene Aufnahme (Pause am Anfang und Ende, ca. eine Sekunde). Verhaspeln: den Absatz neu sprechen.
 - Format später: WAV, mindestens 22,05 kHz, mono. Das Aufnahme-Werkzeug kommt mit dem Klon-Schritt; bis dahin nur lesen und üben.
 
 ## Teil A: Stimmprofil (Sprecherverifikation), 5 Sätze
-Diese fünf Sätze liest du beim Einschreiben (`kushim voice enroll`) in normaler Lautstärke:
+Diese fünf Sätze liest du beim Einschreiben (`kushima voice enroll`) in normaler Lautstärke:
 
 1. Guten Morgen, ich bin es, und ich möchte, dass nur meine Stimme Befehle auslösen darf.
 2. Heute scheint die Sonne über Würzburg, aber am Nachmittag soll es regnen.
 3. Bitte erinnere mich morgen um halb acht an den Termin beim Zahnarzt.
 4. Zwölf Zitronen, sechzehn Äpfel und fünfundzwanzig Kirschen liegen auf dem Tisch.
-5. Das Wetter, die Musik und die Lichter im Wohnzimmer kann kushim gern steuern, aber nur auf meinen Wunsch.
+5. Das Wetter, die Musik und die Lichter im Wohnzimmer kann kushima gern steuern, aber nur auf meinen Wunsch.
 
 ## Teil B: Stimmklon (ca. 10 Absätze, rund 4 bis 5 Minuten)
 Dieser Text deckt viele Laute, Zahlen, Fragen, Ausrufe und ruhige Passagen ab. Mehr ist besser: Je mehr gute Aufnahmen, desto natürlicher der Klon. Das hier ist der Grundstock, weitere Absätze folgen bei Bedarf.

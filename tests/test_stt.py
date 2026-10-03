@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from kushim.voice.stt import SpeechToText, to_float32
+from kushima.voice.stt import SpeechToText, to_float32
 
 
 class FakeModel:

@@ -1,7 +1,7 @@
 import pytest
 from types import SimpleNamespace
 
-from kushim.voice import WakeWordDetector, resolve_wake_words
+from kushima.voice import WakeWordDetector, resolve_wake_words
 
 
 class FakeModel:
@@ -46,9 +46,9 @@ def test_resolve_pretrained_words(tmp_path):
 def test_resolve_custom_model_only_from_wakewords_dir(tmp_path):
     d = tmp_path / "models" / "wakewords"
     d.mkdir(parents=True)
-    (d / "hey_kushim.onnx").write_bytes(b"x")
-    out = resolve_wake_words(["hey_kushim.onnx"], tmp_path)
-    assert out == [str((d / "hey_kushim.onnx").resolve())]
+    (d / "hey_kushima.onnx").write_bytes(b"x")
+    out = resolve_wake_words(["hey_kushima.onnx"], tmp_path)
+    assert out == [str((d / "hey_kushima.onnx").resolve())]
 
 
 @pytest.mark.parametrize("bad", ["", "unbekannt", "../evil.onnx", "C:/x/evil.onnx", "sub/evil.onnx",

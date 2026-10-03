@@ -1,11 +1,11 @@
 ---
 name: kushim-routine
-description: Autonomous development routine for kushim. Each run advances ROADMAP.md on a feature branch, researches the web when needed, rewrites on problems, evolves skills/agents, asks the user via Slack when unclear, reads Slack replies, and merges locally when a work package is done. Start with /loop /kushim-routine.
+description: Autonomous development routine for kushima. Each run advances ROADMAP.md on a feature branch, researches the web when needed, rewrites on problems, evolves skills/agents, asks the user via Slack when unclear, reads Slack replies, and merges locally when a work package is done. Start with /loop /kushim-routine.
 ---
 
-# kushim-Routine (ein Durchlauf)
+# kushima-Routine (ein Durchlauf)
 
-Ziel: Die Roadmap (`ROADMAP.md`) wird vollständig und sicher erreicht. Oberste Regel (`src/kushim/safety/rules.py`): **Schäden jeder Art sind verboten.** Im Zweifel nichts tun und fragen.
+Ziel: Die Roadmap (`ROADMAP.md`) wird vollständig und sicher erreicht. Oberste Regel (`src/kushima/safety/rules.py`): **Schäden jeder Art sind verboten.** Im Zweifel nichts tun und fragen.
 
 Jeder Durchlauf ist klein, abgeschlossen und endet in einem sauberen Zustand (Tests grün oder Arbeit zurückgerollt). Zustand zwischen Durchläufen liegt in `docs/routine-state.md` (nie im Kopf behalten).
 
@@ -63,7 +63,7 @@ Hinweis: Wurde dieser Skill in der laufenden Sitzung erst angelegt, ist er noch 
 ### 8. Fragen an den Nutzer (Slack)
 Fragen, wenn eine Entscheidung dem Nutzer gehört oder etwas wirklich unklar ist: Hardware/Kosten, Daten nach außen, Sicherheitsregeln, mehrdeutige Anforderungen, Zielkonflikte, größere Downloads, Dienstwahl (z. B. NAS-Modell).
 - Kanal: eine Direktnachricht an den Nutzer. Beim ersten Mal Nutzer-ID mit `slack_search_users` bzw. `slack_read_user_profile` ermitteln, Konversation mit `slack_create_conversation` öffnen oder `slack_send_message` an die Nutzer-ID. Kanal-ID im State speichern. Unsicher, ob es der richtige Empfänger ist: nichts senden, im Terminal melden.
-- Format: kurz, auf Deutsch, Titel `[kushim-Routine]`, die Frage, 2-3 konkrete Optionen mit Empfehlung, was bis zur Antwort passiert. Keine Geheimnisse, keine Pfade zu Daten.
+- Format: kurz, auf Deutsch, Titel `[kushima-Routine]`, die Frage, 2-3 konkrete Optionen mit Empfehlung, was bis zur Antwort passiert. Keine Geheimnisse, keine Pfade zu Daten.
 - Max. 1 Nachricht pro Thema, Duplikate vermeiden (State prüfen). `ts` der gesendeten Nachricht im State speichern.
 - Danach an unabhängigen Punkten weiterarbeiten.
 
