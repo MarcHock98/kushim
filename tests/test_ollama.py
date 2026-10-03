@@ -83,3 +83,13 @@ def test_validate_model_and_manifest_path():
     for bad in ("", "../x", "a b", "x;rm", "a:b:c", "/abs", "a\\b"):
         with pytest.raises(ValueError):
             validate_model(bad)
+
+
+def test_thinking_is_off_by_default_and_can_be_left_to_the_model(url):
+    c = OllamaClient("m", base_url=url)
+    c.chat([{"role": "user", "content": "x"}])
+    assert SEEN[-1]["think"] is False
+    list(c.chat_stream([{"role": "user", "content": "x"}]))
+    assert SEEN[-1]["think"] is False
+    list(OllamaClient("m", base_url=url, think=None).chat_stream([{"role": "user", "content": "x"}]))
+    assert "think" not in SEEN[-1]

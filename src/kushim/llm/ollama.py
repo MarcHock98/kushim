@@ -41,6 +41,10 @@ class OllamaClient:
     base_url: str = DEFAULT_URL
     timeout: float = 120.0
     keep_alive: str = "2h"       # Modell im VRAM halten (Standard von Ollama: 5 Minuten, danach Kaltstart von ca. 2 s)
+    think: bool | None = False   # Denkmodus aus: Modelle wie qwen3.5 denken sonst 25 bis 60 s laut nach, bevor sie antworten
+
+    def _think(self) -> dict:
+        return {} if self.think is None else {"think": self.think}
 
     def warm_up(self) -> None:
         """Lädt das Modell vorab (leere Nachrichtenliste lädt nur, erzeugt keinen Text)."""
@@ -53,7 +57,7 @@ class OllamaClient:
 
     def chat(self, messages: list[dict[str, str]], temperature: float = 0.3) -> str:
         data = request_json("POST", f"{self.base_url}/api/chat", {
-            "model": self.model, "messages": messages, "stream": False,
+            "model": self.model, "messages": messages, "stream": False, **self._think(),
             "options": {"temperature": temperature}}, timeout=self.timeout)
         try:
             return str(data["message"]["content"]).strip()
@@ -63,7 +67,7 @@ class OllamaClient:
     def chat_stream(self, messages: list[dict[str, str]], temperature: float = 0.3):
         """Liefert die Antwort Stück für Stück (Tokens) über Loopback-Streaming."""
         for obj in stream_json_lines("POST", f"{self.base_url}/api/chat", {
-                "model": self.model, "messages": messages, "stream": True, "keep_alive": self.keep_alive,
+                "model": self.model, "messages": messages, "stream": True, "keep_alive": self.keep_alive, **self._think(),
                 "options": {"temperature": temperature}}, timeout=self.timeout):
             if not isinstance(obj, dict):
                 raise ValueError("Unerwartete Antwort des lokalen LLM")
