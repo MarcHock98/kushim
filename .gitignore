@@ -6,3 +6,4 @@ config.toml
 .idea/
 .claude/settings.local.json
 *.iml
+models/
