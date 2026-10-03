@@ -11,6 +11,38 @@ from typing import Any, Callable, Iterable, Iterator, Protocol
 _SPLIT = re.compile(r"(?<=[.!?…])\s+")
 
 
+def prefetch(source: Iterable[str], stop: Callable[[], bool] = lambda: False, size: int = 2) -> Iterator[str]:
+    """Erzeugt Sätze in einem Hintergrund-Thread vor, damit das LLM während der Wiedergabe weiterschreibt."""
+    import queue
+    import threading
+    q: queue.Queue = queue.Queue(maxsize=size)
+    END, ERR = object(), object()
+
+    def work():
+        try:
+            for item in source:
+                while True:
+                    if stop():
+                        return
+                    try:
+                        q.put(item, timeout=0.1)
+                        break
+                    except queue.Full:
+                        continue
+            q.put(END)
+        except Exception as e:           # noqa: BLE001 (Fehler an den Verbraucher weiterreichen)
+            q.put((ERR, e))
+
+    threading.Thread(target=work, daemon=True).start()
+    while True:
+        item = q.get()
+        if item is END:
+            return
+        if isinstance(item, tuple) and item and item[0] is ERR:
+            raise item[1]
+        yield item
+
+
 class Engine(Protocol):
     def synthesize(self, text: str) -> Any: ...
 

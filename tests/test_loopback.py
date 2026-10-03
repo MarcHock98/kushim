@@ -48,3 +48,26 @@ def test_roundtrip_and_http_error():
             request_json("GET", base + "/x")
     finally:
         srv.shutdown()
+
+
+def test_stream_json_lines():
+    from kushim.net.loopback import stream_json_lines
+
+    class S(BaseHTTPRequestHandler):
+        def do_POST(self):
+            self.rfile.read(int(self.headers["Content-Length"]))
+            self.send_response(200); self.send_header("Connection", "close"); self.end_headers()
+            for i in range(3):
+                self.wfile.write((json.dumps({"i": i}) + "\n").encode())
+            self.wfile.flush()
+
+        def log_message(self, *a):
+            pass
+
+    srv = HTTPServer(("127.0.0.1", 0), S)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        out = list(stream_json_lines("POST", f"http://127.0.0.1:{srv.server_port}/x", {}))
+        assert out == [{"i": 0}, {"i": 1}, {"i": 2}]
+    finally:
+        srv.shutdown()
