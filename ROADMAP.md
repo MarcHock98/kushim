@@ -22,7 +22,8 @@ Oberste Regel: Schäden jeder Art sind verboten. Lokal zuerst (Modus A), Claude 
 - [x] Ollama 0.35.1 (Standalone-ZIP, SHA256 geprüft, ohne Auto-Updater, `tools/`) und qwen2.5:7b (`models/ollama`) installiert, Chat über Loopback getestet (2026-10-03)
 - [ ] Ollama beim Start der Anwendung automatisch starten (OLLAMA_HOST=127.0.0.1, OLLAMA_MODELS) und Latenz optimieren
 - [x] TTS-Logik (`voice/tts.py`: Satz-Streaming, Abbruch bei Barge-in), Engine austauschbar, getestet
-- [ ] TTS-Engine wählen (Kokoro Apache-2.0 bevorzugt; piper-tts ist GPL-3, Lizenz-/Modellwahl und Download beim Nutzer erfragen) und Hörtest (neu 2026-10-03)
+- [x] Piper 1.8.0 (Home Assistant/OHF-Voice, GPL-3, privat ok) mit deutscher Stimme thorsten-high lokal in `models/piper`; `PiperEngine` in `voice/tts.py`; Synthese bei gesperrtem Netzwerk getestet (2026-10-03)
+- [ ] Hörtest der Stimme und Audioausgabe an Lautsprecher anbinden (nur Nutzer hört, Gerätewahl)
 - [x] Barge-in/Gesprächszustand (`voice/dialog.py`), mit Tests
 - [ ] Streaming und Latenz unter 1,5 s (braucht echte Komponenten und Messung)
 

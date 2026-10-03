@@ -31,3 +31,35 @@ def test_speaker_stops_on_barge_in():
 
     assert Speaker(Eng(), play, lambda: flag["stop"]).say(["a.", "b.", "c."]) == 1
     assert out == ["A."]
+
+
+def test_piper_engine_wraps_voice_output():
+    import io
+    import wave
+
+    from kushim.voice.tts import PiperEngine
+
+    class FakeVoice:
+        def synthesize_wav(self, text, w):
+            w.setnchannels(1); w.setsampwidth(2); w.setframerate(22050)
+            w.writeframes(b"\x00\x00" * 100)
+
+    data = PiperEngine(FakeVoice()).synthesize("Hallo.")
+    with wave.open(io.BytesIO(data)) as w:
+        assert w.getnframes() == 100 and w.getframerate() == 22050
+
+
+def test_piper_real_voice_if_present():
+    import wave
+    from pathlib import Path
+
+    import pytest
+
+    from kushim.voice.tts import PiperEngine
+    model = Path(__file__).resolve().parents[1] / "models" / "piper" / "de_DE-thorsten-high.onnx"
+    if not model.exists():
+        pytest.skip("Piper-Modell nicht vorhanden")
+    import io
+    data = PiperEngine.from_local(str(model)).synthesize("Hallo Welt.")
+    with wave.open(io.BytesIO(data)) as w:
+        assert w.getnframes() > 1000
