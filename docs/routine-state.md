@@ -3,7 +3,7 @@
 Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
 
 - Letzter Durchlauf: 2026-10-03 (/loop kushim-routine, STT)
-- Aktueller Branch: master (routine/p1-wake, p1-stt, p1-speaker, p1-dialog, p1-tts, p2-api-core, p2-approvals, p4-bandit, p2-loopback, p1-llm, p1-whisper-model, p1-ollama-setup gemerged, Branches bleiben)
+- Aktueller Branch: master (routine/p1-wake, p1-stt, p1-speaker, p1-dialog, p1-tts, p2-api-core, p2-approvals, p4-bandit, p2-loopback, p1-llm, p1-whisper-model, p1-ollama-setup, branding gemerged, Branches bleiben)
 - Erledigt: Wake-Word-Logik + Push-to-Talk (src/kushim/voice/trigger.py), 21 Tests grün, Modell hey_jarvis (ONNX) lädt
 - Erledigt zusätzlich: Dialog-/Barge-in-Logik, TTS-Logik, API-Kern (Token/Dispatch), Freigabe-Warteschlange, 89 Tests grün
 - Erledigt zusätzlich: Dialog-/Barge-in-Logik, TTS-Logik, API-Kern (Token/Dispatch), Freigabe-Warteschlange, 89 Tests grün
@@ -24,6 +24,7 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
 - openwakeword braucht `requests` trotz --no-deps (gelöst, in pyproject-Extra `voice`)
 
 ## Entscheidungen des Nutzers
+- 2026-10-03: Start-Anwendung und Logo gewünscht; Umsetzung später nach Plan (Launcher zuerst, dann Tauri), Logo nur lokal
 - 2026-10-03: Whisper large-v3-turbo laden; LLM qwen2.5:7b (Ollama) laden; Hardware RTX 3070 8 GB, 31 GB RAM
 - 2026-10-03: localhost erlauben (ALLOWLIST: nur net/loopback.py, nur Loopback), umgesetzt
 - 2026-10-03: eigenes Wake Word "Hey Kushim" trainieren
