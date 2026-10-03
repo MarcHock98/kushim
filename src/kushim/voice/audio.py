@@ -67,6 +67,15 @@ def stop_playback() -> None:
     sd.stop()
 
 
+def record_utterance(frames: Iterator[Any], collector: "UtteranceCollector | None" = None) -> np.ndarray:
+    """Liest Frames, bis eine Äußerung vollständig ist (oder die Wartezeit ohne Sprache abläuft)."""
+    c = collector or UtteranceCollector()
+    for f in frames:
+        if c.feed(f):
+            break
+    return c.audio() if c.heard_speech else np.zeros(0, dtype=np.int16)
+
+
 class UtteranceCollector:
     """Sammelt Frames nach dem Auslöser, bis Stille folgt oder die Maximaldauer erreicht ist."""
 

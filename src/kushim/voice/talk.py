@@ -51,7 +51,8 @@ class TalkLoop:
         return "ended"
 
 
-def build_live(root: Path, out_device: int | None, in_device: int | None = None):
+def build_live(root: Path, out_device: int | None, in_device: int | None = None,
+               verifier: Any = None, embed: Any = None):
     """Echte Komponenten. Ollama muss laufen (kushim start oder Launcher)."""
     from ..llm.ollama import OllamaClient
     from . import audio
@@ -68,5 +69,5 @@ def build_live(root: Path, out_device: int | None, in_device: int | None = None)
     speaker = Speaker(engine, lambda wav: audio.play_wav(wav, out_device), lambda: kill.fired)
     ack_wav = engine.synthesize(ACK_TEXT)
     mic = audio.Mic(in_device)
-    pipeline = Pipeline(stt, llm.chat_stream, speaker, dialog, kill)
+    pipeline = Pipeline(stt, llm.chat_stream, speaker, dialog, kill, verifier, embed)
     return pipeline, kill, mic, lambda: audio.play_wav(ack_wav, out_device)
