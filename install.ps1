@@ -7,7 +7,9 @@
   Schalter:
       -Check          Nur pruefen, was fehlt. Aendert nichts, laedt nichts.
       -NoPrompt       Keine Rueckfragen (Vault und Stimme werden dann NICHT angelegt).
-      -SkipLlm        Ollama-Modell (qwen2.5:7b, ca. 4,7 GB) nicht laden.
+      -SkipLlm        Ollama-Modell nicht laden.
+      -Llm <name>     Anderes Ollama-Modell laden (z. B. qwen3.5:9b) und in config.toml eintragen.
+                      Ohne Angabe: das Modell aus config.toml ([llm] model), sonst qwen2.5:7b.
       -SkipShortcuts  Keine Desktop-Verknuepfungen anlegen.
 
   Das Skript ist wiederholbar: Was schon da und geprueft ist, wird uebersprungen.
@@ -20,6 +22,7 @@ param(
     [switch]$Check,
     [switch]$NoPrompt,
     [switch]$SkipLlm,
+    [string]$Llm = "",
     [switch]$SkipShortcuts
 )
 
@@ -32,11 +35,22 @@ $OllamaUrl     = "https://github.com/ollama/ollama/releases/download/$OllamaVers
 $OllamaSize    = 1471094402
 $OllamaSha256  = "dc50b9ca7f9023c86525012632cd1615b093d0407987444a7f62ecab617e8e93"
 $LlmModel      = "qwen2.5:7b"
+if ($Llm) { $LlmModel = $Llm }
+elseif (Test-Path (Join-Path $PSScriptRoot "config.toml")) {
+    $m = Select-String -Path (Join-Path $PSScriptRoot "config.toml") -Pattern '^\s*model\s*=\s*"([^"]+)"' | Select-Object -First 1
+    if ($m) { $LlmModel = $m.Matches[0].Groups[1].Value }
+}
+if ($LlmModel -notmatch '^[A-Za-z0-9][A-Za-z0-9._/:-]*$' -or $LlmModel -match '\.\.') { throw "Ungueltiger Modellname: $LlmModel" }
 $Venv          = Join-Path $Root ".venv"
 $Py            = Join-Path $Venv "Scripts\python.exe"
 $OllamaExe     = Join-Path $Root "tools\ollama\ollama.exe"
 $OllamaModels  = Join-Path $Root "models\ollama"
-$LlmManifest   = Join-Path $OllamaModels "manifests\registry.ollama.ai\library\qwen2.5\7b"
+$LlmParts      = $LlmModel -split ":", 2
+$LlmTag        = if ($LlmParts.Count -gt 1) { $LlmParts[1] } else { "latest" }
+$LlmPath       = if ($LlmParts[0] -match "/") { $LlmParts[0] } else { "library/" + $LlmParts[0] }
+if (($LlmPath -split "/").Count -eq 2 -and $LlmPath -notmatch "^library/") { $LlmPath = "registry.ollama.ai/" + $LlmPath }
+elseif ($LlmPath -match "^library/") { $LlmPath = "registry.ollama.ai/" + $LlmPath }
+$LlmManifest   = Join-Path $OllamaModels (("manifests/" + $LlmPath + "/" + $LlmTag) -replace "/", "\")
 $script:Problems = @()
 
 function Step($t)  { Write-Host ""; Write-Host "== $t" -ForegroundColor Cyan }
@@ -132,7 +146,7 @@ if ($SkipLlm) { Info "LLM uebersprungen (-SkipLlm)" }
 elseif (Test-Path $LlmManifest) { Ok "LLM $LlmModel vorhanden" }
 elseif ($Check) { Missing "LLM $LlmModel" }
 elseif (Test-Path $OllamaExe) {
-    Info "lade $LlmModel (ca. 4,7 GB, aus der Ollama-Bibliothek) ..."
+    Info "lade $LlmModel (mehrere GB, aus der Ollama-Bibliothek) ..."
     $env:OLLAMA_HOST = "127.0.0.1:11434"; $env:OLLAMA_MODELS = $OllamaModels
     $started = $null
     $alive = $false
@@ -148,6 +162,7 @@ elseif (Test-Path $OllamaExe) {
     try { & $OllamaExe pull $LlmModel; if ($LASTEXITCODE -ne 0) { throw "ollama pull fehlgeschlagen" } }
     finally { if ($started) { Stop-Process -Id $started.Id -Force -ErrorAction SilentlyContinue } }
     Ok "LLM geladen"
+    if ($Llm -and (Test-Path $Py)) { & $Py -m kushim.cli llm set $LlmModel }
 }
 
 # ---------------------------------------------------------------- 6. Icon

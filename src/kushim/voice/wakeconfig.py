@@ -42,9 +42,10 @@ class WakeWord:
 @dataclass(frozen=True)
 class Settings:
     cooldown_seconds: float = 2.0
-    listen_seconds: float = 5.0
-    end_silence_seconds: float = 1.2     # so lange Stille beendet eine Äußerung (längere Eingaben mit Denkpausen)
+    listen_seconds: float = 4.0          # Wartezeit auf den Befehl, nachdem nur das Wake Word kam und "Ja?" gesagt wurde
+    end_silence_seconds: float = 0.9     # so lange Stille beendet eine Äußerung (länger = Denkpausen erlaubt)
     max_seconds: float = 60.0            # längste einzelne Äußerung
+    command_wait_seconds: float = 1.5    # direkt nach dem Wake Word: so lange auf den Befehl warten, bevor "Ja?" kommt
 
 
 @dataclass(frozen=True)
@@ -68,6 +69,8 @@ def validate(cfg: WakeConfig, root: Path) -> None:
         raise ValueError("cooldown_seconds muss 0,5 bis 30 und listen_seconds 2 bis 30 sein")
     if not 0.4 <= s.end_silence_seconds <= 5 or not 5 <= s.max_seconds <= 180:
         raise ValueError("end_silence_seconds muss 0,4 bis 5 und max_seconds 5 bis 180 sein")
+    if not 0.5 <= s.command_wait_seconds <= 5:
+        raise ValueError("command_wait_seconds muss 0,5 bis 5 sein")
     if not cfg.words or len(cfg.words) > MAX_WORDS:
         raise ValueError(f"1 bis {MAX_WORDS} Wake Words erlaubt")
     seen = set()
@@ -96,8 +99,12 @@ def validate(cfg: WakeConfig, root: Path) -> None:
 def _parse(text: str) -> WakeConfig:
     data = tomllib.loads(text)
     st = data.get("settings", {})
-    settings = Settings(float(st.get("cooldown_seconds", 2.0)), float(st.get("listen_seconds", 5.0)),
-                        float(st.get("end_silence_seconds", 1.2)), float(st.get("max_seconds", 60.0)))
+    d = Settings()
+    settings = Settings(float(st.get("cooldown_seconds", d.cooldown_seconds)),
+                        float(st.get("listen_seconds", d.listen_seconds)),
+                        float(st.get("end_silence_seconds", d.end_silence_seconds)),
+                        float(st.get("max_seconds", d.max_seconds)),
+                        float(st.get("command_wait_seconds", d.command_wait_seconds)))
     words = []
     for e in data.get("wakeword", []):
         engine = str(e.get("engine", "kws"))
@@ -138,7 +145,8 @@ def dumps(cfg: WakeConfig) -> str:
            f"cooldown_seconds = {cfg.settings.cooldown_seconds}",
            f"listen_seconds = {cfg.settings.listen_seconds}",
            f"end_silence_seconds = {cfg.settings.end_silence_seconds}",
-           f"max_seconds = {cfg.settings.max_seconds}", ""]
+           f"max_seconds = {cfg.settings.max_seconds}",
+           f"command_wait_seconds = {cfg.settings.command_wait_seconds}", ""]
     for w in cfg.words:
         out += ["[[wakeword]]", f"name = {json.dumps(w.name, ensure_ascii=False)}",
                 f"engine = {json.dumps(w.engine)}", f"enabled = {'true' if w.enabled else 'false'}"]

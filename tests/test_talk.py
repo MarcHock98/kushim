@@ -74,3 +74,42 @@ def test_kill_phrase_result_stops_loop(tmp_path):
     loop = TalkLoop([LOUD, LOUD, QUIET, QUIET, QUIET, LOUD], p, k, wake=fires_at(0),
                     new_collector=collector)
     assert loop.run() == "killed" and len(p.calls) == 1
+
+
+def test_command_right_after_wake_word_needs_no_ack(tmp_path):
+    k = KillSwitch(tmp_path, [])
+    p, events = FakePipeline(), []
+    frames = [QUIET, LOUD, LOUD, QUIET, QUIET, QUIET, QUIET]
+    loop = TalkLoop(frames, p, k, wake=fires_at(0), first_collector=collector, new_collector=collector,
+                    ack=lambda: events.append("ack"), flush=lambda: events.append("flush"))
+    assert loop.run() == "ended"
+    assert events == [] and len(p.calls) == 1             # direkt beantwortet, kein "Ja?"
+
+
+def test_only_wake_word_then_ack_and_second_chance(tmp_path):
+    k = KillSwitch(tmp_path, [])
+    p, events = FakePipeline(), []
+    first = lambda: UtteranceCollector(wait_ms=160)       # nichts gesagt: 2 Frames Wartezeit
+    frames = [QUIET, QUIET, QUIET, QUIET, LOUD, LOUD, QUIET, QUIET, QUIET]
+    loop = TalkLoop(frames, p, k, wake=fires_at(0), first_collector=first, new_collector=collector,
+                    ack=lambda: events.append("ack"), flush=lambda: events.append("flush"))
+    loop.run()
+    assert events == ["ack", "flush"] and len(p.calls) == 1   # "Ja?" kam erst nach der kurzen Wartezeit
+
+
+def test_leftover_of_wake_word_counts_as_wake_only(tmp_path):
+    k = KillSwitch(tmp_path, [])
+    results = iter(["wake_only", "spoken"])
+
+    class P:
+        calls = 0
+        def handle(self, pcm):
+            self.calls += 1
+            return SimpleNamespace(heard="x", reply="y", outcome=next(results))
+    p, events, shown = P(), [], []
+    frames = [QUIET, LOUD, QUIET, QUIET, QUIET, LOUD, QUIET, QUIET, QUIET]
+    loop = TalkLoop(frames, p, k, wake=fires_at(0), first_collector=collector, new_collector=collector,
+                    ack=lambda: events.append("ack"), flush=lambda: events.append("flush"),
+                    on_result=lambda r: shown.append(r.outcome))
+    loop.run()
+    assert events == ["ack", "flush"] and p.calls == 2 and shown == ["spoken"]   # wake_only wird nicht angezeigt

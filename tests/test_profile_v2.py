@@ -260,7 +260,7 @@ def test_long_input_settings_are_validated_and_roundtripped(tmp_path):
 
 def test_defaults_allow_longer_dictation_than_before():
     s = wakeconfig.Settings()
-    assert s.end_silence_seconds == 1.2 and s.max_seconds == 60.0       # früher 0,8 s Stille und 15 s Maximum
+    assert s.end_silence_seconds == 0.9 and s.max_seconds == 60.0       # früher 0,8 s Stille und 15 s Maximum; 1,2 war zu träge
 
 
 def test_cohort_without_model_is_only_noise(tmp_path):

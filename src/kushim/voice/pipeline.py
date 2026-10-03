@@ -8,8 +8,10 @@ Alle Komponenten werden injiziert (testbar ohne Audio/Modelle).
 """
 from __future__ import annotations
 
+import difflib
+import re
 from dataclasses import dataclass
-from typing import Any, Callable, Iterable
+from typing import Any, Callable, Iterable, Sequence
 
 from ..safety.killswitch import KillSwitch, is_kill_phrase
 from .dialog import Dialog, State
@@ -24,12 +26,38 @@ SYSTEM_PROMPT = (
 
 ChatStream = Callable[[list[dict[str, str]]], Iterable[str]]
 
+_TOKEN = re.compile(r"[\wäöüßÄÖÜ]+")
+MATCH = 0.8      # Ähnlichkeit, ab der ein erkanntes Wort als Wake Word zählt ("Kuschim" statt "kushim")
+
+
+def strip_wake_words(text: str, names: Sequence[str]) -> str:
+    """Entfernt Wake Words am Anfang des erkannten Textes ("Hey Kushim, schau mir das nach" -> "schau mir das nach").
+
+    Whisper schreibt das Wake Word oft leicht anders ("Kuschim"), deshalb zählt Ähnlichkeit statt Gleichheit.
+    Nur am Anfang, höchstens zweimal. Bleibt nichts übrig, ist es nur das Wake Word gewesen."""
+    if not names:
+        return text.strip()
+    phrases = sorted({tuple(n.lower().split()) for n in names if n.strip()}, key=len, reverse=True)
+    for _ in range(2):
+        toks = list(_TOKEN.finditer(text))
+        cut = None
+        for ph in phrases:
+            if len(toks) >= len(ph) and all(
+                    difflib.SequenceMatcher(None, toks[i].group().lower(), w).ratio() >= MATCH
+                    for i, w in enumerate(ph)):
+                cut = toks[len(ph) - 1].end()
+                break
+        if cut is None:
+            break
+        text = text[cut:].lstrip(" \t,.;:!?-–—")
+    return text.strip()
+
 
 @dataclass
 class Result:
     heard: str
     reply: str
-    outcome: str      # "spoken" | "killed" | "empty" | "rejected_speaker" | "halted"
+    outcome: str      # "spoken" | "killed" | "empty" | "wake_only" | "rejected_speaker" | "halted"
     detail: str = ""  # nur Anzeige, z. B. Score und Dauer bei abgelehntem Sprecher (kein Audio)
 
 
@@ -37,7 +65,8 @@ class Pipeline:
     def __init__(self, stt: SpeechToText, chat: ChatStream, speaker: Speaker, dialog: Dialog,
                  kill: KillSwitch, verifier: AudioVerifier | None = None,
                  history_limit: int = 6,
-                 commands: Any = None):
+                 commands: Any = None, wake_names: Sequence[str] = ()):
+        self.wake_names = tuple(wake_names)       # werden am Anfang des erkannten Textes entfernt
         self.stt, self.chat, self.speaker, self.dialog, self.kill = stt, chat, speaker, dialog, kill
         self.verifier = verifier
         self.commands = commands          # z. B. WakeWordCommands (Sprachbefehle ohne LLM)
@@ -54,6 +83,9 @@ class Pipeline:
             self.kill.on_transcript(text)
             self.dialog.halt()
             return Result(text, "", "killed")
+        text = strip_wake_words(text, self.wake_names)
+        if not text:
+            return Result("", "", "wake_only")      # nur das Wake Word: kein Befehl, nichts prüfen, nichts antworten
         verified = strong = False
         if self.verifier is not None and self.verifier.enrolled:
             # Eine kurze Bestätigung ("ja") nach einer stark verifizierten Anfrage darf kürzer sein.

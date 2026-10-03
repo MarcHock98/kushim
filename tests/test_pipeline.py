@@ -105,3 +105,38 @@ def test_history_is_bounded(tmp_path):
     for _ in range(10):
         p.handle(PCM)
     assert max(seen) <= 7   # System + 6
+
+
+from kushim.voice.pipeline import strip_wake_words
+
+NAMES = ("hey kushim", "kushim", "kush", "hallo kush", "hi kushim", "kushi")
+
+
+def test_strip_wake_words():
+    s = lambda t: strip_wake_words(t, NAMES)
+    assert s("Hey Kushim, schau mir das nach.") == "schau mir das nach."
+    assert s("Hey Kuschim schau mir das nach") == "schau mir das nach"        # Whisper schreibt es anders
+    assert s("kushim") == "" and s("Hey Kushim.") == "" and s("Hallo Kush!") == ""
+    assert s("Hey Kushim hey kushim wie spät ist es") == "wie spät ist es"      # höchstens zweimal
+    assert s("Wie spät ist es, Kushim?") == "Wie spät ist es, Kushim?"          # nur am Anfang
+    assert s("Kuss mich nicht") == "Kuss mich nicht"                            # ähnliches Wort ist kein Wake Word
+    assert strip_wake_words("  Hallo  ", ()) == "Hallo"
+
+
+def test_pipeline_strips_wake_word_before_llm_and_reports_wake_only(tmp_path):
+    seen = []
+    p, played, _, _ = build(tmp_path, "Hey Kushim, wie spät ist es?",
+                            chat=lambda m: seen.append(m) or iter(["Es ist spät."]))
+    p.wake_names = NAMES
+    r = p.handle(PCM)
+    assert r.outcome == "spoken" and p.history[0]["content"] == "wie spät ist es?"
+    p2, played2, _, _ = build(tmp_path, "Hey Kushim.", chat=lambda m: seen.append("nie") or iter([]))
+    p2.wake_names = NAMES
+    r2 = p2.handle(PCM)
+    assert r2.outcome == "wake_only" and r2.heard == "" and not played2 and "nie" not in seen
+
+
+def test_kill_phrase_after_wake_word_still_kills(tmp_path):
+    p, played, _, kill = build(tmp_path, "Hey Kushim, Notaus")
+    p.wake_names = NAMES
+    assert p.handle(PCM).outcome == "killed" and kill.fired

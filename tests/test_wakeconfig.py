@@ -80,3 +80,13 @@ def test_from_names_routes_engines(tmp_path):
 def test_save_is_atomic_and_leaves_no_tmp(tmp_path):
     wc.save(tmp_path, WakeConfig(words=(WakeWord("kushim"),)))
     assert sorted(p.name for p in tmp_path.iterdir()) == [wc.FILE]
+
+
+def test_command_wait_roundtrip_and_bounds(tmp_path):
+    cfg = replace(WakeConfig(), settings=replace(Settings(), command_wait_seconds=2.0))
+    wc.save(tmp_path, cfg)
+    assert wc.load(tmp_path).settings.command_wait_seconds == 2.0
+    for bad in (0.1, 9.0):
+        with pytest.raises(ValueError):
+            wc.save(tmp_path, replace(WakeConfig(), settings=replace(Settings(), command_wait_seconds=bad)))
+    assert Settings().command_wait_seconds == 1.5 and Settings().listen_seconds == 4.0
