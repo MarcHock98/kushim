@@ -195,7 +195,7 @@ if (Test-Path $Py) {
     $doctorOk = ($LASTEXITCODE -eq 0)
     if (-not $doctorOk -and -not $Check) {
         & $Py -m kushim.cli voice status 2>$null | Out-Null
-        if (Ask "Deine Stimme jetzt einschreiben (5 Saetze vorlesen, Mikrofon noetig)?") { & $Py -m kushim.cli voice enroll }
+        if (Ask "Deine Stimme jetzt einschreiben (10 Absaetze vorlesen, ca. 5 Minuten, Mikrofon noetig)?") { & $Py -m kushim.cli voice enroll }
     }
 }
 

@@ -7,6 +7,7 @@ from kushim.voice.dialog import Dialog, State
 from kushim.voice.pipeline import Pipeline
 from kushim.voice.speaker import SpeakerVerifier
 from kushim.voice.tts import Speaker
+from kushim.voice.verify import AudioVerifier
 
 
 class FakeSTT:
@@ -28,11 +29,12 @@ def build(tmp_path, text, chat=None, verifier=None, embed=None):
     kill = KillSwitch(tmp_path, [lambda: stopped.append("kill")])
     chat = chat or (lambda msgs: iter(["Hall", "o. Wie ", "geht's?"]))
     spk = Speaker(Eng(), played.append, lambda: kill.fired)
-    p = Pipeline(FakeSTT(text), chat, spk, dialog, kill, verifier, embed)
+    audio_verifier = AudioVerifier(verifier, embed) if verifier is not None else None
+    p = Pipeline(FakeSTT(text), chat, spk, dialog, kill, audio_verifier)
     return p, played, dialog, kill
 
 
-PCM = np.zeros(1600, dtype=np.int16)
+PCM = np.zeros(16000, dtype=np.int16)      # 1 s
 
 
 def test_normal_turn(tmp_path):
@@ -69,12 +71,20 @@ def test_unknown_speaker_gets_no_answer(tmp_path):
     assert p.handle(PCM).outcome == "rejected_speaker" and not called and not played
 
 
-def test_enrolled_but_no_embedder_fails_closed(tmp_path):
+def test_enrolled_but_embedder_gives_nothing_fails_closed(tmp_path):
     v = SpeakerVerifier()
     b = np.ones(8)
     v.enroll([b, b * 1.01, b * 0.99])
-    p, played, _, _ = build(tmp_path, "Hallo", verifier=v, embed=None)
+    p, played, _, _ = build(tmp_path, "Hallo", verifier=v, embed=lambda pcm: np.zeros(0))
     assert p.handle(PCM).outcome == "rejected_speaker" and not played
+
+
+def test_too_short_utterance_is_rejected(tmp_path):
+    v = SpeakerVerifier()
+    base = np.random.default_rng(2).normal(size=32)
+    v.enroll([base, base + 0.01, base - 0.01])
+    p, played, _, _ = build(tmp_path, "Hallo", verifier=v, embed=lambda pcm: base)
+    assert p.handle(np.zeros(4000, dtype=np.int16)).outcome == "rejected_speaker" and not played
 
 
 def test_empty_transcript(tmp_path):

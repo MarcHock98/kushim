@@ -52,6 +52,12 @@ ITEMS = [
     Item("models/piper/de_DE-thorsten-high.onnx.json", 4875,
          "6de734444e4c3f9e33b7ebe2746dbc19b71e85f613e79c65acf623200b99a76a", *PIPER,
          "de/de_DE/thorsten/high/de_DE-thorsten-high.onnx.json"),
+    Item("models/piper-cohort/de_DE-mls-medium.onnx", 76961079,
+         "69cd1d2aa5a35839a518966fcc4924b5f93e5f8c948ed0752b1a616ad53f65bf", *PIPER,
+         "de/de_DE/mls/medium/de_DE-mls-medium.onnx"),
+    Item("models/piper-cohort/de_DE-mls-medium.onnx.json", 8948,
+         "b0af1c89ddfdc72d32e015729b0e89b99eec13c2c8caa1db7488d98e9e570b40", *PIPER,
+         "de/de_DE/mls/medium/de_DE-mls-medium.onnx.json"),
     Item("models/speaker/wespeaker_en_voxceleb_CAM++_LM.onnx", 29292687,
          "e197af7e9d473030cf486b3124149a19bf37014d0e4485e4c70c483b0ec10cb2", url=SPEAKER_URL),
 ]

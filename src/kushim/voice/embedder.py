@@ -11,6 +11,7 @@ import numpy as np
 
 SAMPLE_RATE = 16_000
 MIN_SECONDS = 0.8        # kürzere Äußerungen liefern unzuverlässige Embeddings
+TILE_TO = 3.0            # kürzeres Audio wird durch Wiederholung auf diese Länge aufgefüllt (siehe docs/research/speaker-v2.md)
 
 
 class SherpaEmbedder:
@@ -32,6 +33,11 @@ class SherpaEmbedder:
         x = a.astype(np.float32) / 32768.0 if a.dtype == np.int16 else a.astype(np.float32)
         if x.size < int(MIN_SECONDS * SAMPLE_RATE):
             return np.zeros(0, dtype=np.float32)
+        if x.size < int(TILE_TO * SAMPLE_RATE):
+            # Das Modell wurde mit längeren Stücken trainiert. Gemessen: ohne Auffüllen fällt der Wert für dieselbe
+            # Stimme bei Sätzen unter 3 s auf ca. 0,25 (mit Auffüllen ca. 0,95).
+            n = int(TILE_TO * SAMPLE_RATE)
+            x = np.tile(x, int(np.ceil(n / x.size)))[:n]
         stream = self._ex.create_stream()
         stream.accept_waveform(sample_rate=SAMPLE_RATE, waveform=x)
         stream.input_finished()

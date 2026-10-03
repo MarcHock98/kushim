@@ -7,7 +7,9 @@
 
 [settings]
 cooldown_seconds = 2.0      # Ruhezeit nach einem Treffer
-listen_seconds = 5.0        # so lange wartet kushim nach dem Wake Word auf deinen Befehl
+listen_seconds = 5.0        # so lange wartet kushim nach dem Wake Word auf den Beginn deines Befehls
+end_silence_seconds = 1.2   # so lange Stille beendet deine Äußerung (länger = Denkpausen erlaubt)
+max_seconds = 60.0          # längste einzelne Äußerung
 
 # Deine Wörter (freie Erkennung ohne Training). Hinweis: Sehr kurze Wörter ("kush", "kushi") lösen im Test
 # leichter versehentlich aus (z. B. bei "Kusch"). Das öffnet nur das Zuhören; Befehle brauchen weiter deine Stimme.

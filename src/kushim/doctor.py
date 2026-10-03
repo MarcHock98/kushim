@@ -22,6 +22,7 @@ FILES = [
     ("Whisper-Modell", "models/whisper-large-v3-turbo/model.bin"),
     ("Piper-Stimme", "models/piper/de_DE-thorsten-high.onnx"),
     ("Sprecher-Modell", "models/speaker/wespeaker_en_voxceleb_CAM++_LM.onnx"),
+    ("Vergleichsstimmen für das Einschreiben", "models/piper-cohort/de_DE-mls-medium.onnx"),
     ("Wake-Word-Modell (freie Wörter)", "models/kws/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01/bpe.model"),
     ("Ollama", "tools/ollama/ollama.exe"),
     ("LLM qwen2.5:7b", "models/ollama/manifests/registry.ollama.ai/library/qwen2.5/7b"),

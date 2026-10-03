@@ -97,6 +97,11 @@ class WakeWordCommands:
         self.root = root
         self._pending = None            # (Approval, neue WakeConfig)
 
+    @property
+    def awaiting(self) -> bool:
+        """True, solange eine Bestätigung ("ja"/"nein") aussteht."""
+        return self._pending is not None
+
     @staticmethod
     def _target(cmd: Parsed) -> tuple[str, str] | None:
         if cmd.word is not None:
@@ -106,7 +111,7 @@ class WakeWordCommands:
             return ("kws", name) if wakeconfig._KWS_NAME.match(name) and len(name) >= 3 else None
         return None
 
-    def handle(self, text: str, verified: bool) -> str | None:
+    def handle(self, text: str, verified: bool, strong: bool = True) -> str | None:
         """Antwortet mit Text, wenn der Satz ein Wake-Word-Befehl (oder eine Bestätigung) ist, sonst None."""
         if self._pending is not None:
             return self._confirm(text, verified)
@@ -115,6 +120,9 @@ class WakeWordCommands:
             return None
         if not verified:
             return "Das darf ich nur auf deine Stimme ändern."
+        if cmd.action != "list" and not strong:
+            return ("Für Änderungen brauche ich eine etwas längere, deutliche Äußerung. "
+                    "Sag den Befehl bitte noch einmal in einem ganzen Satz.")
         try:
             cfg = wakeconfig.load(self.root)
         except ValueError:

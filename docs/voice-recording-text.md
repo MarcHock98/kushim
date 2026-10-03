@@ -6,10 +6,10 @@ Nur für dich: Die Aufnahmen bleiben lokal auf deinem PC und gehören in `models
 - Ruhiger Raum, keine Musik, kein Lüfterrauschen. Immer dasselbe Mikrofon und derselbe Abstand (ca. 15 bis 20 cm).
 - Natürlich und freundlich sprechen, so wie kushim später klingen soll. Nicht flüstern, nicht übertreiben.
 - Pro Absatz eine eigene Aufnahme (Pause am Anfang und Ende, ca. eine Sekunde). Verhaspeln: den Absatz neu sprechen.
-- Format später: WAV, mindestens 22,05 kHz, mono. Das Aufnahme-Werkzeug kommt mit dem Klon-Schritt; bis dahin nur lesen und üben.
+- Aufgenommen wird mit `kushim voice enroll` (oder nur aufnehmen: `kushim voice record`): WAV, 24 kHz, mono, Ablage `voice-data/clone/` (nicht im Git).
 
-## Teil A: Stimmprofil (Sprecherverifikation), 5 Sätze
-Diese fünf Sätze liest du beim Einschreiben (`kushim voice enroll`) in normaler Lautstärke:
+## Teil A: kurzes Einschreiben (nur noch für `kushim voice enroll --quick`), 5 Sätze
+Das normale Einschreiben (`kushim voice enroll`) nutzt jetzt **Teil B** (10 Absätze, ca. 5 Minuten); dieselben Aufnahmen dienen später für den Stimmklon. Diese fünf Sätze gelten nur noch für das kurze, weniger robuste Einschreiben:
 
 1. Guten Morgen, ich bin es, und ich möchte, dass nur meine Stimme Befehle auslösen darf.
 2. Heute scheint die Sonne über Würzburg, aber am Nachmittag soll es regnen.

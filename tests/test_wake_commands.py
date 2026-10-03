@@ -9,6 +9,7 @@ from kushim.voice.dialog import Dialog
 from kushim.voice.pipeline import Pipeline
 from kushim.voice.speaker import SpeakerVerifier
 from kushim.voice.tts import Speaker
+from kushim.voice.verify import AudioVerifier
 from kushim.voice.wake_commands import WakeWordCommands, parse
 from kushim.voice.wakeconfig import Settings, WakeConfig, WakeWord
 
@@ -50,6 +51,23 @@ def test_parse_free_phrase():
 @pytest.mark.parametrize("text", ["Wie wird das Wetter", "Spiel Musik", "Füge Milch zur Einkaufsliste hinzu", ""])
 def test_normal_speech_is_not_a_command(text):
     assert parse(text) is None
+
+
+def test_weak_verification_may_list_but_not_change(tmp_path):
+    cmds, _ = make(tmp_path)
+    assert "hey kushim" in cmds.handle("Welche Wake Words sind aktiv", verified=True, strong=False)
+    answer = cmds.handle("Füge das Wake Word Alexa hinzu", verified=True, strong=False)
+    assert "längere" in answer and not cmds.awaiting
+    assert names(tmp_path) == ["hey kushim"]
+
+
+def test_awaiting_flag_while_confirmation_pending(tmp_path):
+    cmds, _ = make(tmp_path)
+    assert not cmds.awaiting
+    cmds.handle("Füge das Wake Word Alexa hinzu", verified=True)
+    assert cmds.awaiting
+    cmds.handle("Nein", verified=True)
+    assert not cmds.awaiting
 
 
 def test_unverified_speaker_is_refused(tmp_path):
@@ -156,23 +174,23 @@ def pipeline(tmp_path, text, verified):
     cmds, _ = make(tmp_path)
     kill = KillSwitch(tmp_path, [])
     p = Pipeline(FakeSTT(text), lambda m: llm_calls.append(1) or iter(["x."]),
-                 Speaker(Eng(), said.append), Dialog(), kill, v,
-                 (lambda pcm: base) if verified else (lambda pcm: -base), commands=cmds)
+                 Speaker(Eng(), said.append), Dialog(), kill,
+                 AudioVerifier(v, (lambda pcm: base) if verified else (lambda pcm: -base)), commands=cmds)
     return p, said, llm_calls
 
 
 def test_pipeline_answers_command_without_llm(tmp_path):
     p, said, llm = pipeline(tmp_path, "Füge das Wake Word Alexa hinzu", verified=True)
-    r = p.handle(np.zeros(16000, dtype=np.int16))
+    r = p.handle(np.zeros(32000, dtype=np.int16))
     assert r.outcome == "command" and "Alexa" in said[0] and not llm
 
 
 def test_pipeline_command_from_stranger_is_rejected_before_commands(tmp_path):
     p, said, llm = pipeline(tmp_path, "Füge das Wake Word Alexa hinzu", verified=False)
-    assert p.handle(np.zeros(16000, dtype=np.int16)).outcome == "rejected_speaker"
+    assert p.handle(np.zeros(32000, dtype=np.int16)).outcome == "rejected_speaker"
     assert not said and not llm
 
 
 def test_pipeline_normal_question_still_goes_to_llm(tmp_path):
     p, said, llm = pipeline(tmp_path, "Wie spät ist es", verified=True)
-    assert p.handle(np.zeros(16000, dtype=np.int16)).outcome == "spoken" and llm
+    assert p.handle(np.zeros(32000, dtype=np.int16)).outcome == "spoken" and llm
