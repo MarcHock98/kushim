@@ -23,9 +23,24 @@ def main(argv: list[str] | None = None) -> int:
     ki = key.add_parser("import")
     ki.add_argument("vault_id")
     ki.add_argument("hexkey")
+    sub.add_parser("start", help="Lokale Dienste (Ollama, nur 127.0.0.1) starten; Strg+C beendet")
     args = p.parse_args(argv)
     cfg = Config.load()
 
+    if args.cmd == "start":
+        from pathlib import Path
+        from .launcher import Launcher
+        launcher = Launcher(Path(__file__).resolve().parents[2])
+        try:
+            print("Ollama:", launcher.start_ollama(), "(nur 127.0.0.1). Strg+C zum Beenden.")
+            while True:
+                import time
+                time.sleep(1)
+        except KeyboardInterrupt:
+            pass
+        finally:
+            launcher.stop()
+        return 0
     if args.cmd == "memory":
         if args.sub == "init":
             with open_store(cfg, create=True) as s:
