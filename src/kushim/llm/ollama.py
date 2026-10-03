@@ -30,3 +30,7 @@ class OllamaClient:
             return str(data["message"]["content"]).strip()
         except (TypeError, KeyError) as e:
             raise ValueError("Unerwartete Antwort des lokalen LLM") from e
+
+    def chat_stream(self, messages: list[dict[str, str]]):
+        """Platzhalter für Streaming: liefert die ganze Antwort als einen Block (echtes Streaming folgt)."""
+        yield self.chat(messages)
