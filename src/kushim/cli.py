@@ -49,6 +49,8 @@ def main(argv: list[str] | None = None) -> int:
             v.add_argument("--quick", action="store_true", help="altes kurzes Einschreiben mit 5 Sätzen")
             v.add_argument("--auto", action="store_true", help="Ende eines Absatzes automatisch per Stille statt per Enter")
     vo.add_parser("status")
+    th = vo.add_parser("threshold", help="Schwelle der Sprecherprüfung setzen (0,5 bis 0,9; niedriger = lockerer)")
+    th.add_argument("value", type=float)
     vo.add_parser("reset")
     rec = vo.add_parser("record", help="Absätze für den Stimmklon aufnehmen (nur lokal, voice-data/)")
     rec.add_argument("--mic", help="Namensteil des Mikrofons, sonst Systemstandard")
@@ -106,6 +108,14 @@ def main(argv: list[str] | None = None) -> int:
                     extra = (f", {stats['prototypes']} Prototypen aus {stats['recordings']} Aufnahmen, "
                              f"Abstand zu Fremden {stats['separation']:+.2f}") if stats else " (älteres Format, bitte neu einschreiben)"
                     print(f"Stimmprofil: vorhanden, Schwelle {vp.threshold:.2f}{extra}")
+            elif args.sub == "threshold":
+                try:
+                    old = voiceprint.set_threshold(store, args.value)
+                except ValueError as e:
+                    print(f"Nicht geändert: {e}")
+                    return 1
+                print(f"Schwelle {old:.2f} -> {args.value:.2f}. Gilt ab dem nächsten Start von `kushim talk`. "
+                      "Niedriger heißt: auch fremde Stimmen kommen eher durch; prüfe das mit `voice test`.")
             elif args.sub == "reset":
                 voiceprint.clear(store)
                 print("Stimmprofil gelöscht. kushim talk startet erst nach erneutem Einschreiben.")
