@@ -12,12 +12,12 @@ Oberste Regel: Schäden jeder Art sind verboten. Lokal zuerst (Modus A), Claude 
 ## Phase 1: Stimme
 - [x] Wake-Word-Logik (openWakeWord/ONNX, Entprellung, Cooldown) und Push-to-Talk-Logik, getestet; Modell lädt, Stille ergibt Score ~0
 - [ ] Mikrofon-Aufnahme (Streaming, 16 kHz) anbinden und Wake Word/Hotkey live mit echtem Mikrofon prüfen (neu 2026-10-03: nur vom Nutzer testbar)
-- [ ] Eigenes Wake Word "Hey Kushim" trainieren oder "hey_jarvis" nutzen (neu 2026-10-03: Entscheidung des Nutzers)
+- [ ] Eigenes Wake Word "Hey Kushim" trainieren (Entscheidung Nutzer 2026-10-03; bis dahin hey_jarvis)
 - [x] Speech-to-Text-Logik (faster-whisper, offline, `voice/stt.py`), mit Fake-Modell getestet
 - [ ] Echtes Whisper-Modell lokal ablegen und STT mit Aufnahme prüfen (neu 2026-10-03: Modell-Download >1 GB und Mikrofon, Nutzer entscheidet/testet)
 - [x] Sprecherverifikation-Logik (`voice/speaker.py`, fail-closed, Cosine-Score), mit synthetischen Embeddings getestet
 - [ ] Embedding-Modell wählen (lokal, z. B. ECAPA/Resemblyzer), Profil im Vault speichern und mit echter Stimme prüfen (neu 2026-10-03: Modellwahl/Download und Live-Test durch den Nutzer)
-- [ ] Lokales LLM (Ollama, 7-8B): BLOCKIERT, localhost-HTTP braucht Eintrag in ALLOWLIST von `tests/test_no_egress.py` (nur mit Nutzerzustimmung); Alternative: In-Process-Bibliothek (llama-cpp-python) statt Server (2026-10-03)
+- [ ] Lokales LLM (Ollama, 7-8B): Freigabe erteilt 2026-10-03: Loopback-Modul `net/loopback.py` steht, Ollama-Client folgt
 - [x] TTS-Logik (`voice/tts.py`: Satz-Streaming, Abbruch bei Barge-in), Engine austauschbar, getestet
 - [ ] TTS-Engine wählen (Kokoro Apache-2.0 bevorzugt; piper-tts ist GPL-3, Lizenz-/Modellwahl und Download beim Nutzer erfragen) und Hörtest (neu 2026-10-03)
 - [x] Barge-in/Gesprächszustand (`voice/dialog.py`), mit Tests
@@ -25,7 +25,7 @@ Oberste Regel: Schäden jeder Art sind verboten. Lokal zuerst (Modus A), Claude 
 
 ## Phase 2: Oberfläche
 - [x] Backend-API-Kern (`api/protocol.py`: Token, Default-Deny-Dispatch, neutrale Fehler), getestet
-- [ ] WebSocket-Transport nur auf 127.0.0.1: BLOCKIERT, braucht Netzwerk-Import und damit ALLOWLIST-Eintrag (nur mit Nutzerzustimmung) (neu 2026-10-03)
+- [ ] Backend-Transport nur auf 127.0.0.1 (Freigabe erteilt 2026-10-03, ALLOWLIST-Eintrag nur für net/loopback.py)
 - [ ] Tauri-UI mit animiertem Avatar
 - [ ] Live-Transkript mit Feedback
 - [x] Freigabe-Warteschlange (`safety/approvals.py`: nur ASK, einmalig, Hash-gebunden, Ablauf, Notaus), getestet

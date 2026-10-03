@@ -6,7 +6,8 @@ SRC = Path(__file__).resolve().parents[1] / "src" / "kushim"
 FORBIDDEN = {"requests", "httpx", "urllib3", "aiohttp", "socket", "ftplib", "smtplib", "imaplib",
              "http.client", "urllib.request", "anthropic", "openai", "websockets", "paramiko"}
 # Zentrale, geprüfte Stellen. Neue Einträge nur mit ausdrücklicher Nutzerfreigabe.
-ALLOWLIST: set[str] = set()
+# net/loopback.py: vom Nutzer am 2026-10-03 freigegeben, nur Loopback (127.0.0.1/::1).
+ALLOWLIST: set[str] = {"net/loopback.py"}
 
 
 def imports(path: Path):
@@ -28,3 +29,12 @@ def test_no_network_imports_outside_allowlist():
             if mod in FORBIDDEN or mod.split(".")[0] in FORBIDDEN:
                 bad.append(f"{rel}: {mod}")
     assert not bad, "Netzwerk-Importe außerhalb der Allowlist:\n" + "\n".join(bad)
+
+
+def test_allowlist_is_only_the_loopback_module():
+    assert ALLOWLIST == {"net/loopback.py"}
+
+
+def test_loopback_module_has_no_other_network_imports():
+    mods = set(imports(SRC / "net" / "loopback.py"))
+    assert mods <= {"__future__", "http.client", "json", "typing", "urllib.parse"}
