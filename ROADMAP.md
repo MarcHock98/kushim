@@ -10,7 +10,9 @@ Oberste Regel: Schäden jeder Art sind verboten. Lokal zuerst (Modus A), Claude 
 - [x] Statische Egress-Prüfung (`tests/test_no_egress.py`)
 
 ## Phase 1: Stimme
-- [ ] Wake Word und Hotkey
+- [x] Wake-Word-Logik (openWakeWord/ONNX, Entprellung, Cooldown) und Push-to-Talk-Logik, getestet; Modell lädt, Stille ergibt Score ~0
+- [ ] Mikrofon-Aufnahme (Streaming, 16 kHz) anbinden und Wake Word/Hotkey live mit echtem Mikrofon prüfen (neu 2026-10-03: nur vom Nutzer testbar)
+- [ ] Eigenes Wake Word "Hey Kushim" trainieren oder "hey_jarvis" nutzen (neu 2026-10-03: Entscheidung des Nutzers)
 - [ ] Speech-to-Text lokal (faster-whisper, GPU)
 - [ ] Sprecherverifikation
 - [ ] Lokales LLM (Ollama, 7-8B)

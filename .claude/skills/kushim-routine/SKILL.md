@@ -20,6 +20,8 @@ Jeder Durchlauf ist klein, abgeschlossen und endet in einem sauberen Zustand (Te
 8. **Fähigkeiten nie selbst erweitern.** Neue Tools nur über `kushim-add-tool` mit Gate und Tests.
 9. **Pro Durchlauf Budget:** höchstens ein Arbeitspaket-Schritt, ~60 Minuten Arbeit, ~20 Web-Abrufe. Danach stoppen und im State notieren.
 
+Hinweis: Wurde dieser Skill in der laufenden Sitzung erst angelegt, ist er noch nicht registriert ("Unknown skill"). Dann den Ablauf unten direkt selbst ausführen.
+
 ## Ablauf pro Durchlauf
 
 ### 0. Zustand lesen

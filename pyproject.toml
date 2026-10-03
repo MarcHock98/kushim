@@ -10,6 +10,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest"]
+# openwakeword wird mit --no-deps installiert (tflite-runtime hat auf Windows/Py3.12 keine Wheels)
+voice = ["pynput", "onnxruntime", "numpy", "scipy", "scikit-learn", "tqdm", "requests"]
 
 [project.scripts]
 kushim = "kushim.cli:main"
