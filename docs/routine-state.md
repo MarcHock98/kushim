@@ -3,12 +3,12 @@
 Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
 
 - Letzter Durchlauf: 2026-10-03 (/loop kushim-routine, STT)
-- Aktueller Branch: master (routine/p1-wake, p1-stt, p1-speaker, p1-dialog, p1-tts, p2-api-core, p2-approvals, p4-bandit, p2-loopback, p1-llm, p1-whisper-model, p1-ollama-setup, branding, p1-piper, p2b-launcher, p2b-icon, p2b-killswitch, p1-pipeline, p1-audio gemerged, Branches bleiben)
+- Aktueller Branch: master (routine/p1-wake, p1-stt, p1-speaker, p1-dialog, p1-tts, p2-api-core, p2-approvals, p4-bandit, p2-loopback, p1-llm, p1-whisper-model, p1-ollama-setup, branding, p1-piper, p2b-launcher, p2b-icon, p2b-killswitch, p1-pipeline, p1-audio, p1-talk gemerged, Branches bleiben)
 - Erledigt: Wake-Word-Logik + Push-to-Talk (src/kushim/voice/trigger.py), 21 Tests grün, Modell hey_jarvis (ONNX) lädt
-- Erledigt zusätzlich: Dialog-/Barge-in-Logik, TTS-Logik, API-Kern (Token/Dispatch), Freigabe-Warteschlange, 123 Tests grün
-- Erledigt zusätzlich: Dialog-/Barge-in-Logik, TTS-Logik, API-Kern (Token/Dispatch), Freigabe-Warteschlange, 123 Tests grün
-- Erledigt zusätzlich: Dialog-/Barge-in-Logik, TTS-Logik, API-Kern (Token/Dispatch), Freigabe-Warteschlange, 123 Tests grün
-- Nächster Schritt: `kushim talk` zusammenbauen (Wake Word/Taste, Pipeline, Audio) für den Live-Test durch den Nutzer; Gerät per Config (Name); dann LLM-Streaming, Wake-Word-Training, Tauri/Node
+- Erledigt zusätzlich: Dialog-/Barge-in-Logik, TTS-Logik, API-Kern (Token/Dispatch), Freigabe-Warteschlange, 136 Tests grün
+- Erledigt zusätzlich: Dialog-/Barge-in-Logik, TTS-Logik, API-Kern (Token/Dispatch), Freigabe-Warteschlange, 136 Tests grün
+- Erledigt zusätzlich: Dialog-/Barge-in-Logik, TTS-Logik, API-Kern (Token/Dispatch), Freigabe-Warteschlange, 136 Tests grün
+- Nächster Schritt: Nutzer: Live-Test `kushim talk`. Autonom: LLM-Token-Streaming, Wake-Word-Training, Tauri/Node, Launcher-Verknüpfung für talk
 - Branches bereit zum Push durch den Nutzer: master, routine/p1-wake, routine/p1-stt, routine/p1-speaker, routine/p1-dialog, routine/p1-tts, routine/p2-api-core, routine/p2-approvals, routine/p4-bandit, routine/p2-loopback, routine/p1-llm
 
 ## Slack

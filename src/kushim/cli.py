@@ -26,6 +26,11 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("start", help="Lokale Dienste (Ollama, nur 127.0.0.1) starten; Strg+C beendet")
     sub.add_parser("kill", help="Notaus: stoppt laufende kushim-Dienste")
     sub.add_parser("resume", help="Notaus aufheben (nur bewusst durch den Nutzer)")
+    t = sub.add_parser("talk", help="Sprechen: Taste halten (Standard F9) oder Wake Word")
+    t.add_argument("--mic", help="Namensteil des Mikrofons, sonst Systemstandard")
+    t.add_argument("--out", help="Namensteil des Ausgabegeräts, sonst Systemstandard")
+    t.add_argument("--wake", action="store_true", help="Wake Word (hey_jarvis) statt Taste")
+    t.add_argument("--key", default="f9", help="Push-to-Talk-Taste")
     args = p.parse_args(argv)
     cfg = Config.load()
 
@@ -38,6 +43,39 @@ def main(argv: list[str] | None = None) -> int:
         else:
             killswitch.clear(root)
             print("Notaus aufgehoben.")
+        return 0
+    if args.cmd == "talk":
+        from .launcher import Launcher
+        from .safety.killswitch import is_triggered
+        from .voice import audio
+        from .voice.talk import TalkLoop, build_live
+        if is_triggered(root):
+            print("Notaus ist aktiv. Erst bewusst aufheben: kushim resume")
+            return 1
+        launcher = Launcher(root)
+        try:
+            launcher.start_ollama()
+            pipeline, kill = build_live(root, audio.find_device(args.out, "output"))
+            frames = audio.frames(audio.find_device(args.mic, "input"))
+            out = lambda r: print(f"Du: {r.heard}\nkushim: {r.reply or '(' + r.outcome + ')'}")
+            if args.wake:
+                from .voice.trigger import WakeWordDetector
+                det = WakeWordDetector.from_openwakeword()
+                loop = TalkLoop(frames, pipeline, kill, wake=lambda f: det.process(f) is not None,
+                                on_result=out)
+                print("Sage 'hey jarvis'. Notaus: sag 'Notaus' oder starte die Notaus-Verknüpfung.")
+            else:
+                from .voice.trigger import PushToTalk
+                down = {"v": False}
+                ptt = PushToTalk(args.key, lambda e: down.update(v=True), lambda: down.update(v=False))
+                ptt.start()
+                loop = TalkLoop(frames, pipeline, kill, ptt_down=lambda: down["v"], on_result=out)
+                print(f"Taste {args.key.upper()} halten und sprechen. Strg+C beendet.")
+            print("Ende:", loop.run())
+        except KeyboardInterrupt:
+            pass
+        finally:
+            launcher.stop()
         return 0
     if args.cmd == "start":
         import time

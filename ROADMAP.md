@@ -26,9 +26,10 @@ Oberste Regel: Schäden jeder Art sind verboten. Lokal zuerst (Modus A), Claude 
 - [ ] Hörtest der Stimme und Audioausgabe an Lautsprecher anbinden (nur Nutzer hört, Gerätewahl)
 - [x] Barge-in/Gesprächszustand (`voice/dialog.py`), mit Tests
 - [x] Pipeline-Logik (`voice/pipeline.py`): STT, Notaus vor allem, Sprecher-Prüfung fail-closed, LLM nur Text, Satz-Sprachausgabe; Sprachbefehl-Notaus damit eingehängt (2026-10-03)
-- [ ] Echtes LLM-Token-Streaming über Loopback (jetzt ein Block pro Antwort) und Latenz unter 1,5 s messen
+- [ ] Echtes LLM-Token-Streaming über Loopback (jetzt ein Block pro Antwort); Latenz ohne Audio gemessen: 0,4 s warm bei kurzer Antwort, längere Antworten und Mikrofonaufnahme noch offen
 - [x] Audio-Modul `voice/audio.py` (sounddevice 0.5.6, MIT; Geräte nach Namensteil, Stille-Erkennung für Äußerungen, öffnet Mikrofon nur bei Aufruf, Audio nur im Speicher); Geräteliste gelesen, kein Stream geöffnet (2026-10-03)
-- [ ] Ende-zu-Ende-Lauf `kushim talk` (Wake Word/Taste -> Pipeline) mit echtem Mikrofon und Lautsprecher (nur Nutzer spricht/hört; Gerätewahl Headset Arctis 5 oder Realtek)
+- [x] `kushim talk` (`voice/talk.py`, Taste F9 oder `--wake`, `--mic`/`--out`) zusammengebaut. Kette ohne Mikrofon/Lautsprecher getestet: Piper-Sprache -> Whisper (CUDA) -> qwen2.5:7b -> Piper, Frage "Hauptstadt von Frankreich" richtig, 0,4 s warm (2,9 s erster Lauf); Notaus-Satz erkannt (2026-10-03). Nvidia cuBLAS/cuDNN (offizielle PyPI-Pakete) für die GPU nachinstalliert
+- [ ] Live-Test mit echtem Mikrofon und Lautsprecher: `kushim talk --mic "Arctis 5 Chat" --out "Arctis 5 Game"` (nur Nutzer; Gerätewahl)
 
 ## Phase 2: Oberfläche
 - [x] Backend-API-Kern (`api/protocol.py`: Token, Default-Deny-Dispatch, neutrale Fehler), getestet
