@@ -3,10 +3,10 @@
 Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
 
 - Letzter Durchlauf: 2026-10-03 (manuell nach SKILL.md, Skill noch nicht registriert)
-- Aktueller Branch: routine/p1-wake
+- Aktueller Branch: master (routine/p1-wake gemerged, Branch bleibt bestehen)
 - Erledigt: Wake-Word-Logik + Push-to-Talk (src/kushim/voice/trigger.py), 21 Tests grün, Modell hey_jarvis (ONNX) lädt
 - Nächster Schritt: Phase 1, Speech-to-Text (faster-whisper); Mikrofon-Streaming braucht Live-Test durch den Nutzer
-- Branches bereit zum Push durch den Nutzer: keine (routine/p1-wake noch nicht gemerged)
+- Branches bereit zum Push durch den Nutzer: master, routine/p1-wake
 
 ## Slack
 - Nutzer-ID / Kanal-ID: (noch nicht ermittelt)
