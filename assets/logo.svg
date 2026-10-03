@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="kushim">
+  <title>kushim</title>
+  <!-- Tontafel (Kushim: frueheste namentlich bekannte Person, Verwalter auf Tontafeln, Uruk) mit Keil-K -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1b2433"/>
+      <stop offset="1" stop-color="#0d1118"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffd37a"/>
+      <stop offset="1" stop-color="#e08a3c"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="56" fill="url(#bg)"/>
+  <rect x="8" y="8" width="240" height="240" rx="56" fill="none" stroke="#2c3a52" stroke-width="3"/>
+  <!-- senkrechter Keil (Schaft des K) -->
+  <polygon points="84,52 112,52 104,118 92,118" fill="url(#glow)" transform="translate(0,0)"/>
+  <polygon points="92,118 104,118 112,204 84,204" fill="url(#glow)"/>
+  <!-- obere Diagonale -->
+  <polygon points="150,58 178,66 124,124 112,112" fill="url(#glow)"/>
+  <!-- untere Diagonale -->
+  <polygon points="124,132 136,120 188,196 160,204" fill="url(#glow)"/>
+  <!-- Zaehlmarken wie auf Verwaltungstafeln -->
+  <circle cx="196" cy="86" r="7" fill="#6fb7ff"/>
+  <circle cx="214" cy="104" r="7" fill="#6fb7ff" opacity=".7"/>
+  <circle cx="196" cy="122" r="7" fill="#6fb7ff" opacity=".45"/>
+</svg>
