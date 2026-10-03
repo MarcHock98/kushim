@@ -28,6 +28,22 @@ class Verdict:
     reason: str
 
 
+MIN_THRESHOLD, MAX_THRESHOLD = 0.5, 0.75    # unter 0,5 liegt Rauschen (gemessen ca. 0,43)
+
+
+def calibrate_threshold(embeddings: list[Any]) -> float:
+    """Schwelle aus den Einschreibe-Proben: 80 % der mittleren Ähnlichkeit, begrenzt auf [0,5; 0,75].
+
+    Die Untergrenze verhindert, dass uneinheitliche Proben die Prüfung zu weit öffnen.
+    """
+    units = [u for u in (_unit(e) for e in embeddings) if u is not None]
+    sims = [float(np.dot(units[i], units[j])) for i in range(len(units)) for j in range(i + 1, len(units))
+            if units[i].size == units[j].size]
+    if not sims:
+        return MAX_THRESHOLD
+    return min(MAX_THRESHOLD, max(MIN_THRESHOLD, 0.8 * float(np.mean(sims))))
+
+
 class SpeakerVerifier:
     def __init__(self, threshold: float = 0.75, min_enroll: int = 3):
         self.threshold, self.min_enroll = threshold, min_enroll
@@ -36,6 +52,15 @@ class SpeakerVerifier:
     @property
     def enrolled(self) -> bool:
         return self._profile is not None
+
+    def profile_vector(self) -> np.ndarray | None:
+        return None if self._profile is None else self._profile.copy()
+
+    def set_profile_vector(self, vec: Any) -> None:
+        u = _unit(vec)
+        if u is None:
+            raise ValueError("Ungültiges Profil")
+        self._profile = u
 
     def enroll(self, embeddings: list[Any]) -> None:
         units = [u for u in (_unit(e) for e in embeddings) if u is not None]

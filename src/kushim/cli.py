@@ -9,6 +9,15 @@ from .memory.keys import get_or_create_key, store_key
 from .memory.migrate import backup, migrate
 
 
+def _vault(cfg: Config):
+    """Öffnet den Vault oder erklärt, was fehlt (der Vault wird nie automatisch angelegt)."""
+    try:
+        return open_store(cfg)
+    except FileNotFoundError:
+        print("Noch kein Vault. Einmalig anlegen mit: kushim memory init (erzeugt auch den Schlüssel).")
+        raise SystemExit(3)
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="kushim")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -30,6 +39,13 @@ def main(argv: list[str] | None = None) -> int:
     t.add_argument("--mic", help="Namensteil des Mikrofons, sonst Systemstandard")
     t.add_argument("--out", help="Namensteil des Ausgabegeräts, sonst Systemstandard")
     t.add_argument("--wake-words", help="Komma-getrennt, überschreibt die Konfiguration (z. B. hey_jarvis,alexa)")
+    vo = sub.add_parser("voice", help="Eigene Stimme: einschreiben, testen, Status, löschen").add_subparsers(
+        dest="sub", required=True)
+    for name in ("enroll", "test"):
+        v = vo.add_parser(name)
+        v.add_argument("--mic", help="Namensteil des Mikrofons, sonst Systemstandard")
+    vo.add_parser("status")
+    vo.add_parser("reset")
     args = p.parse_args(argv)
     cfg = Config.load()
 
@@ -42,6 +58,41 @@ def main(argv: list[str] | None = None) -> int:
         else:
             killswitch.clear(root)
             print("Notaus aufgehoben.")
+        return 0
+    if args.cmd == "voice":
+        from .voice import audio, voiceprint
+        from .voice.enrollment import enroll as run_enroll, frames_recorder
+        from .voice.embedder import SherpaEmbedder
+        model = root / "models" / "speaker" / "wespeaker_en_voxceleb_CAM++_LM.onnx"
+        with _vault(cfg) as store:
+            if args.sub == "status":
+                vp = voiceprint.load(store)
+                print("Stimmprofil: " + (f"vorhanden (Schwelle {vp.threshold:.2f})" if vp else "keines"))
+            elif args.sub == "reset":
+                voiceprint.clear(store)
+                print("Stimmprofil gelöscht. kushim talk startet erst nach erneutem Einschreiben.")
+            else:
+                embed = SherpaEmbedder.from_local(str(model))
+                frames = iter(audio.Mic(audio.find_device(args.mic, "input")))
+                if args.sub == "enroll":
+                    print("Lies die Sätze in normaler Lautstärke vor. Aufnahmen bleiben im Speicher.")
+                    res = run_enroll(frames_recorder(frames), embed)
+                    voiceprint.save(store, res.verifier, model.name)
+                    print(f"Gespeichert im Vault. Proben: {res.used}, mittlere Ähnlichkeit "
+                          f"{res.mean_similarity:.2f}, Schwelle {res.threshold:.2f}.")
+                else:
+                    vp = voiceprint.load(store)
+                    if vp is None:
+                        print("Kein Stimmprofil. Erst: kushim voice enroll")
+                        return 1
+                    print("Sprich einen Satz (Test). Strg+C beendet.")
+                    try:
+                        while True:
+                            v = vp.verify(embed(frames_recorder(frames)()))
+                            print(f"Ähnlichkeit {v.score:.2f} (Schwelle {vp.threshold:.2f}): "
+                                  f"{'akzeptiert' if v.accepted else 'abgelehnt'}")
+                    except KeyboardInterrupt:
+                        pass
         return 0
     if args.cmd == "talk":
         from .launcher import Launcher
@@ -58,11 +109,20 @@ def main(argv: list[str] | None = None) -> int:
         except ValueError as e:
             print(e)
             return 2
+        from .voice import voiceprint
+        from .voice.embedder import SherpaEmbedder
+        with _vault(cfg) as store:
+            verifier = voiceprint.load(store)
+        if verifier is None:
+            print("Kein Stimmprofil. kushim hört nur auf deine Stimme: erst `kushim voice enroll`.")
+            return 1
+        embed = SherpaEmbedder.from_local(str(root / "models" / "speaker" / "wespeaker_en_voxceleb_CAM++_LM.onnx"))
         launcher = Launcher(root)
         try:
             launcher.start_ollama()
             pipeline, kill, mic, ack = build_live(root, audio.find_device(args.out, "output"),
-                                                  audio.find_device(args.mic, "input"))
+                                                  audio.find_device(args.mic, "input"),
+                                                  verifier=verifier, embed=embed)
             det = WakeWordDetector.from_openwakeword(models)
             out = lambda r: print(f"Du: {r.heard}\nkushim: {r.reply or '(' + r.outcome + ')'}")
             loop = TalkLoop(mic, pipeline, kill, wake=lambda f: det.process(f) is not None,

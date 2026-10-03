@@ -69,8 +69,10 @@ Oberste Regel: Schäden jeder Art sind verboten. Lokal zuerst (Modus A), Claude 
 ## Nutzerwünsche 2026-10-03 (Wake-Word-only, Stimme)
 - [x] Nur Wake Word: vor dem Wake Word sieht nur der lokale Detektor das Mikrofon (keine STT, kein LLM, keine Speicherung); nur Wake Word gesagt -> kurze Quittung "Ja?", dann Zuhören mit 5 s Wartezeit; Quittung wird nicht als Befehl gehört (Mic.flush)
 - [x] Mehrere Wake Words einstellbar: `[voice] wake_words = [...]` in der Konfiguration oder `kushim talk --wake-words a,b`; erlaubt sind vortrainierte Namen oder .onnx aus `models/wakewords/` (keine fremden Pfade)
-- [ ] Sprecherverifikation erzwingen ("nur meine Stimme"): Embedding-Modell lokal (ONNX, offizielle Quelle prüfen), Einschreiben per `kushim voice enroll`, Stimmprofil nur im verschlüsselten Vault, `kushim talk` startet ohne Profil nicht (fail-closed), Notaus-Satz bleibt für jeden wirksam
+- [x] Sprecherverifikation erzwungen (Code): sherpa-onnx 1.13.8 + WeSpeaker CAM++ (29 MB, `models/speaker`, Größe wie im Release), `kushim voice enroll|test|status|reset`, Profil nur im verschlüsselten Vault, Schwelle aus den Proben kalibriert (0,5 bis 0,75), `kushim talk` startet ohne Profil nicht, Notaus-Satz wirkt für jeden (2026-10-03)
+- [ ] Stimmprofil wirklich einschreiben und Schwelle mit der echten Stimme prüfen: braucht `kushim memory init` (Vault + Schlüssel, nur Nutzer) und `kushim voice enroll`. Mit synthetischer Stimme nicht kalibrierbar (gleiche TTS-Stimme 0,19 bis 0,98, Rauschen 0,43)
 - [ ] Flüssigere Stimme, möglichst mit der eigenen Stimme des Nutzers (Klon/Training lokal, nur eigene Aufnahmen mit Einwilligung): Optionen und Hardware (RTX 3070, 8 GB) klären, Entscheidung beim Nutzer
 - [ ] Eigenes Wake Word "Hey Kushim" trainieren (siehe Phase 1)
 - [x] Vorlesetext für Stimmprofil und Stimmklon: `docs/voice-recording-text.md` (5 Einschreibe-Sätze, 10 Absätze für den Klon, Aufnahmetipps) (2026-10-03)
 - [ ] Aufnahme-Werkzeug `kushim voice record` (nur lokal, Ablage `voice-data/`, git-ignoriert)
+- [ ] Wake Words per Sprache hinzufügen/entfernen ("merke dir das Wake Word ..."): nur verifizierte Stimme, über ActionGate (umkehrbar, mit Bestätigung), Speicherung im Vault; neue Wörter brauchen ein trainiertes Modell oder Auswahl aus vortrainierten, Weg klären (neu 2026-10-03)
