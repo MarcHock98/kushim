@@ -3,12 +3,12 @@
 Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
 
 - Letzter Durchlauf: 2026-10-03 (/loop kushim-routine, STT)
-- Aktueller Branch: master (routine/p1-wake, p1-stt, p1-speaker, p1-dialog, p1-tts, p2-api-core, p2-approvals, p4-bandit, p2-loopback, p1-llm, p1-whisper-model, p1-ollama-setup, branding, p1-piper, p2b-launcher, p2b-icon, p2b-killswitch, p1-pipeline, p1-audio, p1-talk gemerged, Branches bleiben)
-- Erledigt: Wake-Word-Logik + Push-to-Talk (src/kushim/voice/trigger.py), 21 Tests grün, Modell hey_jarvis (ONNX) lädt
+- Aktueller Branch: master (routine/p1-wake, p1-stt, p1-speaker, p1-dialog, p1-tts, p2-api-core, p2-approvals, p4-bandit, p2-loopback, p1-llm, p1-whisper-model, p1-ollama-setup, branding, p1-piper, p2b-launcher, p2b-icon, p2b-killswitch, p1-pipeline, p1-audio, p1-talk, p1-streaming, p1-wake-only gemerged, Branches bleiben)
+- Erledigt: Wake-Word-Logik + Push-to-Talk (src/kushim/voice/trigger.py), 149 Tests grün, Modell hey_jarvis (ONNX) lädt
 - Erledigt zusätzlich: Dialog-/Barge-in-Logik, TTS-Logik, API-Kern (Token/Dispatch), Freigabe-Warteschlange, 136 Tests grün
 - Erledigt zusätzlich: Dialog-/Barge-in-Logik, TTS-Logik, API-Kern (Token/Dispatch), Freigabe-Warteschlange, 136 Tests grün
 - Erledigt zusätzlich: Dialog-/Barge-in-Logik, TTS-Logik, API-Kern (Token/Dispatch), Freigabe-Warteschlange, 136 Tests grün
-- Nächster Schritt: Nutzer: Live-Test `kushim talk`. Autonom: LLM-Token-Streaming, Wake-Word-Training, Tauri/Node, Launcher-Verknüpfung für talk
+- Nächster Schritt: Sprecherverifikation erzwingen (Embedding-Modell wählen, Enrollment, Vault); danach neue Stimme/Stimmklon, Hey-Kushim-Training
 - Branches bereit zum Push durch den Nutzer: master, routine/p1-wake, routine/p1-stt, routine/p1-speaker, routine/p1-dialog, routine/p1-tts, routine/p2-api-core, routine/p2-approvals, routine/p4-bandit, routine/p2-loopback, routine/p1-llm
 
 ## Slack
@@ -24,6 +24,9 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
 - openwakeword braucht `requests` trotz --no-deps (gelöst, in pyproject-Extra `voice`)
 
 ## Entscheidungen des Nutzers
+- 2026-10-03: F9/Push-to-Talk entfernt; nur Wake Word; kushim darf vor dem Wake Word nicht als LLM mithören; Wake Word allein löst eine Antwort aus; mehrere Wake Words einstellbar
+- 2026-10-03: Sprecherverifikation ist wichtig: kushim soll nur auf die Stimme des Nutzers reagieren
+- 2026-10-03: Wunsch nach flüssigerer Stimme, ggf. mit eigener Stimme (Einsprechen und Training)
 - 2026-10-03: Live-Test `kushim talk` vom Nutzer als funktionierend gemeldet
 - 2026-10-03: Live-Test mit Systemstandard-Geräten; Desktop-Verknüpfung `kushim sprechen.lnk` (talk, F9) angelegt
 - 2026-10-03: Notaus als Windows-Verknüpfung und/oder Sprachbefehl; beides umgesetzt (Verknüpfung auf dem Desktop, Sprache wartet auf Pipeline)

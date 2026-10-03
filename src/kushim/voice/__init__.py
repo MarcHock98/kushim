@@ -1,3 +1,3 @@
-from .trigger import PushToTalk, TriggerEvent, WakeWordDetector, key_matches
+from .trigger import TriggerEvent, WakeWordDetector, resolve_wake_words
 
-__all__ = ["PushToTalk", "TriggerEvent", "WakeWordDetector", "key_matches"]
+__all__ = ["TriggerEvent", "WakeWordDetector", "resolve_wake_words"]

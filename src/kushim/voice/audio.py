@@ -28,14 +28,29 @@ def find_device(name_part: str | None, kind: str) -> int | None:
     raise LookupError(f"Kein {kind}-Gerät mit '{name_part}'")
 
 
-def frames(device: int | None = None) -> Iterator[np.ndarray]:
-    """Liefert 80-ms-int16-Frames (16 kHz, mono), bis der Aufrufer die Schleife verlässt."""
-    import sounddevice as sd
-    with sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype="int16", blocksize=FRAME,
-                        device=device) as stream:
-        while True:
-            data, _overflow = stream.read(FRAME)
-            yield data[:, 0].copy()
+class Mic:
+    """Mikrofon als Frame-Iterator. `flush()` verwirft Gepuffertes (z. B. nach einer Sprachausgabe,
+    damit kushim sich nicht selbst zuhört)."""
+
+    def __init__(self, device: int | None = None):
+        self.device = device
+        self._stream: Any = None
+
+    def flush(self) -> None:
+        if self._stream is not None and self._stream.read_available:
+            self._stream.read(self._stream.read_available)
+
+    def __iter__(self) -> Iterator[np.ndarray]:
+        import sounddevice as sd
+        with sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype="int16", blocksize=FRAME,
+                            device=self.device) as stream:
+            self._stream = stream
+            try:
+                while True:
+                    data, _overflow = stream.read(FRAME)
+                    yield data[:, 0].copy()
+            finally:
+                self._stream = None
 
 
 def play_wav(data: bytes, device: int | None = None) -> None:
@@ -56,9 +71,10 @@ class UtteranceCollector:
     """Sammelt Frames nach dem Auslöser, bis Stille folgt oder die Maximaldauer erreicht ist."""
 
     def __init__(self, silence_ms: int = 800, max_ms: int = 15_000, min_ms: int = 300,
-                 energy_threshold: float = 500.0):
+                 energy_threshold: float = 500.0, wait_ms: int = 5_000):
         n = lambda ms: max(1, round(ms / (FRAME / SAMPLE_RATE * 1000)))
         self.silence_frames, self.max_frames, self.min_frames = n(silence_ms), n(max_ms), n(min_ms)
+        self.wait_frames = n(wait_ms)    # so lange auf den Sprechbeginn warten
         self.threshold = energy_threshold
         self._frames: list[np.ndarray] = []
         self._quiet = 0
@@ -74,6 +90,8 @@ class UtteranceCollector:
         else:
             self._quiet += 1
         if len(self._frames) >= self.max_frames:
+            return True
+        if not self._heard_speech and len(self._frames) >= self.wait_frames:
             return True
         return self._heard_speech and self._quiet >= self.silence_frames \
             and len(self._frames) >= self.min_frames

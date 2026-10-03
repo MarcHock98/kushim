@@ -1,11 +1,13 @@
-"""Auslöser für die Sprachaufnahme: Wake Word (openWakeWord, ONNX) und Push-to-Talk (pynput).
+"""Auslöser für die Sprachaufnahme: ausschließlich Wake Words (openWakeWord, ONNX, lokal).
 
-Ein Auslöser startet nur das Zuhören. Er ist keine Autorisierung: Sprecherverifikation und
-ActionGate gelten danach unverändert.
+Vor dem Wake Word läuft das Mikrofonsignal nur durch dieses kleine lokale Erkennungsmodell: keine
+Spracherkennung, kein LLM, keine Speicherung. Ein Auslöser startet nur das Zuhören. Er ist keine
+Autorisierung: Sprecherverifikation und ActionGate gelten danach unverändert.
 """
 from __future__ import annotations
 
 import time
+from pathlib import Path
 from dataclasses import dataclass
 from typing import Any, Callable, Protocol
 
@@ -35,13 +37,17 @@ class WakeWordDetector:
         self._quiet_until = 0.0
 
     @classmethod
-    def from_openwakeword(cls, wakeword_model: str = "hey_jarvis", **kw) -> "WakeWordDetector":
-        """Lädt ein vortrainiertes Modell. Einmalig vorher: `openwakeword.utils.download_models()`.
+    def from_openwakeword(cls, wakeword_models: list[str] | str = "hey_jarvis", **kw) -> "WakeWordDetector":
+        """Lädt ein oder mehrere Modelle (vortrainierte Namen oder .onnx-Dateien aus models/wakewords).
 
-        ONNX ist auf Windows/Python 3.12 der einzige Pfad (tflite-runtime hat dort keine Wheels).
+        Einmalig vorher: `openwakeword.utils.download_models()`. ONNX ist auf Windows/Python 3.12
+        der einzige Pfad (tflite-runtime hat dort keine Wheels). Es löst aus, sobald EIN Wort passt.
         """
         from openwakeword.model import Model
-        return cls(Model(wakeword_models=[wakeword_model], inference_framework="onnx"), **kw)
+        names = [wakeword_models] if isinstance(wakeword_models, str) else list(wakeword_models)
+        if not names:
+            raise ValueError("Mindestens ein Wake Word nötig")
+        return cls(Model(wakeword_models=names, inference_framework="onnx"), **kw)
 
     def process(self, frame: Any) -> TriggerEvent | None:
         now = self._clock()
@@ -58,43 +64,26 @@ class WakeWordDetector:
         return None
 
 
-def key_matches(key: Any, wanted: str) -> bool:
-    """Vergleicht eine pynput-Taste mit dem konfigurierten Namen (z. B. 'f9' oder 'a')."""
-    name = getattr(key, "name", None)
-    if name is not None:
-        return name.lower() == wanted.lower()
-    char = getattr(key, "char", None)
-    return char is not None and char.lower() == wanted.lower()
+PRETRAINED = {"alexa", "hey_mycroft", "hey_jarvis", "hey_rhasspy", "timer", "weather"}
 
 
-class PushToTalk:
-    """Globaler Listener, der AUSSCHLIESSLICH die konfigurierte Taste auswertet.
+def resolve_wake_words(names: list[str], root: Path) -> list[str]:
+    """Prüft die Wake-Word-Liste: vortrainierte Namen oder .onnx-Dateien nur aus `models/wakewords/`.
 
-    Andere Tasten werden verworfen, nichts wird gespeichert oder geloggt.
+    Beliebige Pfade werden abgelehnt (kein Laden fremder Dateien über die Konfiguration).
     """
-
-    def __init__(self, key: str, on_start: Callable[[TriggerEvent], None],
-                 on_stop: Callable[[], None]):
-        self.key, self.on_start, self.on_stop = key, on_start, on_stop
-        self._down = False
-        self._listener = None
-
-    def _press(self, key) -> None:
-        if key_matches(key, self.key) and not self._down:  # Auto-Repeat ignorieren
-            self._down = True
-            self.on_start(TriggerEvent("hotkey"))
-
-    def _release(self, key) -> None:
-        if key_matches(key, self.key) and self._down:
-            self._down = False
-            self.on_stop()
-
-    def start(self) -> None:
-        from pynput import keyboard
-        self._listener = keyboard.Listener(on_press=self._press, on_release=self._release)
-        self._listener.start()
-
-    def stop(self) -> None:
-        if self._listener:
-            self._listener.stop()
-            self._listener = None
+    if not names:
+        raise ValueError("Mindestens ein Wake Word nötig")
+    allowed_dir = (root / "models" / "wakewords").resolve()
+    out: list[str] = []
+    for raw in names:
+        n = raw.strip()
+        if n in PRETRAINED:
+            out.append(n)
+            continue
+        f = (allowed_dir / n).resolve() if not n.endswith(".onnx") or "/" not in n.replace("\\", "/") else None
+        if f is None or f.suffix != ".onnx" or allowed_dir not in f.parents or not f.is_file():
+            raise ValueError(f"Unbekanntes Wake Word: {n!r} (erlaubt: {sorted(PRETRAINED)} oder "
+                             f".onnx in models/wakewords/)")
+        out.append(str(f))
+    return out

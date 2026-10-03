@@ -1,7 +1,6 @@
 from types import SimpleNamespace
 
 import numpy as np
-import pytest
 
 from kushim.safety import killswitch
 from kushim.safety.killswitch import KillSwitch
@@ -25,32 +24,42 @@ def collector():
     return UtteranceCollector(silence_ms=160, min_ms=80)   # 2 stille Frames
 
 
-def test_needs_exactly_one_trigger(tmp_path):
-    k = KillSwitch(tmp_path, [])
-    with pytest.raises(ValueError):
-        TalkLoop([], FakePipeline(), k)
-    with pytest.raises(ValueError):
-        TalkLoop([], FakePipeline(), k, wake=lambda f: True, ptt_down=lambda: True)
+def fires_at(*indexes):
+    """Wake-Detektor, der bei den n-ten Aufrufen auslöst."""
+    n = {"i": -1}
+
+    def wake(frame):
+        n["i"] += 1
+        return n["i"] in indexes
+    return wake
 
 
-def test_wake_word_flow(tmp_path):
+def test_wake_word_flow_with_ack_and_flush(tmp_path):
     k = KillSwitch(tmp_path, [])
-    p = FakePipeline()
+    p, events = FakePipeline(), []
     frames = [QUIET, QUIET, LOUD, LOUD, QUIET, QUIET, QUIET]
-    loud_first = iter([False, False, True])           # Wake bei Frame 3
-    loop = TalkLoop(frames, p, k, wake=lambda f: next(loud_first, False), new_collector=collector)
+    loop = TalkLoop(frames, p, k, wake=fires_at(2), new_collector=collector,
+                    ack=lambda: events.append("ack"), flush=lambda: events.append("flush"))
     assert loop.run() == "ended"
+    assert events == ["ack", "flush"]          # Quittung, dann Puffer verwerfen
     assert p.calls == [3 * FRAME]
 
 
-def test_wake_without_speech_does_not_call_pipeline(tmp_path):
+def test_only_wake_word_gets_ack_but_no_pipeline_call(tmp_path):
     k = KillSwitch(tmp_path, [])
-    p = FakePipeline()
-    fired = iter([True])
-    loop = TalkLoop([QUIET] * 40, p, k, wake=lambda f: next(fired, False),
-                    new_collector=lambda: UtteranceCollector(max_ms=240))
+    p, events = FakePipeline(), []
+    loop = TalkLoop([QUIET] * 40, p, k, wake=fires_at(0), ack=lambda: events.append("ack"),
+                    new_collector=lambda: UtteranceCollector(wait_ms=240))
     loop.run()
-    assert p.calls == []          # Max-Länge erreicht ohne Sprache: nichts senden
+    assert events == ["ack"] and p.calls == []
+
+
+def test_nothing_before_wake_word_reaches_pipeline_or_collector(tmp_path):
+    k = KillSwitch(tmp_path, [])
+    p, made = FakePipeline(), []
+    loop = TalkLoop([LOUD] * 30, p, k, wake=lambda f: False,
+                    new_collector=lambda: made.append(1) or collector())
+    assert loop.run() == "ended" and p.calls == [] and made == []
 
 
 def test_kill_marker_stops_loop(tmp_path):
@@ -62,16 +71,6 @@ def test_kill_marker_stops_loop(tmp_path):
 def test_kill_phrase_result_stops_loop(tmp_path):
     k = KillSwitch(tmp_path, [])
     p = FakePipeline(outcome="killed")
-    state = iter([True])
-    loop = TalkLoop([LOUD, LOUD, QUIET, QUIET, QUIET, LOUD], p, k, wake=lambda f: next(state, False),
+    loop = TalkLoop([LOUD, LOUD, QUIET, QUIET, QUIET, LOUD], p, k, wake=fires_at(0),
                     new_collector=collector)
     assert loop.run() == "killed" and len(p.calls) == 1
-
-
-def test_push_to_talk_records_while_held(tmp_path):
-    k = KillSwitch(tmp_path, [])
-    p = FakePipeline()
-    held = iter([True, True, True, False])            # gedrückt für 3 Abfragen, dann losgelassen
-    loop = TalkLoop([LOUD, LOUD, LOUD, QUIET, QUIET], p, k, ptt_down=lambda: next(held, False),
-                    new_collector=collector)
-    assert loop.run() == "ended" and len(p.calls) == 1
