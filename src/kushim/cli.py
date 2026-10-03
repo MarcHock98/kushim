@@ -24,18 +24,35 @@ def main(argv: list[str] | None = None) -> int:
     ki.add_argument("vault_id")
     ki.add_argument("hexkey")
     sub.add_parser("start", help="Lokale Dienste (Ollama, nur 127.0.0.1) starten; Strg+C beendet")
+    sub.add_parser("kill", help="Notaus: stoppt laufende kushim-Dienste")
+    sub.add_parser("resume", help="Notaus aufheben (nur bewusst durch den Nutzer)")
     args = p.parse_args(argv)
     cfg = Config.load()
 
+    root = __import__("pathlib").Path(__file__).resolve().parents[2]
+    if args.cmd in ("kill", "resume"):
+        from .safety import killswitch
+        if args.cmd == "kill":
+            killswitch.trigger(root)
+            print("NOTAUS ausgelöst. kushim stoppt. Aufheben mit: kushim resume")
+        else:
+            killswitch.clear(root)
+            print("Notaus aufgehoben.")
+        return 0
     if args.cmd == "start":
-        from pathlib import Path
+        import time
         from .launcher import Launcher
-        launcher = Launcher(Path(__file__).resolve().parents[2])
+        from .safety.killswitch import KillSwitch, is_triggered
+        if is_triggered(root):
+            print("Notaus ist aktiv. Erst bewusst aufheben: kushim resume")
+            return 1
+        launcher = Launcher(root)
+        kill = KillSwitch(root, [launcher.stop])
         try:
             print("Ollama:", launcher.start_ollama(), "(nur 127.0.0.1). Strg+C zum Beenden.")
-            while True:
-                import time
-                time.sleep(1)
+            while not kill.poll():
+                time.sleep(0.5)
+            print("NOTAUS: Dienste beendet.")
         except KeyboardInterrupt:
             pass
         finally:

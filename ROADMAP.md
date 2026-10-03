@@ -34,7 +34,9 @@ Oberste Regel: Schäden jeder Art sind verboten. Lokal zuerst (Modus A), Claude 
 - [ ] Live-Transkript mit Feedback
 - [x] Freigabe-Warteschlange (`safety/approvals.py`: nur ASK, einmalig, Hash-gebunden, Ablauf, Notaus), getestet
 - [ ] Freigabe-Leiste und Claude-Vorschau in der UI (braucht UI-Toolchain)
-- [ ] Dashboard, Gedächtnis-Ansicht, Sicherheitsstatus, Notaus
+- [x] Notaus-Kern (`safety/killswitch.py`): Marker-Datei per Verknüpfung `kushim NOTAUS.lnk`/`kushim kill`, Sprachbefehl-Erkennung ("Notaus", "stopp alles" ...), ohne Sprecherverifikation, Aufheben nur per `kushim resume`; `kushim start` beendet sich bei Notaus und startet bei aktivem Notaus nicht (2026-10-03)
+- [ ] Sprachbefehl-Notaus in die Sprachpipeline einhängen (Transkript vor LLM, auch Dialog.halt und ActionGate.kill auslösen) (neu 2026-10-03, braucht Pipeline)
+- [ ] Dashboard, Gedächtnis-Ansicht, Sicherheitsstatus in der UI
 
 ## Phase 3: Tools (jeweils mit ActionSpec und Tests)
 - [ ] Recherche/Web
