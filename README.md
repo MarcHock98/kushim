@@ -117,7 +117,9 @@ Diese Schritte machst nur du (sie betreffen deinen Schlüssel und deine Stimme).
    ```powershell
    .\.venv\Scripts\python -m kushim.cli voice enroll
    ```
-   Optional ein bestimmtes Mikrofon: `--mic "Arctis 5 Chat"`. Neu aufnehmen: `--record`. Das alte kurze Einschreiben (5 Sätze, weniger robust): `--quick`.
+   **So läuft jeder Absatz:** Enter drücken, kurz warten und vorlesen, am Ende des Absatzes selbst Enter drücken (kein Zeitlimit durch Stille; Tastenklick vorn und hinten wird abgeschnitten). Danach „Enter = behalten“ oder „r + Enter“ zum Neuaufnehmen. Wer lieber die Stille das Ende bestimmen lässt: `--auto`.
+
+   Optional ein bestimmtes Mikrofon: `--mic "Arctis 5 Chat"`. Alles neu aufnehmen: `--record`. Das alte kurze Einschreiben (5 Sätze, weniger robust): `--quick`.
 4. **Prüfen, ob dich kushim erkennt** (und andere nicht). Es zeigt pro Äußerung Ähnlichkeit, Schwelle, Länge, Fenster und ob die Prüfung „stark“ war. Teste kurze und lange Sätze und lass einmal eine zweite Person sprechen:
    ```powershell
    .\.venv\Scripts\python -m kushim.cli voice test
@@ -203,7 +205,7 @@ Für eine Stimme, die wie du klingt, nimmst du Material auf (nur lokal, Ordner `
 .\.venv\Scripts\python -m kushim.cli voice record --mic "Arctis 5 Chat"
 ```
 
-Es nimmt 10 Absätze mit 24 kHz auf, prüft Pegel und Länge und überspringt vorhandene (`--redo` überschreibt). Das Klon-Modell selbst folgt, siehe [docs/research/voice-clone.md](docs/research/voice-clone.md).
+Es nimmt 10 Absätze mit 24 kHz auf. Du startest und beendest jeden Absatz selbst mit Enter und kannst ihn behalten oder neu aufnehmen (`--auto`: Ende per Stille). Es prüft Pegel und Länge und überspringt vorhandene (`--redo` überschreibt). Das Klon-Modell selbst folgt, siehe [docs/research/voice-clone.md](docs/research/voice-clone.md).
 
 ## Fehlerbehebung
 

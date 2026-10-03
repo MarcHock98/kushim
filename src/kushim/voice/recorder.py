@@ -6,6 +6,7 @@ hochgeladen. Pro Absatz eine Datei; vorhandene werden übersprungen (`redo=True`
 from __future__ import annotations
 
 import re
+import threading
 import wave
 from dataclasses import dataclass
 from pathlib import Path
@@ -63,9 +64,66 @@ def take_collector() -> UtteranceCollector:
                               rate=RATE, frame=FRAME)
 
 
+TRIM_START, TRIM_END = 0.15, 0.40         # Sekunden: Tastenklick beim Start/Ende nicht mit aufnehmen
+MAX_MANUAL_SECONDS = 120.0
+
+
+class EnterController:
+    """Manuelle Steuerung: Enter startet, Enter beendet, danach behalten oder neu aufnehmen."""
+
+    def __init__(self, ask: Callable[[str], str] = input, say: Callable[[str], None] = print):
+        self.ask, self.say = ask, say
+
+    def wait_start(self) -> None:
+        self.ask("  Enter drücken, dann kurz warten und vorlesen: ")
+
+    def stop_event(self) -> threading.Event:
+        ev = threading.Event()
+
+        def wait():
+            try:
+                self.ask("  >>> Aufnahme läuft. Enter drücken, wenn du mit dem Absatz fertig bist: ")
+            except EOFError:
+                pass
+            ev.set()
+        threading.Thread(target=wait, daemon=True).start()
+        return ev
+
+    def finish(self, ev: threading.Event) -> None:
+        """Lief die Aufnahme bis zur Höchstdauer, wartet noch ein Enter aus, damit es nicht in den nächsten Schritt rutscht."""
+        if not ev.is_set():
+            self.say("  Höchstdauer erreicht. Bitte noch einmal Enter drücken.")
+            ev.wait()
+
+    def keep(self) -> bool:
+        return self.ask("  Enter = behalten, r + Enter = diesen Absatz neu aufnehmen: ").strip().lower() != "r"
+
+
+def record_manual(frames: Iterator[Any], controller, flush: Callable[[], None]) -> np.ndarray:
+    """Eine Aufnahme von Enter bis Enter. Tastenklick vorn und hinten wird abgeschnitten."""
+    flush()
+    controller.wait_start()
+    flush()                                    # Wartezeit und Tastenklick verwerfen
+    stop = controller.stop_event()
+    chunks: list[np.ndarray] = []
+    total = 0
+    for f in frames:
+        a = np.asarray(f, dtype=np.int16)
+        chunks.append(a)
+        total += a.size
+        if stop.is_set() or total >= MAX_MANUAL_SECONDS * RATE:
+            break
+    controller.finish(stop)
+    audio = np.concatenate(chunks) if chunks else np.zeros(0, dtype=np.int16)
+    cut_a, cut_b = int(TRIM_START * RATE), int(TRIM_END * RATE)
+    return audio[cut_a:len(audio) - cut_b] if len(audio) > cut_a + cut_b else np.zeros(0, dtype=np.int16)
+
+
 def record_session(out_dir: Path, frames: Iterator[Any], redo: bool = False,
                    say: Callable[[str], None] = print, paragraphs: list[str] | None = None,
-                   root: Path | None = None, flush: Callable[[], None] = lambda: None) -> int:
+                   root: Path | None = None, flush: Callable[[], None] = lambda: None,
+                   controller=None) -> int:
+    """controller=None: Ende per Stille. Mit `EnterController`: du startest und beendest jeden Absatz selbst."""
     root = root or out_dir.parents[1]
     paras = paragraphs if paragraphs is not None else load_paragraphs(root)
     saved = 0
@@ -75,17 +133,23 @@ def record_session(out_dir: Path, frames: Iterator[Any], redo: bool = False,
             say(f"[{i}/{len(paras)}] schon vorhanden, überspringe")
             continue
         for attempt in range(3):
-            say(f"\n[{i}/{len(paras)}] Bitte vorlesen (Pause vorher, dann sprechen):\n{para}")
-            flush()                      # Gepuffertes (Vorlesezeit, eigene Ausgabe) verwerfen
-            c = take_collector()
-            for f in frames:
-                if c.feed(f):
-                    break
-            audio = c.audio() if c.heard_speech else np.zeros(0, dtype=np.int16)
+            say(f"\n[{i}/{len(paras)}] Bitte vorlesen:\n{para}")
+            if controller is not None:
+                audio = record_manual(frames, controller, flush)
+            else:
+                flush()                  # Gepuffertes (Vorlesezeit, eigene Ausgabe) verwerfen
+                c = take_collector()
+                for f in frames:
+                    if c.feed(f):
+                        break
+                audio = c.audio() if c.heard_speech else np.zeros(0, dtype=np.int16)
             info = check_take(audio)
             if info.problems:
                 say(f"  Aufnahme {info.seconds:.1f} s, Pegel {info.peak}: " + ", ".join(info.problems)
                     + (" – noch einmal." if attempt < 2 else " – übersprungen."))
+                continue
+            if controller is not None and not controller.keep():
+                say("  verworfen, nochmal.")
                 continue
             save_wav(path, audio)
             say(f"  gespeichert: {path.name} ({info.seconds:.1f} s, Pegel {info.peak})")
