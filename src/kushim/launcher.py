@@ -33,11 +33,24 @@ def ollama_alive(url: str = OLLAMA_URL) -> bool:
         return False
 
 
+def kill_tree(pid: int) -> None:
+    """Beendet einen Prozess samt Kindern. Ollama startet llama-server.exe als Kind; `terminate()` allein
+    lässt es unter Windows laufen (hält das Modell im VRAM). Nur für ein selbst gestartetes PID aufrufen."""
+    if os.name != "nt":
+        return
+    try:
+        subprocess.run(["taskkill", "/PID", str(int(pid)), "/T", "/F"], capture_output=True, timeout=15, check=False)
+    except Exception:
+        pass
+
+
 class Launcher:
     def __init__(self, root: Path, popen: Callable[..., Any] = subprocess.Popen,
                  alive: Callable[[], bool] = ollama_alive,
-                 sleep: Callable[[float], None] = time.sleep):
+                 sleep: Callable[[float], None] = time.sleep,
+                 tree_kill: Callable[[int], None] = kill_tree):
         self.root, self._popen, self._alive, self._sleep = root, popen, alive, sleep
+        self._tree_kill = tree_kill
         self._proc: Any = None
 
     @property
@@ -69,6 +82,9 @@ class Launcher:
         p, self._proc = self._proc, None
         if p is None:
             return
+        pid = getattr(p, "pid", None)
+        if isinstance(pid, int):
+            self._tree_kill(pid)                  # zuerst, solange der Elternprozess die Kinder noch verknüpft
         p.terminate()
         try:
             p.wait(timeout=10)

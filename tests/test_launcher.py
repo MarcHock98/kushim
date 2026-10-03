@@ -70,6 +70,27 @@ def test_timeout_stops_process(tmp_path):
     assert proc.terminated
 
 
+def test_stop_kills_child_processes_of_own_ollama_only(tmp_path):
+    proc = FakeProc()
+    proc.pid = 4242
+    killed = []
+    launcher = Launcher(tmp_path, popen=lambda *a, **k: proc, alive=lambda: False, sleep=lambda s: None,
+                        tree_kill=killed.append)
+    (tmp_path / "tools" / "ollama").mkdir(parents=True)
+    (tmp_path / "tools" / "ollama" / "ollama.exe").write_text("x")
+    launcher._alive = iter([False, True]).__next__
+    assert launcher.start_ollama() == "started"
+    launcher.stop()
+    assert killed == [4242] and proc.terminated
+    launcher.stop()                                    # zweites stop(): nichts mehr anfassen
+    assert killed == [4242]
+    # lief Ollama schon (fremd), wird nichts beendet
+    foreign = Launcher(tmp_path, alive=lambda: True, tree_kill=killed.append)
+    assert foreign.start_ollama() == "already"
+    foreign.stop()
+    assert killed == [4242]
+
+
 def test_missing_exe(tmp_path):
     launcher = Launcher(tmp_path, alive=lambda: False)
     with pytest.raises(FileNotFoundError):
