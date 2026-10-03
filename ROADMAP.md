@@ -28,7 +28,8 @@ Oberste Regel: Schäden jeder Art sind verboten. Lokal zuerst (Modus A), Claude 
 - [ ] WebSocket-Transport nur auf 127.0.0.1: BLOCKIERT, braucht Netzwerk-Import und damit ALLOWLIST-Eintrag (nur mit Nutzerzustimmung) (neu 2026-10-03)
 - [ ] Tauri-UI mit animiertem Avatar
 - [ ] Live-Transkript mit Feedback
-- [ ] Freigabe-Leiste und Claude-Vorschau
+- [x] Freigabe-Warteschlange (`safety/approvals.py`: nur ASK, einmalig, Hash-gebunden, Ablauf, Notaus), getestet
+- [ ] Freigabe-Leiste und Claude-Vorschau in der UI (braucht UI-Toolchain)
 - [ ] Dashboard, Gedächtnis-Ansicht, Sicherheitsstatus, Notaus
 
 ## Phase 3: Tools (jeweils mit ActionSpec und Tests)
