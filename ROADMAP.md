@@ -17,7 +17,8 @@ Oberste Regel: Schäden jeder Art sind verboten. Lokal zuerst (Modus A), Claude 
 - [ ] Echtes Whisper-Modell lokal ablegen und STT mit Aufnahme prüfen (neu 2026-10-03: Modell-Download >1 GB und Mikrofon, Nutzer entscheidet/testet)
 - [x] Sprecherverifikation-Logik (`voice/speaker.py`, fail-closed, Cosine-Score), mit synthetischen Embeddings getestet
 - [ ] Embedding-Modell wählen (lokal, z. B. ECAPA/Resemblyzer), Profil im Vault speichern und mit echter Stimme prüfen (neu 2026-10-03: Modellwahl/Download und Live-Test durch den Nutzer)
-- [ ] Lokales LLM (Ollama, 7-8B): Freigabe erteilt 2026-10-03: Loopback-Modul `net/loopback.py` steht, Ollama-Client folgt
+- [x] Ollama-Client (`llm/ollama.py`, nur Loopback, nur Text), mit lokalem Fake-Server getestet
+- [ ] Ollama installieren und 7-8B-Modell laden (>2 GB, Nutzer fragen) und Live-Test (neu 2026-10-03)
 - [x] TTS-Logik (`voice/tts.py`: Satz-Streaming, Abbruch bei Barge-in), Engine austauschbar, getestet
 - [ ] TTS-Engine wählen (Kokoro Apache-2.0 bevorzugt; piper-tts ist GPL-3, Lizenz-/Modellwahl und Download beim Nutzer erfragen) und Hörtest (neu 2026-10-03)
 - [x] Barge-in/Gesprächszustand (`voice/dialog.py`), mit Tests
