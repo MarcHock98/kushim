@@ -54,11 +54,12 @@ class SpeechToText:
 
     @classmethod
     def from_local(cls, model_path: str, device: str = "auto", compute_type: str = "default",
-                   **kw) -> "SpeechToText":
-        """Lädt ein bereits lokal vorhandenes CTranslate2-Whisper-Modell (Verzeichnis)."""
+                   device_index: int = 0, **kw) -> "SpeechToText":
+        """Lädt ein bereits lokal vorhandenes CTranslate2-Whisper-Modell (Verzeichnis).
+        `device_index`: Nummer der Grafikkarte (nur bei device="cuda", siehe gpu.py)."""
         add_cuda_dll_dirs()
         from faster_whisper import WhisperModel
-        return cls(WhisperModel(model_path, device=device, compute_type=compute_type,
+        return cls(WhisperModel(model_path, device=device, device_index=device_index, compute_type=compute_type,
                                 local_files_only=True), **kw)
 
     def transcribe(self, pcm: Any) -> Transcript:
