@@ -17,7 +17,7 @@ SENTENCES = [
     "Heute scheint die Sonne über Würzburg, aber am Nachmittag soll es regnen.",
     "Bitte erinnere mich morgen um halb acht an den Termin beim Zahnarzt.",
     "Zwölf Zitronen, sechzehn Äpfel und fünfundzwanzig Kirschen liegen auf dem Tisch.",
-    "Das Wetter, die Musik und die Lichter im Wohnzimmer kann kushim gern steuern, aber nur auf meinen Wunsch.",
+    "Das Wetter, die Musik und die Lichter im Wohnzimmer kann kushima gern steuern, aber nur auf meinen Wunsch.",
 ]
 
 

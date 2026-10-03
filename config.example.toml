@@ -1,10 +1,10 @@
-# Kopiere nach config.toml (oder %APPDATA%\kushim\config.toml)
+# Kopiere nach config.toml (oder %APPDATA%\kushima\config.toml)
 
 [memory]
 # Einziger Ort, der den Speicherort des Gedächtnisses festlegt.
-# Lokal:  "local:C:/Users/march/kushim-vault"
+# Lokal:  "local:C:/Users/march/kushima-vault"
 # Später: "remote:https://nas.local:8443"  (noch nicht implementiert)
-location = "local:~/kushim-vault"
+location = "local:~/kushima-vault"
 
 [backup]
 # Verschlüsselte Snapshots, z.B. aufs NAS (SMB-Pfad). Leer = aus.

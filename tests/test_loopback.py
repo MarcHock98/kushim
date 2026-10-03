@@ -4,7 +4,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
 
-from kushim.net.loopback import NotLoopback, check_url, request_json
+from kushima.net.loopback import NotLoopback, check_url, request_json
 
 
 @pytest.mark.parametrize("url", [
@@ -51,7 +51,7 @@ def test_roundtrip_and_http_error():
 
 
 def test_stream_json_lines():
-    from kushim.net.loopback import stream_json_lines
+    from kushima.net.loopback import stream_json_lines
 
     class S(BaseHTTPRequestHandler):
         def do_POST(self):

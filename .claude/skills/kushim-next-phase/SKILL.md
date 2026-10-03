@@ -1,6 +1,6 @@
 ---
 name: kushim-next-phase
-description: Use to continue kushim development: reads ROADMAP.md, picks the next unfinished item, plans and implements it with tests and safety review.
+description: Use to continue kushima development: reads ROADMAP.md, picks the next unfinished item, plans and implements it with tests and safety review.
 ---
 
 # Nächsten Roadmap-Schritt bearbeiten

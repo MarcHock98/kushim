@@ -3,18 +3,18 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from kushim.config import Config
-from kushim.memory import open_store
-from kushim.voice import voiceprint
-from kushim.voice.embedder import SherpaEmbedder
-from kushim.voice.speaker import SpeakerVerifier
+from kushima.config import Config
+from kushima.memory import open_store
+from kushima.voice import voiceprint
+from kushima.voice.embedder import SherpaEmbedder
+from kushima.voice.speaker import SpeakerVerifier
 
 KEY = "ab" * 32
 
 
 @pytest.fixture(autouse=True)
 def key(monkeypatch):
-    monkeypatch.setenv("KUSHIM_VAULT_KEY", KEY)
+    monkeypatch.setenv("KUSHIMA_VAULT_KEY", KEY)
 
 
 def store(tmp_path):
@@ -104,7 +104,7 @@ def test_real_model_if_present():
     import io
     import wave
 
-    from kushim.voice.tts import PiperEngine
+    from kushima.voice.tts import PiperEngine
     eng = PiperEngine.from_local(str(piper))
 
     def pcm16k(text):

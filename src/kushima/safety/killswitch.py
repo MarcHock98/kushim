@@ -2,7 +2,7 @@
 
 Beide Wege sind absichtlich ohne Sprecherverifikation und ohne LLM: Anhalten ist immer sicher.
 Im Zweifel lieber einmal zu oft anhalten (Fehlalarm ist harmlos, ein verpasster Notaus nicht).
-Aufheben geht nur bewusst: `clear()` durch den Nutzer (CLI `kushim resume`), nie per Sprache.
+Aufheben geht nur bewusst: `clear()` durch den Nutzer (CLI `kushima resume`), nie per Sprache.
 """
 from __future__ import annotations
 
@@ -16,7 +16,8 @@ MARKER = Path("run") / "KILL"
 # Wörter/Wendungen, die den Notaus auslösen (nach Normalisierung, als Token-Folge).
 _PHRASES = [("notaus",), ("not", "aus"), ("stopp", "alles"), ("stop", "alles"),
             ("alles", "stoppen"), ("alles", "anhalten"), ("emergency", "stop"),
-            ("kushim", "stopp"), ("kushim", "stop"), ("sofort", "stopp")]
+            ("kushima", "stopp"), ("kushima", "stop"), ("kushim", "stopp"), ("kushim", "stop"),
+            ("sofort", "stopp")]
 
 
 def _tokens(text: str) -> list[str]:

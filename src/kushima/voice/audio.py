@@ -30,7 +30,7 @@ def find_device(name_part: str | None, kind: str) -> int | None:
 
 class Mic:
     """Mikrofon als Frame-Iterator. `flush()` verwirft Gepuffertes (z. B. nach einer Sprachausgabe,
-    damit kushim sich nicht selbst zuhört)."""
+    damit kushima sich nicht selbst zuhört)."""
 
     def __init__(self, device: int | None = None, rate: int = SAMPLE_RATE, frame: int = FRAME):
         self.device, self.rate, self.frame = device, rate, frame

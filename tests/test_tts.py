@@ -1,4 +1,4 @@
-from kushim.voice.tts import Speaker, chunk_stream, split_sentences
+from kushima.voice.tts import Speaker, chunk_stream, split_sentences
 
 
 def test_split_sentences():
@@ -37,7 +37,7 @@ def test_piper_engine_wraps_voice_output():
     import io
     import wave
 
-    from kushim.voice.tts import PiperEngine
+    from kushima.voice.tts import PiperEngine
 
     class FakeVoice:
         def synthesize_wav(self, text, w):
@@ -55,7 +55,7 @@ def test_piper_real_voice_if_present():
 
     import pytest
 
-    from kushim.voice.tts import PiperEngine
+    from kushima.voice.tts import PiperEngine
     model = Path(__file__).resolve().parents[1] / "models" / "piper" / "de_DE-thorsten-high.onnx"
     if not model.exists():
         pytest.skip("Piper-Modell nicht vorhanden")
@@ -68,7 +68,7 @@ def test_piper_real_voice_if_present():
 def test_prefetch_keeps_order_and_propagates_errors():
     import pytest
 
-    from kushim.voice.tts import prefetch
+    from kushima.voice.tts import prefetch
     assert list(prefetch(iter(["a", "b", "c"]))) == ["a", "b", "c"]
 
     def bad():
@@ -80,7 +80,7 @@ def test_prefetch_keeps_order_and_propagates_errors():
 
 
 def test_prefetch_stops_when_requested():
-    from kushim.voice.tts import prefetch
+    from kushima.voice.tts import prefetch
 
     def endless():
         i = 0

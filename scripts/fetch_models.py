@@ -4,7 +4,7 @@ Aufruf:  .venv\\Scripts\\python scripts/fetch_models.py [--check]
 
 Das ist der EINZIGE Ort ausser dem Ollama-Teil von install.ps1, der beim Einrichten ins Netz geht,
 und zwar nur zu: huggingface.co (Whisper, Piper-Stimme), github.com (Sprecher-Modell, Wake-Word-Modelle
-ueber openWakeword). Nach der Installation arbeitet kushim offline. Mit --check wird nur geprueft,
+ueber openWakeword). Nach der Installation arbeitet kushima offline. Mit --check wird nur geprueft,
 nichts geladen. Vorhandene, passende Dateien werden uebersprungen.
 Dieses Skript liegt bewusst ausserhalb von src/ (der Egress-Test gilt fuer das Programm).
 """

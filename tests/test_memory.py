@@ -1,17 +1,17 @@
 import pytest
 
-from kushim.config import Config
-from kushim.memory import open_store
-from kushim.memory.local import LocalStore
-from kushim.memory.migrate import backup, migrate
-from kushim.privacy import EgressDenied, EgressGate
+from kushima.config import Config
+from kushima.memory import open_store
+from kushima.memory.local import LocalStore
+from kushima.memory.migrate import backup, migrate
+from kushima.privacy import EgressDenied, EgressGate
 
 KEY = "ab" * 32
 
 
 @pytest.fixture(autouse=True)
 def key(monkeypatch):
-    monkeypatch.setenv("KUSHIM_VAULT_KEY", KEY)
+    monkeypatch.setenv("KUSHIMA_VAULT_KEY", KEY)
 
 
 def make_cfg(tmp_path, **kw):
@@ -34,7 +34,7 @@ def test_roundtrip_and_encryption(tmp_path):
 
 def test_wrong_key_fails(tmp_path, monkeypatch):
     cfg = make_cfg(tmp_path)
-    monkeypatch.setenv("KUSHIM_VAULT_KEY", "cd" * 32)
+    monkeypatch.setenv("KUSHIMA_VAULT_KEY", "cd" * 32)
     with pytest.raises(Exception):
         open_store(cfg)
 
@@ -76,3 +76,32 @@ def test_wake_words_from_config(tmp_path):
     f.write_text('[voice]' + chr(10) + 'wake_words = ["hey_jarvis", "alexa"]' + chr(10), encoding="utf-8")
     assert Config.load(f).wake_words == ["hey_jarvis", "alexa"]
     assert Config.load(tmp_path / "fehlt.toml").wake_words == ["hey_jarvis"]
+
+
+def test_legacy_env_and_keyring_service_still_work(monkeypatch):
+    from kushima.memory import keys
+    monkeypatch.delenv("KUSHIMA_VAULT_KEY", raising=False)
+    monkeypatch.setenv("KUSHIM_VAULT_KEY", "aa" * 32)
+    assert keys.get_or_create_key("v1") == "aa" * 32
+
+
+def test_legacy_keyring_key_is_found_and_copied(monkeypatch):
+    from kushima.memory import keys
+    monkeypatch.delenv("KUSHIMA_VAULT_KEY", raising=False)
+    monkeypatch.delenv("KUSHIM_VAULT_KEY", raising=False)
+    store = {(keys.LEGACY_SERVICE, "v1"): "bb" * 32}
+    monkeypatch.setattr(keys.keyring, "get_password", lambda s, u: store.get((s, u)))
+    monkeypatch.setattr(keys.keyring, "set_password", lambda s, u, k: store.__setitem__((s, u), k))
+    assert keys.get_or_create_key("v1") == "bb" * 32
+    assert store[(keys.SERVICE, "v1")] == "bb" * 32           # unter dem neuen Namen abgelegt
+    assert store[(keys.LEGACY_SERVICE, "v1")] == "bb" * 32    # alter Eintrag bleibt
+
+
+def test_default_location_keeps_existing_legacy_vault(tmp_path, monkeypatch):
+    from kushima import config
+    monkeypatch.setattr(config.Path, "home", classmethod(lambda cls: tmp_path))
+    assert config.default_memory_location() == "local:~/kushima-vault"
+    (tmp_path / "kushim-vault").mkdir()
+    assert config.default_memory_location() == "local:~/kushim-vault"
+    (tmp_path / "kushima-vault").mkdir()
+    assert config.default_memory_location() == "local:~/kushima-vault"

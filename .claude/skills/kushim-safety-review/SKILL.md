@@ -1,9 +1,9 @@
 ---
 name: kushim-safety-review
-description: Use after any change in kushim, before committing. Reviews the diff for safety-gate bypasses, data egress, harm risks and weakened rules; runs the tests.
+description: Use after any change in kushima, before committing. Reviews the diff for safety-gate bypasses, data egress, harm risks and weakened rules; runs the tests.
 ---
 
-# kushim Sicherheits-Review
+# kushima Sicherheits-Review
 
 Prüfe den aktuellen Diff gegen diese Checkliste und melde Verstöße mit Datei:Zeile.
 

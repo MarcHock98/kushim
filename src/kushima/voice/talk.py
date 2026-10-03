@@ -1,7 +1,7 @@
-"""`kushim talk`: Wake Word -> Quittung -> Aufnahme -> Pipeline, mit Notaus in jeder Runde.
+"""`kushima talk`: Wake Word -> Quittung -> Aufnahme -> Pipeline, mit Notaus in jeder Runde.
 
 Vor dem Wake Word sieht nur der lokale Wake-Word-Detektor das Mikrofonsignal: keine Spracherkennung,
-kein LLM, keine Speicherung. Wird nur das Wake Word gesagt, antwortet kushim mit einer kurzen Quittung
+kein LLM, keine Speicherung. Wird nur das Wake Word gesagt, antwortet kushima mit einer kurzen Quittung
 und wartet auf den Befehl. Die Schleife ist reine Logik (testbar); `build_live` setzt die echten
 Komponenten zusammen.
 """
@@ -53,7 +53,7 @@ class TalkLoop:
 
 def build_live(root: Path, out_device: int | None, in_device: int | None = None,
                verifier: Any = None, embed: Any = None):
-    """Echte Komponenten. Ollama muss laufen (kushim start oder Launcher)."""
+    """Echte Komponenten. Ollama muss laufen (kushima start oder Launcher)."""
     from ..llm.ollama import OllamaClient
     from . import audio
     from .dialog import Dialog

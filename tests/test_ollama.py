@@ -4,8 +4,8 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
 
-from kushim.llm.ollama import OllamaClient
-from kushim.net.loopback import NotLoopback
+from kushima.llm.ollama import OllamaClient
+from kushima.net.loopback import NotLoopback
 
 SEEN = []
 
