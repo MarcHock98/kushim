@@ -47,11 +47,13 @@ def main(argv: list[str] | None = None) -> int:
         if name == "enroll":
             v.add_argument("--record", action="store_true", help="die 10 Absätze neu aufnehmen (auch wenn vorhanden)")
             v.add_argument("--quick", action="store_true", help="altes kurzes Einschreiben mit 5 Sätzen")
+            v.add_argument("--auto", action="store_true", help="Ende eines Absatzes automatisch per Stille statt per Enter")
     vo.add_parser("status")
     vo.add_parser("reset")
     rec = vo.add_parser("record", help="Absätze für den Stimmklon aufnehmen (nur lokal, voice-data/)")
     rec.add_argument("--mic", help="Namensteil des Mikrofons, sonst Systemstandard")
     rec.add_argument("--redo", action="store_true", help="Schon vorhandene Aufnahmen neu sprechen")
+    rec.add_argument("--auto", action="store_true", help="Ende eines Absatzes automatisch per Stille statt per Enter")
     sub.add_parser("doctor", help="Prüft, ob alles installiert und eingerichtet ist")
     args = p.parse_args(argv)
     cfg = Config.load()
@@ -84,7 +86,9 @@ def main(argv: list[str] | None = None) -> int:
         from .voice import audio
         from .voice.recorder import record_session
         mic = audio.Mic(audio.find_device(args.mic, "input"), rate=24_000, frame=1920)
-        record_session(root / "voice-data" / "clone", iter(mic), redo=args.redo, flush=mic.flush)
+        from .voice.recorder import EnterController
+        record_session(root / "voice-data" / "clone", iter(mic), redo=args.redo, flush=mic.flush,
+                       controller=None if args.auto else EnterController())
         return 0
     if args.cmd == "voice":
         from .voice import audio, voiceprint
@@ -120,7 +124,9 @@ def main(argv: list[str] | None = None) -> int:
                         from .voice.recorder import record_session
                         print("Aufnahme der 10 Absätze (ca. 5 Minuten). Danach wird daraus dein Stimmprofil berechnet.")
                         mic = audio.Mic(audio.find_device(args.mic, "input"), rate=24_000, frame=1920)
-                        record_session(rec_dir, iter(mic), redo=args.record, flush=mic.flush)
+                        from .voice.recorder import EnterController
+                        record_session(rec_dir, iter(mic), redo=args.record, flush=mic.flush,
+                                       controller=None if args.auto else EnterController())
                     paths = sorted(rec_dir.glob("*.wav"))
                     if len(paths) < 3:
                         print("Zu wenige Aufnahmen. Nochmal: kushim voice enroll --record")
