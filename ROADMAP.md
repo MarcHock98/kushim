@@ -27,7 +27,8 @@ Oberste Regel: Schäden jeder Art sind verboten. Lokal zuerst (Modus A), Claude 
 - [x] Barge-in/Gesprächszustand (`voice/dialog.py`), mit Tests
 - [x] Pipeline-Logik (`voice/pipeline.py`): STT, Notaus vor allem, Sprecher-Prüfung fail-closed, LLM nur Text, Satz-Sprachausgabe; Sprachbefehl-Notaus damit eingehängt (2026-10-03)
 - [ ] Echtes LLM-Token-Streaming über Loopback (jetzt ein Block pro Antwort) und Latenz unter 1,5 s messen
-- [ ] Mikrofon-Eingabe (sounddevice o. ä., Quelle prüfen) und Lautsprecher-Ausgabe anbinden, Ende-zu-Ende-Lauf (nur Nutzer hört/spricht)
+- [x] Audio-Modul `voice/audio.py` (sounddevice 0.5.6, MIT; Geräte nach Namensteil, Stille-Erkennung für Äußerungen, öffnet Mikrofon nur bei Aufruf, Audio nur im Speicher); Geräteliste gelesen, kein Stream geöffnet (2026-10-03)
+- [ ] Ende-zu-Ende-Lauf `kushim talk` (Wake Word/Taste -> Pipeline) mit echtem Mikrofon und Lautsprecher (nur Nutzer spricht/hört; Gerätewahl Headset Arctis 5 oder Realtek)
 
 ## Phase 2: Oberfläche
 - [x] Backend-API-Kern (`api/protocol.py`: Token, Default-Deny-Dispatch, neutrale Fehler), getestet
