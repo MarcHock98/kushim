@@ -72,3 +72,5 @@ Oberste Regel: Schäden jeder Art sind verboten. Lokal zuerst (Modus A), Claude 
 - [ ] Sprecherverifikation erzwingen ("nur meine Stimme"): Embedding-Modell lokal (ONNX, offizielle Quelle prüfen), Einschreiben per `kushim voice enroll`, Stimmprofil nur im verschlüsselten Vault, `kushim talk` startet ohne Profil nicht (fail-closed), Notaus-Satz bleibt für jeden wirksam
 - [ ] Flüssigere Stimme, möglichst mit der eigenen Stimme des Nutzers (Klon/Training lokal, nur eigene Aufnahmen mit Einwilligung): Optionen und Hardware (RTX 3070, 8 GB) klären, Entscheidung beim Nutzer
 - [ ] Eigenes Wake Word "Hey Kushim" trainieren (siehe Phase 1)
+- [x] Vorlesetext für Stimmprofil und Stimmklon: `docs/voice-recording-text.md` (5 Einschreibe-Sätze, 10 Absätze für den Klon, Aufnahmetipps) (2026-10-03)
+- [ ] Aufnahme-Werkzeug `kushim voice record` (nur lokal, Ablage `voice-data/`, git-ignoriert)
