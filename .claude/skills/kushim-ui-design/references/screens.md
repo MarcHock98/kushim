@@ -56,6 +56,14 @@ Immer sichtbar: Pille oben rechts, `--alarm` Fläche, Text "NOTAUS", min. 44 x 4
 getönt, Avatar `halted`, Banner "NOTAUS aktiv" mit Knopf "Aufheben" (öffnet kurze Bestätigung: "Alle Dienste dürfen wieder
 starten."). Tastenkürzel (z. B. Strg+Umschalt+K) löst ihn auch aus, steht im Tooltip.
 
+## 8. Einstellungen > Sprachmodell
+Plan und Ablauf in `docs/ui-llm-plan.md`. Karte "Aktuelles Modell" (Name in `--font-mono`, Größe, Status mit Text, gemessene
+Antwortzeit), darunter die Liste installierter Modelle (aktives mit Häkchen **und** "Aktiv", Knopf **Verwenden**), dann
+"Modell hinzufügen" (Feld mit Prüfung, kleine Vorschlagsliste). **Verwenden** zeigt zuerst das Ergebnis der Probe (Zeit,
+Hinweis), erst **Jetzt verwenden** schaltet um; "Zurück zu <vorher>" bleibt sichtbar. **Laden** öffnet die Freigabe-Leiste
+mit Quelle (`registry.ollama.ai`), Ziel und freiem Speicher, Standardfokus auf Ablehnen; Fortschritt als Balken mit Zahl und
+**Abbrechen**. Fremde Quellen (`hf.co/...`) brauchen eine zweite Bestätigung mit Warnung. Bei Notaus sind alle Knöpfe aus.
+
 ## Mikrotexte (Ton)
 Deutsch, Du-Form, ruhig, sachlich, kurz. Kein "Oops", keine Ausrufezeichen, keine Emojis in der Oberfläche.
 Fehler: **Was ist passiert + was jetzt.** ("Backend nicht erreicht. Starte kushim über die Verknüpfung.")
