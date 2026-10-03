@@ -56,5 +56,6 @@ Oberste Regel: Schäden jeder Art sind verboten. Lokal zuerst (Modus A), Claude 
 
 ## Phase 2b: Start-Anwendung und Branding (Nutzerwunsch 2026-10-03)
 - [x] Logo-Entwurf `assets/logo.svg` (Keil-K auf Tontafel, Anspielung auf Kushim, den frühesten namentlich bekannten Verwalter); nur lokal
-- [ ] Start-Anwendung ohne IntelliJ: zuerst ein Launcher (Desktop-Verknüpfung mit Logo, startet Ollama nur auf 127.0.0.1 und das Backend, beendet beides sauber, Notaus-Taste), später abgelöst von der Tauri-App (Phase 2), die dieselbe Startlogik nutzt
+- [x] Launcher-Kern `kushim.launcher` und `kushim start` (Ollama nur 127.0.0.1, übernimmt/beendet nichts Fremdes), getestet (2026-10-03)
+- [ ] Desktop-Verknüpfung mit Logo für `kushim start` (braucht .ico), Backend/Notaus einbinden. Plan war: zuerst ein Launcher (Desktop-Verknüpfung mit Logo, startet Ollama nur auf 127.0.0.1 und das Backend, beendet beides sauber, Notaus-Taste), später abgelöst von der Tauri-App (Phase 2), die dieselbe Startlogik nutzt
 - [ ] `.ico` und Taskleisten-Icons aus dem SVG erzeugen (braucht Rasterisierung, Quelle prüfen)
