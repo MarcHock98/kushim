@@ -24,6 +24,7 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
 - openwakeword braucht `requests` trotz --no-deps (gelöst, in pyproject-Extra `voice`)
 
 ## Entscheidungen des Nutzers
+- 2026-10-03: Wake Words per Sprache: Auswahl vortrainierter Wörter plus eigenes lokales Training neuer Wörter (Hintergrund, nur verifizierte Stimme, Bestätigung)
 - 2026-10-03: Wake Words sollen per Sprache an kushim gesagt und gespeichert werden können (Umsetzungsweg offen)
 - 2026-10-03: Stimme: eigene Stimme klonen (Einsprechen, lokales Training/Klon, nur eigene Aufnahmen); Stimmprofil für die Sprecherverifikation im verschlüsselten Vault, Einschreiben per `kushim voice enroll`
 - 2026-10-03: F9/Push-to-Talk entfernt; nur Wake Word; kushim darf vor dem Wake Word nicht als LLM mithören; Wake Word allein löst eine Antwort aus; mehrere Wake Words einstellbar
