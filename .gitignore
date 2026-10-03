@@ -9,3 +9,4 @@ config.toml
 models/
 tools/
 run/
+voice-data/
