@@ -32,8 +32,8 @@ class Mic:
     """Mikrofon als Frame-Iterator. `flush()` verwirft Gepuffertes (z. B. nach einer Sprachausgabe,
     damit kushim sich nicht selbst zuhört)."""
 
-    def __init__(self, device: int | None = None):
-        self.device = device
+    def __init__(self, device: int | None = None, rate: int = SAMPLE_RATE, frame: int = FRAME):
+        self.device, self.rate, self.frame = device, rate, frame
         self._stream: Any = None
 
     def flush(self) -> None:
@@ -42,12 +42,12 @@ class Mic:
 
     def __iter__(self) -> Iterator[np.ndarray]:
         import sounddevice as sd
-        with sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype="int16", blocksize=FRAME,
+        with sd.InputStream(samplerate=self.rate, channels=1, dtype="int16", blocksize=self.frame,
                             device=self.device) as stream:
             self._stream = stream
             try:
                 while True:
-                    data, _overflow = stream.read(FRAME)
+                    data, _overflow = stream.read(self.frame)
                     yield data[:, 0].copy()
             finally:
                 self._stream = None
@@ -80,8 +80,9 @@ class UtteranceCollector:
     """Sammelt Frames nach dem Auslöser, bis Stille folgt oder die Maximaldauer erreicht ist."""
 
     def __init__(self, silence_ms: int = 800, max_ms: int = 15_000, min_ms: int = 300,
-                 energy_threshold: float = 500.0, wait_ms: int = 5_000):
-        n = lambda ms: max(1, round(ms / (FRAME / SAMPLE_RATE * 1000)))
+                 energy_threshold: float = 500.0, wait_ms: int = 5_000,
+                 rate: int = SAMPLE_RATE, frame: int = FRAME):
+        n = lambda ms: max(1, round(ms / (frame / rate * 1000)))
         self.silence_frames, self.max_frames, self.min_frames = n(silence_ms), n(max_ms), n(min_ms)
         self.wait_frames = n(wait_ms)    # so lange auf den Sprechbeginn warten
         self.threshold = energy_threshold
