@@ -3,15 +3,15 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from kushima.config import Config
-from kushima.memory import open_store
-from kushima.safety.killswitch import KillSwitch
-from kushima.voice import wakewords_store
-from kushima.voice.dialog import Dialog
-from kushima.voice.pipeline import Pipeline
-from kushima.voice.speaker import SpeakerVerifier
-from kushima.voice.tts import Speaker
-from kushima.voice.wake_commands import WakeWordCommands, parse
+from kushim.config import Config
+from kushim.memory import open_store
+from kushim.safety.killswitch import KillSwitch
+from kushim.voice import wakewords_store
+from kushim.voice.dialog import Dialog
+from kushim.voice.pipeline import Pipeline
+from kushim.voice.speaker import SpeakerVerifier
+from kushim.voice.tts import Speaker
+from kushim.voice.wake_commands import WakeWordCommands, parse
 
 
 class Clock:
@@ -113,7 +113,7 @@ def test_duplicate_and_missing_and_list():
 
 
 def test_store_roundtrip_and_validation(tmp_path, monkeypatch):
-    monkeypatch.setenv("KUSHIMA_VAULT_KEY", "ab" * 32)
+    monkeypatch.setenv("KUSHIM_VAULT_KEY", "ab" * 32)
     cfg = Config(path=tmp_path / "c.toml", memory_location=f"local:{tmp_path / 'v'}")
     with open_store(cfg, create=True) as s:
         assert wakewords_store.load(s, tmp_path) is None

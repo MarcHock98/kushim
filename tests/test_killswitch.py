@@ -1,11 +1,11 @@
 import pytest
 
-from kushima.safety import killswitch as ks
+from kushim.safety import killswitch as ks
 
 
 @pytest.mark.parametrize("text", [
-    "Notaus", "Kushima, NOTAUS!", "stopp alles", "Bitte alles stoppen", "Not-Aus", "Not aus jetzt",
-    "emergency stop", "kushima stopp", "Sofort Stopp"])
+    "Notaus", "Kushim, NOTAUS!", "stopp alles", "Bitte alles stoppen", "Not-Aus", "Not aus jetzt",
+    "emergency stop", "kushim stopp", "Sofort Stopp"])
 def test_kill_phrases(text):
     assert ks.is_kill_phrase(text)
 
@@ -48,11 +48,11 @@ def test_transcript_triggers(tmp_path):
     ran = []
     k = ks.KillSwitch(tmp_path, [lambda: ran.append(1)])
     assert not k.on_transcript("Hallo")
-    assert k.on_transcript("Kushima notaus") and ran == [1]
+    assert k.on_transcript("Kushim notaus") and ran == [1]
 
 
 def test_cli_kill_and_resume(tmp_path, monkeypatch):
-    from kushima import cli
+    from kushim import cli
     root = cli.__file__
     from pathlib import Path
     project = Path(root).resolve().parents[2]
@@ -66,4 +66,4 @@ def test_cli_kill_and_resume(tmp_path, monkeypatch):
 
 
 def test_both_name_spellings_trigger_kill():
-    assert ks.is_kill_phrase("kushima stopp") and ks.is_kill_phrase("Kushim stop")
+    assert ks.is_kill_phrase("kushim stopp") and ks.is_kill_phrase("Kushima stop")

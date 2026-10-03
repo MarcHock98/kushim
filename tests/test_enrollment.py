@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from kushima.voice.enrollment import SENTENCES, enroll
+from kushim.voice.enrollment import SENTENCES, enroll
 
 BASE = np.random.default_rng(7).normal(size=64)
 

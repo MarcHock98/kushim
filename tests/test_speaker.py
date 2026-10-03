@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from kushima.voice.speaker import SpeakerVerifier
+from kushim.voice.speaker import SpeakerVerifier
 
 RNG = np.random.default_rng(0)
 BASE = RNG.normal(size=64)
@@ -42,7 +42,7 @@ def test_enroll_needs_enough_valid_samples():
 
 
 def test_calibrate_threshold_is_clamped():
-    from kushima.voice.speaker import MAX_THRESHOLD, MIN_THRESHOLD, calibrate_threshold
+    from kushim.voice.speaker import MAX_THRESHOLD, MIN_THRESHOLD, calibrate_threshold
     base = np.random.default_rng(3).normal(size=64)
     tight = [base + np.random.default_rng(i).normal(size=64) * 0.05 for i in range(4)]
     loose = [np.random.default_rng(10 + i).normal(size=64) for i in range(4)]

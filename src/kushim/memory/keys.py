@@ -6,17 +6,17 @@ import secrets
 
 import keyring
 
-SERVICE = "kushima-vault"
-LEGACY_SERVICE = "kushim-vault"          # Name vor der Umbenennung; bestehende Vaults behalten ihren Schlüssel
+SERVICE = "kushim-vault"
+LEGACY_SERVICE = "kushima-vault"         # kurzzeitiger Name (2026-10-03); dort abgelegte Schlüssel werden weiter gefunden
 
 
 def get_or_create_key(vault_id: str, create: bool = False) -> str:
-    """Liefert den Vault-Schlüssel (hex). Reihenfolge: Env-Variable, Credential Manager (neu, dann alt).
+    """Liefert den Vault-Schlüssel (hex). Reihenfolge: Env-Variable, Credential Manager (kushim, dann kushima).
 
-    Ein unter dem alten Namen gespeicherter Schlüssel wird unter dem neuen Namen zusätzlich abgelegt;
-    der alte Eintrag bleibt als Rückfall bestehen und wird nie gelöscht.
+    Ein nur unter dem kurzzeitigen Namen `kushima` gespeicherter Schlüssel wird auch unter `kushim`
+    abgelegt; kein Eintrag wird je gelöscht.
     """
-    env = os.environ.get("KUSHIMA_VAULT_KEY") or os.environ.get("KUSHIM_VAULT_KEY")
+    env = os.environ.get("KUSHIM_VAULT_KEY") or os.environ.get("KUSHIMA_VAULT_KEY")
     if env:
         return env
     key = keyring.get_password(SERVICE, vault_id)
@@ -28,8 +28,8 @@ def get_or_create_key(vault_id: str, create: bool = False) -> str:
         return legacy
     if not create:
         raise KeyError(
-            f"Kein Schlüssel für Vault {vault_id}. Mit `kushima key export` auf dem alten "
-            "Rechner sichern und mit `kushima key import` importieren."
+            f"Kein Schlüssel für Vault {vault_id}. Mit `kushim key export` auf dem alten "
+            "Rechner sichern und mit `kushim key import` importieren."
         )
     key = secrets.token_hex(32)
     keyring.set_password(SERVICE, vault_id, key)

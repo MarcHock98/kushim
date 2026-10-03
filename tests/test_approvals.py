@@ -1,7 +1,7 @@
 import pytest
 
-from kushima.safety.approvals import ApprovalQueue, Status
-from kushima.safety.gate import ActionGate, ActionRequest, ActionSpec, Decision, Risk
+from kushim.safety.approvals import ApprovalQueue, Status
+from kushim.safety.gate import ActionGate, ActionRequest, ActionSpec, Decision, Risk
 
 SPECS = [ActionSpec("read_note", Risk.READ),
          ActionSpec("send_mail", Risk.IRREVERSIBLE, external_effect=True, affects_third_parties=True)]

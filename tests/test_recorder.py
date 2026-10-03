@@ -2,8 +2,8 @@ import wave
 
 import numpy as np
 
-from kushima.voice import recorder
-from kushima.voice.recorder import FRAME, RATE, check_take, load_paragraphs, record_session
+from kushim.voice import recorder
+from kushim.voice.recorder import FRAME, RATE, check_take, load_paragraphs, record_session
 
 LOUD = (np.ones(FRAME) * 5000).astype(np.int16)
 QUIET = np.zeros(FRAME, dtype=np.int16)

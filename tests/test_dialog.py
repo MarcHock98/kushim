@@ -1,4 +1,4 @@
-from kushima.voice.dialog import Dialog, State
+from kushim.voice.dialog import Dialog, State
 
 
 def test_normal_turn():

@@ -1,4 +1,4 @@
-"""Zeichnet das kushima-Logo (Geometrie wie assets/logo.svg) und schreibt assets/kushima.ico + PNG.
+"""Zeichnet das kushim-Logo (Geometrie wie assets/logo.svg) und schreibt assets/kushim.ico + PNG.
 
 Offline, nur Pillow. Aufruf: python scripts/make_icon.py (aus dem venv)
 """
@@ -55,6 +55,6 @@ def render() -> Image.Image:
 if __name__ == "__main__":
     big = render().resize((256, 256), Image.LANCZOS)
     out = ROOT / "assets"
-    big.save(out / "kushima.png")
-    big.save(out / "kushima.ico", sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
-    print("geschrieben:", out / "kushima.ico")
+    big.save(out / "kushim.png")
+    big.save(out / "kushim.ico", sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
+    print("geschrieben:", out / "kushim.ico")

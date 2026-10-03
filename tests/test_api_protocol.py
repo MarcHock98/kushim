@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from kushima.api.protocol import ApiCore, new_token
+from kushim.api.protocol import ApiCore, new_token
 
 TOKEN = new_token()
 

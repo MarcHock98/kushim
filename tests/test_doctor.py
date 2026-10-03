@@ -1,4 +1,4 @@
-from kushima.doctor import FILES, run_checks
+from kushim.doctor import FILES, run_checks
 
 
 def test_missing_files_are_reported(tmp_path):

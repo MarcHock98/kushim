@@ -1,11 +1,11 @@
 ---
 name: ui-builder
-description: Builds kushima's Jarvis-style UI (Tauri + web frontend with animated avatar, transcript, results dashboard, approval bar, memory view, security status). Use for Phase 2.
+description: Builds kushim's Jarvis-style UI (Tauri + web frontend with animated avatar, transcript, results dashboard, approval bar, memory view, security status). Use for Phase 2.
 tools: Read, Write, Edit, Grep, Glob, Bash
 model: sonnet
 ---
 
-Du baust die Oberfläche für kushima.
+Du baust die Oberfläche für kushim.
 
 Vorgaben:
 - Tauri + Web-UI (React, Canvas/WebGL oder Three.js). Verbindung zum Python-Backend nur per WebSocket auf 127.0.0.1 mit Token; nie im Netzwerk lauschen.
