@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import shutil
 import sys
+import tarfile
 import tempfile
 import urllib.request
 from dataclasses import dataclass
@@ -55,6 +56,12 @@ ITEMS = [
          "e197af7e9d473030cf486b3124149a19bf37014d0e4485e4c70c483b0ec10cb2", url=SPEAKER_URL),
 ]
 
+KWS_URL = ("https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/"
+           "sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01.tar.bz2")
+KWS_SIZE = 17626723
+KWS_SHA256 = "f170013b4716e41b62b9bfd809687c207cef798ef9bc6534d524e17af9b6561a"   # laut checksum.txt des Releases
+KWS_MARKER = "models/kws/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01/bpe.model"
+
 WAKEWORD_FILES = ["alexa_v0.1.onnx", "hey_mycroft_v0.1.onnx", "hey_jarvis_v0.1.onnx",
                   "hey_rhasspy_v0.1.onnx", "timer_v0.1.onnx", "weather_v0.1.onnx",
                   "embedding_model.onnx", "melspectrogram.onnx"]
@@ -92,6 +99,23 @@ def fetch(item: Item) -> None:
         shutil.move(tmp_file, dest)
 
 
+def kws_ok() -> bool:
+    return (ROOT / KWS_MARKER).is_file()
+
+
+def fetch_kws() -> None:
+    dest = ROOT / "models" / "kws"
+    dest.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=dest) as tmp:
+        archive = Path(tmp) / "kws.tar.bz2"
+        with urllib.request.urlopen(KWS_URL, timeout=60) as r, archive.open("wb") as out:
+            shutil.copyfileobj(r, out)
+        if archive.stat().st_size != KWS_SIZE or sha256_of(archive) != KWS_SHA256:
+            raise RuntimeError("KWS-Modell: Pruefsumme/Groesse stimmt nicht (Datei verworfen)")
+        with tarfile.open(archive, "r:bz2") as tf:
+            tf.extractall(dest, filter="data")          # "data": keine fremden Pfade, keine Links nach aussen
+
+
 def wakeword_dir() -> Path:
     import openwakeword
     return Path(openwakeword.__file__).parent / "resources" / "models"
@@ -112,12 +136,18 @@ def main(argv: list[str]) -> int:
         print(("ok      " if i not in missing else "FEHLT   ") + i.dest)
     ww = wakewords_ok()
     print(("ok      " if ww else "FEHLT   ") + "Wake-Word-Modelle (openWakeWord)")
+    kws = kws_ok()
+    print(("ok      " if kws else "FEHLT   ") + "Wake-Word-Modell fuer freie Woerter (KWS)")
     if check:
-        return 0 if not missing and ww else 1
+        return 0 if not missing and ww and kws else 1
     for i in missing:
         print(f"lade {i.dest} ...")
         fetch(i)
         print("  geprueft und abgelegt")
+    if not kws:
+        print("lade KWS-Modell ...")
+        fetch_kws()
+        print("  geprueft und entpackt")
     if not ww:
         import openwakeword.utils as u
         print("lade Wake-Word-Modelle ...")

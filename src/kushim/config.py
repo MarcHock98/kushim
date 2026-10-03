@@ -23,7 +23,6 @@ class Config:
     backup_target: str = ""
     backup_keep: int = 10
     claude_enabled: bool = False
-    wake_words: list[str] = field(default_factory=lambda: ["hey_jarvis"])
     path: Path | None = field(default=None, repr=False)
 
     @classmethod
@@ -33,13 +32,11 @@ class Config:
             return cls(path=path)
         data = tomllib.loads(path.read_text(encoding="utf-8"))
         mem, bak, priv = data.get("memory", {}), data.get("backup", {}), data.get("privacy", {})
-        voice = data.get("voice", {})
         return cls(
             memory_location=mem.get("location", cls.memory_location),
             backup_target=bak.get("target", ""),
             backup_keep=int(bak.get("keep", 10)),
             claude_enabled=bool(priv.get("claude_enabled", False)),
-            wake_words=[str(w) for w in voice.get("wake_words", ["hey_jarvis"])],
             path=path,
         )
 

@@ -38,7 +38,7 @@ def main(argv: list[str] | None = None) -> int:
     t = sub.add_parser("talk", help="Sprechen per Wake Word (nur das Wake Word wird dauerhaft ausgewertet)")
     t.add_argument("--mic", help="Namensteil des Mikrofons, sonst Systemstandard")
     t.add_argument("--out", help="Namensteil des Ausgabegeräts, sonst Systemstandard")
-    t.add_argument("--wake-words", help="Komma-getrennt, überschreibt die Konfiguration (z. B. hey_jarvis,alexa)")
+    t.add_argument("--wake-words", help="Komma-getrennt, überschreibt wakewords.toml nur für diesen Start (z. B. \"hey kushim,kushim\")")
     vo = sub.add_parser("voice", help="Eigene Stimme: einschreiben, testen, Status, löschen").add_subparsers(
         dest="sub", required=True)
     for name in ("enroll", "test"):
@@ -121,47 +121,41 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "talk":
         from .launcher import Launcher
         from .safety.killswitch import is_triggered
-        from .voice import audio
+        from .voice import audio, voiceprint, wakeconfig
+        from .voice.audio import UtteranceCollector
+        from .voice.embedder import SherpaEmbedder
         from .voice.talk import TalkLoop, build_live
-        from .voice.trigger import WakeWordDetector, resolve_wake_words
+        from .voice.wake_commands import WakeWordCommands
+        from .voice.wakebuild import build_detector
         if is_triggered(root):
             print("Notaus ist aktiv. Erst bewusst aufheben: kushim resume")
             return 1
-        from .voice import wakewords_store
-        from .voice.wake_commands import WakeWordCommands
-        with _vault(cfg) as wstore:
-            vault_words = wakewords_store.load(wstore, root)
-        words = args.wake_words.split(",") if args.wake_words else (vault_words or cfg.wake_words)
-        current = list(words)           # Stand für Sprachbefehle; der Detektor nutzt `words` bis zum nächsten Start
         try:
-            models = resolve_wake_words(words, root)
+            wcfg = (wakeconfig.from_names(args.wake_words.split(","), root) if args.wake_words
+                    else wakeconfig.load(root))
         except ValueError as e:
-            print(e)
+            print(f"Wake-Word-Konfiguration: {e}")
             return 2
-        from .voice import voiceprint
-        from .voice.embedder import SherpaEmbedder
         with _vault(cfg) as store:
             verifier = voiceprint.load(store)
         if verifier is None:
             print("Kein Stimmprofil. kushim hört nur auf deine Stimme: erst `kushim voice enroll`.")
             return 1
         embed = SherpaEmbedder.from_local(str(root / "models" / "speaker" / "wespeaker_en_voxceleb_CAM++_LM.onnx"))
-        def save_words(new: list[str]) -> None:
-            current[:] = new
-            with _vault(cfg) as s:
-                wakewords_store.save(s, new, root)
         launcher = Launcher(root)
         try:
             launcher.start_ollama()
             pipeline, kill, mic, ack = build_live(root, audio.find_device(args.out, "output"),
                                                   audio.find_device(args.mic, "input"),
-                                                  verifier=verifier, embed=embed,
-                                                  commands=WakeWordCommands(lambda: list(current), save_words))
-            det = WakeWordDetector.from_openwakeword(models)
+                                                  verifier=verifier, embed=embed, commands=WakeWordCommands(root))
+            det = build_detector(wcfg, root)
+            wait_ms = int(wcfg.settings.listen_seconds * 1000)
             out = lambda r: print(f"Du: {r.heard}\nkushim: {r.reply or '(' + r.outcome + ')'}")
-            loop = TalkLoop(mic, pipeline, kill, wake=lambda f: det.process(f) is not None,
-                            ack=ack, flush=mic.flush, on_result=out)
-            print(f"Wake Words: {', '.join(words)}. Notaus: 'Notaus' sagen oder die Verknüpfung. Strg+C beendet.")
+            loop = TalkLoop(mic, pipeline, kill, wake=lambda f: det.process(f) is not None, ack=ack,
+                            flush=mic.flush, new_collector=lambda: UtteranceCollector(wait_ms=wait_ms),
+                            on_result=out)
+            print("Wake Words: " + ", ".join(w.name for w in wcfg.enabled())
+                  + ". Notaus: 'Notaus' sagen oder die Verknüpfung. Strg+C beendet.")
             print("Ende:", loop.run())
         except KeyboardInterrupt:
             pass
