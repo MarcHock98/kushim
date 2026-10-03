@@ -7,3 +7,4 @@ config.toml
 .claude/settings.local.json
 *.iml
 models/
+tools/
