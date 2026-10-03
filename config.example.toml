@@ -14,7 +14,7 @@ keep = 10
 [voice]
 # Wake Words (mehrere möglich). Vortrainiert: alexa, hey_mycroft, hey_jarvis, hey_rhasspy, timer, weather.
 # Eigene .onnx-Modelle nach models/wakewords/ legen und nur den Dateinamen eintragen.
-wake_words = ["hey_jarvis"]
+wake_words = ["kushim", "hey kushim", "kush", "kushi"]
 
 [privacy]
 # Modus A: alles lokal (Standard).
