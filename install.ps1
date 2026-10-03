@@ -85,7 +85,7 @@ else {
 # ---------------------------------------------------------------- 3. Pakete
 Step "3/8 Python-Pakete (feste Versionen, von pypi.org)"
 if (Test-Path $Py) {
-    & $Py -c "import faster_whisper, piper, sherpa_onnx, sounddevice, openwakeword, sqlcipher3, keyring" 2>$null
+    & $Py -c "import faster_whisper, piper, sherpa_onnx, sentencepiece, sounddevice, openwakeword, sqlcipher3, keyring" 2>$null
     if ($LASTEXITCODE -eq 0) { Ok "alle Pakete importierbar" }
     elseif ($Check) { Missing "Python-Pakete" }
     else {

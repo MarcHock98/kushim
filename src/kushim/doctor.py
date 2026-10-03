@@ -16,12 +16,13 @@ class Check:
 
 MODULES = [("faster_whisper", "Spracherkennung"), ("piper", "Sprachausgabe"),
            ("sherpa_onnx", "Sprecherverifikation"), ("sounddevice", "Audio"),
-           ("openwakeword", "Wake Word"), ("sqlcipher3", "Vault"), ("keyring", "Schluesselbund")]
+           ("openwakeword", "Wake Word"), ("sentencepiece", "freie Wake Words"), ("sqlcipher3", "Vault"), ("keyring", "Schluesselbund")]
 
 FILES = [
     ("Whisper-Modell", "models/whisper-large-v3-turbo/model.bin"),
     ("Piper-Stimme", "models/piper/de_DE-thorsten-high.onnx"),
     ("Sprecher-Modell", "models/speaker/wespeaker_en_voxceleb_CAM++_LM.onnx"),
+    ("Wake-Word-Modell (freie Wörter)", "models/kws/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01/bpe.model"),
     ("Ollama", "tools/ollama/ollama.exe"),
     ("LLM qwen2.5:7b", "models/ollama/manifests/registry.ollama.ai/library/qwen2.5/7b"),
 ]

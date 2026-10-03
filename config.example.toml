@@ -11,10 +11,7 @@ location = "local:~/kushim-vault"
 target = ""
 keep = 10
 
-[voice]
-# Wake Words (mehrere möglich). Vortrainiert: alexa, hey_mycroft, hey_jarvis, hey_rhasspy, timer, weather.
-# Eigene .onnx-Modelle nach models/wakewords/ legen und nur den Dateinamen eintragen.
-wake_words = ["kushim", "hey kushim", "kush", "kushi"]
+# Wake Words stehen zentral in wakewords.toml (Vorlage: wakewords.example.toml), nicht hier.
 
 [privacy]
 # Modus A: alles lokal (Standard).

@@ -10,3 +10,4 @@ models/
 tools/
 run/
 voice-data/
+wakewords.toml

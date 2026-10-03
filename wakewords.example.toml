@@ -1,0 +1,50 @@
+# Zentrale Wake-Word-Konfiguration (wird auch von Sprachbefehlen geändert).
+# Die eigene Datei wakewords.toml wird beim ersten Sprachbefehl angelegt und ist nicht im Git.
+# engine = "kws":          beliebiges Wort ohne Training (Buchstaben/Leerzeichen). threshold: kleiner = empfindlicher.
+# engine = "openwakeword": vortrainiert (alexa, hey_mycroft, hey_jarvis, hey_rhasspy, timer, weather)
+#                          oder eigene .onnx-Datei aus models/wakewords/. threshold: Score 0..1, höher = strenger.
+# Änderungen gelten ab dem nächsten Start von `kushim talk`.
+
+[settings]
+cooldown_seconds = 2.0      # Ruhezeit nach einem Treffer
+listen_seconds = 5.0        # so lange wartet kushim nach dem Wake Word auf deinen Befehl
+
+# Deine Wörter (freie Erkennung ohne Training). Hinweis: Sehr kurze Wörter ("kush", "kushi") lösen im Test
+# leichter versehentlich aus (z. B. bei "Kusch"). Das öffnet nur das Zuhören; Befehle brauchen weiter deine Stimme.
+# Standard threshold = 0.15 (kws; kleiner = empfindlicher, in Tests mit künstlicher Stimme bester Kompromiss).
+# Zu viele Fehlauslösungen? threshold erhöhen (z. B. 0.25) oder enabled = false. Reagiert zu selten? 0.10.
+[[wakeword]]
+name = "hey kushim"
+engine = "kws"
+enabled = true
+boost = 2.0
+
+[[wakeword]]
+name = "kushim"
+engine = "kws"
+enabled = true
+boost = 2.0
+
+[[wakeword]]
+name = "kush"
+engine = "kws"
+enabled = true
+boost = 2.0
+
+[[wakeword]]
+name = "hallo kush"
+engine = "kws"
+enabled = true
+boost = 2.0
+
+[[wakeword]]
+name = "hi kushim"
+engine = "kws"
+enabled = true
+boost = 2.0
+
+[[wakeword]]
+name = "kushi"
+engine = "kws"
+enabled = true
+boost = 2.0

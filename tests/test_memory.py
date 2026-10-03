@@ -69,10 +69,3 @@ def test_egress_gate(tmp_path):
     with pytest.raises(EgressDenied):
         EgressGate(True, lambda d, p: False).send("claude", "x", True, send)  # abgelehnt
     assert EgressGate(True, lambda d, p: True).send("claude", "x", True, send) == "ok"
-
-
-def test_wake_words_from_config(tmp_path):
-    f = tmp_path / "c.toml"
-    f.write_text('[voice]' + chr(10) + 'wake_words = ["hey_jarvis", "alexa"]' + chr(10), encoding="utf-8")
-    assert Config.load(f).wake_words == ["hey_jarvis", "alexa"]
-    assert Config.load(tmp_path / "fehlt.toml").wake_words == ["hey_jarvis"]

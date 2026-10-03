@@ -1,9 +1,8 @@
-"""Wake Words per Sprachbefehl verwalten ("füge das Wake Word Alexa hinzu").
+"""Wake Words per Sprachbefehl verwalten ("füge das Wake Word hey Kushim hinzu").
 
-Ablauf mit Sicherheitsnetz:
+Geändert wird die zentrale Datei `wakewords.toml` (siehe wakeconfig.py). Sicherheitsnetz:
   1. Nur bei verifizierter Stimme (Pipeline reicht `verified` durch), sonst Ablehnung.
-  2. Nur vortrainierte, bekannte Wörter. Unbekannte Wörter brauchen ein Training (noch nicht eingebaut)
-     und werden nie einfach "angenommen".
+  2. Wörter werden streng geprüft (nur Buchstaben und Leerzeichen, oder bekannte Modellnamen).
   3. Die Änderung läuft über den ActionGate (umkehrbar, mit Rückfrage). Bestätigt wird per Sprache
      ("ja"), gebunden an genau den vorgelesenen Text (ApprovalQueue). Ohne Bestätigung passiert nichts.
   4. Mindestens ein Wake Word bleibt immer aktiv. Die Änderung gilt ab dem nächsten Start.
@@ -12,12 +11,14 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from dataclasses import dataclass
-from typing import Callable
+from dataclasses import dataclass, replace
+from pathlib import Path
 
 from ..safety.approvals import ApprovalQueue
 from ..safety.gate import ActionGate, ActionRequest, ActionSpec, Decision, Risk
+from . import wakeconfig
 from .trigger import PRETRAINED
+from .wakeconfig import WakeWord, normalize_name
 
 ACTION = "wake_word_change"
 SPEC = ActionSpec(ACTION, Risk.REVERSIBLE)
@@ -89,13 +90,21 @@ def parse(text: str) -> Parsed | None:
 
 
 class WakeWordCommands:
-    def __init__(self, get_words: Callable[[], list[str]], set_words: Callable[[list[str]], None],
-                 clock=None):
+    def __init__(self, root: Path, clock=None):
         gate = ActionGate([SPEC], reviewer=lambda spec, req: set())
         kw = {} if clock is None else {"clock": clock}
         self.queue = ApprovalQueue(gate, ttl=60.0, **kw)
-        self.get_words, self.set_words = get_words, set_words
-        self._pending = None            # (Approval, neue Liste)
+        self.root = root
+        self._pending = None            # (Approval, neue WakeConfig)
+
+    @staticmethod
+    def _target(cmd: Parsed) -> tuple[str, str] | None:
+        if cmd.word is not None:
+            return "openwakeword", cmd.word
+        if cmd.unknown:
+            name = normalize_name(cmd.unknown, "kws")
+            return ("kws", name) if wakeconfig._KWS_NAME.match(name) and len(name) >= 3 else None
+        return None
 
     def handle(self, text: str, verified: bool) -> str | None:
         """Antwortet mit Text, wenn der Satz ein Wake-Word-Befehl (oder eine Bestätigung) ist, sonst None."""
@@ -106,29 +115,36 @@ class WakeWordCommands:
             return None
         if not verified:
             return "Das darf ich nur auf deine Stimme ändern."
-        words = list(self.get_words())
+        try:
+            cfg = wakeconfig.load(self.root)
+        except ValueError:
+            return "Die Wake-Word-Datei ist fehlerhaft. Bitte korrigiere wakewords.toml."
         if cmd.action == "list":
-            return "Aktive Wake Words: " + ", ".join(SPOKEN.get(w, w) for w in words) + "."
-        if cmd.word is None:
-            who = f"'{cmd.unknown}'" if cmd.unknown else "dieses Wort"
-            return (f"Das Wort {who} kenne ich noch nicht. Es müsste erst trainiert werden, "
-                    "das ist noch nicht eingebaut. Du kannst zwischen " +
-                    ", ".join(SPOKEN[w] for w in sorted(PRETRAINED)) + " wählen.")
-        if cmd.word not in PRETRAINED:
-            return "Dieses Wake Word ist nicht erlaubt."
-        name = SPOKEN.get(cmd.word, cmd.word)
+            return "Aktive Wake Words: " + ", ".join(SPOKEN.get(w.name, w.name) for w in cfg.enabled()) + "."
+        target = self._target(cmd)
+        if target is None:
+            return "Welches Wort meinst du? Sag zum Beispiel: Füge das Wake Word hey Kushim hinzu."
+        engine, name = target
+        spoken = SPOKEN.get(name, name)
+        existing = next((w for w in cfg.words if (w.engine, w.name) == (engine, name)), None)
         if cmd.action == "add":
-            if cmd.word in words:
-                return f"{name} ist schon aktiv."
-            new = words + [cmd.word]
-            what = f"Wake Word {name} hinzufügen"
+            if existing is not None and existing.enabled:
+                return f"{spoken} ist schon aktiv."
+            words = ([replace(w, enabled=True) if w is existing else w for w in cfg.words]
+                     if existing else [*cfg.words, WakeWord(name, engine)])
+            what = f"Wake Word {spoken} hinzufügen"
         else:
-            if cmd.word not in words:
-                return f"{name} ist gar nicht aktiv."
-            if len(words) == 1:
-                return "Das ist das einzige Wake Word, das lasse ich aktiv."
-            new = [w for w in words if w != cmd.word]
-            what = f"Wake Word {name} entfernen"
+            if existing is None or not existing.enabled:
+                return f"{spoken} ist gar nicht aktiv."
+            words = [w for w in cfg.words if w is not existing]
+            what = f"Wake Word {spoken} entfernen"
+        new = replace(cfg, words=tuple(words))
+        try:
+            wakeconfig.validate(new, self.root)
+        except ValueError as e:
+            if cmd.action == "remove":
+                return "Das ist das einzige aktive Wake Word, das lasse ich aktiv."
+            return f"Das geht so nicht: {e}"
         decision, approval = self.queue.submit(ActionRequest(
             ACTION, what, speaker_verified=verified, user_initiated=True))
         if decision is not Decision.ASK or approval is None:
@@ -148,5 +164,8 @@ class WakeWordCommands:
             return "Abgebrochen. Es bleibt alles, wie es ist."
         if not self.queue.approve(approval.id, approval.digest) or self.queue.take(approval.id) is None:
             return "Die Bestätigung ist abgelaufen. Sag den Befehl bitte noch einmal."
-        self.set_words(new)
+        try:
+            wakeconfig.save(self.root, new)
+        except (ValueError, OSError):
+            return "Das konnte ich nicht speichern."
         return "Erledigt. Das gilt ab dem nächsten Start."

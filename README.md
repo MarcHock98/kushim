@@ -8,13 +8,13 @@ Inhalt: [Was es heute kann](#was-es-heute-kann) · [Voraussetzungen](#voraussetz
 
 ## Was es heute kann
 
-- **Sprechen per Wake Word:** Du sagst das Wake Word („hey jarvis“, einstellbar, mehrere möglich), kushim antwortet „Ja?“ und hört deinen Befehl. Vor dem Wake Word läuft nur ein kleines lokales Erkennungsmodell: keine Spracherkennung, kein LLM, keine Speicherung.
+- **Sprechen per Wake Word:** Du sagst eines deiner Wake Words („hey kushim“, „kushim“, „hi kushim“ …, alle in **einer zentralen Datei** einstellbar), kushim antwortet „Ja?“ und hört deinen Befehl. Vor dem Wake Word läuft nur ein kleines lokales Erkennungsmodell: keine Spracherkennung, kein LLM, keine Speicherung.
 - **Nur auf deine Stimme:** Sprecherverifikation. Fremde Stimmen bekommen keine Antwort. Ohne eingeschriebenes Stimmprofil startet das Sprechen gar nicht.
 - **Notaus:** per Desktop-Verknüpfung oder per Sprachbefehl („Notaus“, „stopp alles“). Wirkt für jede Stimme.
 - **Lokal:** Whisper (Spracherkennung, GPU), Qwen 2.5 7B über Ollama (nur 127.0.0.1), Piper (deutsche Stimme).
 - **Verschlüsseltes Gedächtnis (Vault)** mit Backups, Sicherheitsschicht (ActionGate, Freigaben, Audit).
 
-Noch nicht fertig: Oberfläche mit Avatar, Tools (Web, Mail, Kalender, PC, Smart Home), Lernen, eigene Stimme und eigenes Wake Word „Hey Kushim“. Stand und Pläne: [ROADMAP.md](ROADMAP.md).
+Noch nicht fertig: Oberfläche mit Avatar, Tools (Web, Mail, Kalender, PC, Smart Home), Lernen und eigene Stimme (Klon). Stand und Pläne: [ROADMAP.md](ROADMAP.md).
 
 ## Voraussetzungen
 
@@ -133,11 +133,11 @@ Diese Schritte machst nur du (sie betreffen deinen Schlüssel und deine Stimme).
 | Aktion | So |
 |---|---|
 | Starten und sprechen | Desktop-Verknüpfung **kushim sprechen** (oder `python -m kushim.cli talk`). Nach dem Start steht im Fenster, welche Wake Words gelten. |
-| Sprechen | Wake Word sagen (Standard „hey jarvis“) → kushim antwortet „Ja?“ → Befehl sprechen. Bleibt es 5 Sekunden still, hört kushim wieder nur aufs Wake Word. |
+| Sprechen | Wake Word sagen (zum Beispiel „hey kushim“) → kushim antwortet „Ja?“ → Befehl sprechen. Bleibt es `listen_seconds` (Standard 5) still, hört kushim wieder nur aufs Wake Word. |
 | Beenden | `Strg+C` im Fenster |
 | Nur die lokalen Dienste starten | Verknüpfung **kushim** (startet Ollama nur auf 127.0.0.1; `Strg+C` beendet). Das Sprechen startet sie selbst, wenn nötig. |
 | **Notaus** | Verknüpfung **kushim NOTAUS** anklicken oder „Notaus“ / „stopp alles“ sagen. Danach startet kushim erst wieder, wenn du bewusst aufhebst: `python -m kushim.cli resume`. |
-| Wake Words per Sprache ändern | Nach dem Wake Word sagen: „Füge das Wake Word Alexa hinzu“, „Entferne das Wake Word Alexa“ oder „Welche Wake Words sind aktiv?“. Nur mit deiner Stimme, kushim fragt zur Bestätigung zurück („Sage ja oder nein“), mindestens ein Wort bleibt aktiv, die Änderung gilt ab dem nächsten Start. Nur die vortrainierten Wörter; neue Wörter müssten erst trainiert werden (noch nicht eingebaut). |
+| Wake Words per Sprache ändern | Nach dem Wake Word sagen: „Füge das Wake Word Alexa hinzu“, „Entferne das Wake Word Alexa“ oder „Welche Wake Words sind aktiv?“. Nur mit deiner Stimme, kushim fragt zur Bestätigung zurück („Sage ja oder nein“), mindestens ein Wort bleibt aktiv, die Änderung gilt ab dem nächsten Start. Auch freie Wörter („Füge das Wake Word Computer hinzu“) gehen ohne Training; die Erkennung ist dann nicht garantiert. Geschrieben wird die zentrale Datei `wakewords.toml`. |
 | Stimmprofil prüfen / löschen | `python -m kushim.cli voice status` / `voice reset` |
 | Backup | `python -m kushim.cli memory backup` |
 
@@ -151,14 +151,37 @@ Kopiere `config.example.toml` nach `config.toml` (oder `%APPDATA%\kushim\config.
 [memory]
 location = "local:~/kushim-vault"   # einziger Ort, der den Speicherort kennt
 
-[voice]
-wake_words = ["hey_jarvis"]          # mehrere möglich, z. B. ["hey_jarvis", "alexa"]
-
 [privacy]
 claude_enabled = false               # Modus A (alles lokal); Claude nur als Opt-in
 ```
 
-Wake Words: vortrainiert sind `alexa`, `hey_mycroft`, `hey_jarvis`, `hey_rhasspy`, `timer`, `weather`. Eigene Modelle (`.onnx`) legst du nach `models/wakewords/` und trägst nur den Dateinamen ein. Einmalig überschreiben geht mit `talk --wake-words hey_jarvis,alexa`. Ein eigenes „Hey Kushim“ steht auf der [Roadmap](ROADMAP.md).
+### Wake Words: eine zentrale Datei
+
+Alle Wake Words stehen **nur** in `wakewords.toml` im Projektordner. Fehlt sie, gilt die mitgelieferte Vorlage `wakewords.example.toml` (nicht ändern, sondern kopieren). Sprachbefehle („Füge das Wake Word … hinzu“) schreiben ebenfalls in `wakewords.toml`. Die Datei ist nicht im Git.
+
+```toml
+[settings]
+cooldown_seconds = 2.0      # Ruhezeit nach einem Treffer
+listen_seconds = 5.0        # so lange wartet kushim nach dem Wake Word auf deinen Befehl
+
+[[wakeword]]
+name = "hey kushim"         # beliebiges Wort/Wendung: nur Buchstaben und Leerzeichen
+engine = "kws"              # "kws" = freies Wort ohne Training
+enabled = true
+threshold = 0.15            # optional; kleiner = empfindlicher (Standard 0.15)
+boost = 2.0                 # optional; größer = leichter erkannt (Standard 2.0)
+
+[[wakeword]]
+name = "alexa"
+engine = "openwakeword"     # vortrainiert: alexa, hey_mycroft, hey_jarvis, hey_rhasspy, timer, weather
+enabled = false             # oder eigene .onnx-Datei aus models/wakewords/
+```
+
+Standard sind deine sechs Wörter „hey kushim“, „kushim“, „kush“, „hallo kush“, „hi kushim“ und „kushi“. Ohne Änderung läuft kein „hey jarvis“.
+
+- Änderungen gelten ab dem nächsten Start von `kushim talk`. Eine fehlerhafte Datei wird nicht ignoriert: `talk` startet nicht und nennt den Fehler.
+- Einmalig überschreiben (ohne die Datei zu ändern): `talk --wake-words "hey kushim,kushim"`.
+- **Zuverlässigkeit (ehrlich):** Die freien Wörter nutzen ein kleines englisches Erkennungsmodell, das nicht auf Deutsch oder deinen Namen trainiert ist. In Tests mit künstlicher deutscher Stimme wurden 11 von 18 Aufrufen erkannt, bei 0 Fehlalarmen in 10 normalen Sätzen. Mit deiner echten Stimme kann das besser oder schlechter sein; deshalb ist es einstellbar (`threshold`, `boost`). Sehr kurze Wörter („kush“, „kushi“) lösen leichter versehentlich aus, und Wörter mit gleichem Anfang (kush/kushim) lassen sich nicht sicher unterscheiden. Eine Fehlauslösung öffnet nur das Zuhören: Befehle brauchen weiter deine Stimme.
 
 Vault verschieben (z. B. auf ein anderes Laufwerk): `python -m kushim.cli memory migrate --to "local:D:/kushim-vault"` (verifiziert, der alte Vault bleibt als Rollback).
 
@@ -190,7 +213,8 @@ Es nimmt 10 Absätze mit 24 kHz auf, prüft Pegel und Länge und überspringt vo
 | „Notaus ist aktiv“ | `python -m kushim.cli resume` |
 | kushim erkennt meine Stimme nicht / zu oft nicht | `voice test` zeigt die Werte. Näher ans Mikrofon, ruhiger Raum, dasselbe Mikrofon wie beim Einschreiben. Notfalls `voice reset` und neu einschreiben. |
 | `cublas64_12.dll not found` | `install.ps1` erneut (installiert die NVIDIA-Bibliotheken) |
-| Nichts passiert beim Wake Word | Mikrofon prüfen (`--mic`), lauter/deutlicher sprechen, anderes Wake Word testen |
+| Nichts passiert beim Wake Word | Mikrofon prüfen (`--mic`), deutlicher sprechen, in `wakewords.toml` `threshold` senken (z. B. 0.10) oder mehr Wörter aktivieren |
+| Wake Word löst zu oft aus | `threshold` erhöhen (z. B. 0.25) oder kurze Wörter wie „kush“ ausschalten (`enabled = false`) |
 | Das erste Antworten dauert lange | Beim ersten Mal lädt das Modell (ca. 30 Sekunden), danach unter einer Sekunde |
 | PowerShell blockt `install.ps1` | Genau mit `-ExecutionPolicy Bypass` aufrufen (siehe oben) |
 | Ollama-Port belegt | Läuft schon ein Ollama, nutzt kushim es mit; sonst anderen Prozess auf Port 11434 beenden |
