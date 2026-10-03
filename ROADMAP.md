@@ -74,5 +74,5 @@ Oberste Regel: Schäden jeder Art sind verboten. Lokal zuerst (Modus A), Claude 
 - [ ] Flüssigere Stimme, möglichst mit der eigenen Stimme des Nutzers (Klon/Training lokal, nur eigene Aufnahmen mit Einwilligung): Optionen und Hardware (RTX 3070, 8 GB) klären, Entscheidung beim Nutzer
 - [ ] Eigenes Wake Word "Hey Kushim" trainieren (siehe Phase 1)
 - [x] Vorlesetext für Stimmprofil und Stimmklon: `docs/voice-recording-text.md` (5 Einschreibe-Sätze, 10 Absätze für den Klon, Aufnahmetipps) (2026-10-03)
-- [ ] Aufnahme-Werkzeug `kushim voice record` (nur lokal, Ablage `voice-data/`, git-ignoriert)
+- [x] Aufnahme-Werkzeug `kushim voice record [--mic NAME] [--redo]` (24 kHz mono, 10 Absätze aus dem Vorlesetext, Qualitätsprüfung auf zu leise/übersteuert/zu kurz, Ablage `voice-data/clone/`, git-ignoriert, nur lokal); getestet mit künstlichen Frames, nicht mit echtem Mikrofon (2026-10-03)
 - [ ] Wake Words per Sprache hinzufügen/entfernen ("merke dir das Wake Word ..."): nur verifizierte Stimme, über ActionGate (umkehrbar, mit Bestätigung), Speicherung im Vault; neue Wörter brauchen ein trainiertes Modell oder Auswahl aus vortrainierten, Weg entschieden 2026-10-03: Auswahl vortrainierter Wörter plus lokales Training neuer Wörter (openWakeWord, synthetische Piper-Daten, im Hintergrund)

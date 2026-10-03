@@ -46,6 +46,9 @@ def main(argv: list[str] | None = None) -> int:
         v.add_argument("--mic", help="Namensteil des Mikrofons, sonst Systemstandard")
     vo.add_parser("status")
     vo.add_parser("reset")
+    rec = vo.add_parser("record", help="Absätze für den Stimmklon aufnehmen (nur lokal, voice-data/)")
+    rec.add_argument("--mic", help="Namensteil des Mikrofons, sonst Systemstandard")
+    rec.add_argument("--redo", action="store_true", help="Schon vorhandene Aufnahmen neu sprechen")
     args = p.parse_args(argv)
     cfg = Config.load()
 
@@ -58,6 +61,12 @@ def main(argv: list[str] | None = None) -> int:
         else:
             killswitch.clear(root)
             print("Notaus aufgehoben.")
+        return 0
+    if args.cmd == "voice" and args.sub == "record":
+        from .voice import audio
+        from .voice.recorder import record_session
+        mic = audio.Mic(audio.find_device(args.mic, "input"), rate=24_000, frame=1920)
+        record_session(root / "voice-data" / "clone", iter(mic), redo=args.redo, flush=mic.flush)
         return 0
     if args.cmd == "voice":
         from .voice import audio, voiceprint
