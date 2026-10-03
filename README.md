@@ -137,6 +137,7 @@ Diese Schritte machst nur du (sie betreffen deinen Schlüssel und deine Stimme).
 | Beenden | `Strg+C` im Fenster |
 | Nur die lokalen Dienste starten | Verknüpfung **kushima** (startet Ollama nur auf 127.0.0.1; `Strg+C` beendet). Das Sprechen startet sie selbst, wenn nötig. |
 | **Notaus** | Verknüpfung **kushima NOTAUS** anklicken oder „Notaus“ / „stopp alles“ sagen. Danach startet kushima erst wieder, wenn du bewusst aufhebst: `python -m kushima.cli resume`. |
+| Wake Words per Sprache ändern | Nach dem Wake Word sagen: „Füge das Wake Word Alexa hinzu“, „Entferne das Wake Word Alexa“ oder „Welche Wake Words sind aktiv?“. Nur mit deiner Stimme, kushima fragt zur Bestätigung zurück („Sage ja oder nein“), mindestens ein Wort bleibt aktiv, die Änderung gilt ab dem nächsten Start. Nur die vortrainierten Wörter; neue Wörter müssten erst trainiert werden (noch nicht eingebaut). |
 | Stimmprofil prüfen / löschen | `python -m kushima.cli voice status` / `voice reset` |
 | Backup | `python -m kushima.cli memory backup` |
 

@@ -2,13 +2,11 @@
 
 Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
 
-- Letzter Durchlauf: 2026-10-03 (/loop kushim-routine, STT)
+- Letzter Durchlauf: 2026-10-03 (/loop kushim-routine, Wake-Word-Sprachbefehle; Loop auf Wunsch des Nutzers danach gestoppt)
 - Aktueller Branch: master (routine/p1-wake, p1-stt, p1-speaker, p1-dialog, p1-tts, p2-api-core, p2-approvals, p4-bandit, p2-loopback, p1-llm, p1-whisper-model, p1-ollama-setup, branding, p1-piper, p2b-launcher, p2b-icon, p2b-killswitch, p1-pipeline, p1-audio, p1-talk, p1-streaming, p1-wake-only, p1-speaker-model, voice-record, readme-installer gemerged, Branches bleiben)
-- Erledigt: Wake-Word-Logik + Push-to-Talk (src/kushima/voice/trigger.py), 160 Tests grün, Modell hey_jarvis (ONNX) lädt
+- Erledigt: Stimmkette (Wake Word, Sprecher, STT, LLM, TTS), Notaus, Launcher, Verknüpfungen, README/Installer, Umbenennung kushima, Wake-Word-Sprachbefehle. 195 Tests grün
 - Erledigt zusätzlich: Dialog-/Barge-in-Logik, TTS-Logik, API-Kern (Token/Dispatch), Freigabe-Warteschlange, 136 Tests grün
-- Erledigt zusätzlich: Dialog-/Barge-in-Logik, TTS-Logik, API-Kern (Token/Dispatch), Freigabe-Warteschlange, 136 Tests grün
-- Erledigt zusätzlich: Dialog-/Barge-in-Logik, TTS-Logik, API-Kern (Token/Dispatch), Freigabe-Warteschlange, 136 Tests grün
-- Nächster Schritt: Nutzer: `kushima memory init`, dann `kushima voice enroll` und `kushima voice test`. Autonom: Aufnahme-Werkzeug für Stimmklon, Stimmklon-Modell recherchieren (RTX 3070, 8 GB), Wake Words per Sprache (Weg klären), Hey-Kushima-Training
+- Nächster Schritt (Loop gestoppt, mit `/loop kushim-routine` neu starten): Nutzer: `voice enroll` und `voice test`, GitHub-Repo und Skills umbenennen, dann Live-Test Wake-Word-Befehle. Autonom danach: Stimmklon (Torch/CUDA >2 GB, vorher fragen), Hey-Kushima-Training, Tauri/Node-UI
 - Branches bereit zum Push durch den Nutzer: master, routine/p1-wake, routine/p1-stt, routine/p1-speaker, routine/p1-dialog, routine/p1-tts, routine/p2-api-core, routine/p2-approvals, routine/p4-bandit, routine/p2-loopback, routine/p1-llm
 
 ## Slack
