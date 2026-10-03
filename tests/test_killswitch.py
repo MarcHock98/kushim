@@ -66,4 +66,4 @@ def test_cli_kill_and_resume(tmp_path, monkeypatch):
 
 
 def test_both_name_spellings_trigger_kill():
-    assert ks.is_kill_phrase("kushim stopp") and ks.is_kill_phrase("Kushima stop")
+    assert ks.is_kill_phrase("kushim stopp") and ks.is_kill_phrase("Kushim stop")

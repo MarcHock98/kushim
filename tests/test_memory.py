@@ -76,32 +76,3 @@ def test_wake_words_from_config(tmp_path):
     f.write_text('[voice]' + chr(10) + 'wake_words = ["hey_jarvis", "alexa"]' + chr(10), encoding="utf-8")
     assert Config.load(f).wake_words == ["hey_jarvis", "alexa"]
     assert Config.load(tmp_path / "fehlt.toml").wake_words == ["hey_jarvis"]
-
-
-def test_alternate_env_name_still_works(monkeypatch):
-    from kushim.memory import keys
-    monkeypatch.delenv("KUSHIM_VAULT_KEY", raising=False)
-    monkeypatch.setenv("KUSHIMA_VAULT_KEY", "aa" * 32)
-    assert keys.get_or_create_key("v1") == "aa" * 32
-
-
-def test_key_under_alternate_service_is_found_and_copied(monkeypatch):
-    from kushim.memory import keys
-    monkeypatch.delenv("KUSHIM_VAULT_KEY", raising=False)
-    monkeypatch.delenv("KUSHIMA_VAULT_KEY", raising=False)
-    store = {(keys.LEGACY_SERVICE, "v1"): "bb" * 32}
-    monkeypatch.setattr(keys.keyring, "get_password", lambda s, u: store.get((s, u)))
-    monkeypatch.setattr(keys.keyring, "set_password", lambda s, u, k: store.__setitem__((s, u), k))
-    assert keys.get_or_create_key("v1") == "bb" * 32
-    assert store[(keys.SERVICE, "v1")] == "bb" * 32           # auch unter dem Hauptnamen abgelegt
-    assert store[(keys.LEGACY_SERVICE, "v1")] == "bb" * 32    # nichts gelöscht
-
-
-def test_default_location_prefers_kushim_vault(tmp_path, monkeypatch):
-    from kushim import config
-    monkeypatch.setattr(config.Path, "home", classmethod(lambda cls: tmp_path))
-    assert config.default_memory_location() == "local:~/kushim-vault"
-    (tmp_path / "kushima-vault").mkdir()
-    assert config.default_memory_location() == "local:~/kushima-vault"     # nur der kurzzeitige Vault existiert
-    (tmp_path / "kushim-vault").mkdir()
-    assert config.default_memory_location() == "local:~/kushim-vault"

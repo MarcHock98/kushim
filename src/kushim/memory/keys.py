@@ -7,25 +7,16 @@ import secrets
 import keyring
 
 SERVICE = "kushim-vault"
-LEGACY_SERVICE = "kushima-vault"         # kurzzeitiger Name (2026-10-03); dort abgelegte Schlüssel werden weiter gefunden
 
 
 def get_or_create_key(vault_id: str, create: bool = False) -> str:
-    """Liefert den Vault-Schlüssel (hex). Reihenfolge: Env-Variable, Credential Manager (kushim, dann kushima).
-
-    Ein nur unter dem kurzzeitigen Namen `kushima` gespeicherter Schlüssel wird auch unter `kushim`
-    abgelegt; kein Eintrag wird je gelöscht.
-    """
-    env = os.environ.get("KUSHIM_VAULT_KEY") or os.environ.get("KUSHIMA_VAULT_KEY")
+    """Liefert den Vault-Schlüssel (hex). Reihenfolge: Env-Variable, Windows Credential Manager."""
+    env = os.environ.get("KUSHIM_VAULT_KEY")
     if env:
         return env
     key = keyring.get_password(SERVICE, vault_id)
     if key:
         return key
-    legacy = keyring.get_password(LEGACY_SERVICE, vault_id)
-    if legacy:
-        keyring.set_password(SERVICE, vault_id, legacy)
-        return legacy
     if not create:
         raise KeyError(
             f"Kein Schlüssel für Vault {vault_id}. Mit `kushim key export` auf dem alten "

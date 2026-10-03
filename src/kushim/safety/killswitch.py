@@ -16,8 +16,7 @@ MARKER = Path("run") / "KILL"
 # Wörter/Wendungen, die den Notaus auslösen (nach Normalisierung, als Token-Folge).
 _PHRASES = [("notaus",), ("not", "aus"), ("stopp", "alles"), ("stop", "alles"),
             ("alles", "stoppen"), ("alles", "anhalten"), ("emergency", "stop"),
-            ("kushim", "stopp"), ("kushim", "stop"), ("kushima", "stopp"), ("kushima", "stop"),
-            ("sofort", "stopp")]
+            ("kushim", "stopp"), ("kushim", "stop"), ("sofort", "stopp")]
 
 
 def _tokens(text: str) -> list[str]:
