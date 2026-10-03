@@ -64,3 +64,22 @@ def test_remote_url_refused():
 def test_chat_stream_yields_pieces(url):
     pieces = list(OllamaClient("m", base_url=url).chat_stream([{"role": "user", "content": "x"}]))
     assert pieces == ["Hal", "lo", "!"] and SEEN[-1]["stream"] is True
+
+
+def test_stream_keeps_model_warm_and_warm_up_only_loads(url):
+    c = OllamaClient("m", base_url=url)
+    list(c.chat_stream([{"role": "user", "content": "x"}]))
+    assert SEEN[-1]["keep_alive"] == "2h"
+    c.warm_up()
+    assert SEEN[-1]["messages"] == [] and SEEN[-1]["keep_alive"] == "2h" and "stream" not in SEEN[-1]
+
+
+def test_validate_model_and_manifest_path():
+    from kushim.llm.ollama import manifest_rel, validate_model
+    assert validate_model(" qwen3.5:9b ") == "qwen3.5:9b"
+    assert manifest_rel("qwen2.5:7b") == "models/ollama/manifests/registry.ollama.ai/library/qwen2.5/7b"
+    assert manifest_rel("gemma4") == "models/ollama/manifests/registry.ollama.ai/library/gemma4/latest"
+    assert manifest_rel("hf.co/org/repo:Q4_K_M") == "models/ollama/manifests/hf.co/org/repo/Q4_K_M"
+    for bad in ("", "../x", "a b", "x;rm", "a:b:c", "/abs", "a\\b"):
+        with pytest.raises(ValueError):
+            validate_model(bad)

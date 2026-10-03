@@ -135,7 +135,7 @@ Diese Schritte machst nur du (sie betreffen deinen Schlüssel und deine Stimme).
 | Aktion | So |
 |---|---|
 | Starten und sprechen | Desktop-Verknüpfung **kushim sprechen** (oder `python -m kushim.cli talk`). Nach dem Start steht im Fenster, welche Wake Words gelten. |
-| Sprechen | Wake Word sagen (zum Beispiel „hey kushim“) → kushim antwortet „Ja?“ → Befehl sprechen. Bleibt es `listen_seconds` (Standard 5) still, hört kushim wieder nur aufs Wake Word. |
+| Sprechen | Wake Word und Befehl in einem Zug sagen („hey kushim, wie spät ist es?“), kushim antwortet direkt. Sagst du nur das Wake Word, kommt nach `command_wait_seconds` (Standard 1,5) ein „Ja?“ und kushim wartet `listen_seconds` (Standard 4) auf den Befehl; bleibt es still, hört kushim wieder nur aufs Wake Word. |
 | Beenden | `Strg+C` im Fenster |
 | Nur die lokalen Dienste starten | Verknüpfung **kushim** (startet Ollama nur auf 127.0.0.1; `Strg+C` beendet). Das Sprechen startet sie selbst, wenn nötig. |
 | **Notaus** | Verknüpfung **kushim NOTAUS** anklicken oder „Notaus“ / „stopp alles“ sagen. Danach startet kushim erst wieder, wenn du bewusst aufhebst: `python -m kushim.cli resume`. |
@@ -148,6 +148,8 @@ Geräte wählen (Namensteil genügt): `python -m kushim.cli talk --mic "Arctis 5
 ## Konfiguration
 
 Kopiere `config.example.toml` nach `config.toml` (oder `%APPDATA%\kushim\config.toml`). `config.toml` ist nicht im Git.
+
+**Sprachmodell wechseln:** Das LLM ist austauschbar (jedes Ollama-Modell). `python -m kushim.cli llm set qwen3.5:9b` trägt es unter `[llm] model` ein, `.\install.ps1 -Llm qwen3.5:9b` lädt es einmalig (Prüfung mit `kushim doctor`). Ohne Eintrag gilt `qwen2.5:7b`.
 
 ```toml
 [memory]
@@ -164,8 +166,9 @@ Alle Wake Words stehen **nur** in `wakewords.toml` im Projektordner. Fehlt sie, 
 ```toml
 [settings]
 cooldown_seconds = 2.0      # Ruhezeit nach einem Treffer
-listen_seconds = 5.0        # so lange wartet kushim nach dem Wake Word auf den Beginn deines Befehls
-end_silence_seconds = 1.2   # so lange Stille beendet deine Äußerung (länger = Denkpausen erlaubt)
+command_wait_seconds = 1.5  # Wake Word und Befehl in einem Zug: so lange wartet kushim auf den Befehl, bevor es "Ja?" sagt
+listen_seconds = 4.0        # nach "Ja?" (nur Wake Word gesagt): so lange wartet kushim auf den Beginn deines Befehls
+end_silence_seconds = 0.9   # so lange Stille beendet deine Äußerung (länger = Denkpausen erlaubt)
 max_seconds = 60.0          # längste einzelne Äußerung
 
 [[wakeword]]

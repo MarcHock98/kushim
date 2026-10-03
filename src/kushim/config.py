@@ -6,6 +6,8 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .llm.ollama import DEFAULT_MODEL, validate_model
+
 
 def config_path() -> Path:
     env = os.environ.get("KUSHIM_CONFIG")
@@ -23,6 +25,7 @@ class Config:
     backup_target: str = ""
     backup_keep: int = 10
     claude_enabled: bool = False
+    llm_model: str = DEFAULT_MODEL
     path: Path | None = field(default=None, repr=False)
 
     @classmethod
@@ -32,11 +35,13 @@ class Config:
             return cls(path=path)
         data = tomllib.loads(path.read_text(encoding="utf-8"))
         mem, bak, priv = data.get("memory", {}), data.get("backup", {}), data.get("privacy", {})
+        llm = data.get("llm", {})
         return cls(
             memory_location=mem.get("location", cls.memory_location),
             backup_target=bak.get("target", ""),
             backup_keep=int(bak.get("keep", 10)),
             claude_enabled=bool(priv.get("claude_enabled", False)),
+            llm_model=validate_model(str(llm.get("model", DEFAULT_MODEL))),
             path=path,
         )
 
@@ -61,3 +66,27 @@ class Config:
         else:
             path.write_text(f"[memory]\n{line}\n", encoding="utf-8")
         self.memory_location = location
+
+    def set_llm_model(self, model: str) -> None:
+        """Schreibt nur `model` im Abschnitt [llm]; übrige Datei bleibt erhalten."""
+        model = validate_model(model)
+        path = self.path or config_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        line = f'model = "{model}"'
+        lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+        in_llm, done = False, False
+        for i, l in enumerate(lines):
+            s = l.strip()
+            if s.startswith("["):
+                in_llm = s == "[llm]"
+            elif in_llm and s.startswith("model"):
+                lines[i] = line
+                done = True
+        if not done:
+            heads = [l.strip() for l in lines]
+            if "[llm]" in heads:
+                lines.insert(heads.index("[llm]") + 1, line)
+            else:
+                lines += ([""] if lines else []) + ["[llm]", line]
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        self.llm_model = model

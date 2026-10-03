@@ -56,6 +56,9 @@ def main(argv: list[str] | None = None) -> int:
     rec.add_argument("--mic", help="Namensteil des Mikrofons, sonst Systemstandard")
     rec.add_argument("--redo", action="store_true", help="Schon vorhandene Aufnahmen neu sprechen")
     rec.add_argument("--auto", action="store_true", help="Ende eines Absatzes automatisch per Stille statt per Enter")
+    ll = sub.add_parser("llm", help="Lokales Sprachmodell anzeigen oder wechseln (Ollama-Modellname)").add_subparsers(dest="sub")
+    ls = ll.add_parser("set", help="z. B. kushim llm set qwen3.5:9b")
+    ls.add_argument("model")
     sub.add_parser("doctor", help="Prüft, ob alles installiert und eingerichtet ist")
     args = p.parse_args(argv)
     cfg = Config.load()
@@ -70,6 +73,21 @@ def main(argv: list[str] | None = None) -> int:
             killswitch.clear(root)
             print("Notaus aufgehoben.")
         return 0
+    if args.cmd == "llm":
+        from .llm.ollama import manifest_rel
+        if getattr(args, "sub", None) == "set":
+            try:
+                cfg.set_llm_model(args.model)
+            except ValueError as e:
+                print(e)
+                return 2
+            print(f"LLM gesetzt: {cfg.llm_model} (gilt ab dem nächsten Start)")
+        else:
+            print(f"LLM: {cfg.llm_model}")
+        if not (root / manifest_rel(cfg.llm_model)).exists():
+            print(f"Noch nicht installiert. Laden (einmalig, Netzwerk nur zu registry.ollama.ai): "
+                  f"install.ps1 -Llm {cfg.llm_model}")
+        return 0
     if args.cmd == "doctor":
         from .doctor import run_checks
         from .voice import voiceprint
@@ -80,7 +98,7 @@ def main(argv: list[str] | None = None) -> int:
                     return "ok" if voiceprint.load(store) else "kein-profil"
             except FileNotFoundError:
                 return "kein-vault"
-        results = run_checks(root, vault_state)
+        results = run_checks(root, vault_state, cfg.llm_model)
         for c in results:
             print(("[ok]    " if c.ok else "[FEHLT] ") + c.name + ("" if c.ok else f"  -> {c.hint}"))
         return 0 if all(c.ok for c in results) else 1
@@ -208,16 +226,20 @@ def main(argv: list[str] | None = None) -> int:
             launcher.start_ollama()
             pipeline, kill, mic, ack = build_live(root, audio.find_device(args.out, "output"),
                                                   audio.find_device(args.mic, "input"),
-                                                  verifier=verifier, commands=WakeWordCommands(root))
+                                                  verifier=verifier, commands=WakeWordCommands(root),
+                                                  wake_names=[w.name for w in wcfg.enabled()],
+                                                  llm_model=cfg.llm_model)
             det = build_detector(wcfg, root)
             wait_ms = int(wcfg.settings.listen_seconds * 1000)
+            first_ms = int(wcfg.settings.command_wait_seconds * 1000)
             end_ms = int(wcfg.settings.end_silence_seconds * 1000)
             max_ms = int(wcfg.settings.max_seconds * 1000)
             out = lambda r: print(f"Du: {r.heard}\nkushim: {r.reply or '(' + r.outcome + ')'}"
                                   + (f"  [{r.detail}]" if r.detail else ""))
             loop = TalkLoop(mic, pipeline, kill, wake=lambda f: det.process(f) is not None, ack=ack,
                             flush=mic.flush, new_collector=lambda: UtteranceCollector(wait_ms=wait_ms, silence_ms=end_ms, max_ms=max_ms),
-                            on_result=out)
+                            on_result=out,
+                            first_collector=lambda: UtteranceCollector(wait_ms=first_ms, silence_ms=end_ms, max_ms=max_ms))
             print("Wake Words: " + ", ".join(w.name for w in wcfg.enabled())
                   + ". Notaus: 'Notaus' sagen oder die Verknüpfung. Strg+C beendet.")
             print("Ende:", loop.run())

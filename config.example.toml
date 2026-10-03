@@ -13,6 +13,11 @@ keep = 10
 
 # Wake Words stehen zentral in wakewords.toml (Vorlage: wakewords.example.toml), nicht hier.
 
+[llm]
+# Lokales Sprachmodell (Ollama-Name). Wechseln: `kushim llm set <name>`, dann laden mit
+# `install.ps1 -Llm <name>`. Es sollte Deutsch und Tool-Calling können.
+model = "qwen2.5:7b"
+
 [privacy]
 # Modus A: alles lokal (Standard).
 # Modus C: Claude nur auf ausdrücklichen Befehl, mit Vorschau + Bestätigung.
