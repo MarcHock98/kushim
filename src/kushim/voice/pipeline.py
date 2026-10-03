@@ -18,7 +18,7 @@ from .stt import SpeechToText
 from .tts import Speaker, chunk_stream, prefetch
 
 SYSTEM_PROMPT = (
-    "Du bist kushima, ein persönlicher, lokaler Assistent. Antworte auf Deutsch, kurz und sachlich, "
+    "Du bist kushim, ein persönlicher, lokaler Assistent. Antworte auf Deutsch, kurz und sachlich, "
     "in höchstens drei Sätzen. Du hast keine Werkzeuge und führst nichts aus. Erfinde keine Fakten; "
     "sag, wenn du etwas nicht weißt.")
 

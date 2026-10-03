@@ -2,7 +2,7 @@ import random
 
 import pytest
 
-from kushima.learning.bandit import StyleBandit, reward
+from kushim.learning.bandit import StyleBandit, reward
 
 
 def test_safety_violation_is_minimum_regardless_of_rating():

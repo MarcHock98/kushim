@@ -1,4 +1,4 @@
-from kushima.safety import (ActionGate, ActionRequest, ActionSpec, Decision, Harm, Risk)
+from kushim.safety import (ActionGate, ActionRequest, ActionSpec, Decision, Harm, Risk)
 
 SPECS = [
     ActionSpec("read_note", Risk.READ),

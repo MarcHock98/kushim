@@ -1,6 +1,6 @@
 """Aktive Wake Words im verschlüsselten Vault (`profile`-Tabelle), per Sprachbefehl änderbar.
 
-Vorrang beim Start von `kushima talk`: Kommandozeile > Vault (per Sprache gesetzt) > Konfiguration.
+Vorrang beim Start von `kushim talk`: Kommandozeile > Vault (per Sprache gesetzt) > Konfiguration.
 Gespeichert werden nur Namen vortrainierter Wörter; beim Laden wird erneut geprüft.
 """
 from __future__ import annotations

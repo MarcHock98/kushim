@@ -1,4 +1,4 @@
-"""`kushima doctor`: prueft, ob alles fuer den Betrieb vorhanden ist (nur Lesen, kein Netzwerk)."""
+"""`kushim doctor`: prueft, ob alles fuer den Betrieb vorhanden ist (nur Lesen, kein Netzwerk)."""
 from __future__ import annotations
 
 import importlib.util
@@ -38,9 +38,9 @@ def run_checks(root: Path, vault_state: Callable[[], str] | None = None) -> list
     nv = importlib.util.find_spec("nvidia")
     gpu_libs = bool(nv and any((Path(p) / "cublas" / "bin").is_dir() for p in (nv.submodule_search_locations or [])))
     checks.append(Check("GPU-Bibliotheken (cuBLAS/cuDNN)", gpu_libs, "install.ps1 erneut ausfuehren"))
-    checks.append(Check("Notaus nicht aktiv", not (root / "run" / "KILL").exists(), "kushima resume"))
+    checks.append(Check("Notaus nicht aktiv", not (root / "run" / "KILL").exists(), "kushim resume"))
     if vault_state is not None:
         state = vault_state()
-        checks.append(Check("Vault vorhanden", state != "kein-vault", "kushima memory init"))
-        checks.append(Check("Stimmprofil eingeschrieben", state == "ok", "kushima voice enroll"))
+        checks.append(Check("Vault vorhanden", state != "kein-vault", "kushim memory init"))
+        checks.append(Check("Stimmprofil eingeschrieben", state == "ok", "kushim voice enroll"))
     return checks

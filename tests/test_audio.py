@@ -4,8 +4,8 @@ import wave
 import numpy as np
 import pytest
 
-from kushima.voice import audio
-from kushima.voice.audio import FRAME, UtteranceCollector
+from kushim.voice import audio
+from kushim.voice.audio import FRAME, UtteranceCollector
 
 LOUD = (np.ones(FRAME) * 3000).astype(np.int16)
 QUIET = np.zeros(FRAME, dtype=np.int16)

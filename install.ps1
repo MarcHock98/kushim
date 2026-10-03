@@ -1,5 +1,5 @@
 <#
-  install.ps1 - richtet kushima komplett ein (Windows 10/11, PowerShell 5.1 oder neuer).
+  install.ps1 - richtet kushim komplett ein (Windows 10/11, PowerShell 5.1 oder neuer).
 
   Aufruf im Projektordner:
       powershell -ExecutionPolicy Bypass -File .\install.ps1
@@ -13,7 +13,7 @@
   Das Skript ist wiederholbar: Was schon da und geprueft ist, wird uebersprungen.
   Netzwerk nur waehrend der Installation und nur zu: pypi.org (Python-Pakete), github.com
   (Ollama, Sprecher-Modell, Wake-Word-Modelle), huggingface.co (Whisper, Stimme),
-  registry.ollama.ai (LLM). Danach arbeitet kushima offline.
+  registry.ollama.ai (LLM). Danach arbeitet kushim offline.
   Vault-Schluessel und Stimmprofil legt NUR du an (Rueckfrage am Ende).
 #>
 param(
@@ -67,7 +67,7 @@ if (-not $sysPython -and -not (Test-Path $Py)) {
 try {
     $gpu = (& nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>$null)
     if ($LASTEXITCODE -eq 0 -and $gpu) { Ok "NVIDIA GPU: $gpu" } else { throw "none" }
-} catch { Warn "Keine NVIDIA-GPU erkannt (nvidia-smi fehlt). kushima ist auf eine NVIDIA-GPU mit mind. 8 GB ausgelegt." }
+} catch { Warn "Keine NVIDIA-GPU erkannt (nvidia-smi fehlt). kushim ist auf eine NVIDIA-GPU mit mind. 8 GB ausgelegt." }
 $free = [math]::Round((Get-PSDrive -Name ($Root.Substring(0,1))).Free / 1GB, 1)
 if ($free -lt 15) { Warn "Nur $free GB frei, empfohlen sind mindestens 15 GB." } else { Ok "$free GB frei" }
 
@@ -152,9 +152,9 @@ elseif (Test-Path $OllamaExe) {
 
 # ---------------------------------------------------------------- 6. Icon
 Step "6/8 Logo und Icon"
-$ico = Join-Path $Root "assets\kushima.ico"
+$ico = Join-Path $Root "assets\kushim.ico"
 if (Test-Path $ico) { Ok "Icon vorhanden" }
-elseif ($Check) { Missing "assets\kushima.ico" }
+elseif ($Check) { Missing "assets\kushim.ico" }
 elseif (Test-Path $Py) { & $Py scripts\make_icon.py; Ok "Icon erzeugt" }
 
 # ---------------------------------------------------------------- 7. Verknuepfungen
@@ -164,15 +164,15 @@ elseif ($Check) { Info "(im Check-Modus nicht angelegt)" }
 elseif (Test-Path $Py) {
     $desk = [Environment]::GetFolderPath("Desktop")
     $ws = New-Object -ComObject WScript.Shell
-    # Verknuepfungen aus der Zeit vor der Umbenennung (zeigen auf das alte Paket) entfernen
-    foreach ($old in @("kushim.lnk", "kushim sprechen.lnk", "kushim NOTAUS.lnk")) {
+    # Verknuepfungen des kurzzeitigen Namens kushima (zeigen auf ein nicht mehr vorhandenes Paket) entfernen
+    foreach ($old in @("kushima.lnk", "kushima sprechen.lnk", "kushima NOTAUS.lnk")) {
         $o = Join-Path $desk $old
         if (Test-Path $o) { Remove-Item $o -Force; Info "alte Verknuepfung entfernt: $old" }
     }
     $defs = @(
-        @{ Name = "kushima.lnk";         Args = "-m kushima.cli start"; Desc = "kushima starten (lokale Dienste, nur 127.0.0.1)"; Icon = $ico },
-        @{ Name = "kushima sprechen.lnk"; Args = "-m kushima.cli talk";  Desc = "kushima sprechen (Wake Word)";                       Icon = $ico },
-        @{ Name = "kushima NOTAUS.lnk";   Args = "-m kushima.cli kill";  Desc = "kushima NOTAUS";                                     Icon = "$env:SystemRoot\System32\shell32.dll,131" }
+        @{ Name = "kushim.lnk";         Args = "-m kushim.cli start"; Desc = "kushim starten (lokale Dienste, nur 127.0.0.1)"; Icon = $ico },
+        @{ Name = "kushim sprechen.lnk"; Args = "-m kushim.cli talk";  Desc = "kushim sprechen (Wake Word)";                       Icon = $ico },
+        @{ Name = "kushim NOTAUS.lnk";   Args = "-m kushim.cli kill";  Desc = "kushim NOTAUS";                                     Icon = "$env:SystemRoot\System32\shell32.dll,131" }
     )
     foreach ($d in $defs) {
         $s = $ws.CreateShortcut((Join-Path $desk $d.Name))
@@ -185,22 +185,22 @@ elseif (Test-Path $Py) {
 # ---------------------------------------------------------------- 8. Vault und Stimme
 Step "8/8 Vault und deine Stimme (nur du)"
 if (Test-Path $Py) {
-    & $Py -m kushima.cli memory info *> $null
+    & $Py -m kushim.cli memory info *> $null
     if ($LASTEXITCODE -eq 0) { Ok "Vault vorhanden" }
-    elseif ($Check) { Missing "Vault (kushima memory init)" }
+    elseif ($Check) { Missing "Vault (kushim memory init)" }
     elseif (Ask "Vault jetzt anlegen? Das erzeugt einen Schluessel im Windows-Credential-Manager") {
-        & $Py -m kushima.cli memory init
+        & $Py -m kushim.cli memory init
         Write-Host ""
         Write-Host "   WICHTIG: Sichere jetzt den Schluessel in deinem Passwortmanager:" -ForegroundColor Yellow
-        Write-Host "   .venv\Scripts\python -m kushima.cli key export"
+        Write-Host "   .venv\Scripts\python -m kushim.cli key export"
         Write-Host "   (Ohne Schluessel sind die Daten bei einer Neuinstallation von Windows verloren.)"
-    } else { Info "Spaeter: .venv\Scripts\python -m kushima.cli memory init" }
+    } else { Info "Spaeter: .venv\Scripts\python -m kushim.cli memory init" }
 
-    & $Py -m kushima.cli doctor
+    & $Py -m kushim.cli doctor
     $doctorOk = ($LASTEXITCODE -eq 0)
     if (-not $doctorOk -and -not $Check) {
-        & $Py -m kushima.cli voice status 2>$null | Out-Null
-        if (Ask "Deine Stimme jetzt einschreiben (5 Saetze vorlesen, Mikrofon noetig)?") { & $Py -m kushima.cli voice enroll }
+        & $Py -m kushim.cli voice status 2>$null | Out-Null
+        if (Ask "Deine Stimme jetzt einschreiben (5 Saetze vorlesen, Mikrofon noetig)?") { & $Py -m kushim.cli voice enroll }
     }
 }
 

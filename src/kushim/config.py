@@ -8,25 +8,25 @@ from pathlib import Path
 
 
 def config_path() -> Path:
-    env = os.environ.get("KUSHIMA_CONFIG") or os.environ.get("KUSHIM_CONFIG")
+    env = os.environ.get("KUSHIM_CONFIG") or os.environ.get("KUSHIMA_CONFIG")
     if env:
         return Path(env)
     local = Path("config.toml")
     if local.exists():
         return local
     base = Path(os.environ.get("APPDATA", Path.home()))
-    legacy = base / "kushim" / "config.toml"          # Ort vor der Umbenennung
-    new = base / "kushima" / "config.toml"
-    return legacy if legacy.exists() and not new.exists() else new
+    main = base / "kushim" / "config.toml"
+    alt = base / "kushima" / "config.toml"            # kurzzeitiger Name (2026-10-03)
+    return alt if alt.exists() and not main.exists() else main
 
 
 def default_memory_location() -> str:
-    """Neuer Standard `~/kushima-vault`; ein bestehender Vault unter dem alten Namen bleibt unberuehrt
-    an seinem Platz und wird weiter benutzt (kein automatisches Verschieben von Vault-Daten)."""
+    """Standard `~/kushim-vault`; existiert nur ein Vault unter dem kurzzeitigen Namen `~/kushima-vault`,
+    wird er weiter benutzt (nichts wird automatisch verschoben)."""
     home = Path.home()
-    if (home / "kushim-vault").exists() and not (home / "kushima-vault").exists():
-        return "local:~/kushim-vault"
-    return "local:~/kushima-vault"
+    if (home / "kushima-vault").exists() and not (home / "kushim-vault").exists():
+        return "local:~/kushima-vault"
+    return "local:~/kushim-vault"
 
 
 @dataclass

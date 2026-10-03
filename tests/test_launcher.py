@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from kushima.launcher import Launcher, ollama_env
+from kushim.launcher import Launcher, ollama_env
 
 
 class FakeProc:

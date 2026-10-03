@@ -17,10 +17,10 @@ Stoppt bei Entscheidungen, die dir gehören (Hardware, Kosten, Daten nach außen
 
 **Backup-Kontrolle** (täglich):
 ```
-/loop 24h Prüfe mit `kushima memory info`, ob der Vault lesbar ist und das letzte Backup im Backup-Ziel nicht älter als 24 Stunden ist.
+/loop 24h Prüfe mit `kushim memory info`, ob der Vault lesbar ist und das letzte Backup im Backup-Ziel nicht älter als 24 Stunden ist.
 ```
 
-## Laufzeit-Loops der KI (später in kushima selbst)
+## Laufzeit-Loops der KI (später in kushim selbst)
 - Nächtliche Reflexion: Gespräche auswerten, Profil-Vorschläge erzeugen (du bestätigst).
 - Wöchentlicher Sicherheitsbericht: Audit-Log, abgelehnte Aktionen, auffällige Muster.
 - RL-Auswertung: Feedback-Log prüfen, Sicherheitsverletzungen immer negativ werten, Änderungen nur mit deiner Freigabe.

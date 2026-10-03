@@ -1,4 +1,4 @@
-"""kushima CLI (Gedächtnis-Verwaltung; Audio/UI folgen)."""
+"""kushim CLI (Gedächtnis-Verwaltung; Audio/UI folgen)."""
 from __future__ import annotations
 
 import argparse
@@ -14,26 +14,26 @@ def _vault(cfg: Config):
     try:
         return open_store(cfg)
     except FileNotFoundError:
-        print("Noch kein Vault. Einmalig anlegen mit: kushima memory init (erzeugt auch den Schlüssel).")
+        print("Noch kein Vault. Einmalig anlegen mit: kushim memory init (erzeugt auch den Schlüssel).")
         raise SystemExit(3)
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="kushima")
+    p = argparse.ArgumentParser(prog="kushim")
     sub = p.add_subparsers(dest="cmd", required=True)
     mem = sub.add_parser("memory").add_subparsers(dest="sub", required=True)
     mem.add_parser("init")
     mem.add_parser("info")
     mem.add_parser("backup")
     m = mem.add_parser("migrate")
-    m.add_argument("--to", required=True, help='z.B. "local:D:/kushima-vault"')
+    m.add_argument("--to", required=True, help='z.B. "local:D:/kushim-vault"')
     key = sub.add_parser("key").add_subparsers(dest="sub", required=True)
     key.add_parser("export")
     ki = key.add_parser("import")
     ki.add_argument("vault_id")
     ki.add_argument("hexkey")
     sub.add_parser("start", help="Lokale Dienste (Ollama, nur 127.0.0.1) starten; Strg+C beendet")
-    sub.add_parser("kill", help="Notaus: stoppt laufende kushima-Dienste")
+    sub.add_parser("kill", help="Notaus: stoppt laufende kushim-Dienste")
     sub.add_parser("resume", help="Notaus aufheben (nur bewusst durch den Nutzer)")
     t = sub.add_parser("talk", help="Sprechen per Wake Word (nur das Wake Word wird dauerhaft ausgewertet)")
     t.add_argument("--mic", help="Namensteil des Mikrofons, sonst Systemstandard")
@@ -58,7 +58,7 @@ def main(argv: list[str] | None = None) -> int:
         from .safety import killswitch
         if args.cmd == "kill":
             killswitch.trigger(root)
-            print("NOTAUS ausgelöst. kushima stoppt. Aufheben mit: kushima resume")
+            print("NOTAUS ausgelöst. kushim stoppt. Aufheben mit: kushim resume")
         else:
             killswitch.clear(root)
             print("Notaus aufgehoben.")
@@ -94,7 +94,7 @@ def main(argv: list[str] | None = None) -> int:
                 print("Stimmprofil: " + (f"vorhanden (Schwelle {vp.threshold:.2f})" if vp else "keines"))
             elif args.sub == "reset":
                 voiceprint.clear(store)
-                print("Stimmprofil gelöscht. kushima talk startet erst nach erneutem Einschreiben.")
+                print("Stimmprofil gelöscht. kushim talk startet erst nach erneutem Einschreiben.")
             else:
                 embed = SherpaEmbedder.from_local(str(model))
                 frames = iter(audio.Mic(audio.find_device(args.mic, "input")))
@@ -107,7 +107,7 @@ def main(argv: list[str] | None = None) -> int:
                 else:
                     vp = voiceprint.load(store)
                     if vp is None:
-                        print("Kein Stimmprofil. Erst: kushima voice enroll")
+                        print("Kein Stimmprofil. Erst: kushim voice enroll")
                         return 1
                     print("Sprich einen Satz (Test). Strg+C beendet.")
                     try:
@@ -125,7 +125,7 @@ def main(argv: list[str] | None = None) -> int:
         from .voice.talk import TalkLoop, build_live
         from .voice.trigger import WakeWordDetector, resolve_wake_words
         if is_triggered(root):
-            print("Notaus ist aktiv. Erst bewusst aufheben: kushima resume")
+            print("Notaus ist aktiv. Erst bewusst aufheben: kushim resume")
             return 1
         from .voice import wakewords_store
         from .voice.wake_commands import WakeWordCommands
@@ -143,7 +143,7 @@ def main(argv: list[str] | None = None) -> int:
         with _vault(cfg) as store:
             verifier = voiceprint.load(store)
         if verifier is None:
-            print("Kein Stimmprofil. kushima hört nur auf deine Stimme: erst `kushima voice enroll`.")
+            print("Kein Stimmprofil. kushim hört nur auf deine Stimme: erst `kushim voice enroll`.")
             return 1
         embed = SherpaEmbedder.from_local(str(root / "models" / "speaker" / "wespeaker_en_voxceleb_CAM++_LM.onnx"))
         def save_words(new: list[str]) -> None:
@@ -158,7 +158,7 @@ def main(argv: list[str] | None = None) -> int:
                                                   verifier=verifier, embed=embed,
                                                   commands=WakeWordCommands(lambda: list(current), save_words))
             det = WakeWordDetector.from_openwakeword(models)
-            out = lambda r: print(f"Du: {r.heard}\nkushima: {r.reply or '(' + r.outcome + ')'}")
+            out = lambda r: print(f"Du: {r.heard}\nkushim: {r.reply or '(' + r.outcome + ')'}")
             loop = TalkLoop(mic, pipeline, kill, wake=lambda f: det.process(f) is not None,
                             ack=ack, flush=mic.flush, on_result=out)
             print(f"Wake Words: {', '.join(words)}. Notaus: 'Notaus' sagen oder die Verknüpfung. Strg+C beendet.")
@@ -173,7 +173,7 @@ def main(argv: list[str] | None = None) -> int:
         from .launcher import Launcher
         from .safety.killswitch import KillSwitch, is_triggered
         if is_triggered(root):
-            print("Notaus ist aktiv. Erst bewusst aufheben: kushima resume")
+            print("Notaus ist aktiv. Erst bewusst aufheben: kushim resume")
             return 1
         launcher = Launcher(root)
         kill = KillSwitch(root, [launcher.stop])

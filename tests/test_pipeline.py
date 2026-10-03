@@ -2,11 +2,11 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from kushima.safety.killswitch import KillSwitch
-from kushima.voice.dialog import Dialog, State
-from kushima.voice.pipeline import Pipeline
-from kushima.voice.speaker import SpeakerVerifier
-from kushima.voice.tts import Speaker
+from kushim.safety.killswitch import KillSwitch
+from kushim.voice.dialog import Dialog, State
+from kushim.voice.pipeline import Pipeline
+from kushim.voice.speaker import SpeakerVerifier
+from kushim.voice.tts import Speaker
 
 
 class FakeSTT:
@@ -44,7 +44,7 @@ def test_normal_turn(tmp_path):
 
 def test_kill_phrase_skips_llm_and_halts(tmp_path):
     called = []
-    p, played, dialog, kill = build(tmp_path, "Kushima Notaus", chat=lambda m: called.append(1) or iter([]))
+    p, played, dialog, kill = build(tmp_path, "Kushim Notaus", chat=lambda m: called.append(1) or iter([]))
     r = p.handle(PCM)
     assert r.outcome == "killed" and not called and not played
     assert kill.fired and dialog.state is State.HALTED
@@ -83,7 +83,7 @@ def test_empty_transcript(tmp_path):
 
 
 def test_external_marker_blocks(tmp_path):
-    from kushima.safety import killswitch
+    from kushim.safety import killswitch
     p, played, _, _ = build(tmp_path, "Hallo")
     killswitch.trigger(tmp_path)
     assert p.handle(PCM).outcome == "halted" and not played
