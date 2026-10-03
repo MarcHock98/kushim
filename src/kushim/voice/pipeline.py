@@ -30,6 +30,7 @@ class Result:
     heard: str
     reply: str
     outcome: str      # "spoken" | "killed" | "empty" | "rejected_speaker" | "halted"
+    detail: str = ""  # nur Anzeige, z. B. Score und Dauer bei abgelehntem Sprecher (kein Audio)
 
 
 class Pipeline:
@@ -59,7 +60,9 @@ class Pipeline:
             short_ok = getattr(self.commands, "awaiting", False)
             v = self.verifier.check(pcm, min_seconds=0.4) if short_ok else self.verifier.check(pcm)
             if not v.accepted:
-                return Result(text, "", "rejected_speaker")
+                return Result(text, "", "rejected_speaker",
+                              f"Ähnlichkeit {v.score:.2f} (Schwelle {float(self.verifier.profile.threshold):.2f}), "
+                              f"{v.seconds:.1f} s, {v.windows} Fenster: {v.reason}")
             verified, strong = True, v.strong
         if self.commands is not None:
             answer = self.commands.handle(text, verified, strong)
