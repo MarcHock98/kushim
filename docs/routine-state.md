@@ -22,6 +22,7 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
 - openwakeword braucht `requests` trotz --no-deps (gelöst, in pyproject-Extra `voice`)
 
 ## Entscheidungen des Nutzers
+- 2026-10-04: UI-Planung: Nach dem Start der Anwendung soll ein Setup erscheinen (beim ersten Start, danach wiederholbar), mit Systemcheck+Vault/Schlüssel, Mikrofon/Lautsprecher+Stimme einschreiben, Wake Words, Sicherheit+Notaus; alles überspringbar (Sprechen bleibt ohne Stimmprofil gesperrt). Plan: docs/ui-setup-plan.md
 - 2026-10-04: Beim Einschreiben/Aufnehmen will der Nutzer selbst bestätigen, wann ein Absatz fertig ist (Enter), nicht per Stille. Umgesetzt (Standard), `--auto` bleibt
 - 2026-10-04: Stimmerkennung neu gestalten: Sprecher-Prüfung UND längere Spracheingabe; Einschreiben mit den 10 Klon-Absätzen (~5 Min); längere Äußerung = sicherer (Änderungen nur bei "stark"). Umgesetzt (Profil v2). Nutzer muss neu einschreiben (`voice enroll`)
 - 2026-10-03: Wake Words: "hey kushim", "kushim", "kush", "hallo kush", "hi kushim", "kushi"; kein "hey jarvis"; alles in einer zentralen Config (`wakewords.toml`). Umgesetzt mit freier Erkennung (kws), Trefferquote nur auf synthetischer Stimme gemessen
