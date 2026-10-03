@@ -24,6 +24,22 @@ class _Model(Protocol):
     def transcribe(self, audio: Any, **kw: Any) -> tuple[Iterable[Any], Any]: ...
 
 
+def add_cuda_dll_dirs() -> None:
+    """Windows: cuBLAS/cuDNN aus den NVIDIA-PyPI-Paketen (nvidia-*-cu12) auffindbar machen."""
+    import os
+    import sys
+    if sys.platform != "win32":
+        return
+    import importlib.util
+    spec = importlib.util.find_spec("nvidia")
+    for base in (spec.submodule_search_locations or []) if spec else []:
+        for sub in ("cublas", "cudnn", "cuda_nvrtc"):
+            d = os.path.join(base, sub, "bin")
+            if os.path.isdir(d):
+                os.add_dll_directory(d)
+                os.environ["PATH"] = d + os.pathsep + os.environ.get("PATH", "")
+
+
 def to_float32(pcm: Any) -> np.ndarray:
     """int16-PCM (16 kHz, mono) -> float32 in [-1, 1]. float32-Eingaben werden begrenzt."""
     arr = np.asarray(pcm)
@@ -40,6 +56,7 @@ class SpeechToText:
     def from_local(cls, model_path: str, device: str = "auto", compute_type: str = "default",
                    **kw) -> "SpeechToText":
         """Lädt ein bereits lokal vorhandenes CTranslate2-Whisper-Modell (Verzeichnis)."""
+        add_cuda_dll_dirs()
         from faster_whisper import WhisperModel
         return cls(WhisperModel(model_path, device=device, compute_type=compute_type,
                                 local_files_only=True), **kw)
