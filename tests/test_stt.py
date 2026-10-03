@@ -39,3 +39,18 @@ def test_empty_audio_skips_model():
     m = FakeModel()
     t = SpeechToText(m).transcribe(np.array([], dtype=np.int16))
     assert t.text == "" and not m.calls
+
+
+def test_from_local_passes_device_and_card_to_whisper(monkeypatch):
+    import sys
+    import types
+    seen = {}
+
+    class FakeWhisper:
+        def __init__(self, path, **kw):
+            seen.update(kw, path=path)
+    monkeypatch.setitem(sys.modules, "faster_whisper", types.SimpleNamespace(WhisperModel=FakeWhisper))
+    SpeechToText.from_local("m", device="cuda", compute_type="float16", device_index=2, language="de")
+    assert seen["device"] == "cuda" and seen["device_index"] == 2 and seen["local_files_only"] is True
+    SpeechToText.from_local("m")
+    assert seen["device_index"] == 0

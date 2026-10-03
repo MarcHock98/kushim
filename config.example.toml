@@ -18,6 +18,12 @@ keep = 10
 # `install.ps1 -Llm <name>`. Es sollte Deutsch und Tool-Calling können.
 model = "qwen2.5:7b"
 
+[gpu]
+# Grafikkarten (NVIDIA). Anzeigen: `kushim gpu`. Bei mehreren Karten bekommt Whisper eine Karte für sich,
+# das Sprachmodell nutzt die übrigen. Mit einer Karte bleibt alles wie bisher.
+whisper = "auto"   # "auto", "cpu" oder Nummer der Karte (z. B. "1")
+llm = "auto"       # "auto", "all" (Ollama entscheidet über alle Karten) oder Nummern wie "0,1"
+
 [privacy]
 # Modus A: alles lokal (Standard).
 # Modus C: Claude nur auf ausdrücklichen Befehl, mit Vorschau + Bestätigung.

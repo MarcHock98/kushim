@@ -26,7 +26,8 @@ Stimme
   kushim voice record          Absätze für den Stimmklon aufnehmen [--redo] [--auto] [--mic NAME]
   kushim voice reset           Stimmprofil löschen
 
-Sprachmodell
+Sprachmodell und Grafikkarten
+  kushim gpu                   Grafikkarten zeigen und wie Whisper und das Sprachmodell verteilt werden
   kushim llm                   Aktuelles Modell zeigen
   kushim llm set <name>        Modell wechseln (z. B. qwen3.5:9b); laden mit install.ps1 -Llm <name>
 
@@ -43,8 +44,15 @@ Prüfen und Hilfe
   kushim help                  Diese Übersicht
   kushim <befehl> --help       Optionen eines Befehls
 
-Einstellungen: config.toml (Vault, LLM), wakewords.toml (Wake Words, Zeiten). Anleitung: README.md
+Einstellungen: config.toml (Vault, LLM, Grafikkarten), wakewords.toml (Wake Words, Zeiten). Anleitung: README.md
 """
+
+
+def _gpu_plan(cfg: Config):
+    """Karten lesen und gemäß [gpu] in config.toml verteilen. Gibt (Karten, Plan) zurück; falsche Einstellung: ValueError."""
+    from . import gpu
+    gpus = gpu.list_gpus()
+    return gpus, gpu.make_plan(gpus, cfg.gpu_whisper, cfg.gpu_llm)
 
 
 def _vault(cfg: Config):
@@ -99,9 +107,19 @@ def main(argv: list[str] | None = None) -> int:
     ls.add_argument("model")
     sub.add_parser("doctor", help="Prüft, ob alles installiert und eingerichtet ist")
     sub.add_parser("help", help="Übersicht aller Befehle mit Beispielen")
+    sub.add_parser("gpu", help="Grafikkarten anzeigen und wie sie genutzt werden (Einstellung: [gpu] in config.toml)")
     args = p.parse_args(argv)
     if args.cmd == "help":
         print(HELP)
+        return 0
+    if args.cmd == "gpu":
+        from . import gpu
+        try:
+            gpus, plan = _gpu_plan(Config.load())
+        except ValueError as e:
+            print(f"[gpu] in config.toml: {e}")
+            return 2
+        print(gpu.describe(gpus, plan))
         return 0
     cfg = Config.load()
 
@@ -263,14 +281,20 @@ def main(argv: list[str] | None = None) -> int:
         embed = SherpaEmbedder.from_local(str(root / "models" / "speaker" / "wespeaker_en_voxceleb_CAM++_LM.onnx"))
         from .voice.verify import AudioVerifier
         verifier = AudioVerifier(profile, embed)
-        launcher = Launcher(root)
+        try:
+            _, plan = _gpu_plan(cfg)
+        except ValueError as e:
+            print(f"[gpu] in config.toml: {e}")
+            return 2
+        launcher = Launcher(root, cuda_devices=plan.llm_visible)
         try:
             launcher.start_ollama()
             pipeline, kill, mic, ack = build_live(root, audio.find_device(args.out, "output"),
                                                   audio.find_device(args.mic, "input"),
                                                   verifier=verifier, commands=WakeWordCommands(root),
                                                   wake_names=[w.name for w in wcfg.enabled()],
-                                                  llm_model=cfg.llm_model)
+                                                  llm_model=cfg.llm_model, whisper_device=plan.whisper_device,
+                                                  whisper_index=plan.whisper_index)
             det = build_detector(wcfg, root)
             wait_ms = int(wcfg.settings.listen_seconds * 1000)
             first_ms = int(wcfg.settings.command_wait_seconds * 1000)
@@ -297,7 +321,12 @@ def main(argv: list[str] | None = None) -> int:
         if is_triggered(root):
             print("Notaus ist aktiv. Erst bewusst aufheben: kushim resume")
             return 1
-        launcher = Launcher(root)
+        try:
+            _, plan = _gpu_plan(cfg)
+        except ValueError as e:
+            print(f"[gpu] in config.toml: {e}")
+            return 2
+        launcher = Launcher(root, cuda_devices=plan.llm_visible)
         kill = KillSwitch(root, [launcher.stop])
         try:
             print("Ollama:", launcher.start_ollama(), "(nur 127.0.0.1). Strg+C zum Beenden.")

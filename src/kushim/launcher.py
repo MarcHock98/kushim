@@ -17,11 +17,13 @@ from .net.loopback import request_json
 OLLAMA_URL = "http://127.0.0.1:11434"
 
 
-def ollama_env(root: Path, base: dict[str, str] | None = None) -> dict[str, str]:
+def ollama_env(root: Path, base: dict[str, str] | None = None, cuda_devices: str | None = None) -> dict[str, str]:
     env = {k: v for k, v in (base if base is not None else os.environ).items()
            if not k.startswith("OLLAMA_")}
     env["OLLAMA_HOST"] = "127.0.0.1:11434"
     env["OLLAMA_MODELS"] = str(root / "models" / "ollama")
+    if cuda_devices:                                  # nur diese Karten (UUIDs), siehe gpu.py
+        env["CUDA_VISIBLE_DEVICES"] = cuda_devices
     return env
 
 
@@ -48,9 +50,9 @@ class Launcher:
     def __init__(self, root: Path, popen: Callable[..., Any] = subprocess.Popen,
                  alive: Callable[[], bool] = ollama_alive,
                  sleep: Callable[[float], None] = time.sleep,
-                 tree_kill: Callable[[int], None] = kill_tree):
+                 tree_kill: Callable[[int], None] = kill_tree, cuda_devices: str | None = None):
         self.root, self._popen, self._alive, self._sleep = root, popen, alive, sleep
-        self._tree_kill = tree_kill
+        self._tree_kill, self._cuda_devices = tree_kill, cuda_devices
         self._proc: Any = None
 
     @property
@@ -63,7 +65,7 @@ class Launcher:
             return "already"
         if not self.exe.exists():
             raise FileNotFoundError(f"Ollama fehlt: {self.exe}")
-        self._proc = self._popen([str(self.exe), "serve"], env=ollama_env(self.root),
+        self._proc = self._popen([str(self.exe), "serve"], env=ollama_env(self.root, cuda_devices=self._cuda_devices),
                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         waited = 0.0
         while waited < timeout:

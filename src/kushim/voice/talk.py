@@ -74,7 +74,7 @@ class TalkLoop:
 
 def build_live(root: Path, out_device: int | None, in_device: int | None = None,
                verifier: Any = None, commands: Any = None, wake_names: Iterable[str] = (),
-               llm_model: str = DEFAULT_MODEL):
+               llm_model: str = DEFAULT_MODEL, whisper_device: str = "cuda", whisper_index: int = 0):
     """Echte Komponenten. Ollama muss laufen (kushim start oder Launcher)."""
     from ..llm.ollama import OllamaClient
     from . import audio
@@ -82,8 +82,14 @@ def build_live(root: Path, out_device: int | None, in_device: int | None = None,
     from .stt import SpeechToText
     from .tts import PiperEngine, Speaker
 
-    stt = SpeechToText.from_local(str(root / "models" / "whisper-large-v3-turbo"),
-                                  device="cuda", compute_type="float16")
+    import os
+    os.environ.setdefault("CUDA_DEVICE_ORDER", "PCI_BUS_ID")   # Kartennummern wie in nvidia-smi
+    if whisper_device == "cuda":
+        stt = SpeechToText.from_local(str(root / "models" / "whisper-large-v3-turbo"), device="cuda",
+                                      compute_type="float16", device_index=whisper_index)
+    else:                             # ohne NVIDIA-Karte oder per Einstellung: Prozessor
+        stt = SpeechToText.from_local(str(root / "models" / "whisper-large-v3-turbo"), device="cpu",
+                                      compute_type="int8")
     engine = PiperEngine.from_local(str(root / "models" / "piper" / "de_DE-thorsten-high.onnx"))
     llm = OllamaClient(llm_model)
     dialog = Dialog(audio.stop_playback)

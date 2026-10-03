@@ -26,6 +26,8 @@ class Config:
     backup_keep: int = 10
     claude_enabled: bool = False
     llm_model: str = DEFAULT_MODEL
+    gpu_whisper: str = "auto"      # "auto", "cpu" oder Kartennummer (kushim gpu)
+    gpu_llm: str = "auto"          # "auto", "all" oder Nummern wie "0,1"
     path: Path | None = field(default=None, repr=False)
 
     @classmethod
@@ -36,12 +38,15 @@ class Config:
         data = tomllib.loads(path.read_text(encoding="utf-8"))
         mem, bak, priv = data.get("memory", {}), data.get("backup", {}), data.get("privacy", {})
         llm = data.get("llm", {})
+        gpu = data.get("gpu", {})
         return cls(
             memory_location=mem.get("location", cls.memory_location),
             backup_target=bak.get("target", ""),
             backup_keep=int(bak.get("keep", 10)),
             claude_enabled=bool(priv.get("claude_enabled", False)),
             llm_model=validate_model(str(llm.get("model", DEFAULT_MODEL))),
+            gpu_whisper=str(gpu.get("whisper", "auto")),
+            gpu_llm=str(gpu.get("llm", "auto")),
             path=path,
         )
 
