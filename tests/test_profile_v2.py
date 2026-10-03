@@ -167,6 +167,24 @@ def store(tmp_path, monkeypatch):
         yield s
 
 
+def test_set_threshold_bounds_and_roundtrip(store):
+    with pytest.raises(ValueError):
+        voiceprint.set_threshold(store, 0.79)                   # kein Profil
+    voiceprint.save_profile(store, build_profile(recordings(), strangers(), "m"))
+    old = voiceprint.load(store).threshold
+    assert voiceprint.set_threshold(store, 0.79) == old
+    assert voiceprint.load(store).threshold == 0.79
+    for bad in (0.49, 0.91, float("nan")):
+        with pytest.raises(ValueError):
+            voiceprint.set_threshold(store, bad)
+    assert voiceprint.load(store).threshold == 0.79             # unverändert
+    legacy = SpeakerVerifier()
+    legacy.enroll(own(0, 3))
+    voiceprint.save(store, legacy, "old")
+    with pytest.raises(ValueError):
+        voiceprint.set_threshold(store, 0.79)                   # älteres Format: nicht anfassen
+
+
 def test_vault_roundtrip_v2_and_legacy_still_loads(store):
     prof = build_profile(recordings(), strangers(), "m")
     voiceprint.save_profile(store, prof)

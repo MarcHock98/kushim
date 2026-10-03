@@ -55,6 +55,24 @@ def load(store: MemoryStore, default_threshold: float = 0.6):
     return v
 
 
+def set_threshold(store: MemoryStore, value: float) -> float:
+    """Setzt die Schwelle des gespeicherten Profils (Nutzerentscheidung, nur per CLI). Gibt den alten Wert zurück.
+
+    Nur Profil v2, nur innerhalb [MIN_THRESHOLD, MAX_THRESHOLD]; sonst ValueError und nichts wird geändert.
+    """
+    from .profile import MAX_THRESHOLD, MIN_THRESHOLD
+    if not MIN_THRESHOLD <= value <= MAX_THRESHOLD:
+        raise ValueError(f"Schwelle muss zwischen {MIN_THRESHOLD} und {MAX_THRESHOLD} liegen")
+    profile = load(store)
+    if not isinstance(profile, SpeakerProfile):
+        raise ValueError("Kein Profil im neuen Format (bitte `kushim voice enroll`)")
+    old = float(profile.threshold)
+    profile.threshold = float(value)
+    save_profile(store, profile)
+    store.audit("voiceprint_threshold", f"{old:.3f}->{value:.3f}")
+    return old
+
+
 def clear(store: MemoryStore) -> None:
     store.set_profile(KEY, "")
     store.audit("voiceprint_cleared", "")
