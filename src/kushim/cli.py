@@ -44,6 +44,9 @@ def main(argv: list[str] | None = None) -> int:
     for name in ("enroll", "test"):
         v = vo.add_parser(name)
         v.add_argument("--mic", help="Namensteil des Mikrofons, sonst Systemstandard")
+        if name == "enroll":
+            v.add_argument("--record", action="store_true", help="die 10 Absätze neu aufnehmen (auch wenn vorhanden)")
+            v.add_argument("--quick", action="store_true", help="altes kurzes Einschreiben mit 5 Sätzen")
     vo.add_parser("status")
     vo.add_parser("reset")
     rec = vo.add_parser("record", help="Absätze für den Stimmklon aufnehmen (nur lokal, voice-data/)")
@@ -85,36 +88,76 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.cmd == "voice":
         from .voice import audio, voiceprint
-        from .voice.enrollment import enroll as run_enroll, frames_recorder
         from .voice.embedder import SherpaEmbedder
+        from .voice.enrollment import enroll as run_quick_enroll, frames_recorder
+        from .voice.verify import AudioVerifier
         model = root / "models" / "speaker" / "wespeaker_en_voxceleb_CAM++_LM.onnx"
         with _vault(cfg) as store:
             if args.sub == "status":
                 vp = voiceprint.load(store)
-                print("Stimmprofil: " + (f"vorhanden (Schwelle {vp.threshold:.2f})" if vp else "keines"))
+                if vp is None:
+                    print("Stimmprofil: keines")
+                else:
+                    stats = getattr(vp, "stats", {})
+                    extra = (f", {stats['prototypes']} Prototypen aus {stats['recordings']} Aufnahmen, "
+                             f"Abstand zu Fremden {stats['separation']:+.2f}") if stats else " (älteres Format, bitte neu einschreiben)"
+                    print(f"Stimmprofil: vorhanden, Schwelle {vp.threshold:.2f}{extra}")
             elif args.sub == "reset":
                 voiceprint.clear(store)
                 print("Stimmprofil gelöscht. kushim talk startet erst nach erneutem Einschreiben.")
             else:
                 embed = SherpaEmbedder.from_local(str(model))
-                frames = iter(audio.Mic(audio.find_device(args.mic, "input")))
                 if args.sub == "enroll":
-                    print("Lies die Sätze in normaler Lautstärke vor. Aufnahmen bleiben im Speicher.")
-                    res = run_enroll(frames_recorder(frames), embed)
-                    voiceprint.save(store, res.verifier, model.name)
-                    print(f"Gespeichert im Vault. Proben: {res.used}, mittlere Ähnlichkeit "
-                          f"{res.mean_similarity:.2f}, Schwelle {res.threshold:.2f}.")
+                    rec_dir = root / "voice-data" / "clone"
+                    if args.quick:
+                        frames = iter(audio.Mic(audio.find_device(args.mic, "input")))
+                        print("Kurzes Einschreiben (5 Sätze, weniger robust). Aufnahmen bleiben im Speicher.")
+                        res = run_quick_enroll(frames_recorder(frames), embed)
+                        voiceprint.save(store, res.verifier, model.name)
+                        print(f"Gespeichert im Vault. Proben: {res.used}, Schwelle {res.threshold:.2f}.")
+                        return 0
+                    if args.record or len(list(rec_dir.glob("*.wav"))) < 3:
+                        from .voice.recorder import record_session
+                        print("Aufnahme der 10 Absätze (ca. 5 Minuten). Danach wird daraus dein Stimmprofil berechnet.")
+                        mic = audio.Mic(audio.find_device(args.mic, "input"), rate=24_000, frame=1920)
+                        record_session(rec_dir, iter(mic), redo=args.record, flush=mic.flush)
+                    paths = sorted(rec_dir.glob("*.wav"))
+                    if len(paths) < 3:
+                        print("Zu wenige Aufnahmen. Nochmal: kushim voice enroll --record")
+                        return 1
+                    from .voice.enrollment import cohort_audio, enroll_from_recordings
+                    from .voice.recorder import load_paragraphs
+                    print("Berechne Stimmabdrücke ...")
+                    cohort = cohort_audio(root, load_paragraphs(root))
+                    try:
+                        profile = enroll_from_recordings(paths, embed, cohort, model.name)
+                    except ValueError as e:
+                        print(f"Einschreiben nicht möglich: {e}")
+                        return 1
+                    voiceprint.save_profile(store, profile)
+                    st = profile.stats
+                    print(f"Gespeichert im Vault: {st['prototypes']} Prototypen aus {st['recordings']} Aufnahmen "
+                          f"({st['windows']} Stimmabdrücke).")
+                    print(f"Deine Werte (zurückgehalten): Median {st['target_median']}, schwächste 10 % ab {st['target_p10']}. "
+                          f"Fremde Vergleichsstimmen: obere 5 % bei {st['cohort_p95']}. Schwelle: {profile.threshold:.2f}.")
+                    if st["separation"] < 0.1:
+                        print("ACHTUNG: Deine Stimme und die Vergleichsstimmen liegen eng beieinander "
+                              f"(Abstand {st['separation']:+.2f}). Die Prüfung ist dann nur begrenzt sicher; "
+                              "`voice test` zeigt dir die echten Werte, auch mit einer zweiten Person.")
                 else:
                     vp = voiceprint.load(store)
                     if vp is None:
                         print("Kein Stimmprofil. Erst: kushim voice enroll")
                         return 1
-                    print("Sprich einen Satz (Test). Strg+C beendet.")
+                    ver = AudioVerifier(vp, embed)
+                    frames = iter(audio.Mic(audio.find_device(args.mic, "input")))
+                    print("Sprich einen oder mehrere Sätze (Test). Strg+C beendet.")
                     try:
                         while True:
-                            v = vp.verify(embed(frames_recorder(frames)()))
-                            print(f"Ähnlichkeit {v.score:.2f} (Schwelle {vp.threshold:.2f}): "
-                                  f"{'akzeptiert' if v.accepted else 'abgelehnt'}")
+                            v = ver.check(frames_recorder(frames)())
+                            print(f"Ähnlichkeit {v.score:.2f} (Schwelle {vp.threshold:.2f}), {v.seconds:.1f} s, "
+                                  f"{v.windows} Fenster: {'akzeptiert' if v.accepted else 'abgelehnt'}"
+                                  f"{' (stark)' if v.strong else ''}")
                     except KeyboardInterrupt:
                         pass
         return 0
@@ -137,22 +180,26 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Wake-Word-Konfiguration: {e}")
             return 2
         with _vault(cfg) as store:
-            verifier = voiceprint.load(store)
-        if verifier is None:
+            profile = voiceprint.load(store)
+        if profile is None:
             print("Kein Stimmprofil. kushim hört nur auf deine Stimme: erst `kushim voice enroll`.")
             return 1
         embed = SherpaEmbedder.from_local(str(root / "models" / "speaker" / "wespeaker_en_voxceleb_CAM++_LM.onnx"))
+        from .voice.verify import AudioVerifier
+        verifier = AudioVerifier(profile, embed)
         launcher = Launcher(root)
         try:
             launcher.start_ollama()
             pipeline, kill, mic, ack = build_live(root, audio.find_device(args.out, "output"),
                                                   audio.find_device(args.mic, "input"),
-                                                  verifier=verifier, embed=embed, commands=WakeWordCommands(root))
+                                                  verifier=verifier, commands=WakeWordCommands(root))
             det = build_detector(wcfg, root)
             wait_ms = int(wcfg.settings.listen_seconds * 1000)
+            end_ms = int(wcfg.settings.end_silence_seconds * 1000)
+            max_ms = int(wcfg.settings.max_seconds * 1000)
             out = lambda r: print(f"Du: {r.heard}\nkushim: {r.reply or '(' + r.outcome + ')'}")
             loop = TalkLoop(mic, pipeline, kill, wake=lambda f: det.process(f) is not None, ack=ack,
-                            flush=mic.flush, new_collector=lambda: UtteranceCollector(wait_ms=wait_ms),
+                            flush=mic.flush, new_collector=lambda: UtteranceCollector(wait_ms=wait_ms, silence_ms=end_ms, max_ms=max_ms),
                             on_result=out)
             print("Wake Words: " + ", ".join(w.name for w in wcfg.enabled())
                   + ". Notaus: 'Notaus' sagen oder die Verknüpfung. Strg+C beendet.")

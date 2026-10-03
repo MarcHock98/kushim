@@ -43,6 +43,8 @@ class WakeWord:
 class Settings:
     cooldown_seconds: float = 2.0
     listen_seconds: float = 5.0
+    end_silence_seconds: float = 1.2     # so lange Stille beendet eine Äußerung (längere Eingaben mit Denkpausen)
+    max_seconds: float = 60.0            # längste einzelne Äußerung
 
 
 @dataclass(frozen=True)
@@ -64,6 +66,8 @@ def validate(cfg: WakeConfig, root: Path) -> None:
     s = cfg.settings
     if not 0.5 <= s.cooldown_seconds <= 30 or not 2 <= s.listen_seconds <= 30:
         raise ValueError("cooldown_seconds muss 0,5 bis 30 und listen_seconds 2 bis 30 sein")
+    if not 0.4 <= s.end_silence_seconds <= 5 or not 5 <= s.max_seconds <= 180:
+        raise ValueError("end_silence_seconds muss 0,4 bis 5 und max_seconds 5 bis 180 sein")
     if not cfg.words or len(cfg.words) > MAX_WORDS:
         raise ValueError(f"1 bis {MAX_WORDS} Wake Words erlaubt")
     seen = set()
@@ -92,7 +96,8 @@ def validate(cfg: WakeConfig, root: Path) -> None:
 def _parse(text: str) -> WakeConfig:
     data = tomllib.loads(text)
     st = data.get("settings", {})
-    settings = Settings(float(st.get("cooldown_seconds", 2.0)), float(st.get("listen_seconds", 5.0)))
+    settings = Settings(float(st.get("cooldown_seconds", 2.0)), float(st.get("listen_seconds", 5.0)),
+                        float(st.get("end_silence_seconds", 1.2)), float(st.get("max_seconds", 60.0)))
     words = []
     for e in data.get("wakeword", []):
         engine = str(e.get("engine", "kws"))
@@ -131,7 +136,9 @@ HEADER = """# Zentrale Wake-Word-Konfiguration (wird auch von Sprachbefehlen ge�
 def dumps(cfg: WakeConfig) -> str:
     out = [HEADER, "[settings]",
            f"cooldown_seconds = {cfg.settings.cooldown_seconds}",
-           f"listen_seconds = {cfg.settings.listen_seconds}", ""]
+           f"listen_seconds = {cfg.settings.listen_seconds}",
+           f"end_silence_seconds = {cfg.settings.end_silence_seconds}",
+           f"max_seconds = {cfg.settings.max_seconds}", ""]
     for w in cfg.words:
         out += ["[[wakeword]]", f"name = {json.dumps(w.name, ensure_ascii=False)}",
                 f"engine = {json.dumps(w.engine)}", f"enabled = {'true' if w.enabled else 'false'}"]

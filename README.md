@@ -9,7 +9,7 @@ Inhalt: [Was es heute kann](#was-es-heute-kann) · [Voraussetzungen](#voraussetz
 ## Was es heute kann
 
 - **Sprechen per Wake Word:** Du sagst eines deiner Wake Words („hey kushim“, „kushim“, „hi kushim“ …, alle in **einer zentralen Datei** einstellbar), kushim antwortet „Ja?“ und hört deinen Befehl. Vor dem Wake Word läuft nur ein kleines lokales Erkennungsmodell: keine Spracherkennung, kein LLM, keine Speicherung.
-- **Nur auf deine Stimme:** Sprecherverifikation. Fremde Stimmen bekommen keine Antwort. Ohne eingeschriebenes Stimmprofil startet das Sprechen gar nicht.
+- **Nur auf deine Stimme:** Sprecherverifikation mit Mehr-Prototypen-Profil aus langer Aufnahme. Fremde Stimmen bekommen keine Antwort. Längere Äußerungen werden in Fenstern geprüft (sicherer), Änderungen wie Wake-Word-Befehle brauchen eine „stark“ verifizierte Äußerung. Ohne eingeschriebenes Stimmprofil startet das Sprechen gar nicht.
 - **Notaus:** per Desktop-Verknüpfung oder per Sprachbefehl („Notaus“, „stopp alles“). Wirkt für jede Stimme.
 - **Lokal:** Whisper (Spracherkennung, GPU), Qwen 2.5 7B über Ollama (nur 127.0.0.1), Piper (deutsche Stimme).
 - **Verschlüsseltes Gedächtnis (Vault)** mit Backups, Sicherheitsschicht (ActionGate, Freigaben, Audit).
@@ -113,12 +113,12 @@ Diese Schritte machst nur du (sie betreffen deinen Schlüssel und deine Stimme).
    ```powershell
    .\.venv\Scripts\python -m kushim.cli key export
    ```
-3. **Stimme einschreiben.** Du liest 5 Sätze vor (Text: `docs/voice-recording-text.md`, Teil A). Gespeichert wird nur ein Zahlenvektor im Vault, keine Aufnahme:
+3. **Stimme einschreiben.** Du liest die 10 Absätze aus `docs/voice-recording-text.md` (Teil B, etwa 5 Minuten) vor. Daraus entsteht dein Stimmprofil: viele Stimmabdrücke aus 3-Sekunden-Fenstern, gebündelt zu mehreren Prototypen, mit einer aus deinen Daten berechneten Schwelle. Im Vault liegen nur Zahlenvektoren. **Dieselben Aufnahmen** (`voice-data/clone/`, nicht im Git) dienen später für den Stimmklon, du sprichst nur einmal.
    ```powershell
    .\.venv\Scripts\python -m kushim.cli voice enroll
    ```
-   Optional ein bestimmtes Mikrofon: `--mic "Arctis 5 Chat"`.
-4. **Prüfen, ob dich kushim erkennt** (und andere nicht). Es zeigt Ähnlichkeit und Schwelle pro Satz:
+   Optional ein bestimmtes Mikrofon: `--mic "Arctis 5 Chat"`. Neu aufnehmen: `--record`. Das alte kurze Einschreiben (5 Sätze, weniger robust): `--quick`.
+4. **Prüfen, ob dich kushim erkennt** (und andere nicht). Es zeigt pro Äußerung Ähnlichkeit, Schwelle, Länge, Fenster und ob die Prüfung „stark“ war. Teste kurze und lange Sätze und lass einmal eine zweite Person sprechen:
    ```powershell
    .\.venv\Scripts\python -m kushim.cli voice test
    ```
@@ -162,7 +162,9 @@ Alle Wake Words stehen **nur** in `wakewords.toml` im Projektordner. Fehlt sie, 
 ```toml
 [settings]
 cooldown_seconds = 2.0      # Ruhezeit nach einem Treffer
-listen_seconds = 5.0        # so lange wartet kushim nach dem Wake Word auf deinen Befehl
+listen_seconds = 5.0        # so lange wartet kushim nach dem Wake Word auf den Beginn deines Befehls
+end_silence_seconds = 1.2   # so lange Stille beendet deine Äußerung (länger = Denkpausen erlaubt)
+max_seconds = 60.0          # längste einzelne Äußerung
 
 [[wakeword]]
 name = "hey kushim"         # beliebiges Wort/Wendung: nur Buchstaben und Leerzeichen
@@ -211,7 +213,8 @@ Es nimmt 10 Absätze mit 24 kHz auf, prüft Pegel und Länge und überspringt vo
 | „Noch kein Vault“ | `python -m kushim.cli memory init` |
 | „Kein Stimmprofil“ beim Sprechen | `python -m kushim.cli voice enroll` |
 | „Notaus ist aktiv“ | `python -m kushim.cli resume` |
-| kushim erkennt meine Stimme nicht / zu oft nicht | `voice test` zeigt die Werte. Näher ans Mikrofon, ruhiger Raum, dasselbe Mikrofon wie beim Einschreiben. Notfalls `voice reset` und neu einschreiben. |
+| kushim erkennt meine Stimme nicht / zu oft nicht | `voice test` zeigt die Werte. Näher ans Mikrofon, ruhiger Raum, dasselbe Mikrofon wie beim Einschreiben. Sehr kurze Äußerungen („ja“) sind unzuverlässig: lieber ganze Sätze. Notfalls `python -m kushim.cli voice enroll --record` und neu aufnehmen. |
+| Eine Änderung (z. B. Wake Word) wird abgelehnt: „längere, deutliche Äußerung“ | Änderungen brauchen eine „stark“ verifizierte Äußerung (mind. 1,5 s). Den Befehl in einem ganzen Satz wiederholen. |
 | `cublas64_12.dll not found` | `install.ps1` erneut (installiert die NVIDIA-Bibliotheken) |
 | Nichts passiert beim Wake Word | Mikrofon prüfen (`--mic`), deutlicher sprechen, in `wakewords.toml` `threshold` senken (z. B. 0.10) oder mehr Wörter aktivieren |
 | Wake Word löst zu oft aus | `threshold` erhöhen (z. B. 0.25) oder kurze Wörter wie „kush“ ausschalten (`enabled = false`) |

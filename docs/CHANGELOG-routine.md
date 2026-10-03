@@ -12,3 +12,5 @@ Format: Datum, Datei, Grund (ein Satz).
 - 2026-10-03, gesamtes Projekt: Eine kurzzeitige Umbenennung des Projekts wurde auf Wunsch des Nutzers komplett rückgängig gemacht (neuer Commit, keine Historie umgeschrieben, da bereits gepusht) und anschließend alle Rückfall-Reste für den kurzzeitigen Namen aus Code, Tests, Installationsskript und Doku entfernt. Name, Paket, CLI, Verknüpfungen und Skills heißen durchgehend `kushim`.
 
 - 2026-10-03, voice/: zentrale Wake-Word-Konfiguration `wakewords.toml` (wakeconfig.py) eingeführt, freie Wörter per KWS-Detektor; `[voice] wake_words` in config.toml und Vault-Speicherung entfernt, damit es nur eine Quelle gibt. Standard-Wörter auf Wunsch des Nutzers ohne "hey jarvis".
+
+- 2026-10-04, voice/: Sprecher-Prüfung neu (profile.py, verify.py): Mehr-Prototypen-Profil, Schwelle aus Daten, Fenster-Prüfung, "stark"-Stufe für Änderungen, kurzes Audio auf 3 s aufgefüllt; Einschreiben aus den 10 Klon-Absätzen; längere Spracheingabe (end_silence_seconds/max_seconds); zusätzlich Piper-MLS-Mehrsprecher-Modell (77 MB, Hugging Face rhasspy/piper-voices, SHA-256 gepinnt) als Vergleichsgruppe. Sicherheitsregeln und Allowlist unverändert.

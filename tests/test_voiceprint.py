@@ -117,3 +117,22 @@ def test_real_model_if_present():
     a = emb(pcm16k("Heute scheint die Sonne über Würzburg, aber am Nachmittag soll es regnen."))
     b = emb(pcm16k("Bitte erinnere mich morgen um halb acht an den Termin beim Zahnarzt."))
     assert a.size == 512 and b.size == 512      # Smoke-Test; Kalibrierung geht nur mit echter Stimme
+
+
+def test_short_audio_is_tiled_to_three_seconds_before_embedding():
+    seen = []
+
+    class Stream(FakeStream):
+        def accept_waveform(self, sample_rate, waveform):
+            seen.append(len(waveform))
+            super().accept_waveform(sample_rate, waveform)
+
+    class Ex(FakeExtractor):
+        def create_stream(self):
+            return Stream()
+
+    e = SherpaEmbedder(Ex())
+    e(np.full(int(1.5 * 16000), 1000, dtype=np.int16))       # 1,5 s -> aufgefüllt
+    e(np.full(int(5 * 16000), 1000, dtype=np.int16))         # 5 s -> unverändert
+    assert seen == [48000, 80000]
+    assert e(np.zeros(8000, dtype=np.int16)).size == 0       # unter 0,8 s weiterhin abgelehnt

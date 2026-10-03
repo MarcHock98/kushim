@@ -13,7 +13,7 @@ from typing import Any, Callable, Iterable
 
 from ..safety.killswitch import KillSwitch, is_kill_phrase
 from .dialog import Dialog, State
-from .speaker import SpeakerVerifier
+from .verify import AudioVerifier
 from .stt import SpeechToText
 from .tts import Speaker, chunk_stream, prefetch
 
@@ -34,11 +34,11 @@ class Result:
 
 class Pipeline:
     def __init__(self, stt: SpeechToText, chat: ChatStream, speaker: Speaker, dialog: Dialog,
-                 kill: KillSwitch, verifier: SpeakerVerifier | None = None,
-                 embed: Callable[[Any], Any] | None = None, history_limit: int = 6,
+                 kill: KillSwitch, verifier: AudioVerifier | None = None,
+                 history_limit: int = 6,
                  commands: Any = None):
         self.stt, self.chat, self.speaker, self.dialog, self.kill = stt, chat, speaker, dialog, kill
-        self.verifier, self.embed = verifier, embed
+        self.verifier = verifier
         self.commands = commands          # z. B. WakeWordCommands (Sprachbefehle ohne LLM)
         self.history: list[dict[str, str]] = []
         self.history_limit = history_limit
@@ -53,13 +53,16 @@ class Pipeline:
             self.kill.on_transcript(text)
             self.dialog.halt()
             return Result(text, "", "killed")
-        verified = False
+        verified = strong = False
         if self.verifier is not None and self.verifier.enrolled:
-            if self.embed is None or not self.verifier.verify(self.embed(pcm)).accepted:
+            # Eine kurze Bestätigung ("ja") nach einer stark verifizierten Anfrage darf kürzer sein.
+            short_ok = getattr(self.commands, "awaiting", False)
+            v = self.verifier.check(pcm, min_seconds=0.4) if short_ok else self.verifier.check(pcm)
+            if not v.accepted:
                 return Result(text, "", "rejected_speaker")
-            verified = True
+            verified, strong = True, v.strong
         if self.commands is not None:
-            answer = self.commands.handle(text, verified)
+            answer = self.commands.handle(text, verified, strong)
             if answer is not None:                       # Befehl oder Bestätigung: kein LLM
                 self.speaker.say([answer])
                 return Result(text, answer, "command")
