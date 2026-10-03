@@ -51,3 +51,8 @@ def test_wav_roundtrip_helper_format():
         w.setnchannels(1); w.setsampwidth(2); w.setframerate(22050); w.writeframes(b"\0\0" * 10)
     with wave.open(io.BytesIO(buf.getvalue())) as w:
         assert w.getframerate() == 22050
+
+
+def test_collector_gives_up_when_nobody_speaks():
+    c = UtteranceCollector(wait_ms=240, max_ms=10_000)      # 3 Frames Wartezeit
+    assert [c.feed(QUIET) for _ in range(3)] == [False, False, True] and not c.heard_speech

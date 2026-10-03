@@ -26,11 +26,10 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("start", help="Lokale Dienste (Ollama, nur 127.0.0.1) starten; Strg+C beendet")
     sub.add_parser("kill", help="Notaus: stoppt laufende kushim-Dienste")
     sub.add_parser("resume", help="Notaus aufheben (nur bewusst durch den Nutzer)")
-    t = sub.add_parser("talk", help="Sprechen: Taste halten (Standard F9) oder Wake Word")
+    t = sub.add_parser("talk", help="Sprechen per Wake Word (nur das Wake Word wird dauerhaft ausgewertet)")
     t.add_argument("--mic", help="Namensteil des Mikrofons, sonst Systemstandard")
     t.add_argument("--out", help="Namensteil des Ausgabegeräts, sonst Systemstandard")
-    t.add_argument("--wake", action="store_true", help="Wake Word (hey_jarvis) statt Taste")
-    t.add_argument("--key", default="f9", help="Push-to-Talk-Taste")
+    t.add_argument("--wake-words", help="Komma-getrennt, überschreibt die Konfiguration (z. B. hey_jarvis,alexa)")
     args = p.parse_args(argv)
     cfg = Config.load()
 
@@ -49,28 +48,26 @@ def main(argv: list[str] | None = None) -> int:
         from .safety.killswitch import is_triggered
         from .voice import audio
         from .voice.talk import TalkLoop, build_live
+        from .voice.trigger import WakeWordDetector, resolve_wake_words
         if is_triggered(root):
             print("Notaus ist aktiv. Erst bewusst aufheben: kushim resume")
             return 1
+        words = args.wake_words.split(",") if args.wake_words else cfg.wake_words
+        try:
+            models = resolve_wake_words(words, root)
+        except ValueError as e:
+            print(e)
+            return 2
         launcher = Launcher(root)
         try:
             launcher.start_ollama()
-            pipeline, kill = build_live(root, audio.find_device(args.out, "output"))
-            frames = audio.frames(audio.find_device(args.mic, "input"))
+            pipeline, kill, mic, ack = build_live(root, audio.find_device(args.out, "output"),
+                                                  audio.find_device(args.mic, "input"))
+            det = WakeWordDetector.from_openwakeword(models)
             out = lambda r: print(f"Du: {r.heard}\nkushim: {r.reply or '(' + r.outcome + ')'}")
-            if args.wake:
-                from .voice.trigger import WakeWordDetector
-                det = WakeWordDetector.from_openwakeword()
-                loop = TalkLoop(frames, pipeline, kill, wake=lambda f: det.process(f) is not None,
-                                on_result=out)
-                print("Sage 'hey jarvis'. Notaus: sag 'Notaus' oder starte die Notaus-Verknüpfung.")
-            else:
-                from .voice.trigger import PushToTalk
-                down = {"v": False}
-                ptt = PushToTalk(args.key, lambda e: down.update(v=True), lambda: down.update(v=False))
-                ptt.start()
-                loop = TalkLoop(frames, pipeline, kill, ptt_down=lambda: down["v"], on_result=out)
-                print(f"Taste {args.key.upper()} halten und sprechen. Strg+C beendet.")
+            loop = TalkLoop(mic, pipeline, kill, wake=lambda f: det.process(f) is not None,
+                            ack=ack, flush=mic.flush, on_result=out)
+            print(f"Wake Words: {', '.join(words)}. Notaus: 'Notaus' sagen oder die Verknüpfung. Strg+C beendet.")
             print("Ende:", loop.run())
         except KeyboardInterrupt:
             pass

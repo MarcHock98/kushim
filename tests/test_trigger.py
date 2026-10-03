@@ -1,6 +1,7 @@
+import pytest
 from types import SimpleNamespace
 
-from kushim.voice import PushToTalk, WakeWordDetector, key_matches
+from kushim.voice import WakeWordDetector, resolve_wake_words
 
 
 class FakeModel:
@@ -38,20 +39,36 @@ def test_cooldown_blocks_retrigger():
     assert d.process(None) is not None
 
 
-def test_key_matches():
-    assert key_matches(SimpleNamespace(name="f9"), "F9")
-    assert key_matches(SimpleNamespace(char="K"), "k")
-    assert not key_matches(SimpleNamespace(name="f8"), "f9")
-    assert not key_matches(SimpleNamespace(char=None), "f9")
+def test_resolve_pretrained_words(tmp_path):
+    assert resolve_wake_words(["hey_jarvis", " alexa "], tmp_path) == ["hey_jarvis", "alexa"]
 
 
-def test_push_to_talk_only_reacts_to_its_key_and_ignores_repeat():
-    events = []
-    p = PushToTalk("f9", lambda e: events.append(("start", e.source)), lambda: events.append("stop"))
-    other, key = SimpleNamespace(name="a"), SimpleNamespace(name="f9")
-    p._press(other)
-    p._press(key)
-    p._press(key)      # Auto-Repeat
-    p._release(other)
-    p._release(key)
-    assert events == [("start", "hotkey"), "stop"]
+def test_resolve_custom_model_only_from_wakewords_dir(tmp_path):
+    d = tmp_path / "models" / "wakewords"
+    d.mkdir(parents=True)
+    (d / "hey_kushim.onnx").write_bytes(b"x")
+    out = resolve_wake_words(["hey_kushim.onnx"], tmp_path)
+    assert out == [str((d / "hey_kushim.onnx").resolve())]
+
+
+@pytest.mark.parametrize("bad", ["", "unbekannt", "../evil.onnx", "C:/x/evil.onnx", "sub/evil.onnx",
+                                 "fehlt.onnx"])
+def test_resolve_rejects_unknown_or_foreign_paths(tmp_path, bad):
+    (tmp_path / "models" / "wakewords").mkdir(parents=True)
+    with pytest.raises(ValueError):
+        resolve_wake_words([bad], tmp_path)
+
+
+def test_resolve_needs_at_least_one(tmp_path):
+    with pytest.raises(ValueError):
+        resolve_wake_words([], tmp_path)
+
+
+def test_any_of_several_words_triggers():
+    class Multi:
+        def predict(self, frame):
+            return {"hey_jarvis": 0.1, "alexa": 0.9}
+
+    d = WakeWordDetector(Multi(), threshold=0.6, hits=1)
+    ev = d.process(None)
+    assert ev is not None and ev.source == "wake"

@@ -10,7 +10,7 @@ Oberste Regel: Schäden jeder Art sind verboten. Lokal zuerst (Modus A), Claude 
 - [x] Statische Egress-Prüfung (`tests/test_no_egress.py`)
 
 ## Phase 1: Stimme
-- [x] Wake-Word-Logik (openWakeWord/ONNX, Entprellung, Cooldown) und Push-to-Talk-Logik, getestet; Modell lädt, Stille ergibt Score ~0
+- [x] Wake-Word-Logik (openWakeWord/ONNX, Entprellung, Cooldown), getestet; Modell lädt, Stille ergibt Score ~0. Push-to-Talk (F9) auf Wunsch des Nutzers wieder entfernt (2026-10-03), inkl. pynput
 - [ ] Mikrofon-Aufnahme (Streaming, 16 kHz) anbinden und Wake Word/Hotkey live mit echtem Mikrofon prüfen (neu 2026-10-03: nur vom Nutzer testbar)
 - [ ] Eigenes Wake Word "Hey Kushim" trainieren (Entscheidung Nutzer 2026-10-03; bis dahin hey_jarvis)
 - [x] Speech-to-Text-Logik (faster-whisper, offline, `voice/stt.py`), mit Fake-Modell getestet
@@ -65,3 +65,10 @@ Oberste Regel: Schäden jeder Art sind verboten. Lokal zuerst (Modus A), Claude 
 - [x] Launcher-Kern `kushim.launcher` und `kushim start` (Ollama nur 127.0.0.1, übernimmt/beendet nichts Fremdes), getestet (2026-10-03)
 - [ ] Desktop-Verknüpfung mit Logo für `kushim start` (braucht .ico), Backend/Notaus einbinden. Plan war: zuerst ein Launcher (Desktop-Verknüpfung mit Logo, startet Ollama nur auf 127.0.0.1 und das Backend, beendet beides sauber, Notaus-Taste), später abgelöst von der Tauri-App (Phase 2), die dieselbe Startlogik nutzt
 - [x] `assets/kushim.ico` und `kushim.png` per `scripts/make_icon.py` (Pillow 12.3.0, offline, gleiche Geometrie wie das SVG) erzeugt; Desktop-Verknüpfung `kushim.lnk` angelegt (2026-10-03)
+
+## Nutzerwünsche 2026-10-03 (Wake-Word-only, Stimme)
+- [x] Nur Wake Word: vor dem Wake Word sieht nur der lokale Detektor das Mikrofon (keine STT, kein LLM, keine Speicherung); nur Wake Word gesagt -> kurze Quittung "Ja?", dann Zuhören mit 5 s Wartezeit; Quittung wird nicht als Befehl gehört (Mic.flush)
+- [x] Mehrere Wake Words einstellbar: `[voice] wake_words = [...]` in der Konfiguration oder `kushim talk --wake-words a,b`; erlaubt sind vortrainierte Namen oder .onnx aus `models/wakewords/` (keine fremden Pfade)
+- [ ] Sprecherverifikation erzwingen ("nur meine Stimme"): Embedding-Modell lokal (ONNX, offizielle Quelle prüfen), Einschreiben per `kushim voice enroll`, Stimmprofil nur im verschlüsselten Vault, `kushim talk` startet ohne Profil nicht (fail-closed), Notaus-Satz bleibt für jeden wirksam
+- [ ] Flüssigere Stimme, möglichst mit der eigenen Stimme des Nutzers (Klon/Training lokal, nur eigene Aufnahmen mit Einwilligung): Optionen und Hardware (RTX 3070, 8 GB) klären, Entscheidung beim Nutzer
+- [ ] Eigenes Wake Word "Hey Kushim" trainieren (siehe Phase 1)
