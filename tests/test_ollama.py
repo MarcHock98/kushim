@@ -22,6 +22,13 @@ class H(BaseHTTPRequestHandler):
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         SEEN.append(body)
+        if body.get("stream"):
+            self.send_response(200); self.send_header("Connection", "close"); self.end_headers()
+            nl = chr(10)
+            for t in ["Hal", "lo", "!"]:
+                self.wfile.write((json.dumps({"message": {"content": t}, "done": False}) + nl).encode())
+            self.wfile.write((json.dumps({"message": {"content": ""}, "done": True}) + nl).encode())
+            return
         self._send({"message": {"role": "assistant", "content": " Hallo! "}} if body["messages"]
                    else {"oops": 1})
 
@@ -52,3 +59,8 @@ def test_bad_response_raises(url):
 def test_remote_url_refused():
     with pytest.raises(NotLoopback):
         OllamaClient("m", base_url="http://example.com:11434").chat([{"role": "user", "content": "x"}])
+
+
+def test_chat_stream_yields_pieces(url):
+    pieces = list(OllamaClient("m", base_url=url).chat_stream([{"role": "user", "content": "x"}]))
+    assert pieces == ["Hal", "lo", "!"] and SEEN[-1]["stream"] is True

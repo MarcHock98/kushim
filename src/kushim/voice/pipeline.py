@@ -15,7 +15,7 @@ from ..safety.killswitch import KillSwitch, is_kill_phrase
 from .dialog import Dialog, State
 from .speaker import SpeakerVerifier
 from .stt import SpeechToText
-from .tts import Speaker, chunk_stream
+from .tts import Speaker, chunk_stream, prefetch
 
 SYSTEM_PROMPT = (
     "Du bist kushim, ein persönlicher, lokaler Assistent. Antworte auf Deutsch, kurz und sachlich, "
@@ -67,7 +67,7 @@ class Pipeline:
                 yield s
 
         self.dialog.reply_ready()
-        self.speaker.say(sentence_source())
+        self.speaker.say(prefetch(sentence_source(), stop=lambda: self.kill.fired))
         reply = " ".join(sentences)
         self.history.append({"role": "assistant", "content": reply})
         self.dialog.speech_done()

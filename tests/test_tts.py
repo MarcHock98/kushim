@@ -63,3 +63,32 @@ def test_piper_real_voice_if_present():
     data = PiperEngine.from_local(str(model)).synthesize("Hallo Welt.")
     with wave.open(io.BytesIO(data)) as w:
         assert w.getnframes() > 1000
+
+
+def test_prefetch_keeps_order_and_propagates_errors():
+    import pytest
+
+    from kushim.voice.tts import prefetch
+    assert list(prefetch(iter(["a", "b", "c"]))) == ["a", "b", "c"]
+
+    def bad():
+        yield "x"
+        raise RuntimeError("boom")
+
+    with pytest.raises(RuntimeError):
+        list(prefetch(bad()))
+
+
+def test_prefetch_stops_when_requested():
+    from kushim.voice.tts import prefetch
+
+    def endless():
+        i = 0
+        while True:
+            yield str(i)
+            i += 1
+
+    flag = {"stop": False}
+    it = prefetch(endless(), stop=lambda: flag["stop"])
+    assert next(it) == "0"
+    flag["stop"] = True      # Erzeuger-Thread beendet sich, kein Hängen

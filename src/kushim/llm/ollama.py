@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ..net.loopback import request_json
+from ..net.loopback import request_json, stream_json_lines
 
 DEFAULT_URL = "http://127.0.0.1:11434"
 
@@ -31,6 +31,15 @@ class OllamaClient:
         except (TypeError, KeyError) as e:
             raise ValueError("Unerwartete Antwort des lokalen LLM") from e
 
-    def chat_stream(self, messages: list[dict[str, str]]):
-        """Platzhalter für Streaming: liefert die ganze Antwort als einen Block (echtes Streaming folgt)."""
-        yield self.chat(messages)
+    def chat_stream(self, messages: list[dict[str, str]], temperature: float = 0.3):
+        """Liefert die Antwort Stück für Stück (Tokens) über Loopback-Streaming."""
+        for obj in stream_json_lines("POST", f"{self.base_url}/api/chat", {
+                "model": self.model, "messages": messages, "stream": True,
+                "options": {"temperature": temperature}}, timeout=self.timeout):
+            if not isinstance(obj, dict):
+                raise ValueError("Unerwartete Antwort des lokalen LLM")
+            piece = (obj.get("message") or {}).get("content", "")
+            if piece:
+                yield str(piece)
+            if obj.get("done"):
+                return
