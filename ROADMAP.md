@@ -25,7 +25,9 @@ Oberste Regel: Schäden jeder Art sind verboten. Lokal zuerst (Modus A), Claude 
 - [x] Piper 1.8.0 (Home Assistant/OHF-Voice, GPL-3, privat ok) mit deutscher Stimme thorsten-high lokal in `models/piper`; `PiperEngine` in `voice/tts.py`; Synthese bei gesperrtem Netzwerk getestet (2026-10-03)
 - [ ] Hörtest der Stimme und Audioausgabe an Lautsprecher anbinden (nur Nutzer hört, Gerätewahl)
 - [x] Barge-in/Gesprächszustand (`voice/dialog.py`), mit Tests
-- [ ] Streaming und Latenz unter 1,5 s (braucht echte Komponenten und Messung)
+- [x] Pipeline-Logik (`voice/pipeline.py`): STT, Notaus vor allem, Sprecher-Prüfung fail-closed, LLM nur Text, Satz-Sprachausgabe; Sprachbefehl-Notaus damit eingehängt (2026-10-03)
+- [ ] Echtes LLM-Token-Streaming über Loopback (jetzt ein Block pro Antwort) und Latenz unter 1,5 s messen
+- [ ] Mikrofon-Eingabe (sounddevice o. ä., Quelle prüfen) und Lautsprecher-Ausgabe anbinden, Ende-zu-Ende-Lauf (nur Nutzer hört/spricht)
 
 ## Phase 2: Oberfläche
 - [x] Backend-API-Kern (`api/protocol.py`: Token, Default-Deny-Dispatch, neutrale Fehler), getestet
@@ -35,7 +37,7 @@ Oberste Regel: Schäden jeder Art sind verboten. Lokal zuerst (Modus A), Claude 
 - [x] Freigabe-Warteschlange (`safety/approvals.py`: nur ASK, einmalig, Hash-gebunden, Ablauf, Notaus), getestet
 - [ ] Freigabe-Leiste und Claude-Vorschau in der UI (braucht UI-Toolchain)
 - [x] Notaus-Kern (`safety/killswitch.py`): Marker-Datei per Verknüpfung `kushim NOTAUS.lnk`/`kushim kill`, Sprachbefehl-Erkennung ("Notaus", "stopp alles" ...), ohne Sprecherverifikation, Aufheben nur per `kushim resume`; `kushim start` beendet sich bei Notaus und startet bei aktivem Notaus nicht (2026-10-03)
-- [ ] Sprachbefehl-Notaus in die Sprachpipeline einhängen (Transkript vor LLM, auch Dialog.halt und ActionGate.kill auslösen) (neu 2026-10-03, braucht Pipeline)
+- [x] Sprachbefehl-Notaus in der Pipeline (vor LLM, Dialog.halt); ActionGate.kill beim Anschluss des Gates noch als Aktion in `KillSwitch` registrieren
 - [ ] Dashboard, Gedächtnis-Ansicht, Sicherheitsstatus in der UI
 
 ## Phase 3: Tools (jeweils mit ActionSpec und Tests)
