@@ -42,7 +42,8 @@ Oberste Regel: Schäden jeder Art sind verboten. Lokal zuerst (Modus A), Claude 
 ## Phase 4: Lernen
 - [ ] Reflexionsschleife und Nutzerprofil
 - [ ] Feedback-Log als Trainingsdaten
-- [ ] Bandit/RL mit Sicherheits-Reward
+- [x] Bandit über Antwortstile mit Sicherheits-Reward (`learning/bandit.py`: Verstoß = -1, Strafen für Schmeichelei/Abhängigkeit), getestet; lernt nie Berechtigungen
+- [ ] Bandit an Feedback-Log (`add_feedback`) und Stil-Auswahl anbinden (braucht LLM-Pipeline) (neu 2026-10-03)
 - [ ] Tests gegen Manipulation, Schmeichelei, Abhängigkeit
 
 ## Phase 5: NAS und Ausbau
