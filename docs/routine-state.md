@@ -3,11 +3,12 @@
 Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
 
 - Letzter Durchlauf: 2026-10-03 (/loop kushim-routine, STT)
-- Aktueller Branch: master (routine/p1-wake und routine/p1-stt gemerged, Branches bleiben)
+- Aktueller Branch: master (routine/p1-wake, p1-stt, p1-speaker gemerged, Branches bleiben)
 - Erledigt: Wake-Word-Logik + Push-to-Talk (src/kushim/voice/trigger.py), 21 Tests grün, Modell hey_jarvis (ONNX) lädt
 - Erledigt zusätzlich: STT-Logik voice/stt.py, 25 Tests grün, faster-whisper 1.2.1 gepinnt
-- Nächster Schritt: Phase 1, Sprecherverifikation (lokal, Logik mit Fakes testbar)
-- Branches bereit zum Push durch den Nutzer: master, routine/p1-wake, routine/p1-stt
+- Erledigt zusätzlich: Sprecherverifikation-Logik, 33 Tests grün
+- Nächster Schritt: Phase 1, Lokales LLM (Ollama) Anbindung nur über localhost; Modell-Download erfragen
+- Branches bereit zum Push durch den Nutzer: master, routine/p1-wake, routine/p1-stt, routine/p1-speaker
 
 ## Slack
 - Nutzer-ID / Kanal-ID: (noch nicht ermittelt)

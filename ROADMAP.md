@@ -15,7 +15,8 @@ Oberste Regel: Schäden jeder Art sind verboten. Lokal zuerst (Modus A), Claude 
 - [ ] Eigenes Wake Word "Hey Kushim" trainieren oder "hey_jarvis" nutzen (neu 2026-10-03: Entscheidung des Nutzers)
 - [x] Speech-to-Text-Logik (faster-whisper, offline, `voice/stt.py`), mit Fake-Modell getestet
 - [ ] Echtes Whisper-Modell lokal ablegen und STT mit Aufnahme prüfen (neu 2026-10-03: Modell-Download >1 GB und Mikrofon, Nutzer entscheidet/testet)
-- [ ] Sprecherverifikation
+- [x] Sprecherverifikation-Logik (`voice/speaker.py`, fail-closed, Cosine-Score), mit synthetischen Embeddings getestet
+- [ ] Embedding-Modell wählen (lokal, z. B. ECAPA/Resemblyzer), Profil im Vault speichern und mit echter Stimme prüfen (neu 2026-10-03: Modellwahl/Download und Live-Test durch den Nutzer)
 - [ ] Lokales LLM (Ollama, 7-8B)
 - [ ] Lokale Stimme (Piper/Kokoro)
 - [ ] Streaming, Barge-in, Latenz unter 1,5 s
