@@ -9,6 +9,44 @@ from .memory.keys import get_or_create_key, store_key
 from .memory.migrate import backup, migrate
 
 
+HELP = """kushim: persönlicher, lokaler Assistent. Alles läuft auf diesem Rechner.
+
+Täglich
+  kushim start                 Lokale Dienste starten (Ollama, nur 127.0.0.1); Strg+C beendet
+  kushim talk                  Sprechen per Wake Word
+                               [--mic NAME] [--out NAME] [--wake-words "hey kushim,kushim"]
+  kushim kill                  NOTAUS: stoppt alle kushim-Dienste
+  kushim resume                Notaus bewusst aufheben
+
+Stimme
+  kushim voice enroll          Stimme einschreiben (10 Absätze) [--record] [--auto] [--quick] [--mic NAME]
+  kushim voice test            Sprecherprüfung mit echten Werten ausprobieren [--mic NAME]
+  kushim voice status          Profil und Schwelle anzeigen
+  kushim voice threshold 0.79  Schwelle setzen (0,5 bis 0,9; niedriger = lockerer)
+  kushim voice record          Absätze für den Stimmklon aufnehmen [--redo] [--auto] [--mic NAME]
+  kushim voice reset           Stimmprofil löschen
+
+Sprachmodell
+  kushim llm                   Aktuelles Modell zeigen
+  kushim llm set <name>        Modell wechseln (z. B. qwen3.5:9b); laden mit install.ps1 -Llm <name>
+
+Gedächtnis und Schlüssel
+  kushim memory init           Vault anlegen (erzeugt auch den Schlüssel)
+  kushim memory info           Vault-Ort und Zustand
+  kushim memory backup         Verschlüsselte Sicherung erstellen
+  kushim memory migrate --to local:D:/kushim-vault
+  kushim key export            Schlüssel zum Sichern anzeigen (nur im eigenen Terminal)
+  kushim key import <vault_id> <hexkey>
+
+Prüfen und Hilfe
+  kushim doctor                Prüft, ob alles installiert und eingerichtet ist
+  kushim help                  Diese Übersicht
+  kushim <befehl> --help       Optionen eines Befehls
+
+Einstellungen: config.toml (Vault, LLM), wakewords.toml (Wake Words, Zeiten). Anleitung: README.md
+"""
+
+
 def _vault(cfg: Config):
     """Öffnet den Vault oder erklärt, was fehlt (der Vault wird nie automatisch angelegt)."""
     try:
@@ -21,13 +59,13 @@ def _vault(cfg: Config):
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="kushim")
     sub = p.add_subparsers(dest="cmd", required=True)
-    mem = sub.add_parser("memory").add_subparsers(dest="sub", required=True)
+    mem = sub.add_parser("memory", help="Vault anlegen, Info, Backup, Umzug").add_subparsers(dest="sub", required=True)
     mem.add_parser("init")
     mem.add_parser("info")
     mem.add_parser("backup")
     m = mem.add_parser("migrate")
     m.add_argument("--to", required=True, help='z.B. "local:D:/kushim-vault"')
-    key = sub.add_parser("key").add_subparsers(dest="sub", required=True)
+    key = sub.add_parser("key", help="Vault-Schlüssel sichern oder einspielen").add_subparsers(dest="sub", required=True)
     key.add_parser("export")
     ki = key.add_parser("import")
     ki.add_argument("vault_id")
@@ -60,7 +98,11 @@ def main(argv: list[str] | None = None) -> int:
     ls = ll.add_parser("set", help="z. B. kushim llm set qwen3.5:9b")
     ls.add_argument("model")
     sub.add_parser("doctor", help="Prüft, ob alles installiert und eingerichtet ist")
+    sub.add_parser("help", help="Übersicht aller Befehle mit Beispielen")
     args = p.parse_args(argv)
+    if args.cmd == "help":
+        print(HELP)
+        return 0
     cfg = Config.load()
 
     root = __import__("pathlib").Path(__file__).resolve().parents[2]
