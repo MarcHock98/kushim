@@ -47,3 +47,23 @@ class Speaker:
             self.play(self.engine.synthesize(s))
             n += 1
         return n
+
+
+class PiperEngine:
+    """Piper (offline, GPL-3, nur lokale Modelldatei). Liefert WAV-Bytes pro Satz."""
+
+    def __init__(self, voice: Any):
+        self.voice = voice
+
+    @classmethod
+    def from_local(cls, model_path: str) -> "PiperEngine":
+        from piper import PiperVoice
+        return cls(PiperVoice.load(model_path))
+
+    def synthesize(self, text: str) -> bytes:
+        import io
+        import wave
+        buf = io.BytesIO()
+        with wave.open(buf, "wb") as w:
+            self.voice.synthesize_wav(text, w)
+        return buf.getvalue()
