@@ -24,6 +24,7 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
 - openwakeword braucht `requests` trotz --no-deps (gelöst, in pyproject-Extra `voice`)
 
 ## Entscheidungen des Nutzers
+- 2026-10-03: Live-Test mit Systemstandard-Geräten; Desktop-Verknüpfung `kushim sprechen.lnk` (talk, F9) angelegt
 - 2026-10-03: Notaus als Windows-Verknüpfung und/oder Sprachbefehl; beides umgesetzt (Verknüpfung auf dem Desktop, Sprache wartet auf Pipeline)
 - 2026-10-03: Start-Anwendung und Logo gewünscht; Umsetzung später nach Plan (Launcher zuerst, dann Tauri), Logo nur lokal
 - 2026-10-03: Whisper large-v3-turbo laden; LLM qwen2.5:7b (Ollama) laden; Hardware RTX 3070 8 GB, 31 GB RAM
