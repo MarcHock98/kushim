@@ -15,7 +15,7 @@ Oberste Regel: Schäden jeder Art sind verboten. Lokal zuerst (Modus A), Claude 
 - [ ] Eigenes Wake Word "Hey Kushim" trainieren (Entscheidung Nutzer 2026-10-03; bis dahin hey_jarvis)
 - [x] Speech-to-Text-Logik (faster-whisper, offline, `voice/stt.py`), mit Fake-Modell getestet
 - [x] Whisper large-v3-turbo lokal (`models/`, git-ignoriert) geladen; läuft auf CUDA, bei gesperrtem Netzwerk getestet (2026-10-03)
-- [ ] STT mit echter Sprachaufnahme prüfen (nur Nutzer, Mikrofon)
+- [x] STT mit echter Sprachaufnahme: im Live-Test funktioniert (2026-10-03)
 - [x] Sprecherverifikation-Logik (`voice/speaker.py`, fail-closed, Cosine-Score), mit synthetischen Embeddings getestet
 - [ ] Embedding-Modell wählen (lokal, z. B. ECAPA/Resemblyzer), Profil im Vault speichern und mit echter Stimme prüfen (neu 2026-10-03: Modellwahl/Download und Live-Test durch den Nutzer)
 - [x] Ollama-Client (`llm/ollama.py`, nur Loopback, nur Text), mit lokalem Fake-Server getestet
@@ -29,7 +29,7 @@ Oberste Regel: Schäden jeder Art sind verboten. Lokal zuerst (Modus A), Claude 
 - [ ] Echtes LLM-Token-Streaming über Loopback (jetzt ein Block pro Antwort); Latenz ohne Audio gemessen: 0,4 s warm bei kurzer Antwort, längere Antworten und Mikrofonaufnahme noch offen
 - [x] Audio-Modul `voice/audio.py` (sounddevice 0.5.6, MIT; Geräte nach Namensteil, Stille-Erkennung für Äußerungen, öffnet Mikrofon nur bei Aufruf, Audio nur im Speicher); Geräteliste gelesen, kein Stream geöffnet (2026-10-03)
 - [x] `kushim talk` (`voice/talk.py`, Taste F9 oder `--wake`, `--mic`/`--out`) zusammengebaut. Kette ohne Mikrofon/Lautsprecher getestet: Piper-Sprache -> Whisper (CUDA) -> qwen2.5:7b -> Piper, Frage "Hauptstadt von Frankreich" richtig, 0,4 s warm (2,9 s erster Lauf); Notaus-Satz erkannt (2026-10-03). Nvidia cuBLAS/cuDNN (offizielle PyPI-Pakete) für die GPU nachinstalliert
-- [ ] Live-Test mit echtem Mikrofon und Lautsprecher: `kushim talk --mic "Arctis 5 Chat" --out "Arctis 5 Game"` (nur Nutzer; Gerätewahl)
+- [x] Live-Test durch den Nutzer bestanden (2026-10-03, Systemstandard-Geräte, F9):  `kushim talk --mic "Arctis 5 Chat" --out "Arctis 5 Game"` (nur Nutzer; Gerätewahl)
 
 ## Phase 2: Oberfläche
 - [x] Backend-API-Kern (`api/protocol.py`: Token, Default-Deny-Dispatch, neutrale Fehler), getestet
