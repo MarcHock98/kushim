@@ -340,3 +340,12 @@ def test_direct_never_skips_verification_or_answers():
     assert "ja oder nein" in tc.handle("Antwort an Claude: Variante zwei", True, True) and control.calls == []   # Antworten fragen nach
     tc.handle("nein", True, True)
     assert "ja oder nein" in tc.handle("Erlaube das", True, True)                                                   # Erlaubnisse auch
+
+
+def test_direct_announces_before_running():
+    tc, _, research, *_ = make(enabled=["claude.research"], direct=True)
+    order = []
+    tc.say = lambda text: order.append(("say", text, list(research.calls)))
+    reply = tc.handle("Recherchiere die Höhe des Eiffelturms", True)
+    assert order[0][0] == "say" and "Ich starte." in order[0][1] and order[0][2] == ["approve"][:0] or order[0][2] == ["approve"][:0]
+    assert reply == "Laut Claude: 324 Meter"                          # Ansage kam schon vorher, nicht doppelt in der Antwort

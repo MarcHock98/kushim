@@ -179,6 +179,7 @@ class ToolCommands:
         `summarize`: fasst Wikipedia-Treffer mit dem werkzeuglosen lokalen Modell zusammen (kommt von cli.py; dieses Modul fasst das Web-Paket nicht an)."""
         self.cfg, self.registry, self.research, self.control, self.sessions = cfg, registry, research, control, sessions
         self.summarize, self.folders = summarize, folders
+        self.say: Callable[[str], None] | None = None       # sofortige Ansage vor langen Aktionen (Pipeline.say_text)
         self.before: Callable[[], None] = lambda: None      # vor jedem Satz: frischen Stand übernehmen (z. B. Modus C im EgressGate)
         self._pending: _Pending | None = None
         self._announcements: "queue.SimpleQueue[str]" = queue.SimpleQueue()
@@ -297,7 +298,15 @@ class ToolCommands:
         return bool(getattr(self.cfg, "voice_direct", False))
 
     def _run_direct(self, intro: str) -> str:
-        return intro + self._confirm("ja", True)
+        """Erst sofort ansagen ("... Ich starte."), dann ausführen; die Ausführung kann bis zu zwei Minuten dauern."""
+        intro += "Ich starte."
+        if self.say is None:
+            return intro + " " + self._confirm("ja", True)
+        try:
+            self.say(intro)
+        except Exception:                                              # noqa: BLE001 (Ansage ist nur Komfort, nie Grund abzubrechen)
+            pass
+        return self._confirm("ja", True)
 
     def _status(self) -> str:
         st = self.sessions.state()
