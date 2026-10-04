@@ -11,7 +11,7 @@
   },
   "app": {
     "windows": [
-      { "title": "kushim", "width": 520, "height": 720, "minWidth": 360, "minHeight": 480 }
+      { "title": "kushim", "width": 1000, "height": 760, "minWidth": 360, "minHeight": 480 }
     ],
     "security": {
       "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src ws://127.0.0.1:* ipc: http://ipc.localhost"

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { IconArrowUp } from "./Icons";
 
 export interface Pending {
   kind: string;
@@ -41,7 +42,7 @@ export function ApprovalBar({ pending, onDecide }: Props) {
   return (
     <section className="approval" role="alertdialog" aria-labelledby="ap-title" aria-describedby="ap-prev" onKeyDown={onKey}>
       <h2 id="ap-title">{KIND_TITLE[pending.kind] ?? "Freigabe nötig"}</h2>
-      {pending.sends_data_out && <span className="chip" title="Dieser Text verlässt deinen Rechner">⇧ Sendet Daten nach außen</span>}
+      {pending.sends_data_out && <span className="chip" title="Dieser Text verlässt deinen Rechner"><IconArrowUp /> Sendet Daten nach außen</span>}
       <p className="ap-note">Dieser Text wird so ausgeführt:</p>
       <pre id="ap-prev" className="ap-preview" tabIndex={0}>{pending.preview}</pre>
       <p className="ap-time" aria-live="off">{expired ? "Abgelaufen" : `Läuft ab in ${mmss(left)}`}</p>

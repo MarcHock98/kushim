@@ -1,3 +1,5 @@
+import { IconThumbDown, IconThumbUp } from "./Icons";
+
 export interface Entry {
   id: number;
   heard: string;
@@ -29,9 +31,9 @@ export function Transcript({ entries, rated = {}, onRate }: {
               {e.reply && onRate && (
                 <span className="thumbs">
                   <button type="button" aria-pressed={rated[e.id] === 1} disabled={rated[e.id] !== undefined}
-                    title="Hilfreich" aria-label="Hilfreich" onClick={() => onRate(e.id, 1)}>👍</button>
+                    title="Hilfreich" aria-label="Hilfreich" onClick={() => onRate(e.id, 1)}><IconThumbUp /></button>
                   <button type="button" aria-pressed={rated[e.id] === -1} disabled={rated[e.id] !== undefined}
-                    title="Nicht hilfreich" aria-label="Nicht hilfreich" onClick={() => onRate(e.id, -1)}>👎</button>
+                    title="Nicht hilfreich" aria-label="Nicht hilfreich" onClick={() => onRate(e.id, -1)}><IconThumbDown /></button>
                 </span>
               )}
             </p>
