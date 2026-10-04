@@ -1,0 +1,141 @@
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { App } from "./App";
+import { Avatar } from "./components/Avatar";
+import { ApiClient } from "./lib/api";
+import { resolveState, STATE_VIEW } from "./lib/avatarState";
+import { MockSocket } from "./lib/mock";
+
+const TOKEN = "t".repeat(43);
+afterEach(cleanup);
+
+function loaderWith(sock: { current?: MockSocket }, opts: { fail?: boolean; token?: string } = {}) {
+  return async () => ({
+    client: new ApiClient({ port: 5000, token: opts.token ?? TOKEN }, (u) => {
+      sock.current = new MockSocket(u, TOKEN, opts.fail);
+      return sock.current;
+    }),
+  });
+}
+
+describe("resolveState", () => {
+  it("offline und halted haben Vorrang", () => {
+    expect(resolveState({ connected: false, killActive: true, backendState: "speaking" })).toBe("offline");
+    expect(resolveState({ connected: true, killActive: true, backendState: "alarm" })).toBe("halted");
+    expect(resolveState({ connected: true, killActive: false, backendState: "alarm" })).toBe("alarm");
+    expect(resolveState({ connected: true, killActive: false })).toBe("idle");
+  });
+  it("jeder Zustand hat eine Textzeile, alarm und halted melden assertive", () => {
+    for (const s of Object.values(STATE_VIEW)) expect(s.label.length).toBeGreaterThan(3);
+    expect(STATE_VIEW.alarm.live).toBe("assertive");
+    expect(STATE_VIEW.halted.live).toBe("assertive");
+  });
+});
+
+describe("ApiClient", () => {
+  it("verbindet nur mit 127.0.0.1 und sendet das Token mit", async () => {
+    const sock: { current?: MockSocket } = {};
+    const c = new ApiClient({ port: 5000, token: TOKEN }, (u) => (sock.current = new MockSocket(u)));
+    await c.connect();
+    expect(sock.current!.url).toBe("ws://127.0.0.1:5000");
+    expect((await c.call("safety.status")).ok).toBe(true);
+    expect((sock.current!.sent[0] as { token: string }).token).toBe(TOKEN);
+  });
+  it("lehnt ungültige Ports ab", () => {
+    for (const port of [0, -1, 70000, 1.5, NaN]) expect(() => new ApiClient({ port, token: TOKEN })).toThrow();
+  });
+  it("falsches Token: neutrale Ablehnung", async () => {
+    const c = new ApiClient({ port: 5000, token: "x".repeat(43) }, (u) => new MockSocket(u));
+    await c.connect();
+    expect(await c.call("safety.status")).toEqual({ ok: false, error: "unauthorized" });
+  });
+});
+
+describe("App", () => {
+  it("zeigt Bereit, wenn das Backend antwortet", async () => {
+    render(<App load={loaderWith({})} />);
+    await waitFor(() => expect(screen.getAllByText(STATE_VIEW.idle.label).length).toBeGreaterThan(0));
+    expect(screen.getByRole("button", { name: "NOTAUS" })).toBeInTheDocument();
+  });
+
+  it("zeigt Offline mit Erneut-versuchen, wenn das Backend fehlt; Notaus bleibt sichtbar", async () => {
+    render(<App load={loaderWith({}, { fail: true })} />);
+    await waitFor(() => expect(screen.getAllByText(STATE_VIEW.offline.label).length).toBeGreaterThan(0));
+    expect(screen.getByRole("button", { name: "Erneut versuchen" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "NOTAUS" })).toBeInTheDocument();
+  });
+
+  it("Notaus löst mit einem Klick aus (ohne Rückfrage) und Aufheben braucht eine Bestätigung", async () => {
+    const sock: { current?: MockSocket } = {};
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<App load={loaderWith(sock)} />);
+    await waitFor(() => screen.getAllByText(STATE_VIEW.idle.label));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "NOTAUS" })); });
+    await waitFor(() => expect(screen.getAllByText(STATE_VIEW.halted.label).length).toBeGreaterThan(0));
+    expect(confirm).not.toHaveBeenCalled();
+    expect(sock.current!.kill).toBe(true);
+
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Notaus aufheben" })); });
+    expect(confirm).toHaveBeenCalled();
+    expect(sock.current!.kill).toBe(true);              // abgelehnt: bleibt aktiv
+
+    confirm.mockReturnValue(true);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Notaus aufheben" })); });
+    await waitFor(() => expect(sock.current!.kill).toBe(false));
+    expect(sock.current!.sent.some((m) => (m as { type: string; confirm?: boolean }).type === "safety.resume" &&
+      (m as { confirm?: boolean }).confirm === true)).toBe(true);
+  });
+
+  it("Strg+Umschalt+K löst den Notaus aus", async () => {
+    const sock: { current?: MockSocket } = {};
+    render(<App load={loaderWith(sock)} />);
+    await waitFor(() => screen.getAllByText(STATE_VIEW.idle.label));
+    await act(async () => { fireEvent.keyDown(window, { key: "K", ctrlKey: true, shiftKey: true }); });
+    await waitFor(() => expect(sock.current!.kill).toBe(true));
+  });
+
+  it("ohne Tauri und ohne ?mock gibt es keine Zugangsdaten und kein Backend wird erfunden", async () => {
+    render(<App />);
+    await waitFor(() => expect(screen.getAllByText(STATE_VIEW.offline.label).length).toBeGreaterThan(0));
+  });
+});
+
+describe("Avatar", () => {
+  it("hat role=img und aria-label mit der Textzeile", () => {
+    render(<Avatar state="listening" />);
+    expect(screen.getByRole("img")).toHaveAttribute("aria-label", STATE_VIEW.listening.label);
+  });
+
+  it("startet bei prefers-reduced-motion keine Animationsschleife", () => {
+    const raf = vi.spyOn(window, "requestAnimationFrame");
+    const mm = vi.spyOn(window, "matchMedia").mockReturnValue({ matches: true } as MediaQueryList);
+    render(<Avatar state="thinking" />);
+    expect(raf).not.toHaveBeenCalled();
+    mm.mockRestore();
+  });
+});
+
+describe("Sprach-Zustand vom Backend", () => {
+  it("zeigt Zustand und Pegel der Sprach-Pipeline, sobald der Dienst aktiv ist", async () => {
+    const sock: { current?: MockSocket } = {};
+    render(<App load={loaderWith(sock)} />);
+    await waitFor(() => screen.getAllByText(STATE_VIEW.idle.label));
+    expect(screen.getByText(/Der Sprachdienst läuft nicht/)).toBeInTheDocument();   // ehrlich: kein Dienst, kein Zustand
+    sock.current!.voice = { active: true, state: "listening", level: 0.5 };
+    await waitFor(() => expect(screen.getAllByText(STATE_VIEW.listening.label).length).toBeGreaterThan(0), { timeout: 2000 });
+    expect(screen.queryByText(/Der Sprachdienst läuft nicht/)).toBeNull();
+  });
+
+  it("Notaus hat Vorrang vor dem gemeldeten Sprachzustand; unbekannte Zustände werden ignoriert", async () => {
+    const sock: { current?: MockSocket } = {};
+    render(<App load={loaderWith(sock)} />);
+    await waitFor(() => screen.getAllByText(STATE_VIEW.idle.label));
+    sock.current!.voice = { active: true, state: "root", level: 0.5 };
+    await new Promise((r) => setTimeout(r, 500));
+    expect(screen.queryByText(STATE_VIEW.listening.label)).toBeNull();
+    sock.current!.voice = { active: true, state: "speaking", level: 0.5 };
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "NOTAUS" })); });
+    await waitFor(() => expect(screen.getAllByText(STATE_VIEW.halted.label).length).toBeGreaterThan(0));
+    expect(screen.queryByText(STATE_VIEW.speaking.label)).toBeNull();
+  });
+});
