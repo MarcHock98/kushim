@@ -39,3 +39,5 @@ Format: Datum, Datei, Grund (ein Satz).
 - 2026-10-04, claude_cli/ + voice/: Vorhandene Claude-Branches erkennen und dort weitermachen (Nutzerwunsch). `review.list_worktrees` (nur Worktrees unter <freigegebener Ordner>/.claude/worktrees mit Branch worktree-*), `ClaudeSessions.branches/adopt` (nur lokal, nichts geht raus), Weiterarbeiten per `claude --continue` im Worktree mit allen Sicherheits-Flags; Sprache "Welche Claude-Branches gibt es?" / "Mach bei Nummer eins weiter [und ...]"; `kushim claude branches`. Weitermachen bleibt ein normaler Claude-Zug (Sprecher stark, Vorschau/direkt wie gehabt).
 
 - 2026-10-04, voice/ + tools/: Neues lokales Werkzeug timer.local (Timer und Erinnerungen per Sprache, standardmäßig aus, Einschalten nie per Sprache, verifizierte Stimme, Gate-geprüft, keine Netzfolgen). Sicherheitsregeln und Allowlists unverändert.
+
+- 2026-10-04, voice/ + tools/: Neues lokales Werkzeug notes.local (Notizen per Sprache im Vault, standardmäßig aus, Löschen nur mit Rückfrage, Audit ohne Text). Sicherheitsregeln und Allowlists unverändert.

@@ -63,7 +63,7 @@ Oberste Regel: Schäden jeder Art sind verboten. Lokal zuerst (Modus A), Claude 
 - [ ] Mail und Kalender (lokal)
 - [ ] Timer, Erinnerungen und Notizen per Sprache (lokal, ohne Netz; Vorschlag 2026-10-04, schneller Gewinn; über `kushim-add-tool`, standardmäßig aus)
   - [x] Timer und Erinnerungen (2026-10-04): Werkzeug `timer.local` (lokal, standardmäßig aus, Einschalten nie per Sprache), `timers.py` (run/timers.json, höchstens 20 Timer, 7 Tage, 80 Zeichen), Dauer aus gesprochenem Deutsch ("eine halbe Stunde", "fünfundzwanzig Minuten"), Sprache "Stell einen Timer auf zehn Minuten", "Erinnere mich in 20 Minuten an die Wäsche", "Welche Timer laufen?", "Lösche alle Timer"; Ansage bei Ablauf von sich aus (verpasste werden als verpasst angesagt); 27 Tests. Live mit Mikrofon nicht geprüft
-  - [ ] Notizen per Sprache (lokal, im Vault verschlüsselt; Diktat speichern, vorlesen, löschen)
+  - [x] Notizen per Sprache (2026-10-04): Werkzeug `notes.local` (lokal, standardmäßig aus, Einschalten nie per Sprache), `voice/note_commands.py`: "Notiere: ...", "Merk dir ...", "Lies meine Notizen vor", "Was habe ich über Milch notiert?", "Lösche die letzte Notiz / Nummer zwei" (Löschen nur nach Rückfrage "ja", eigene Aktion `notes.delete` IRREVERSIBLE mit Prüfer); Speicher: Vault (`kind=note`), Audit ohne Text; Notizen gehen nie an Claude, ins Netz oder ins Sprachmodell; 17 Tests mit Fake-Vault. Live mit echtem Vault und Mikrofon nicht geprüft
 - [ ] PC-Steuerung (freigegebene Ordner, Papierkorb)
 - [ ] Smart Home und Musik
 - ~~Claude als Opt-in (Modus C)~~ aufgeteilt am 2026-10-04: Recherche über Claude ist umgesetzt (siehe oben), "Claude entwickelt das Projekt" steht als "Claude über die Claude CLI steuern" weiter oben

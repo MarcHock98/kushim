@@ -122,6 +122,16 @@ TIMER = ToolInfo(
 )
 
 
+NOTES = ToolInfo(
+    name="notes.local",
+    title="Notizen",
+    description=("Merkt sich Notizen per Sprache (\"Notiere: ...\"), liest sie vor und sucht darin. Sie liegen verschlüsselt in deinem Vault auf dem "
+                 "PC und gehen nie ins Netz, an Claude oder ins Sprachmodell. Löschen fragt vorher nach."),
+    spec=ActionSpec("notes.local", Risk.READ),           # nur eigener lokaler Speicher (Anlegen/Lesen); Löschen ist eine eigene Aktion mit Rückfrage
+    sends_data_out=False,
+)
+
+
 CLAUDE_RESEARCH = ToolInfo(
     name="claude.research",
     title="Recherche über Claude",
@@ -187,4 +197,4 @@ def claude_code_tool(cfg=None, cache=None) -> ToolInfo:
 
 
 def default_tools(cfg=None, cache=None) -> list[ToolInfo]:
-    return [WEB_SEARCH, claude_research_tool(cfg, cache), claude_code_tool(cfg, cache), TIMER]
+    return [WEB_SEARCH, claude_research_tool(cfg, cache), claude_code_tool(cfg, cache), TIMER, NOTES]
