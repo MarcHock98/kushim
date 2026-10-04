@@ -260,6 +260,7 @@ def main(argv: list[str] | None = None) -> int:
         from .safety.killswitch import is_triggered
         from .voice import audio, voiceprint, wakeconfig
         from .voice.audio import UtteranceCollector
+        from .voice.bargein import BargeIn
         from .voice.embedder import SherpaEmbedder
         from .voice.talk import TalkLoop, build_live
         from .voice.wake_commands import WakeWordCommands
@@ -300,14 +301,27 @@ def main(argv: list[str] | None = None) -> int:
             first_ms = int(wcfg.settings.command_wait_seconds * 1000)
             end_ms = int(wcfg.settings.end_silence_seconds * 1000)
             max_ms = int(wcfg.settings.max_seconds * 1000)
+            st = wcfg.settings
+            follow_ms = int(st.follow_up_seconds * 1000)
             out = lambda r: print(f"Du: {r.heard}\nkushim: {r.reply or '(' + r.outcome + ')'}"
+                                  + (" [unterbrochen]" if r.outcome == "interrupted" else "")
                                   + (f"  [{r.detail}]" if r.detail else ""))
+            barge = BargeIn(level=st.barge_in_level, min_ms=st.barge_in_ms) if st.barge_in else None
             loop = TalkLoop(mic, pipeline, kill, wake=lambda f: det.process(f) is not None, ack=ack,
                             flush=mic.flush, new_collector=lambda: UtteranceCollector(wait_ms=wait_ms, silence_ms=end_ms, max_ms=max_ms),
                             on_result=out,
-                            first_collector=lambda: UtteranceCollector(wait_ms=first_ms, silence_ms=end_ms, max_ms=max_ms))
+                            first_collector=lambda: UtteranceCollector(wait_ms=first_ms, silence_ms=end_ms, max_ms=max_ms),
+                            follow_collector=(lambda: UtteranceCollector(wait_ms=follow_ms, silence_ms=end_ms, max_ms=max_ms))
+                            if follow_ms > 0 else None,
+                            barge=barge)
             print("Wake Words: " + ", ".join(w.name for w in wcfg.enabled())
                   + ". Notaus: 'Notaus' sagen oder die Verknüpfung. Strg+C beendet.")
+            if follow_ms > 0:
+                print(f"Gespräch: nach einer Antwort hörst du {st.follow_up_seconds:g} s lang ohne Wake Word zu; "
+                      "\"das war's\" oder Stille beendet es.")
+            if barge is not None:
+                print("Unterbrechen: einfach dazwischensprechen (Kopfhörer empfohlen; mit Lautsprechern kann kushim sich "
+                      "selbst hören: barge_in_level erhöhen oder barge_in = false in wakewords.toml).")
             print("Ende:", loop.run())
         except KeyboardInterrupt:
             pass

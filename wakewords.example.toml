@@ -11,6 +11,10 @@ command_wait_seconds = 1.5  # Wake Word und Befehl in einem Zug: so lange wartet
 listen_seconds = 4.0        # nach "Ja?" (nur Wake Word gesagt): so lange wartet kushim auf den Beginn deines Befehls
 end_silence_seconds = 0.9   # so lange Stille beendet deine Äußerung (länger = Denkpausen erlaubt)
 max_seconds = 60.0          # längste einzelne Äußerung
+follow_up_seconds = 8.0     # Gespräch: nach einer Antwort so lange ohne Wake Word zuhören (0 = aus); "das war's" beendet es
+barge_in = true             # Unterbrechen: Dazwischensprechen stoppt kushim sofort (Kopfhörer empfohlen)
+barge_in_level = 1200.0     # Mikrofonpegel, ab dem es als Sprechen zählt (höher = unempfindlicher, z. B. bei Lautsprechern)
+barge_in_ms = 320           # so lange muss der Pegel anhalten
 
 # Deine Wörter (freie Erkennung ohne Training). Hinweis: Sehr kurze Wörter ("kush", "kushi") lösen im Test
 # leichter versehentlich aus (z. B. bei "Kusch"). Das öffnet nur das Zuhören; Befehle brauchen weiter deine Stimme.

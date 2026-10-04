@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import difflib
 import re
+import threading
 from dataclasses import dataclass
 from typing import Any, Callable, Iterable, Sequence
 
@@ -27,6 +28,9 @@ SYSTEM_PROMPT = (
 ChatStream = Callable[[list[dict[str, str]]], Iterable[str]]
 
 _TOKEN = re.compile(r"[\wäöüßÄÖÜ]+")
+END_PHRASES = {"das wars", "das war es", "das war es dann", "das reicht", "das reicht danke", "danke das wars",
+               "danke das reicht", "tschüss", "tschüs", "bis später", "bis dann", "bis gleich", "ende", "gespräch beenden"}
+END_REPLY = "Bis gleich."
 MATCH = 0.8      # Ähnlichkeit, ab der ein erkanntes Wort als Wake Word zählt ("Kuschim" statt "kushim")
 
 
@@ -57,7 +61,7 @@ def strip_wake_words(text: str, names: Sequence[str]) -> str:
 class Result:
     heard: str
     reply: str
-    outcome: str      # "spoken" | "killed" | "empty" | "wake_only" | "rejected_speaker" | "halted"
+    outcome: str      # "spoken" | "killed" | "empty" | "wake_only" | "rejected_speaker" | "halted" | "interrupted" | "end_conversation"
     detail: str = ""  # nur Anzeige, z. B. Score und Dauer bei abgelehntem Sprecher (kein Audio)
 
 
@@ -67,13 +71,22 @@ class Pipeline:
                  history_limit: int = 6,
                  commands: Any = None, wake_names: Sequence[str] = ()):
         self.wake_names = tuple(wake_names)       # werden am Anfang des erkannten Textes entfernt
+        self._interrupted = threading.Event()     # gesetzt, wenn der Nutzer dazwischenspricht
+        previous_stop = speaker.should_stop
+        speaker.should_stop = lambda: previous_stop() or self._interrupted.is_set()
         self.stt, self.chat, self.speaker, self.dialog, self.kill = stt, chat, speaker, dialog, kill
         self.verifier = verifier
         self.commands = commands          # z. B. WakeWordCommands (Sprachbefehle ohne LLM)
         self.history: list[dict[str, str]] = []
         self.history_limit = history_limit
 
+    def interrupt(self) -> None:
+        """Der Nutzer spricht dazwischen (aus einem anderen Thread): Ausgabe stoppt sofort, nichts wird weitergesprochen."""
+        self._interrupted.set()
+        self.dialog.triggered()                   # stoppt laufende Wiedergabe (Barge-in), setzt auf Zuhören
+
     def handle(self, pcm: Any) -> Result:
+        self._interrupted.clear()
         if self.kill.poll() or self.dialog.state is State.HALTED:
             return Result("", "", "halted")
         text = self.stt.transcribe(pcm).text
@@ -96,6 +109,10 @@ class Pipeline:
                               f"Ähnlichkeit {v.score:.2f} (Schwelle {float(self.verifier.profile.threshold):.2f}), "
                               f"{v.seconds:.1f} s, {v.windows} Fenster: {v.reason}")
             verified, strong = True, v.strong
+        if " ".join(_TOKEN.findall(re.sub(r"['’`]", "", text.lower()))) in END_PHRASES:     # Gespräch beenden (nur verifizierte Stimme)
+            if verified or self.verifier is None or not self.verifier.enrolled:
+                self.speaker.say([END_REPLY])
+                return Result(text, END_REPLY, "end_conversation")
         if self.commands is not None:
             answer = self.commands.handle(text, verified, strong)
             if answer is not None:                       # Befehl oder Bestätigung: kein LLM
@@ -114,8 +131,8 @@ class Pipeline:
                 yield s
 
         self.dialog.reply_ready()
-        self.speaker.say(prefetch(sentence_source(), stop=lambda: self.kill.fired))
+        self.speaker.say(prefetch(sentence_source(), stop=lambda: self.kill.fired or self._interrupted.is_set()))
         reply = " ".join(sentences)
         self.history.append({"role": "assistant", "content": reply})
         self.dialog.speech_done()
-        return Result(text, reply, "spoken")
+        return Result(text, reply, "interrupted" if self._interrupted.is_set() else "spoken")

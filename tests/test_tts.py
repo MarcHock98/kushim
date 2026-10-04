@@ -92,3 +92,22 @@ def test_prefetch_stops_when_requested():
     it = prefetch(endless(), stop=lambda: flag["stop"])
     assert next(it) == "0"
     flag["stop"] = True      # Erzeuger-Thread beendet sich, kein Hängen
+
+
+def test_prefetch_ends_when_stopped_even_if_the_llm_is_still_writing():
+    import threading
+    import time
+    from kushim.voice.tts import prefetch
+    release, stop = threading.Event(), threading.Event()
+
+    def slow_source():
+        yield "Satz eins."
+        release.wait(timeout=10)              # LLM schreibt noch am nächsten Satz
+        yield "Satz zwei."
+    got, t0 = [], time.time()
+    gen = prefetch(slow_source(), stop=stop.is_set)
+    got.append(next(gen))
+    threading.Timer(0.3, stop.set).start()    # Nutzer unterbricht
+    got.extend(gen)                           # darf nicht hängen bleiben
+    release.set()
+    assert got == ["Satz eins."] and time.time() - t0 < 3
