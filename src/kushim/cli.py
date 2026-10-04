@@ -358,6 +358,10 @@ def _main(argv: list[str] | None = None) -> int:
     lt = ll.add_parser("test", help="Modell mit einer kurzen Frage ausprobieren und die Zeit messen (startet Ollama kurz)")
     lt.add_argument("model", nargs="?", help="Standard: das aktive Modell")
     ll.add_parser("back", help="Zurück zum vorherigen Modell")
+    lp = ll.add_parser("pull", help="Modell aus der Ollama-Bibliothek laden (Vorschau und Bestätigung; Ollama muss laufen)")
+    lp.add_argument("model", help="z. B. qwen3.5:9b (nur offizielle Bibliothek, mit Tag)")
+    lr = ll.add_parser("remove", help="Installiertes Modell entfernen (nie das aktive, vorherige oder letzte; mit Bestätigung)")
+    lr.add_argument("model")
     sub.add_parser("doctor", help="Prüft, ob alles installiert und eingerichtet ist")
     sub.add_parser("help", help="Übersicht aller Befehle mit Beispielen")
     tl = sub.add_parser("tools", help="Werkzeuge anzeigen, ein- und ausschalten (alle standardmäßig aus)").add_subparsers(dest="sub")
@@ -430,6 +434,27 @@ def _main(argv: list[str] | None = None) -> int:
                 print(e)
                 return 2
             print(f"LLM gesetzt: {cfg.llm_model} (gilt ab dem nächsten Start). Zurück: kushim llm back")
+        elif sub_llm in ("pull", "remove"):
+            from .llm.ops import ModelOps, OpsError
+            from .safety.gate import Decision
+            ops = ModelOps(cfg, root)
+            prop = (ops.propose_pull if sub_llm == "pull" else ops.propose_remove)(args.model, speaker_verified=True)     # am Terminal sitzt der Nutzer
+            if prop.decision is not Decision.ASK:
+                print(prop.reason or "Nicht erlaubt.")
+                return 1
+            print(prop.preview)
+            if input("Ausführen? (j/N): ").strip().lower() not in ("j", "ja", "y", "yes"):
+                ops.deny(prop)
+                print("Nicht ausgeführt.")
+                return 1
+            if not ops.approve(prop):
+                print("Freigabe abgelaufen, bitte neu starten.")
+                return 1
+            try:
+                print(ops.execute(prop))
+            except OpsError as e:
+                print(f"Nicht ausgeführt: {e}")
+                return 1
         elif sub_llm == "back":
             res = manage.rollback(cfg, root, run_probe=False)
             if not res.switched:
