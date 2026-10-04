@@ -90,3 +90,16 @@ für kushim gelesen und löst nie selbst einen Zug, eine Freigabe oder ein Tool 
 2. **Rechteprofil:** Ist die Liste der erlaubten Befehle (git status/diff/log/add/commit, pytest) richtig, oder soll mehr/weniger erlaubt sein?
 3. **Budget und Zeit:** `--max-budget-usd` (Standard 2) und 45 min Zeitgrenze passend? (Bei Abo-Anmeldung zählt vor allem dein Nutzungskontingent.)
 4. **Ordner:** Welche Projekte (Alias und Pfad) sollen freigegeben werden? Der Ordner `kushim` selbst nur mit der Auflage "geschützte Dateien rot markieren, nie automatisch übernehmen".
+
+## Umsetzungsstand und Lehren aus dem echten Aufruf (2026-10-04)
+Teil 1 (Ordner, Befehl, Sitzung, Diff-Prüfung, Notaus, CLI) und Teil 2 (Zug-Ergebnis, Rückfragen, Übersichten, `--resume`) sind umgesetzt (`claude_cli/folders|dev|review|report|session|control.py`). Standardwerte, die der Nutzer ändern kann: Rechteprofil laut Plan, 2 USD und 45 min je Zug. Teil 3 (API-Typen, Sprachbefehle) und Teil 4 (UI) stehen aus.
+
+Am echten Lauf in einem Wegwerf-Repo geprüft (Abo-Anmeldung, 4 kurze Aufrufe, wenige Cent):
+- `-w <name>` legt einen Worktree unter `<projekt>/.claude/worktrees/<name>` und den Branch `worktree-<name>` an und **sperrt** ihn (`locked`); der Stand des Nutzers blieb unverändert.
+- **Regelschreibweise:** `Bash(git add*)` greift NICHT; nötig ist `Bash(git add)` und `Bash(git add *)` (Leerzeichen vor dem Stern). Die Regeln können kommagetrennt in einem Argument stehen. Verbote haben Vorrang.
+- Verkettete Befehle (`a && b`) laufen, wenn jeder Teil erlaubt ist.
+- `permission_denials` nennt die Verweigerungen der **ganzen Sitzung**, nicht nur des Zuges: kushim zählt nur die neuen (`denial_count`), sonst entstünden veraltete Rückfragen und Angebote.
+- Claude nimmt aus dem Verlauf an, etwas sei noch verweigert, und fragt dann nach, obwohl die Regeln inzwischen stimmen; die Antwort des Nutzers muss das klarstellen.
+- Die Kosten je Zug sind klein (Zug 1 etwa 0,07 USD).
+- **Selbst-Eskalation über Projekt-Einstellungen (am echten Aufruf BEWIESEN):** Claude darf im Worktree `.claude/settings*.json` bearbeiten; würde die nächste Runde (`--resume`) diese laden, könnte es sich Befehle erlauben oder Hooks eintragen. Kontrolle: mit geladenen Projekt-Einstellungen lief beliebiger `python -c ...`-Code, mit `--setting-sources user` wurde derselbe Befehl verweigert. Deshalb lädt der Entwicklungs-Modus nur die Benutzer-Einstellungen des Nutzers (Test sperrt das), und `.claude/` bleibt in der Liste der rot markierten Dateien.
+- `echo x > datei` zählt im Modus `acceptEdits` als Dateischreiben im Arbeitsordner und ist deshalb erlaubt; für Beweise einen Befehl nehmen, den weder `acceptEdits` noch die Liste erlaubt (z. B. beliebiger Python-Code).

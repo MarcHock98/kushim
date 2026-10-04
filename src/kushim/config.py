@@ -32,6 +32,7 @@ class Config:
     gpu_whisper: str = "auto"      # "auto", "cpu" oder Kartennummer (kushim gpu)
     gpu_llm: str = "auto"          # "auto", "all" oder Nummern wie "0,1"
     tools_enabled: tuple[str, ...] = ()   # nur diese Werkzeuge sind aktiv (Standard: keines); ändert nur der Nutzer
+    claude_folders: tuple[str, ...] = ()  # freigegebene Ordner für Claude als "name|pfad"; ändert nur der Nutzer (UI/CLI)
     path: Path | None = field(default=None, repr=False)
 
     @classmethod
@@ -45,6 +46,8 @@ class Config:
         gpu = data.get("gpu", {})
         raw_tools = data.get("tools", {}).get("enabled", [])
         tools = tuple(t for t in raw_tools if isinstance(t, str) and TOOL_NAME.fullmatch(t)) if isinstance(raw_tools, list) else ()
+        raw_folders = data.get("claude", {}).get("folders", [])
+        folders = tuple(f for f in raw_folders if isinstance(f, str) and "|" in f) if isinstance(raw_folders, list) else ()
         return cls(
             memory_location=mem.get("location", cls.memory_location),
             backup_target=bak.get("target", ""),
@@ -54,8 +57,40 @@ class Config:
             gpu_whisper=str(gpu.get("whisper", "auto")),
             gpu_llm=str(gpu.get("llm", "auto")),
             tools_enabled=tools,
+            claude_folders=folders,
             path=path,
         )
+
+    def set_claude_folders(self, entries: list[str]) -> None:
+        """Schreibt nur `folders` im Abschnitt [claude] (Einträge "name|pfad"); übrige Datei bleibt erhalten. Atomar."""
+        import json
+        clean = []
+        for e in entries:
+            if not isinstance(e, str) or "|" not in e or any(c in e for c in (chr(10), chr(13))):
+                raise ValueError(f"Ungültiger Ordner-Eintrag: {e!r}")
+            clean.append(e)
+        path = self.path or config_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        line = "folders = [" + ", ".join(json.dumps(e, ensure_ascii=False) for e in clean) + "]"
+        lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+        in_sec, done = False, False
+        for i, l in enumerate(lines):
+            s = l.strip()
+            if s.startswith("["):
+                in_sec = s == "[claude]"
+            elif in_sec and s.startswith("folders"):
+                lines[i] = line
+                done = True
+        if not done:
+            heads = [l.strip() for l in lines]
+            if "[claude]" in heads:
+                lines.insert(heads.index("[claude]") + 1, line)
+            else:
+                lines += ([""] if lines else []) + ["[claude]", line]
+        tmp = path.with_suffix(".toml.tmp")
+        tmp.write_text(chr(10).join(lines) + chr(10), encoding="utf-8")
+        os.replace(tmp, path)
+        self.claude_folders = tuple(clean)
 
     def set_claude_enabled(self, on: bool) -> None:
         """Schreibt nur `claude_enabled` im Abschnitt [privacy] (Modus C); übrige Datei bleibt erhalten. Atomar."""

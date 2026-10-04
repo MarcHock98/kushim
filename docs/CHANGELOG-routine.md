@@ -25,3 +25,8 @@ Format: Datum, Datei, Grund (ein Satz).
 - 2026-10-04, tests/test_no_egress.py: zusätzliche Sperr-Tests für die Claude CLI (nur in `claude_cli/base.py` gefunden; Rechteumgehungs-Flags nur in der Verbotsliste von `claude_cli/ask.py`). Verschärfung, keine Lockerung.
 - 2026-10-04, docs: Recherche über Claude (Minimal-Modus) mit Wikipedia als Ersatz; `docs/claude-cli-plan.md` um die zwei Betriebsarten ergänzt.
 - 2026-10-04, src/kushim/voice/stt.py: Sperre um die Spracherkennung (Abbruch-Erkennung läuft parallel zur laufenden Antwort); `tasks.py` neu (Abbrechen). Keine Sicherheitsregel gelockert: Abbrechen ist nur Anhalten und lehnt offene Freigaben ab.
+- 2026-10-04, src/kushim/web/guard.py: IBAN-Erkennung erkennt jetzt auch eine IBAN, vor der Wörter stehen (Verschärfung; die Websuche blockierte das bisher nur zufällig über die Telefonregel).
+- 2026-10-04, tests/test_no_egress.py: Test für Rechteumgehungs-Flags jetzt per Syntaxbaum (nur in `FORBIDDEN_FLAGS`, Docstrings ausgenommen); Aufrufer-Sperre für das Paket `web` auf die bekannten Module erweitert. Keine Lockerung.
+- 2026-10-04, .gitignore: `.claude/worktrees/` (Claude-Worktrees).
+- 2026-10-04, .claude/skills/kushim-routine und kushim-add-tool: Fallstricke aus dem Claude-CLI-Praxistest (Skripte schreiben Quellcode, Wegwerf-Repo, CLI-Regelschreibweise, Verweigerungen der ganzen Sitzung).
+- 2026-10-04, src/kushim/claude_cli/dev.py: `--setting-sources user` im Entwicklungs-Modus (Verschärfung; Selbst-Eskalation über Projekt-Einstellungen am echten Aufruf nachgewiesen und verhindert); tests/test_no_egress.py: Test, dass `ClaudeSessions.start/answer` nur aus control.py aufgerufen werden.

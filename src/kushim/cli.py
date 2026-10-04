@@ -45,6 +45,8 @@ Gedächtnis und Schlüssel
 Prüfen und Hilfe
   kushim research <frage>      Recherche: erst Claude (Internet), Ersatz Wikipedia; Vorschau und Bestätigung
   kushim claude [check|enable|disable]  Claude CLI und Anmeldung prüfen; Modus C ein/aus
+  kushim claude folders|add|remove  Ordner für Claude freigeben (Entwicklung nur dort, immer eigener Worktree)
+  kushim claude start [auftrag]     Claude arbeitet am Projekt (Vorschau, Freigabe); status|stop|result|answer
   kushim search <frage> [--llm]  Websuche (Wikipedia) mit Vorschau und Bestätigung; erst `tools enable web.search`
   kushim tools                 Werkzeuge anzeigen; enable|disable <name> schaltet ein/aus (alle standardmäßig aus)
   kushim doctor                Prüft, ob alles installiert und eingerichtet ist
@@ -84,6 +86,133 @@ def _show_wiki(out, use_llm: bool, cfg: Config, root) -> int:
         finally:
             launcher.stop()
         print("\nkushim:", answer)
+    return 0
+
+
+def _claude_dev(args, cfg: Config, root) -> int:
+    """`kushim claude folders|add|remove|start|status|stop|result|answer`: Claude entwickelt in freigegebenen Ordnern (docs/claude-cli-plan.md)."""
+    import time as _time
+    from .claude_cli import base as claude_base
+    from .claude_cli import folders as cfolders
+    from .claude_cli import report as creport
+    from .claude_cli.control import Control
+    from .claude_cli.session import ClaudeSessions, SessionError
+    from .privacy import EgressGate
+    from .safety import killswitch
+    from .safety.gate import Decision
+    from .tools.registry import ToolRegistry, default_tools
+    action = args.sub
+    vault = cfolders.vault_path(cfg.memory_location)
+    known = cfolders.parse(cfg.claude_folders)
+    if action == "folders":
+        if not known:
+            print("Kein Ordner freigegeben. Freigeben: kushim claude add <name> <pfad>")
+        for f in known:
+            print(f"{f.name}  {f.path}")
+        return 0
+    if action == "add":
+        try:
+            if not cfolders.NAME_RE.fullmatch(args.name):
+                raise ValueError("Der Name darf nur aus Kleinbuchstaben, Ziffern, - und _ bestehen (höchstens 31 Zeichen).")
+            if any(f.name == args.name for f in known):
+                raise ValueError("Diesen Namen gibt es schon.")
+            path = cfolders.validate_path(args.path, vault)
+        except ValueError as e:
+            print(f"Nicht freigegeben: {e}")
+            return 2
+        print(f"Claude darf dann in «{path}» arbeiten, immer in einem eigenen Worktree und Branch. Beim Arbeiten gehen Auftrag und Ausschnitte aus den Dateien an Anthropic.")
+        if input("Freigeben? (j/N): ").strip().lower() not in ("j", "ja", "y", "yes"):
+            print("Nicht freigegeben.")
+            return 1
+        cfg.set_claude_folders([f.entry() for f in known] + [cfolders.Folder(args.name, path).entry()])
+        print(f"Ordner «{args.name}» ist freigegeben.")
+        return 0
+    if action == "remove":
+        if not any(f.name == args.name for f in known):
+            print("Diesen Ordner gibt es nicht.")
+            return 2
+        cfg.set_claude_folders([f.entry() for f in known if f.name != args.name])
+        print(f"Freigabe für «{args.name}» entzogen.")
+        return 0
+
+    exe = claude_base.find_claude()
+    cache = claude_base.AuthCache(exe)
+    sessions = ClaudeSessions(root, exe, vault=vault)
+    if action == "status":
+        st = sessions.state()
+        if st is None:
+            print("Kein Claude-Lauf.")
+            return 0
+        names = {"running": "läuft", "waiting": "wartet auf deine Antwort oder ist fertig", "failed": "gescheitert", "stopped": "gestoppt"}
+        print(f"Claude-Lauf {st.id}: {names.get(st.status, st.status)} (Ordner {st.folder}, Zug {st.turn}, {st.seconds / 60:.1f} min, {st.cost_usd:.2f} USD)")
+        if st.error:
+            print(f"Hinweis: {st.error}")
+        return 0
+    if action == "stop":
+        print("Stopp ausgelöst." if sessions.stop() else "Es läuft kein Claude-Lauf.")
+        return 0
+    if action == "result":
+        got = sessions.result()
+        if got is None:
+            print("Kein Claude-Lauf.")
+            return 0
+        print(creport.written(got[2]))
+        return 0
+
+    reg = ToolRegistry(default_tools(cfg, cache), cfg.tools_enabled)
+    why = next((t.available() for t in reg.tools.values() if t.name == "claude.code"), "")
+    if not reg.is_active("claude.code"):
+        print("Das Werkzeug claude.code ist " + (f"nicht verfügbar: {why}" if why else "aus. Einschalten: kushim tools enable claude.code"))
+        return 1
+    ctl = Control(reg, sessions, EgressGate(cfg.claude_enabled, confirm=lambda dest, payload: True), cache.get, lambda: cfolders.parse(cfg.claude_folders))
+    if action == "start":
+        prop = ctl.propose_start(" ".join(args.auftrag), args.folder, speaker_verified=True)       # am Terminal sitzt der Nutzer selbst
+    else:
+        prop = ctl.propose_answer(" ".join(args.text), args.allow, speaker_verified=True)
+    if prop.decision is not Decision.ASK:
+        print(prop.reason or "Nicht erlaubt.")
+        return 1
+    print(prop.preview)
+    if input("Senden und starten? (j/N): ").strip().lower() not in ("j", "ja", "y", "yes"):
+        ctl.deny(prop)
+        print("Nichts gesendet.")
+        return 1
+    if not ctl.approve(prop):
+        print("Freigabe ungültig oder abgelaufen.")
+        return 1
+    try:
+        ctl.execute(prop)
+    except SessionError as e:
+        print(f"Nicht gestartet: {e}")
+        return 1
+    print("Claude arbeitet. Strg+C oder `kushim claude stop` bricht ab, der Branch bleibt erhalten.")
+    last = _time.monotonic()
+    try:
+        while True:
+            st = sessions.state()
+            if st is None or st.status != "running":
+                break
+            if killswitch.is_triggered(root):
+                sessions.stop()
+                print("Notaus: Claude wird beendet.")
+            if _time.monotonic() - last > 30:
+                print(f"... läuft seit {(_time.monotonic() - last) / 60:.1f} min weiter (Zug {st.turn})", flush=True)
+                last = _time.monotonic()
+            _time.sleep(0.5)
+    except KeyboardInterrupt:
+        sessions.stop()
+        sessions.join(15)
+        print("Abgebrochen: Claude wurde gestoppt, der Branch bleibt erhalten.")
+        return 130
+    sessions.join(15)
+    got = sessions.result()
+    if got is not None:
+        st, _rv, ov = got
+        if st.status == "failed" and st.error:
+            print(f"Hinweis: {st.error}")
+        print(creport.written(ov))
+        if ov.question or ov.permission_questions:
+            print("Antworten: kushim claude answer <Text>" + (" [--allow MUSTER]" if st.offers else ""))
     return 0
 
 
@@ -165,6 +294,20 @@ def _main(argv: list[str] | None = None) -> int:
     cl.add_parser("check", help="Zeigt CLI, Anmeldung und Schalter")
     cl.add_parser("enable", help="Modus C einschalten (mit Rückfrage)")
     cl.add_parser("disable", help="Modus C sofort ausschalten")
+    cl.add_parser("folders", help="Für Claude freigegebene Ordner anzeigen")
+    ca = cl.add_parser("add", help="Einen Ordner für Claude freigeben (mit Rückfrage)")
+    ca.add_argument("name")
+    ca.add_argument("path")
+    cl.add_parser("remove", help="Die Freigabe eines Ordners sofort entziehen").add_argument("name")
+    cs = cl.add_parser("start", help="Claude arbeitet an einem freigegebenen Ordner (Vorschau, Freigabe, eigener Worktree)")
+    cs.add_argument("--folder", help="Name des Ordners (bei nur einem Ordner nicht nötig)")
+    cs.add_argument("auftrag", nargs="*", help="Auftrag; ohne Angabe: nächster offener Roadmap-Punkt")
+    cl.add_parser("status", help="Stand des Claude-Laufs")
+    cl.add_parser("stop", help="Laufenden Claude-Lauf stoppen (der Branch bleibt)")
+    cl.add_parser("result", help="Übersicht: was Claude getan hat, Fakten aus Git, nächste Schritte")
+    cn = cl.add_parser("answer", help="Auf eine Rückfrage von Claude antworten (nächster Zug)")
+    cn.add_argument("text", nargs="+")
+    cn.add_argument("--allow", action="append", default=[], help="Von kushim angebotenes Muster für diese Sitzung erlauben")
     sr = sub.add_parser("search", help="Websuche (Wikipedia) mit Vorschau und Bestätigung; web.search muss eingeschaltet sein")
     sr.add_argument("frage", nargs="+")
     sr.add_argument("--llm", action="store_true", help="Treffer mit dem lokalen Modell zusammenfassen (startet Ollama kurz)")
@@ -314,6 +457,8 @@ def _main(argv: list[str] | None = None) -> int:
         if out.kind == "wikipedia" and out.wiki is not None:
             return _show_wiki(out.wiki, args.llm, cfg, root)
         return 1
+    if args.cmd == "claude" and getattr(args, "sub", None) in ("folders", "add", "remove", "start", "status", "stop", "result", "answer"):
+        return _claude_dev(args, cfg, root)
     if args.cmd == "claude":
         from .claude_cli import base as claude_base
         action = getattr(args, "sub", None) or "check"

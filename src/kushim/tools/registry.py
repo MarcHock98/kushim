@@ -137,5 +137,39 @@ def claude_research_tool(cfg=None, cache=None) -> ToolInfo:
     return replace(CLAUDE_RESEARCH, available=available)
 
 
+CLAUDE_CODE = ToolInfo(
+    name="claude.code",
+    title="Claude entwickelt dein Projekt",
+    description=("Claude (über deine angemeldete Claude CLI) arbeitet in einem von dir freigegebenen Projektordner, immer in einem EIGENEN "
+                 "Worktree und Branch, nie auf deinem Stand. Auftrag und Ausschnitte aus den Dateien gehen an Anthropic; du siehst vorher "
+                 "eine Vorschau und gibst sie frei. Erlaubt sind nur Lesen, Bearbeiten, git (ohne push/merge) und Tests. kushim übernimmt "
+                 "nichts und pusht nichts, das machst du. Änderungen an Sicherheitsdateien werden rot markiert."),
+    spec=ActionSpec("claude.code", Risk.REVERSIBLE, external_effect=True, costs_money=True),
+    sends_data_out=True,
+    available=lambda: "Modus C ist aus (kushim claude enable)",
+)
+
+
+def claude_code_tool(cfg=None, cache=None) -> ToolInfo:
+    """`claude.code` mit echter Verfügbarkeit: Modus C an, CLI angemeldet und mindestens ein freigegebener Ordner."""
+    if cfg is None:
+        return CLAUDE_CODE
+
+    def available() -> str:
+        if not cfg.claude_enabled:
+            return "Modus C ist aus (kushim claude enable)"
+        auth = cache.get() if cache is not None else None
+        if auth is None or auth.error == "not_installed":
+            return "Claude CLI nicht gefunden"
+        if not auth.logged_in:
+            return "In der Claude CLI nicht angemeldet (claude auth login)"
+        from ..claude_cli.folders import parse
+        if not parse(cfg.claude_folders):
+            return "Kein Ordner freigegeben (kushim claude add <name> <pfad>)"
+        return ""
+    from dataclasses import replace
+    return replace(CLAUDE_CODE, available=available)
+
+
 def default_tools(cfg=None, cache=None) -> list[ToolInfo]:
-    return [WEB_SEARCH, claude_research_tool(cfg, cache)]
+    return [WEB_SEARCH, claude_research_tool(cfg, cache), claude_code_tool(cfg, cache)]

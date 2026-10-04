@@ -93,6 +93,9 @@ Am Ende jedes Durchlaufs eine kurze Rückschau: Was hat gehakt? Was wurde wieder
 - **Live prüfen, nicht nur Unit-Tests:** Echte Kette mit Piper-Stimme/Fake-Lautsprecher (Whisper, LLM, Piper) fand mehrere Fehler, die Tests nicht sahen (Hänger in `prefetch`, Schwellen über dem echten Sprechpegel). Messwerte aus den eigenen Aufnahmen des Nutzers (`voice-data/`, nur Pegelzahlen) statt zu raten.
 - **Messen vor Umbauen:** Latenz erst pro Stufe messen (STT, Embedding, LLM, TTS), dann ändern.
 - **Hängende Hintergrundläufe:** Skripte mit `faulthandler.dump_traceback_later(…, exit=True)` und Logdatei starten; danach die eigenen Ollama-Reste (`tools/ollama`) beenden.
+- **Skripte, die Quellcode schreiben:** Zeilenumbrüche und Backslashes in Python-Skripten per Heredoc werden verschluckt oder zu echten Zeilenumbrüchen (kaputte Dateien, Syntaxfehler). Dafür das Edit-Werkzeug nehmen; muss es ein Skript sein, `chr(10)`, `chr(13)` und `chr(92)` benutzen. Ein Skript schreibt oft erst am Ende: bricht eine Ersetzung mit einem Fehler ab, wurde NICHTS geschrieben, also nach jedem Lauf prüfen (`import`, `git diff --stat`), nicht annehmen.
+- **Echte Aufrufe fremder Werkzeuge (z. B. Claude CLI) nur in einem Wegwerf-Repo/-Ordner**, mit temporärer Konfiguration (`KUSHIM_CONFIG`), nie in Projekten oder der echten `config.toml` des Nutzers; danach alles Eigene löschen (nur nach Namen und Inhalt geprüft) und nachsehen, ob Prozesse übrig sind.
+- **Ein echter Praxistest findet, was Fakes nicht finden** (Regelschreibweise der CLI, Verweigerungen der ganzen Sitzung statt nur des Zuges); Fakes bilden nur das nach, was man schon weiß.
 - **Nach neuen Ordnern `git status`:** `.gitignore` kann neue Quellordner verschlucken.
 - **Sicherheitsregeln:** Muss ein Test oder die ALLOWLIST für ein Feature gelockert werden, ist das eine Entscheidung des Nutzers: Plan schreiben, alles Netzfreie fertig bauen, dann fragen.
 
