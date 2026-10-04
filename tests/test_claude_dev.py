@@ -361,3 +361,14 @@ def test_spoken_overview_is_short_and_puts_the_question_before_next_steps():
     assert "Achtung: sicherheitsrelevante Dateien" in s and "Claude fragt: Soll der Timer" in s and "Als Nächstes" not in s
     quiet = report.spoken(report.build_overview(report.parse("## Zusammenfassung\nFertig.\n## Rückfrage\n\n## Nächste Schritte\n- A"), Review(branch="b"), 0, 1, 1, []))
     assert "Als Nächstes: A" in quiet and "Claude fragt" not in quiet
+
+
+def test_extended_rights_add_only_fixed_checks_and_keep_dangerous_commands_denied():
+    allowed = " ".join(dev.ALLOWED_TOOLS)
+    for ok in ("python -m compileall", "python -m mypy", "npm test", "git blame", "git ls-files"):
+        assert f"Bash({ok})" in dev.ALLOWED_TOOLS and f"Bash({ok} *)" in dev.ALLOWED_TOOLS
+    for never in ("Bash(python *)", "Bash(python)", "Bash(npx", "Bash(pip", "Bash(npm install", "Bash(rm", "Bash(curl", "Bash(git push", "Bash(powershell", "Bash(*)"):
+        assert never not in allowed
+    for denied in ("git push", "rm", "del", "curl", "wget", "ssh", "pip", "powershell", "cmd"):
+        assert f"Bash({denied})" in dev.DENIED_TOOLS and f"Bash({denied} *)" in dev.DENIED_TOOLS
+    assert not set(dev.ALLOWED_TOOLS) & set(dev.DENIED_TOOLS)

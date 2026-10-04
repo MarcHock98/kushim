@@ -45,3 +45,5 @@ Format: Datum, Datei, Grund (ein Satz).
 - 2026-10-04, scripts/ + voice/: Stimmklon (Chatterbox) lokal gebaut: eigenes venv unter tools/, einmaliger Modell-Download auf Freigabe des Nutzers, Betrieb ohne Netz (Sperre im Prozess, getestet), Ersatzstimme Piper, standardmäßig aus (`[voice] clone`). Sicherheitsregeln und Allowlists unverändert.
 
 - 2026-10-04, llm/ops.py: Modelle laden und entfernen mit Vorschau und Freigabe (Gate, ApprovalQueue, nur offizielle Ollama-Bibliothek, Schutz für aktives/vorheriges/letztes Modell). net/loopback.py unverändert, Allowlist unverändert.
+
+- 2026-10-04, claude_cli/dev.py: Auf Wunsch des Nutzers (Auswahl "Erweitert") darf Claude beim Entwickeln zusätzlich feste Prüf- und Lesebefehle ausführen (compileall, mypy, ruff check, pyflakes, npm test/build/lint, git blame/ls-files/rev-parse). Verbotsliste (push, Löschen, Netz, PowerShell/cmd, pip), Selbst-Eskalationsschutz und Flag-Verbote unverändert; kein freies python/npx/pip.
