@@ -28,7 +28,8 @@ def _step(payload: dict[str, Any]) -> str:
 
 def register_setup(core: ApiCore, root: Path, vault_state: Callable[[], str],
                    list_devices: Callable[[], dict[str, list[str]]] | None = None,
-                   llm_model: str = DEFAULT_MODEL) -> None:
+                   llm_model: str = DEFAULT_MODEL,
+                   audit: Callable[[str, str], None] | None = None) -> None:
     """Hängt `setup.*`, `audio.devices` und `safety.*` an den Kern."""
 
     def overview() -> dict[str, Any]:
@@ -65,17 +66,27 @@ def register_setup(core: ApiCore, root: Path, vault_state: Callable[[], str],
             raise ApiError("unavailable")
         return {"inputs": [str(n) for n in found.get("inputs", [])], "outputs": [str(n) for n in found.get("outputs", [])]}
 
+    def _audit(event: str) -> None:
+        if audit is None:
+            return
+        try:
+            audit(event, "api")
+        except Exception:                             # ein Audit-Fehler darf den Notaus nie verhindern
+            pass
+
     def kill_status(_: dict[str, Any]) -> dict[str, Any]:
         return {"kill": killswitch.is_triggered(root)}
 
     def kill(_: dict[str, Any]) -> dict[str, Any]:
         killswitch.trigger(root)                      # immer erlaubt: Anhalten ist sicher
+        _audit("safety_kill")
         return {"kill": True}
 
     def resume(payload: dict[str, Any]) -> dict[str, Any]:
         if payload.get("confirm") is not True:        # bewusster Schritt, nie versehentlich
             raise ApiError("confirm_required")
         killswitch.clear(root)
+        _audit("safety_resume")
         return {"kill": False}
 
     for name, fn in (("setup.status", status), ("setup.skip", skip), ("setup.reopen", reopen), ("setup.done", done),
