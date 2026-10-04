@@ -13,6 +13,7 @@ from typing import Any, Callable
 
 from ..safety.gate import Decision
 from ..claude_cli.control import Control, Proposal
+from ..claude_cli.review import GitError, is_protected
 from ..claude_cli.session import SessionError, State
 from .protocol import ApiCore, ApiError
 
@@ -85,6 +86,19 @@ def register_claude(core: ApiCore, control: Control, clock: Callable[[], float] 
     def deny(payload: dict[str, Any]) -> dict[str, Any]:
         return {"denied": control.deny(_take(payload))}
 
+    def diff(payload: dict[str, Any]) -> dict[str, Any]:
+        path = payload.get("path")
+        if not isinstance(path, str) or not path or len(path) > 400:
+            raise ApiError("bad_request")
+        try:
+            got = control.sessions.diff(path)
+        except GitError:
+            raise ApiError("not_changed")                              # nur Dateien, die zu den Änderungen gehören
+        if got is None:
+            raise ApiError("no_session")
+        text, truncated = got
+        return {"path": path, "diff": text, "truncated": truncated, "protected": is_protected(path)}
+
     def review(_: dict[str, Any]) -> dict[str, Any]:
         res = control.sessions.result()
         if res is None:
@@ -98,5 +112,6 @@ def register_claude(core: ApiCore, control: Control, clock: Callable[[], float] 
                          "denied": list(ov.denied), "structured": ov.structured}}}
 
     for name, fn in (("claude.folders", folders), ("claude.status", status), ("claude.stop", stop), ("claude.start", start),
-                     ("claude.answer", answer), ("claude.approve", approve), ("claude.deny", deny), ("claude.review", review)):
+                     ("claude.answer", answer), ("claude.approve", approve), ("claude.deny", deny), ("claude.review", review),
+                     ("claude.diff", diff)):
         core.register(name, fn)

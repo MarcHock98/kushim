@@ -20,6 +20,8 @@ export class MockSocket implements Socket {
   facts: { id: number; text: string; kind: string; source: string; created: number }[] = [];
   deleted: number[] = [];
   dash: Record<string, unknown> = { timers: [], tasks: [], pending_approvals: 0, results: [] };
+  review: unknown = null;
+  diffText = "";
   sent: unknown[] = [];
 
   constructor(public url: string, private token = "t".repeat(43), private fail = false) {
@@ -58,7 +60,13 @@ export class MockSocket implements Socket {
     else if (msg.type === "dashboard.get") reply = { ok: true, ...this.dash };
     else if (msg.type === "claude.folders") reply = { ok: true, folders: this.folders };
     else if (msg.type === "claude.status") reply = { ok: true, session: this.session };
-    else if (msg.type === "claude.review") reply = { ok: true, review: null };
+    else if (msg.type === "claude.review") reply = { ok: true, review: this.review };
+    else if (msg.type === "claude.diff") {
+      const p = (msg as { path?: string }).path ?? "";
+      const known = ((this.review as { files?: { path: string }[] } | null)?.files ?? []).some((f) => f.path === p);
+      reply = known ? { ok: true, path: p, diff: this.diffText, truncated: false, protected: p.startsWith("src/kushim/safety/") }
+                    : { ok: false, error: "not_changed" };
+    }
     else if (msg.type === "claude.start") {
       const m = msg as { task?: string };
       if (/IBAN/.test(m.task ?? "")) reply = { ok: true, allowed: false, reason: "Enthält eine IBAN." };
