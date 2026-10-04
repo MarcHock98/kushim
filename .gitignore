@@ -12,3 +12,9 @@ run/
 voice-data/
 wakewords.toml
 .claude/worktrees/
+
+# UI
+ui/node_modules/
+ui/dist/
+ui/src-tauri/target/
+ui/src-tauri/gen/

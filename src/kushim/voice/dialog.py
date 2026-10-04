@@ -17,9 +17,25 @@ class State(Enum):
 
 
 class Dialog:
-    def __init__(self, on_stop_speaking: Callable[[], None] = lambda: None):
-        self.state = State.IDLE
+    def __init__(self, on_stop_speaking: Callable[[], None] = lambda: None,
+                 on_change: Callable[[State], None] = lambda s: None):
+        self._state = State.IDLE
         self._stop_speaking = on_stop_speaking
+        self._on_change = on_change              # nur Anzeige (Oberfläche), darf nie stören
+
+    @property
+    def state(self) -> State:
+        return self._state
+
+    @state.setter
+    def state(self, new: State) -> None:
+        changed = new is not self._state
+        self._state = new
+        if changed:
+            try:
+                self._on_change(new)
+            except Exception:                    # noqa: BLE001
+                pass
 
     def triggered(self) -> bool:
         """Wake Word/Hotkey/Sprache erkannt. Beim Sprechen = Barge-in."""

@@ -29,6 +29,7 @@ Stimme
 
 Sprachmodell und Grafikkarten
   kushim gpu                   Grafikkarten zeigen und wie Whisper und das Sprachmodell verteilt werden
+  kushim serve                 Backend-API für die Oberfläche starten (nur 127.0.0.1, Port/Token in run/api.json)
   kushim llm                   Aktuelles Modell, vorheriges und installierte Modelle zeigen
   kushim llm set <name>        Modell wechseln (z. B. qwen3.5:9b); laden mit install.ps1 -Llm <name>
   kushim llm test [name]       Modell kurz ausprobieren und die Antwortzeit messen
@@ -299,6 +300,44 @@ def _vault_state(cfg: Config) -> str:
         return "kein-vault"
 
 
+def _serve(cfg: Config) -> int:
+    """Startet die Backend-API auf 127.0.0.1; Port und Token liegen in run/api.json (nur für die eigene Oberfläche).
+    Beim Notaus läuft die API weiter (nur setup/safety), damit die UI ihn anzeigen und aufheben kann."""
+    import json
+    import time
+    from pathlib import Path
+    from .api.protocol import ApiCore, new_token
+    from .api.setup_api import register_setup
+    from .net.server import LocalServer
+    root = Path(__file__).resolve().parents[1].parent
+    store = None
+    try:
+        store = open_store(cfg)
+    except Exception:
+        print("Hinweis: Vault nicht offen, Notaus-Aktionen werden nicht im Audit protokolliert.")
+    token = new_token()
+    core = ApiCore(token)
+    from .api.voice_api import register_voice
+    register_voice(core, root)
+    register_setup(core, root, lambda: _vault_state(cfg), llm_model=cfg.llm_model,
+                   audit=store.audit if store else None)
+    server = LocalServer(core)
+    port = server.start()
+    info = root / "run" / "api.json"
+    info.parent.mkdir(exist_ok=True)
+    info.write_text(json.dumps({"port": port, "token": token}), encoding="utf-8")
+    print(f"kushim API auf 127.0.0.1:{port} (nur lokal). Strg+C beendet.")
+    try:
+        while True:                                   # bleibt auch bei Notaus erreichbar: die UI zeigt "NOTAUS aktiv" und hebt auf
+            time.sleep(0.5)
+    finally:
+        server.stop()
+        info.unlink(missing_ok=True)
+        if store:
+            store.close()
+    return 0
+
+
 def _vault(cfg: Config):
     """Öffnet den Vault oder erklärt, was fehlt (der Vault wird nie automatisch angelegt)."""
     try:
@@ -394,11 +433,14 @@ def _main(argv: list[str] | None = None) -> int:
     sr.add_argument("frage", nargs="+")
     sr.add_argument("--llm", action="store_true", help="Treffer mit dem lokalen Modell zusammenfassen (startet Ollama kurz)")
     sub.add_parser("setup", help="Stand der Einrichtung (Systemcheck, Stimme, Wake Words, Notaus) anzeigen")
+    sub.add_parser("serve", help="Backend-API für die Oberfläche (WebSocket nur auf 127.0.0.1); Strg+C beendet")
     sub.add_parser("gpu", help="Grafikkarten anzeigen und wie sie genutzt werden (Einstellung: [gpu] in config.toml)")
     args = p.parse_args(argv)
     if args.cmd == "help":
         print(HELP)
         return 0
+    if args.cmd == "serve":
+        return _serve(Config.load())
     if args.cmd == "gpu":
         from . import gpu
         try:
@@ -840,9 +882,13 @@ def _main(argv: list[str] | None = None) -> int:
                                   + (f"  [{r.detail}]" if r.detail else ""))
             barge = BargeIn(level=st.barge_in_level, min_ms=st.barge_in_ms) if st.barge_in else None
             utter = lambda wait: UtteranceCollector(wait_ms=wait, silence_ms=end_ms, max_ms=max_ms, energy_threshold=st.speech_level)
+            from .voice import statefile
+            publisher = statefile.StatePublisher(root, pending=tasks.pending_approvals)
+            pipeline.dialog._on_change = lambda s: publisher.phase(s.value)
             loop = TalkLoop(mic, pipeline, kill, wake=lambda f: det.process(f) is not None, ack=ack,
                             flush=mic.flush, new_collector=lambda: utter(wait_ms),
-                            on_result=out,
+                            on_result=lambda r: (out(r), publisher.alarm() if r.outcome == "rejected_speaker" else None)[0],
+                            on_frame=lambda f, p: publisher.phase(p, statefile.frame_level(f)),
                             first_collector=lambda: utter(first_ms),
                             follow_collector=(lambda: utter(follow_ms)) if follow_ms > 0 else None,
                             barge=barge, preroll_frames=round(st.preroll_seconds / 0.08),
@@ -857,6 +903,7 @@ def _main(argv: list[str] | None = None) -> int:
                 print("Unterbrechen: einfach dazwischensprechen (Kopfhörer empfohlen; mit Lautsprechern kann kushim sich "
                       "selbst hören: barge_in_level erhöhen oder barge_in = false in wakewords.toml).")
             reason = loop.run()
+            publisher.clear()
             print("Ende:", reason)
             if reason == "shutdown":                                  # "beende dich": Claude-Lauf stoppen, Dienste beendet das finally
                 tool_cmds.sessions.stop()
