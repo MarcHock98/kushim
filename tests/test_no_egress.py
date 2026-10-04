@@ -83,7 +83,32 @@ def test_claude_executable_is_only_located_in_one_module():
     assert users == ["claude_cli/base.py"], users
 
 
-def test_permission_bypass_flags_appear_only_in_the_deny_list_of_the_claude_module():
-    hits = {f.relative_to(SRC).as_posix() for f in SRC.rglob("*.py")
-            if any(flag in f.read_text(encoding="utf-8") for flag in ("--dangerously-skip-permissions", "bypassPermissions"))}
-    assert hits == {"claude_cli/ask.py"}, hits           # dort nur als Eintrag in FORBIDDEN_FLAGS (Test prüft: nie im Aufruf)
+def test_permission_bypass_flags_appear_only_inside_the_forbidden_flags_lists():
+    bad = ("--dangerously-skip-permissions", "bypassPermissions")
+    for f in SRC.rglob("*.py"):
+        tree = ast.parse(f.read_text(encoding="utf-8"))
+        allowed = set()
+        for node in ast.walk(tree):                      # Zeichenketten innerhalb von `FORBIDDEN_FLAGS = (...)` sind die Verbotsliste
+            if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "FORBIDDEN_FLAGS" for t in node.targets):
+                allowed |= {id(n) for n in ast.walk(node.value)}
+            if isinstance(node, (ast.Module, ast.FunctionDef, ast.ClassDef, ast.AsyncFunctionDef)) and node.body:
+                first = node.body[0]                     # Erklärtexte (Docstrings) sind kein Code
+                if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant):
+                    allowed.add(id(first.value))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str) and any(b in node.value for b in bad):
+                assert id(node) in allowed, f"{f.relative_to(SRC).as_posix()}: Rechteumgehung außerhalb der Verbotsliste: {node.value[:60]}"
+
+
+def test_claude_runs_can_only_be_started_through_the_approval_flow():
+    """`ClaudeSessions.start/answer` (startet die Claude CLI im Projekt) wird nur von claude_cli/control.py aufgerufen, also nach Vorschau und Freigabe."""
+    callers = {}
+    for f in SRC.rglob("*.py"):
+        rel = f.relative_to(SRC).as_posix()
+        for node in ast.walk(ast.parse(f.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in ("start", "answer"):
+                owner = node.func.value
+                name = owner.attr if isinstance(owner, ast.Attribute) else getattr(owner, "id", "")
+                if name == "sessions":
+                    callers.setdefault(rel, set()).add(node.func.attr)
+    assert set(callers) == {"claude_cli/control.py"}, callers

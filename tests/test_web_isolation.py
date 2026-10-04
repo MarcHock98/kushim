@@ -131,8 +131,25 @@ def _imports_web_package(path: Path) -> bool:
 def test_only_known_callers_use_the_web_package_so_far():
     users = {f.relative_to(SRC).as_posix() for f in SRC.rglob("*.py")
              if not f.relative_to(SRC).as_posix().startswith("web/") and _imports_web_package(f)}
-    # cli.py: Befehle; research.py: Orchestrator (Claude zuerst, Wikipedia als Ersatz); claude_cli/ask.py: nur `Untrusted`/`clean_text`
-    assert users == {"cli.py", "research.py", "claude_cli/ask.py"}, users                # Pipeline/Tools/LLM kommen nicht direkt an Web-Inhalte; später genau ein geprüfter Einstieg
+    # cli.py: Befehle; research.py: Orchestrator (Claude zuerst, Wikipedia als Ersatz); claude_cli/*: nur die Hilfsmodule (siehe nächster Test)
+    assert users == {"cli.py", "research.py", "claude_cli/ask.py", "claude_cli/control.py", "claude_cli/report.py"}, users
+
+
+def _web_modules(path: Path) -> set[str]:
+    """Welche Module des Pakets kushim.web importiert die Datei (z. B. {"web.sanitize", "web.guard"})?"""
+    out = set()
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            if node.module == "web":
+                out |= {"web." + a.name for a in node.names}
+            elif node.module.startswith("web."):
+                out.add(node.module)
+    return out
+
+
+def test_claude_modules_use_only_the_leaf_helpers_of_the_web_package():
+    for f in (SRC / "claude_cli").glob("*.py"):
+        assert _web_modules(f) <= {"web.sanitize", "web.guard"}, (f.name, _web_modules(f))     # nie search, answer oder wikipedia                # Pipeline/Tools/LLM kommen nicht direkt an Web-Inhalte; später genau ein geprüfter Einstieg
 
 
 # --- CLI `kushim search` -------------------------------------------------------------------------

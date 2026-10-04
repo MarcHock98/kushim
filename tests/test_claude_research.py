@@ -194,7 +194,7 @@ def test_claude_tool_availability_matrix():
     assert "angemeldet" in claude_research_tool(cfg, SimpleNamespace(get=lambda: Auth(False))).available()
     assert "nicht gefunden" in claude_research_tool(cfg, None).available()
     names = [t.name for t in default_tools(cfg, cache)]
-    assert names == ["web.search", "claude.research"] and CLAUDE_RESEARCH.sends_data_out and CLAUDE_RESEARCH.spec.external_effect
+    assert names == ["web.search", "claude.research", "claude.code"] and CLAUDE_RESEARCH.sends_data_out and CLAUDE_RESEARCH.spec.external_effect
 
 
 # --- Orchestrator: Claude zuerst, Wikipedia als Ersatz --------------------------------------------

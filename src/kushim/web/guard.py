@@ -13,7 +13,7 @@ from ..safety.rules import Harm
 MAX_QUERY = 200
 
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+(\.[\w-]+)+")
-_IBAN = re.compile(r"\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b")
+_IBAN = re.compile(r"\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{3,4}){3,7}\b|\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b")      # mit Leerzeichen oder kompakt
 _DIGIT_RUN = re.compile(r"(?<!\d)(?:\d[ -]?){13,19}(?!\d)")
 _PHONE = re.compile(r"(?:\+|00)?\d[\d\s/().-]{6,}\d")
 _LONG_TOKEN = re.compile(r"[A-Za-z0-9_\-+/=]{24,}")
@@ -49,8 +49,7 @@ def reasons(query: str) -> list[str]:
     found: list[str] = []
     if _EMAIL.search(q):
         found.append("enthält eine E-Mail-Adresse")
-    compact = q.replace(" ", "").upper()
-    if _IBAN.search(compact):
+    if _IBAN.search(q.upper()):                      # auch wenn Wörter davorstehen ("Zahle auf DE89 ...")
         found.append("enthält eine IBAN")
     for m in _DIGIT_RUN.finditer(q):
         digits = re.sub(r"\D", "", m.group())
