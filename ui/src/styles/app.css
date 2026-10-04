@@ -89,3 +89,8 @@ button:disabled { opacity: .5; cursor: default; }
 .fact button { grid-row: auto; grid-column: auto; }
 .fact-edit { grid-column: 1 / span 2; display: grid; gap: var(--s-3); }
 .fact-edit textarea, .fact-edit select { font: inherit; color: var(--text); background: var(--bg-0); border: 1px solid var(--line-strong); border-radius: var(--r-sm); padding: var(--s-2) var(--s-3); min-height: var(--hit); }
+.cl-files { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-1); }
+.cl-files button { width: 100%; text-align: left; font-family: var(--font-mono); font-size: var(--fs-sm); background: var(--bg-0); }
+.cl-files .st { color: var(--text-muted); }
+.cl-diff pre { margin: 0; max-height: 360px; overflow: auto; padding: var(--s-3); background: var(--bg-0); border: 1px solid var(--line); border-radius: var(--r-sm); font-family: var(--font-mono); font-size: var(--fs-xs); }
+.cl-diff .add { color: var(--ok); } .cl-diff .del { color: var(--alarm); } .cl-diff .hunk { color: var(--cyan); }

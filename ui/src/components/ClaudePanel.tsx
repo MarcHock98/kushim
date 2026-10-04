@@ -28,6 +28,7 @@ export function ClaudePanel({ client, connected }: { client: React.RefObject<Api
   const [allow, setAllow] = useState<string[]>([]);
   const [proposal, setProposal] = useState<{ id: string; pending: Pending } | null>(null);
   const [note, setNote] = useState("");
+  const [diff, setDiff] = useState<{ path: string; text: string; truncated: boolean; protected: boolean } | null>(null);
   const busy = useRef(false);
 
   const refresh = useCallback(async () => {
@@ -99,6 +100,14 @@ export function ClaudePanel({ client, connected }: { client: React.RefObject<Api
     void refresh();
   };
 
+  const showDiff = async (path: string) => {
+    if (diff?.path === path) return setDiff(null);                    // zweiter Klick schließt
+    const r = await client.current?.call("claude.diff", { path });
+    if (r?.ok && typeof r.diff === "string") {
+      setDiff({ path, text: r.diff, truncated: r.truncated === true, protected: r.protected === true });
+    } else setNote("Diff nicht verfügbar (Datei gehört nicht zu den Änderungen oder der Lauf ist weg).");
+  };
+
   const running = session?.status === "running";
   const waiting = session?.status === "waiting";
   const offers = waiting ? (session?.offers ?? []) : [];
@@ -118,6 +127,28 @@ export function ClaudePanel({ client, connected }: { client: React.RefObject<Api
           {review.overview.done && <p>{review.overview.done}</p>}
           {review.overview.question && <p><strong>Rückfrage:</strong> {review.overview.question}</p>}
           <p className="hint">{review.shortstat || `${review.files.length} Dateien`}</p>
+          {review.files.length > 0 && (
+            <ul className="cl-files" aria-label="Geänderte Dateien">
+              {review.files.map((f) => (
+                <li key={f.path}>
+                  <button type="button" aria-expanded={diff?.path === f.path} onClick={() => void showDiff(f.path)}>
+                    <span className="st">{f.status}</span> {f.path}{review.protected.includes(f.path) ? " (geschützt)" : ""}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {diff && (
+            <div className="cl-diff">
+              {diff.protected && <p className="cl-warn" role="alert">Geschützte Datei: Änderungen daran übernimmt nur der Nutzer.</p>}
+              <pre aria-label={`Diff ${diff.path}`} tabIndex={0}>
+                {diff.text.split("\n").map((l, i) => (
+                  <span key={i} className={l.startsWith("+") && !l.startsWith("+++") ? "add" : l.startsWith("-") && !l.startsWith("---") ? "del" : l.startsWith("@@") ? "hunk" : ""}>{l}{"\n"}</span>
+                ))}
+              </pre>
+              {diff.truncated && <p className="hint">Der Diff ist gekürzt.</p>}
+            </div>
+          )}
           {review.protected.length > 0 && (
             <p className="cl-warn" role="alert">Geschützte Dateien geändert: {review.protected.join(", ")}</p>
           )}

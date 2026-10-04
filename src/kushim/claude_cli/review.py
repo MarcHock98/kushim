@@ -119,6 +119,22 @@ class Review:
         return sum(1 for s, _ in self.files if s.startswith("A"))
 
 
+MAX_DIFF_CHARS = 40_000
+_CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")     # Terminal-/Steuerzeichen aus Dateiinhalten; Zeilenumbruch und Tab bleiben
+
+
+def diff_file(worktree: Path, base_sha: str, path: str, git: Git = run_git) -> tuple[str, bool]:
+    """Der Diff EINER geänderten Datei (Stand des Nutzers gegen Claudes letzten Commit), nur lesend, gekürzt auf `MAX_DIFF_CHARS`.
+    `path` muss genau eine der geänderten Dateien sein (kein Raten, keine Pfade außerhalb); er steht hinter `--` und kann so nie
+    als Option gelesen werden. Gibt (Text, gekürzt) zurück. Wirft GitError, wenn die Datei nicht zu den Änderungen gehört."""
+    changed = {line.split("\t")[-1] for line in git(["diff", "--name-status", base_sha, "HEAD"], worktree).splitlines()
+               if "\t" in line}
+    if path not in changed:
+        raise GitError("Datei gehört nicht zu den Änderungen")
+    text = _CONTROL.sub(" ", git(["diff", "--no-color", "--no-ext-diff", base_sha, "HEAD", "--", path], worktree))
+    return (text[:MAX_DIFF_CHARS], True) if len(text) > MAX_DIFF_CHARS else (text, False)
+
+
 def review(folder: Path, worktree: Path | None, base_sha: str, base_branch: str, git: Git = run_git) -> Review:
     rv = Review()
     try:

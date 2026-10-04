@@ -359,6 +359,13 @@ class ClaudeSessions:
         self._finish(st, t0, status="waiting")
 
     # --- Ergebnis
+    def diff(self, path: str) -> tuple[str, bool] | None:
+        """Diff einer geänderten Datei des aktuellen Laufs (nur lesend); None ohne Lauf oder Worktree, GitError bei fremdem Pfad."""
+        st = self.state()
+        if st is None or not st.worktree_path or not self.worktree_ok(st):
+            return None
+        return review.diff_file(Path(st.worktree_path), st.base_sha, path, self._git)
+
     def result(self) -> tuple[State, review.Review, report.Overview] | None:
         st = self.state()
         if st is None:
