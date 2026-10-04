@@ -324,6 +324,9 @@ def _api_start(cfg: Config, root, extra=None):
         extra(core, store)
     else:
         register_safety_view(core, LiveConfig(), root, store=store)
+        if store is not None:
+            from .api.memory_api import register_memory
+            register_memory(core, store)
     server = LocalServer(core)
     port = server.start()
     info = root / "run" / "api.json"
@@ -916,6 +919,7 @@ def _main(argv: list[str] | None = None) -> int:
             if args.ui:                                   # die API muss im selben Prozess laufen: nur hier liegen die wartenden Freigaben
                 from .api.approvals_api import register_approvals
                 from .api.claude_api import register_claude
+                from .api.memory_api import register_memory
                 from .api.safety_view import register_safety_view
                 from .api.tasks_api import register_tasks
                 from .api.transcript_api import register_transcript
@@ -924,6 +928,8 @@ def _main(argv: list[str] | None = None) -> int:
                     register_approvals(core, tool_cmds)
                     register_tasks(core, tasks)
                     register_claude(core, tool_cmds.control)
+                    if store is not None:
+                        register_memory(core, store)
                     register_safety_view(core, tool_cmds.cfg, root, registry=tool_cmds.registry, store=store)
                     register_transcript(core, transcript)
                 api = _api_start(cfg, root, extra)

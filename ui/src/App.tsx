@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ApprovalBar, type Pending } from "./components/ApprovalBar";
 import { Avatar } from "./components/Avatar";
 import { ClaudePanel } from "./components/ClaudePanel";
+import { MemoryPanel } from "./components/MemoryPanel";
 import { SecurityPanel, type Overview } from "./components/SecurityPanel";
 import { Transcript, type Entry } from "./components/Transcript";
 import { HaltedBanner, KillButton } from "./components/KillButton";
@@ -32,7 +33,7 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
   const [voice, setVoice] = useState<{ active: boolean; state?: AvatarState; level: number }>({ active: false, level: 0 });
   const [pending, setPending] = useState<Pending | null>(null);
   const [toast, setToast] = useState("");
-  const [view, setView] = useState<"home" | "security">("home");
+  const [view, setView] = useState<"home" | "security" | "memory">("home");
   const [overview, setOverview] = useState<Overview | null>(null);
   const [entries, setEntries] = useState<Entry[]>([]);
   const lastId = useRef(0);
@@ -170,14 +171,18 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
       </header>
       <nav className="tabs" aria-label="Bereiche">
         <button type="button" aria-pressed={view === "home"} onClick={() => setView("home")}>Start</button>
+        <button type="button" aria-pressed={view === "memory"} onClick={() => setView("memory")}>Gedächtnis</button>
         <button type="button" aria-pressed={view === "security"} onClick={() => setView("security")}>Sicherheit</button>
       </nav>
       {state === "halted" && <HaltedBanner onResume={() => void doResume()} />}
       {pending && state === "asking" && <ApprovalBar pending={pending} onDecide={(a) => void decide(a)} />}
       <div className="toast" role="status" aria-live="polite">{toast}</div>
+      <main className="stage" hidden={view !== "memory"}>
+        <MemoryPanel client={client} connected={connected} active={view === "memory"} />
+      </main>
       {view === "security" ? (
         <main className="stage"><SecurityPanel overview={overview} /></main>
-      ) : (
+      ) : view === "home" && (
       <main className="stage">
         <Avatar state={state} size={240} level={voice.level} />
         <p className="line">{stateView.label}</p>
