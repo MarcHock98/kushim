@@ -192,6 +192,35 @@ describe("Freigabe-Leiste", () => {
   });
 });
 
+describe("Daumen-Feedback", () => {
+  async function withReply() {
+    const sock: { current?: MockSocket } = {};
+    render(<App load={loaderWith(sock)} />);
+    await waitFor(() => screen.getByText(/Noch nichts gesagt/));
+    sock.current!.entries = [{ id: 7, heard: "Wie spät?", reply: "Zehn Uhr.", outcome: "spoken" },
+      { id: 8, heard: "", reply: "", outcome: "rejected_speaker" }];
+    await waitFor(() => screen.getByText("Zehn Uhr."), { timeout: 3000 });
+    return sock.current!;
+  }
+
+  it("Daumen nur bei Antworten mit Text; Klick sendet die Bewertung genau einmal und sperrt die Knöpfe", async () => {
+    const sock = await withReply();
+    expect(screen.getAllByRole("button", { name: "Hilfreich" })).toHaveLength(1);        // nicht bei der abgelehnten Stimme
+    expect(sock.sent.some((m) => (m as { type: string }).type === "feedback.add")).toBe(false);   // ohne Klick nichts
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Hilfreich" })); });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Hilfreich" })).toBeDisabled());
+    expect(sock.ratings).toEqual([{ entry: 7, rating: 1 }]);
+    expect(screen.getByRole("button", { name: "Hilfreich" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Nicht hilfreich" })).toBeDisabled();
+  });
+
+  it("Daumen runter sendet -1", async () => {
+    const sock = await withReply();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Nicht hilfreich" })); });
+    await waitFor(() => expect(sock.ratings).toEqual([{ entry: 7, rating: -1 }]));
+  });
+});
+
 describe("Live-Transkript", () => {
   it("zeigt neue Einträge als reinen Text (nie HTML) und holt jeden nur einmal", async () => {
     const sock: { current?: MockSocket } = {};

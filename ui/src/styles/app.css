@@ -100,3 +100,6 @@ button:disabled { opacity: .5; cursor: default; }
 .folder-list li { display: flex; justify-content: space-between; align-items: center; gap: var(--s-3); }
 .folder-list code { color: var(--text-muted); font-size: var(--fs-xs); overflow-wrap: anywhere; }
 .cl-form input { font: inherit; color: var(--text); background: var(--bg-0); border: 1px solid var(--line-strong); border-radius: var(--r-sm); padding: var(--s-2) var(--s-3); min-height: var(--hit); }
+.thumbs { display: inline-flex; gap: var(--s-2); margin-left: var(--s-3); vertical-align: middle; }
+.thumbs button { min-width: var(--hit); padding: 0 var(--s-2); background: transparent; }
+.thumbs button[aria-pressed="true"] { border-color: var(--amber); }

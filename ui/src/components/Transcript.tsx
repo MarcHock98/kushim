@@ -13,7 +13,8 @@ const NOTE: Record<string, string> = {
 };
 
 /** Die letzten Äußerungen: „Du“ rechts (Cyan-Rand), kushim links (Bernstein-Rand). Nur Text, nie HTML. */
-export function Transcript({ entries }: { entries: Entry[] }) {
+export function Transcript({ entries, rated = {}, onRate }: {
+  entries: Entry[]; rated?: Record<number, 1 | -1>; onRate?: (id: number, rating: 1 | -1) => void }) {
   if (entries.length === 0) {
     return <p className="hint">Noch nichts gesagt. Sag „hey kushim“.</p>;
   }
@@ -25,6 +26,14 @@ export function Transcript({ entries }: { entries: Entry[] }) {
           {(e.reply || NOTE[e.outcome]) && (
             <p className={`bubble bot${e.outcome === "rejected_speaker" ? " alarm" : ""}`}>
               <span className="who">kushim</span>{e.reply || NOTE[e.outcome]}
+              {e.reply && onRate && (
+                <span className="thumbs">
+                  <button type="button" aria-pressed={rated[e.id] === 1} disabled={rated[e.id] !== undefined}
+                    title="Hilfreich" aria-label="Hilfreich" onClick={() => onRate(e.id, 1)}>👍</button>
+                  <button type="button" aria-pressed={rated[e.id] === -1} disabled={rated[e.id] !== undefined}
+                    title="Nicht hilfreich" aria-label="Nicht hilfreich" onClick={() => onRate(e.id, -1)}>👎</button>
+                </span>
+              )}
             </p>
           )}
         </li>

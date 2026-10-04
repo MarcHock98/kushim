@@ -39,6 +39,7 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
   const [dash, setDash] = useState<DashData | null>(null);
   const [entries, setEntries] = useState<Entry[]>([]);
   const lastId = useRef(0);
+  const [rated, setRated] = useState<Record<number, 1 | -1>>({});
   const client = useRef<ApiClient | null>(null);
 
   const refresh = useCallback(async () => {
@@ -143,6 +144,12 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
     return () => { stop = true; clearInterval(id); };
   }, [connected, view]);
 
+  const rate = useCallback(async (id: number, rating: 1 | -1) => {
+    const r = await client.current?.call("feedback.add", { entry: id, rating });
+    if (r?.ok || (r && !r.ok && r.error === "already_rated")) setRated((old) => ({ ...old, [id]: old[id] ?? rating }));
+    else setToast("Die Bewertung konnte nicht gespeichert werden.");
+  }, []);
+
   const decide = useCallback(async (approve: boolean) => {
     const p = pending;
     if (!p) return;
@@ -203,7 +210,7 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
       <main className="stage">
         <Avatar state={state} size={240} level={voice.level} />
         <p className="line">{stateView.label}</p>
-        {connected && <Transcript entries={entries} />}
+        {connected && <Transcript entries={entries} rated={rated} onRate={(id, r) => void rate(id, r)} />}
         <ClaudePanel client={client} connected={connected} />
         {connected && !voice.active && state === "idle" && (
           <p className="hint">Der Sprachdienst läuft nicht. Starte ihn mit „kushim talk“.</p>

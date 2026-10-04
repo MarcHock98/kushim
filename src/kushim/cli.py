@@ -924,6 +924,7 @@ def _main(argv: list[str] | None = None) -> int:
                 from .api.approvals_api import register_approvals
                 from .api.claude_api import register_claude
                 from .api.dashboard_api import register_dashboard
+                from .api.feedback_api import register_feedback
                 from .api.memory_api import register_memory
                 from .api.safety_view import register_safety_view
                 from .api.tasks_api import register_tasks
@@ -944,6 +945,7 @@ def _main(argv: list[str] | None = None) -> int:
                     register_dashboard(core, tool_cmds, tool_cmds.timers.store, tasks)
                     if store is not None:
                         register_memory(core, store)
+                        register_feedback(core, transcript, store)
                     register_safety_view(core, tool_cmds.cfg, root, registry=tool_cmds.registry, store=store)
                     register_transcript(core, transcript)
                 api = _api_start(cfg, root, extra)

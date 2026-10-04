@@ -40,6 +40,13 @@ class Transcript:
         with self._lock:
             return [dict(i) for i in self._items if i["id"] > last_id]
 
+    def get(self, entry_id: int) -> dict[str, Any] | None:
+        with self._lock:
+            for i in self._items:
+                if i["id"] == entry_id:
+                    return dict(i)
+        return None
+
     def clear(self) -> None:
         with self._lock:
             self._items.clear()

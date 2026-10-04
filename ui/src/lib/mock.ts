@@ -23,6 +23,8 @@ export class MockSocket implements Socket {
   review: unknown = null;
   diffText = "";
   folderProposal: { name: string; path: string } | null = null;
+  rated = new Set<number>();
+  ratings: { entry: number; rating: number }[] = [];
   sent: unknown[] = [];
 
   constructor(public url: string, private token = "t".repeat(43), private fail = false) {
@@ -105,6 +107,11 @@ export class MockSocket implements Socket {
       reply = { ok: true, allowed: true, proposal: "p2", kind: "answer", preview: `Antwort: «${m.text}».${extra}`, expires_in: 60 };
     }
     else if (msg.type === "claude.stop") { this.session = null; reply = { ok: true, stopped: true }; }
+    else if (msg.type === "feedback.add") {
+      const m = msg as { entry?: number; rating?: number };
+      if (this.rated.has(m.entry ?? -1)) reply = { ok: false, error: "already_rated" };
+      else { this.rated.add(m.entry ?? -1); this.ratings.push({ entry: m.entry ?? -1, rating: m.rating ?? 0 }); reply = { ok: true, rated: m.entry, rating: m.rating }; }
+    }
     else if (msg.type === "approvals.get") reply = { ok: true, pending: this.pending };
     else if (msg.type === "approvals.decide") {
       const m = msg as { digest?: string };
