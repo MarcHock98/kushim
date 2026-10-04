@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ApprovalBar, type Pending } from "./components/ApprovalBar";
 import { Avatar } from "./components/Avatar";
 import { HaltedBanner, KillButton } from "./components/KillButton";
 import { ApiClient, type Credentials } from "./lib/api";
@@ -26,6 +27,8 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
   const [connected, setConnected] = useState(false);
   const [kill, setKill] = useState<boolean | null>(null);
   const [voice, setVoice] = useState<{ active: boolean; state?: AvatarState; level: number }>({ active: false, level: 0 });
+  const [pending, setPending] = useState<Pending | null>(null);
+  const [toast, setToast] = useState("");
   const client = useRef<ApiClient | null>(null);
 
   const refresh = useCallback(async () => {
@@ -71,6 +74,31 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
     return () => clearInterval(id);
   }, [connected]);
 
+  useEffect(() => {                                     // Freigabe nur abfragen, solange das Backend eine meldet
+    if (!connected || voice.state !== "asking") { setPending(null); return; }
+    let stop = false;
+    const get = async () => {
+      const r = await client.current?.call("approvals.get");
+      if (stop || !r?.ok) return;
+      const p = r.pending as Pending | null;
+      setPending((old) => (p && old && old.digest === p.digest ? old : p));   // gleiche Freigabe: Zähler nicht zurücksetzen
+    };
+    void get();
+    const id = setInterval(get, 1000);
+    return () => { stop = true; clearInterval(id); };
+  }, [connected, voice.state]);
+
+  const decide = useCallback(async (approve: boolean) => {
+    const p = pending;
+    if (!p) return;
+    setPending(null);                                   // nie doppelt absenden
+    const r = await client.current?.call("approvals.decide", { approve, digest: p.digest, ...(approve ? { confirm: true } : {}) });
+    if (r?.ok) setToast(approve ? "Erlaubt. Ich führe es aus." : "Abgelehnt. Es wurde nichts gesendet.");
+    else setToast(r && !r.ok && r.error === "stale" ? "Die Vorschau hat sich geändert. Bitte neu prüfen."
+      : "Nichts mehr zu entscheiden (abgelaufen oder erledigt).");
+    setTimeout(() => setToast(""), 5000);
+  }, [pending]);
+
   const doKill = useCallback(async () => {
     setKill(true);                                      // sofort sichtbar, das Backend bestätigt beim nächsten Abruf
     await client.current?.call("safety.kill");
@@ -101,6 +129,8 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
         <KillButton onKill={() => void doKill()} />
       </header>
       {state === "halted" && <HaltedBanner onResume={() => void doResume()} />}
+      {pending && state === "asking" && <ApprovalBar pending={pending} onDecide={(a) => void decide(a)} />}
+      <div className="toast" role="status" aria-live="polite">{toast}</div>
       <main className="stage">
         <Avatar state={state} size={240} level={voice.level} />
         <p className="line">{view.label}</p>

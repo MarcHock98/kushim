@@ -17,6 +17,7 @@ from __future__ import annotations
 import difflib
 import queue
 import re
+import threading
 import unicodedata
 from dataclasses import dataclass
 from typing import Any, Callable
@@ -248,6 +249,7 @@ class ToolCommands:
         self.say: Callable[[str], None] | None = None       # sofortige Ansage vor langen Aktionen (Pipeline.say_text)
         self.before: Callable[[], None] = lambda: None      # vor jedem Satz: frischen Stand übernehmen (z. B. Modus C im EgressGate)
         self._pending: _Pending | None = None
+        self._plock = threading.Lock()                      # Sprache und Oberfläche entscheiden nie doppelt
         self._branch_list: list = []
         self._announcements: "queue.SimpleQueue[str]" = queue.SimpleQueue()
         self.sessions.on_finish = self._on_turn_finished
@@ -255,6 +257,49 @@ class ToolCommands:
     @property
     def awaiting(self) -> bool:
         return self._pending is not None
+
+    # --- Oberfläche: offene Freigabe ansehen und entscheiden (die UI ist der Nutzer, Token)
+    def pending_view(self) -> dict[str, Any] | None:
+        """Die wartende Freigabe mit dem exakten Vorschautext, dem Hash dieses Textes und der Restzeit; sonst None."""
+        pending = self._pending
+        if pending is None or pending.proposal.approval is None:
+            return None
+        owner = self.control if pending.control else self.research
+        p = pending.proposal
+        return {"kind": pending.kind, "preview": p.preview, "digest": p.approval.digest,
+                "expires_in": round(owner.queue.remaining(p.approval), 1),
+                "sends_data_out": True}                       # Recherche, Antwort und Auftrag gehen alle nach außen
+
+    def decide(self, approve: bool, digest: str) -> str:
+        """Entscheidung aus der Oberfläche. Gilt nur für genau die gezeigte Vorschau (`digest`); sonst "stale".
+        Annehmen läuft im Hintergrund (kann Minuten dauern), das Ergebnis wird angesagt. Antwort: started | denied | stale | none."""
+        with self._plock:
+            pending = self._pending
+            if pending is None or pending.proposal.approval is None:
+                return "none"
+            if digest != pending.proposal.approval.digest:
+                return "stale"
+            self._pending = None
+        owner = self.control if pending.control else self.research
+        if not approve:
+            owner.deny(pending.proposal)
+            return "denied"
+        threading.Thread(target=self._run_approved, args=(pending, owner), name="kushim-approved", daemon=True).start()
+        return "started"
+
+    def _run_approved(self, pending: _Pending, owner: Any) -> None:
+        try:
+            if not owner.approve(pending.proposal):
+                self._announcements.put("Die Freigabe ist abgelaufen.")
+            elif pending.kind == "research":
+                self._announcements.put(self._speak_research(self.research.execute(pending.proposal)))
+            else:
+                self.control.execute(pending.proposal)
+                self._announcements.put("Okay, Claude arbeitet. Ich melde mich, wenn er fertig ist oder etwas fragt.")
+        except SessionError as e:
+            self._announcements.put(f"Das hat nicht geklappt: {e}")
+        except Exception:                                              # noqa: BLE001 (nie Details, nie Pfade)
+            self._announcements.put("Das hat nicht geklappt.")
 
     # --- Meldungen von sich aus (Claude ist fertig oder fragt)
     def _on_turn_finished(self, st: Any) -> None:
@@ -479,7 +524,10 @@ class ToolCommands:
 
     # --- Bestätigung ("ja"/"nein")
     def _confirm(self, text: str, verified: bool) -> str:
-        pending, self._pending = self._pending, None
+        with self._plock:
+            pending, self._pending = self._pending, None
+        if pending is None:
+            return "Es wartet nichts auf eine Bestätigung."
         owner = self.control if pending.control else self.research
         w = _words(text)
         if not verified:

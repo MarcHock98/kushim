@@ -300,16 +300,14 @@ def _vault_state(cfg: Config) -> str:
         return "kein-vault"
 
 
-def _serve(cfg: Config) -> int:
-    """Startet die Backend-API auf 127.0.0.1; Port und Token liegen in run/api.json (nur für die eigene Oberfläche).
-    Beim Notaus läuft die API weiter (nur setup/safety), damit die UI ihn anzeigen und aufheben kann."""
+def _api_start(cfg: Config, root, extra=None):
+    """Baut den API-Kern (setup, safety, voice; `extra(core)` hängt mehr an) und startet den Server auf 127.0.0.1.
+    Port und Token kommen nach run/api.json (nur für die eigene Oberfläche). Gibt (server, store, info) zurück."""
     import json
-    import time
-    from pathlib import Path
     from .api.protocol import ApiCore, new_token
     from .api.setup_api import register_setup
+    from .api.voice_api import register_voice
     from .net.server import LocalServer
-    root = Path(__file__).resolve().parents[1].parent
     store = None
     try:
         store = open_store(cfg)
@@ -317,24 +315,40 @@ def _serve(cfg: Config) -> int:
         print("Hinweis: Vault nicht offen, Notaus-Aktionen werden nicht im Audit protokolliert.")
     token = new_token()
     core = ApiCore(token)
-    from .api.voice_api import register_voice
     register_voice(core, root)
     register_setup(core, root, lambda: _vault_state(cfg), llm_model=cfg.llm_model,
                    audit=store.audit if store else None)
+    if extra is not None:
+        extra(core)
     server = LocalServer(core)
     port = server.start()
     info = root / "run" / "api.json"
     info.parent.mkdir(exist_ok=True)
     info.write_text(json.dumps({"port": port, "token": token}), encoding="utf-8")
-    print(f"kushim API auf 127.0.0.1:{port} (nur lokal). Strg+C beendet.")
+    print(f"kushim API auf 127.0.0.1:{port} (nur lokal).")
+    return server, store, info
+
+
+def _api_stop(server, store, info) -> None:
+    server.stop()
+    info.unlink(missing_ok=True)
+    if store:
+        store.close()
+
+
+def _serve(cfg: Config) -> int:
+    """Startet die Backend-API auf 127.0.0.1; Port und Token liegen in run/api.json (nur für die eigene Oberfläche).
+    Beim Notaus läuft die API weiter (nur setup/safety), damit die UI ihn anzeigen und aufheben kann."""
+    import time
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1].parent
+    server, store, info = _api_start(cfg, root)
+    print("Strg+C beendet. Ohne Sprachdienst gibt es hier keine Freigaben: dafür `kushim talk --ui`.")
     try:
         while True:                                   # bleibt auch bei Notaus erreichbar: die UI zeigt "NOTAUS aktiv" und hebt auf
             time.sleep(0.5)
     finally:
-        server.stop()
-        info.unlink(missing_ok=True)
-        if store:
-            store.close()
+        _api_stop(server, store, info)
     return 0
 
 
@@ -367,6 +381,7 @@ def _main(argv: list[str] | None = None) -> int:
     t = sub.add_parser("talk", help="Sprechen per Wake Word (nur das Wake Word wird dauerhaft ausgewertet)")
     t.add_argument("--mic", help="Namensteil des Mikrofons, sonst Systemstandard")
     t.add_argument("--out", help="Namensteil des Ausgabegeräts, sonst Systemstandard")
+    t.add_argument("--ui", action="store_true", help="Backend-API für die Oberfläche mitstarten (127.0.0.1): Freigabe-Leiste, Zustand, Notaus")
     t.add_argument("--wake-words", help="Komma-getrennt, überschreibt wakewords.toml nur für diesen Start (z. B. \"hey kushim,kushim\")")
     vo = sub.add_parser("voice", help="Eigene Stimme: einschreiben, testen, Status, löschen").add_subparsers(
         dest="sub", required=True)
@@ -855,6 +870,7 @@ def _main(argv: list[str] | None = None) -> int:
         except ValueError as e:
             print(f"[gpu] in config.toml: {e}")
             return 2
+        api = None
         launcher = Launcher(root, cuda_devices=plan.llm_visible)
         try:
             launcher.start_ollama()
@@ -885,6 +901,14 @@ def _main(argv: list[str] | None = None) -> int:
             from .voice import statefile
             publisher = statefile.StatePublisher(root, pending=tasks.pending_approvals)
             pipeline.dialog._on_change = lambda s: publisher.phase(s.value)
+            if args.ui:                                   # die API muss im selben Prozess laufen: nur hier liegen die wartenden Freigaben
+                from .api.approvals_api import register_approvals
+                from .api.tasks_api import register_tasks
+
+                def extra(core):
+                    register_approvals(core, tool_cmds)
+                    register_tasks(core, tasks)
+                api = _api_start(cfg, root, extra)
             loop = TalkLoop(mic, pipeline, kill, wake=lambda f: det.process(f) is not None, ack=ack,
                             flush=mic.flush, new_collector=lambda: utter(wait_ms),
                             on_result=lambda r: (out(r), publisher.alarm() if r.outcome == "rejected_speaker" else None)[0],
@@ -911,6 +935,8 @@ def _main(argv: list[str] | None = None) -> int:
         except KeyboardInterrupt:
             pass
         finally:
+            if api is not None:
+                _api_stop(*api)
             launcher.stop()
         return 0
     if args.cmd == "start":

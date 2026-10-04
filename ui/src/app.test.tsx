@@ -139,3 +139,55 @@ describe("Sprach-Zustand vom Backend", () => {
     expect(screen.queryByText(STATE_VIEW.speaking.label)).toBeNull();
   });
 });
+
+describe("Freigabe-Leiste", () => {
+  const P = { kind: "research", preview: "Suchtext: Höhe des Eiffelturms", digest: "d".repeat(64), expires_in: 125, sends_data_out: true };
+
+  async function asking() {
+    const sock: { current?: MockSocket } = {};
+    render(<App load={loaderWith(sock)} />);
+    await waitFor(() => screen.getAllByText(STATE_VIEW.idle.label));
+    sock.current!.pending = { ...P };
+    sock.current!.voice = { active: true, state: "asking", level: 0 };
+    await waitFor(() => expect(screen.getByRole("alertdialog")).toBeInTheDocument(), { timeout: 3000 });
+    return sock.current!;
+  }
+
+  it("zeigt den exakten Text, die Restzeit und den Hinweis auf Daten nach außen; Standardfokus liegt auf Ablehnen", async () => {
+    await asking();
+    expect(screen.getByText("Suchtext: Höhe des Eiffelturms")).toBeInTheDocument();
+    expect(screen.getByText(/Läuft ab in 02:0\d/)).toBeInTheDocument();
+    expect(screen.getByText(/Sendet Daten nach außen/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ablehnen" })).toHaveFocus();
+    expect(screen.queryByText(/immer/i)).toBeNull();                     // kein "Immer erlauben"
+  });
+
+  it("Erlauben sendet Hash und confirm; ohne Klick passiert nichts", async () => {
+    const sock = await asking();
+    expect(sock.sent.some((m) => (m as { type: string }).type === "approvals.decide")).toBe(false);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Erlauben" })); });
+    const sent = sock.sent.find((m) => (m as { type: string }).type === "approvals.decide") as { approve: boolean; digest: string; confirm: boolean };
+    expect(sent).toMatchObject({ approve: true, digest: P.digest, confirm: true });
+    await waitFor(() => expect(screen.getByText(/Erlaubt/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+  });
+
+  it("Ablehnen und Esc lehnen ab und senden kein confirm", async () => {
+    const sock = await asking();
+    await act(async () => { fireEvent.keyDown(screen.getByRole("alertdialog"), { key: "Escape" }); });
+    const sent = sock.sent.find((m) => (m as { type: string }).type === "approvals.decide") as { approve: boolean; confirm?: boolean };
+    expect(sent.approve).toBe(false);
+    expect(sent.confirm).toBeUndefined();
+    await waitFor(() => expect(screen.getByText(/Abgelehnt/)).toBeInTheDocument());
+  });
+
+  it("zeigt die Leiste nicht, solange das Backend nicht 'asking' meldet", async () => {
+    const sock: { current?: MockSocket } = {};
+    render(<App load={loaderWith(sock)} />);
+    await waitFor(() => screen.getAllByText(STATE_VIEW.idle.label));
+    sock.current!.pending = { ...P };
+    sock.current!.voice = { active: true, state: "thinking", level: 0 };
+    await new Promise((r) => setTimeout(r, 600));
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+});
