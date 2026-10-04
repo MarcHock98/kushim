@@ -289,12 +289,15 @@ class ToolCommands:
         if p.approval is None:
             return p.reason or "Das darf ich gerade nicht."
         self._pending = _Pending("answer", p, control=True)
+        if self._direct():
+            extra = (" Dabei erlaube ich Claude: " + ", ".join(allow) + ".") if allow else ""
+            return self._run_direct(f"Ich antworte Claude: {p.task}.{extra} ")
         extra = " Dabei erlaube ich Claude für diese Sitzung: " + ", ".join(allow) + "." if allow else ""
         return f"Ich antworte Claude: {p.task}.{extra} Soll ich das senden? Sage ja oder nein."
 
     def _direct(self) -> bool:
         """Direkt handeln: der gesprochene Befehl der verifizierten Stimme ist die Freigabe (Einstellung [tools] direct, Standard an).
-        Alles andere bleibt: Prüfer, Hash-Bindung, Gate, Notaus, "abbrechen". Antworten an Claude und Erlaubnisse fragen immer nach."""
+        Alles andere bleibt: Prüfer, Hash-Bindung, Gate, Notaus, "abbrechen". Auch Antworten an Claude und Erlaubnisse laufen so (erlaubt werden nur von Claude angebotene, harmlose Befehle)."""
         return bool(getattr(self.cfg, "voice_direct", False))
 
     def _run_direct(self, intro: str) -> str:
