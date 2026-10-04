@@ -51,6 +51,11 @@ class ToolRegistry:
         t = self.tools.get(name)
         return t is not None and name in self._enabled and not t.available()
 
+    def sync(self, enabled: Iterable[str]) -> None:
+        """Aktiv-Liste neu setzen (z. B. aus der Konfiguration, wenn der Nutzer in einem anderen Fenster umgeschaltet hat).
+        Unbekannte Namen werden wie im Konstruktor ignoriert."""
+        self._enabled = {n for n in enabled if n in self.tools}
+
     def enabled_names(self) -> list[str]:
         return sorted(self._enabled)
 

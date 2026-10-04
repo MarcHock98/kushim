@@ -17,6 +17,7 @@ Format: Datum, Datei, Grund (ein Satz).
 
 - 2026-10-04, src/kushim/safety/gate.py: Sprecher-Prüfung gilt jetzt auch für Nur-Lesen-Aktionen mit Außenwirkung (Verschärfung, Lücke beim Test der Web-Recherche gefunden).
 - 2026-10-04, ROADMAP.md/docs: Tool-Verwaltung und Web-Recherche-Logik ergänzt; Netz-Modul `net/web.py` wartet auf ausdrückliche Freigabe (Egress-Sperre, docs/tools-plan.md).
+- 2026-10-04, voice/: Werkzeuge per Sprache (tool_commands.py): ehrliche Liste aus der Registry statt Erfindung des Sprachmodells, Recherche und Claude-Steuerung mit gesprochenem ja/nein, Ansage wenn Claude fertig ist oder fragt; Einschalten bleibt UI/CLI. Sicherheitsregeln und Allowlists unverändert (Web-Paket nur über cli.py).
 - 2026-10-04, .claude/skills/kushim-add-tool/SKILL.md: Abschnitt "Gelernte Fallstricke" (Registry, READ mit Außenwirkung, Prüfer, Freigabe-Text, Netz-Modul nur mit Freigabe, git status nach neuen Ordnern).
 - 2026-10-04, .claude/skills/kushim-routine/SKILL.md: Abschnitt "Gelernte Fallstricke (Arbeitsweise)" (Shell/Heredocs, CRLF, live prüfen, messen, hängende Läufe, .gitignore, Egress-Lockerung nur nach Frage).
 - 2026-10-04, .gitignore: `tools/` -> `/tools/`, weil sonst `src/kushim/tools/` ignoriert wurde.
