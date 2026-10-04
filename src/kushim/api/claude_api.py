@@ -7,6 +7,7 @@ Pfade außer dem Namen des Ordners; Claudes Text steht nur als Anzeigetext (`Unt
 """
 from __future__ import annotations
 
+import threading
 import time
 from typing import Any, Callable
 
@@ -28,13 +29,16 @@ def _state(st: State | None) -> dict[str, Any]:
 
 def register_claude(core: ApiCore, control: Control, clock: Callable[[], float] = time.monotonic) -> None:
     pending: dict[str, Proposal] = {}
+    lock = threading.Lock()                                            # die Handler laufen in Executor-Threads
 
     def propose(p: Proposal) -> dict[str, Any]:
         if p.decision is not Decision.ASK or p.approval is None:
             return {"allowed": False, "reason": p.reason}
-        pending[p.approval_id] = p
-        for old in list(pending)[:-MAX_PENDING]:                       # nie unbegrenzt viele offene Vorschläge
-            control.deny(pending.pop(old))
+        with lock:
+            pending[p.approval_id] = p
+            dropped = [pending.pop(old) for old in list(pending)[:-MAX_PENDING]]     # nie unbegrenzt viele offene Vorschläge
+        for old in dropped:
+            control.deny(old)
         return {"allowed": True, "proposal": p.approval_id, "kind": p.kind, "preview": p.preview,
                 "expires_in": round(control.queue.remaining(p.approval), 1)}
 
@@ -61,9 +65,11 @@ def register_claude(core: ApiCore, control: Control, clock: Callable[[], float] 
 
     def _take(payload: dict[str, Any]) -> Proposal:
         pid = payload.get("proposal")
-        if not isinstance(pid, str) or pid not in pending:
+        with lock:
+            got = pending.pop(pid, None) if isinstance(pid, str) else None     # jede ID gilt genau einmal, auch bei zwei gleichzeitigen Aufrufen
+        if got is None:
             raise ApiError("unknown_proposal")
-        return pending.pop(pid)                                          # jede ID gilt genau einmal
+        return got
 
     def approve(payload: dict[str, Any]) -> dict[str, Any]:
         if payload.get("confirm") is not True:

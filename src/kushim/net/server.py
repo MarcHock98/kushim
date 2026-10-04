@@ -24,7 +24,10 @@ MAX_CONNECTIONS = 4
 MAX_FAILURES = 3
 HANDSHAKE_TIMEOUT = 5.0
 IDLE_TIMEOUT = 600.0
+BODY_TIMEOUT = 10.0                # Maske und Inhalt eines begonnenen Frames müssen zügig folgen
+ATTACK_ERRORS = frozenset({"unauthorized", "bad_json", "unknown_type", "too_large"})   # nur diese zählen für die Trennung
 MAX_HEADER_BYTES = 8192
+HEADER_END = bytes([13, 10, 13, 10])          # Leerzeile nach den Kopfzeilen
 _GUID = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 DEFAULT_ORIGINS = frozenset({"tauri://localhost", "http://tauri.localhost", "https://tauri.localhost"})
 
@@ -83,6 +86,10 @@ class LocalServer:
             if self._server:
                 self._server.close()
                 await self._server.wait_closed()
+            others = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+            for t in others:                                  # offene Verbindungen und Annahme-Aufgaben sauber beenden
+                t.cancel()
+            await asyncio.gather(*others, return_exceptions=True)
             loop.stop()
 
         asyncio.run_coroutine_threadsafe(close(), loop)
@@ -94,6 +101,10 @@ class LocalServer:
     async def _client(self, r: asyncio.StreamReader, w: asyncio.StreamWriter) -> None:
         try:
             if self._active >= MAX_CONNECTIONS:
+                try:                                          # erst die Anfrage lesen: sonst schließt der Server mit ungelesenen Daten
+                    await asyncio.wait_for(r.readuntil(HEADER_END), 1.0)     # und der Client sieht einen Verbindungsabbruch statt 503
+                except (asyncio.TimeoutError, asyncio.IncompleteReadError, asyncio.LimitOverrunError, OSError):
+                    pass
                 await self._refuse(w, "503 Service Unavailable")
                 return
             self._active += 1
@@ -116,7 +127,7 @@ class LocalServer:
         await w.drain()
 
     async def _handshake(self, r: asyncio.StreamReader, w: asyncio.StreamWriter) -> bool:
-        raw = await asyncio.wait_for(r.readuntil(b"\r\n\r\n"), HANDSHAKE_TIMEOUT)
+        raw = await asyncio.wait_for(r.readuntil(HEADER_END), HANDSHAKE_TIMEOUT)
         if len(raw) > MAX_HEADER_BYTES:
             await self._refuse(w, "431 Request Header Fields Too Large")
             return False
@@ -151,8 +162,8 @@ class LocalServer:
             n = struct.unpack(">Q", await r.readexactly(8))[0]
         if n > MAX_MESSAGE_BYTES:
             return None                                     # vor dem Lesen abgelehnt
-        mask = await r.readexactly(4)
-        data = bytearray(await r.readexactly(n))
+        mask = await asyncio.wait_for(r.readexactly(4), BODY_TIMEOUT)
+        data = bytearray(await asyncio.wait_for(r.readexactly(n), BODY_TIMEOUT))
         for i in range(n):
             data[i] ^= mask[i % 4]
         return opcode, bytes(data)
@@ -175,7 +186,7 @@ class LocalServer:
                 w.write(encode_frame(10, data))
             elif opcode == 1:
                 reply = await loop.run_in_executor(None, self._core.handle, data.decode("utf-8", "replace"))
-                if not json.loads(reply).get("ok"):
+                if json.loads(reply).get("error") in ATTACK_ERRORS:     # Fachfehler (confirm_required, stale ...) sind kein Angriff
                     failures += 1
                 w.write(encode_frame(1, reply.encode()))
                 if failures >= MAX_FAILURES:

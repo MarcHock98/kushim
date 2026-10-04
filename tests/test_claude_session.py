@@ -586,3 +586,21 @@ def test_api_answer_review_and_stop(env):
     assert api_call(core, tok, "claude.approve", proposal=a["proposal"], confirm=True)["session"]["turn"] == 2
     finish(sessions)
     assert api_call(core, tok, "claude.stop") == {"ok": True, "stopped": False}
+
+
+def test_api_two_parallel_approvals_of_the_same_proposal_run_at_most_once(env):
+    import threading
+    core, tok, ctl, sessions, popper = build_api(env, FakeProc(result_json()))
+    r = api_call(core, tok, "claude.start", task="Baue den Timer", folder="kushim")
+    out, gate = [], threading.Barrier(2)
+
+    def go():
+        gate.wait()
+        out.append(api_call(core, tok, "claude.approve", proposal=r["proposal"], confirm=True))
+    ts = [threading.Thread(target=go) for _ in range(2)]
+    [t.start() for t in ts]
+    [t.join() for t in ts]
+    errors = sorted(o.get("error", "ok") for o in out)
+    assert errors == ["ok", "unknown_proposal"], errors            # nie "internal", nie zweimal gestartet
+    finish(sessions)
+    assert len(popper.calls) == 1

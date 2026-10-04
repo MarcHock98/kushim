@@ -169,3 +169,24 @@ def test_handler_exception_is_neutral(server):
     c.sendall(frame(json.dumps({"token": TOKEN, "type": "boom"}).encode()))
     assert json.loads(read_frame(c)[1]) == {"ok": False, "error": "internal"}
     c.close()
+
+
+def test_business_errors_do_not_disconnect_but_attacks_do(server):
+    server._core.register("fach", lambda m: (_ for _ in ()).throw(__import__("kushim.api.protocol", fromlist=["ApiError"]).ApiError("confirm_required")))
+    c, _, _ = handshake(server.port)
+    for _ in range(5):                                           # Fachfehler zählen nicht
+        c.sendall(frame(json.dumps({"token": TOKEN, "type": "fach"}).encode()))
+        assert json.loads(read_frame(c)[1])["error"] == "confirm_required"
+    c.sendall(frame(json.dumps({"token": TOKEN, "type": "ping"}).encode()))
+    assert json.loads(read_frame(c)[1])["ok"] is True            # Verbindung lebt noch
+    c.close()
+
+
+def test_half_sent_frame_is_dropped_after_the_body_timeout(server, monkeypatch):
+    import kushim.net.server as srv
+    monkeypatch.setattr(srv, "BODY_TIMEOUT", 0.3)
+    c, _, _ = handshake(server.port)
+    c.sendall(bytes([0x81, 0x80 | 10]) + os.urandom(4))          # Kopf und Maske, aber kein Inhalt
+    c.settimeout(3)
+    assert c.recv(10) == b""                                     # Server trennt von selbst
+    c.close()
