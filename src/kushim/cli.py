@@ -919,6 +919,7 @@ def _main(argv: list[str] | None = None) -> int:
             if args.ui:                                   # die API muss im selben Prozess laufen: nur hier liegen die wartenden Freigaben
                 from .api.approvals_api import register_approvals
                 from .api.claude_api import register_claude
+                from .api.dashboard_api import register_dashboard
                 from .api.memory_api import register_memory
                 from .api.safety_view import register_safety_view
                 from .api.tasks_api import register_tasks
@@ -928,6 +929,7 @@ def _main(argv: list[str] | None = None) -> int:
                     register_approvals(core, tool_cmds)
                     register_tasks(core, tasks)
                     register_claude(core, tool_cmds.control)
+                    register_dashboard(core, tool_cmds, tool_cmds.timers.store, tasks)
                     if store is not None:
                         register_memory(core, store)
                     register_safety_view(core, tool_cmds.cfg, root, registry=tool_cmds.registry, store=store)

@@ -53,3 +53,4 @@ Format: Datum, Datei, Grund (ein Satz).
 - 2026-10-04, `.claude/skills/kushim-routine/SKILL.md`: Fallstrick "Prozessgrenzen" ergänzt (UI-Funktionen, die Zustand aus dem Sprachprozess brauchen, müssen im selben Prozess laufen oder über eine Datei gehen); aus der Freigabe-Leiste gelernt, weil `kushim serve` und `kushim talk` getrennte Prozesse sind.
 
 - 2026-10-04, `.claude/skills/kushim-routine/SKILL.md`: Fallstrick "Threads" (Vault nur über SharedStore, Tests aus anderem Thread); gefunden, weil Audit und Protokoll der API still ins Leere liefen.
+- 2026-10-04, `.claude/skills/kushim-routine/SKILL.md`: Fallstrick "Parallele Werkzeugaufrufe teilen das Arbeitsverzeichnis" (npm-Fehler `enoent` nur bei parallelem Aufruf, einzeln immer sauber).

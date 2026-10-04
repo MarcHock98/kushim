@@ -18,7 +18,9 @@ import difflib
 import queue
 import re
 import threading
+import time
 import unicodedata
+from collections import deque
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -252,6 +254,8 @@ class ToolCommands:
         self._plock = threading.Lock()                      # Sprache und Oberfläche entscheiden nie doppelt
         self._branch_list: list = []
         self._announcements: "queue.SimpleQueue[str]" = queue.SimpleQueue()
+        self.recent_results: "deque[dict[str, Any]]" = deque(maxlen=10)   # nur Arbeitsspeicher, für die Übersicht der UI
+        self._last_query = ""
         self.sessions.on_finish = self._on_turn_finished
 
     @property
@@ -377,6 +381,7 @@ class ToolCommands:
     def _research(self, intent: Intent) -> str:
         if not intent.text.strip():
             return "Wonach soll ich suchen? Sag zum Beispiel: Recherchiere die Höhe des Eiffelturms."
+        self._last_query = intent.text[:300]
         p = self.research.propose(intent.text, speaker_verified=True)
         if p.approval is None:
             return p.reason or "Das darf ich gerade nicht."
@@ -548,7 +553,18 @@ class ToolCommands:
             return "Das hat nicht geklappt."
         return "Okay, Claude arbeitet. Ich melde mich, wenn er fertig ist oder etwas fragt."
 
+    def _remember(self, out: Any) -> None:
+        """Merkt die letzte Recherche für die Übersicht (nur im Arbeitsspeicher): Frage, Antwort als Text, Quellen mit Titel und Adresse."""
+        try:
+            sources = [{"title": str(s.title)[:200], "url": str(s.url)[:300]} for s in (out.wiki.sources if out.wiki is not None else [])]
+            self.recent_results.append({"ts": time.time(), "query": self._last_query, "kind": str(out.kind),
+                                        "answer": _speakable(str(out.answer)) if out.kind == "claude" else "",
+                                        "note": str(out.note)[:200], "sources": sources[:8]})
+        except Exception:                                                  # noqa: BLE001 (Anzeige darf nie stören)
+            pass
+
     def _speak_research(self, out: Any) -> str:
+        self._remember(out)
         note = f"{out.note}. " if out.note and out.kind != "none" else ""
         if out.kind == "claude":
             return f"{note}Laut Claude: {_speakable(str(out.answer))}"

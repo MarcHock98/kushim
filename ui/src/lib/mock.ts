@@ -19,6 +19,7 @@ export class MockSocket implements Socket {
   };
   facts: { id: number; text: string; kind: string; source: string; created: number }[] = [];
   deleted: number[] = [];
+  dash: Record<string, unknown> = { timers: [], tasks: [], pending_approvals: 0, results: [] };
   sent: unknown[] = [];
 
   constructor(public url: string, private token = "t".repeat(43), private fail = false) {
@@ -47,6 +48,7 @@ export class MockSocket implements Socket {
       if (m.confirm !== true) reply = { ok: false, error: "confirm_required" };
       else { this.deleted.push(m.id ?? -1); reply = { ok: true, deleted: m.id }; }
     }
+    else if (msg.type === "dashboard.get") reply = { ok: true, ...this.dash };
     else if (msg.type === "claude.folders") reply = { ok: true, folders: this.folders };
     else if (msg.type === "claude.status") reply = { ok: true, session: this.session };
     else if (msg.type === "claude.review") reply = { ok: true, review: null };

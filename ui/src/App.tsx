@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ApprovalBar, type Pending } from "./components/ApprovalBar";
 import { Avatar } from "./components/Avatar";
 import { ClaudePanel } from "./components/ClaudePanel";
+import { Dashboard, type DashData } from "./components/Dashboard";
 import { MemoryPanel } from "./components/MemoryPanel";
 import { SecurityPanel, type Overview } from "./components/SecurityPanel";
 import { Transcript, type Entry } from "./components/Transcript";
@@ -33,8 +34,9 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
   const [voice, setVoice] = useState<{ active: boolean; state?: AvatarState; level: number }>({ active: false, level: 0 });
   const [pending, setPending] = useState<Pending | null>(null);
   const [toast, setToast] = useState("");
-  const [view, setView] = useState<"home" | "security" | "memory">("home");
+  const [view, setView] = useState<"home" | "dashboard" | "security" | "memory">("home");
   const [overview, setOverview] = useState<Overview | null>(null);
+  const [dash, setDash] = useState<DashData | null>(null);
   const [entries, setEntries] = useState<Entry[]>([]);
   const lastId = useRef(0);
   const client = useRef<ApiClient | null>(null);
@@ -128,6 +130,19 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
     return () => { stop = true; clearInterval(id); };
   }, [connected, view]);
 
+  useEffect(() => {                                     // Übersicht nur abfragen, solange sie offen ist
+    if (!connected || view !== "dashboard") return;
+    let stop = false;
+    const pull = async () => {
+      if (document.hidden) return;
+      const r = await client.current?.call("dashboard.get");
+      if (!stop && r?.ok && Array.isArray(r.timers)) setDash(r as unknown as DashData);
+    };
+    void pull();
+    const id = setInterval(pull, 2000);
+    return () => { stop = true; clearInterval(id); };
+  }, [connected, view]);
+
   const decide = useCallback(async (approve: boolean) => {
     const p = pending;
     if (!p) return;
@@ -171,6 +186,7 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
       </header>
       <nav className="tabs" aria-label="Bereiche">
         <button type="button" aria-pressed={view === "home"} onClick={() => setView("home")}>Start</button>
+        <button type="button" aria-pressed={view === "dashboard"} onClick={() => setView("dashboard")}>Übersicht</button>
         <button type="button" aria-pressed={view === "memory"} onClick={() => setView("memory")}>Gedächtnis</button>
         <button type="button" aria-pressed={view === "security"} onClick={() => setView("security")}>Sicherheit</button>
       </nav>
@@ -180,6 +196,7 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
       <main className="stage" hidden={view !== "memory"}>
         <MemoryPanel client={client} connected={connected} active={view === "memory"} />
       </main>
+      {view === "dashboard" && <main className="stage"><Dashboard data={dash} overview={overview} /></main>}
       {view === "security" ? (
         <main className="stage"><SecurityPanel overview={overview} /></main>
       ) : view === "home" && (
