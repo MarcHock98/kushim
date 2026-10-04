@@ -35,7 +35,8 @@ class TalkLoop:
                  on_result: Callable[[Result], None] = lambda r: None,
                  first_collector: Callable[[], UtteranceCollector] | None = None,
                  follow_collector: Callable[[], UtteranceCollector] | None = None,
-                 barge: Any = None, preroll_frames: int = 0, on_note: Callable[[str], None] = lambda s: None):
+                 barge: Any = None, preroll_frames: int = 0, on_note: Callable[[str], None] = lambda s: None,
+                 announce: Callable[[], str | None] | None = None, say: Callable[[str], None] | None = None):
         """`first_collector`: Befehl direkt nach dem Wake Word ("hey kushim, wie spät ist es?") ohne "Ja?" davor.
         Kommt kein Befehl (nur Wake Word, nur Rauschen oder nur der Rest des Wake Words), folgt "Ja?" und
         `new_collector` wartet auf den Befehl. Ohne `first_collector` gibt es "Ja?" sofort.
@@ -43,12 +44,14 @@ class TalkLoop:
         `barge`: Unterbrechungs-Detektor (`BargeIn`), schaltet Unterbrechen ein.
         `preroll_frames`: so viele Frames VOR dem Auslösen des Wake Words (nur im Arbeitsspeicher) kommen zum Befehl
         dazu, weil der Detektor erst kurz nach dem Wort auslöst und der Anfang des Befehls sonst fehlt.
-        `on_note`: Hinweise zur Diagnose (warum "Ja?" kam)."""
+        `on_note`: Hinweise zur Diagnose (warum "Ja?" kam).
+        `announce`/`say`: Meldungen von sich aus (z. B. Claude ist fertig); gesprochen nur, wenn gerade nichts läuft und keiner spricht."""
         self.frames, self.pipeline, self.kill, self.wake = frames, pipeline, kill, wake
         self.ack, self.flush = ack, flush
         self.new_collector, self.on_result = new_collector, on_result
         self.first_collector, self.follow_collector, self.barge = first_collector, follow_collector, barge
         self.on_note = on_note
+        self.announce, self.say = announce, say
         from collections import deque
         self._ring: Any = deque(maxlen=preroll_frames) if preroll_frames > 0 else None
         self._collecting: UtteranceCollector | None = None
@@ -75,6 +78,8 @@ class TalkLoop:
                     if self._busy is not None:
                         self.pipeline.interrupt()
                     return "killed"
+                if self.announce is not None and self._busy is None and self._collecting is None:
+                    self._speak_announcement()
                 r = self._tick_busy(frame) if self._busy is not None else self._tick(frame)
                 if r:
                     return r
@@ -86,6 +91,16 @@ class TalkLoop:
         finally:
             if self._pool is not None:
                 self._pool.shutdown(wait=False, cancel_futures=True)
+
+    def _speak_announcement(self) -> None:
+        msg = self.announce()
+        if not msg or self.say is None:
+            return
+        self.on_note(f"Meldung: {msg}")
+        try:
+            self.say(msg)
+        finally:
+            self.flush()                             # eigene Ansage nicht als Befehl hören
 
     # --- Zustand: es läuft gerade eine Antwort (nur mit barge)
     def _tick_busy(self, frame: Any) -> str | None:
@@ -183,7 +198,7 @@ class TalkLoop:
 
 def build_live(root: Path, out_device: int | None, in_device: int | None = None,
                verifier: Any = None, commands: Any = None, wake_names: Iterable[str] = (),
-               llm_model: str = DEFAULT_MODEL, whisper_device: str = "cuda", whisper_index: int = 0):
+               llm_model: str = DEFAULT_MODEL, whisper_device: str = "cuda", whisper_index: int = 0, tasks: Any = None):
     """Echte Komponenten. Ollama muss laufen (kushim start oder Launcher)."""
     from ..llm.ollama import OllamaClient
     from . import audio
@@ -207,7 +222,7 @@ def build_live(root: Path, out_device: int | None, in_device: int | None = None,
     ack_wav = engine.synthesize(ACK_TEXT)
     mic = audio.Mic(in_device)
     pipeline = Pipeline(stt, llm.chat_stream, speaker, dialog, kill, verifier, commands=commands,
-                        wake_names=tuple(wake_names))
+                        wake_names=tuple(wake_names), tasks=tasks)
     try:
         llm.warm_up()                 # kein Kaltstart bei der ersten Frage
     except Exception:                 # noqa: BLE001 (nur Beschleunigung; Fehler zeigt sich bei der ersten Antwort)

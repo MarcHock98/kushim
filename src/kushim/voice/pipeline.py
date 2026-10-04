@@ -19,12 +19,13 @@ from ..tasks import TaskRegistry, is_cancel_phrase
 from .dialog import Dialog, State
 from .verify import AudioVerifier
 from .stt import SpeechToText
-from .tts import Speaker, chunk_stream, prefetch
+from .tts import Speaker, chunk_stream, prefetch, split_sentences
 
 SYSTEM_PROMPT = (
     "Du bist kushim, ein persönlicher, lokaler Assistent. Antworte auf Deutsch, kurz und sachlich, "
-    "in höchstens drei Sätzen. Du hast keine Werkzeuge und führst nichts aus. Erfinde keine Fakten; "
-    "sag, wenn du etwas nicht weißt.")
+    "in höchstens drei Sätzen. Du selbst führst nichts aus und rufst keine Werkzeuge auf; Werkzeuge verwaltet kushim außerhalb von dir "
+    "und beantwortet Fragen dazu selbst (zum Beispiel \"Welche Werkzeuge hast du?\"). Behaupte nie, kushim könne etwas nicht oder habe "
+    "keine Werkzeuge; verweise auf diese Frage. Erfinde keine Fakten; sag, wenn du etwas nicht weißt.")
 
 ChatStream = Callable[[list[dict[str, str]]], Iterable[str]]
 
@@ -100,6 +101,11 @@ class Pipeline:
         self.dialog.triggered()
         return True
 
+    def say_text(self, text: str) -> None:
+        """Spricht einen fertigen Text (z. B. eine Meldung von sich aus, wenn Claude fertig ist). Satzweise, unterbrechbar."""
+        self._interrupted.clear()
+        self.speaker.say(split_sentences(text) or [text])
+
     def say_cancelled(self) -> None:
         """Kurze Bestätigung nach dem Abbruch (nachdem die laufende Antwort beendet ist)."""
         self._interrupted.clear()
@@ -145,7 +151,7 @@ class Pipeline:
         if self.commands is not None:
             answer = self.commands.handle(text, verified, strong)
             if answer is not None:                       # Befehl oder Bestätigung: kein LLM
-                self.speaker.say([answer])
+                self.speaker.say(split_sentences(answer) or [answer])      # satzweise: der erste Satz kommt früher
                 return Result(text, answer, "command")
         if not self.dialog.triggered():
             return Result(text, "", "halted")

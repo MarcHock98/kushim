@@ -128,6 +128,7 @@ class ClaudeSessions:
         self._lock = threading.Lock()
         self._thread: threading.Thread | None = None
         self._cancel = threading.Event()
+        self.on_finish: Callable[[State], None] | None = None     # wird (im Hintergrund-Thread) aufgerufen, wenn ein Zug endet
 
     # --- Zustand
     def _alive(self) -> bool:
@@ -266,6 +267,11 @@ class ClaudeSessions:
         st.proc_pid = 0
         save_state(self.root, st)
         (self.root / STOP_MARKER).unlink(missing_ok=True)
+        if self.on_finish is not None:
+            try:
+                self.on_finish(st)
+            except Exception:                                      # noqa: BLE001 (eine kaputte Meldung darf den Lauf nicht beeinflussen)
+                pass
 
     def _finish_with_output(self, st: State, t0: float, first: bool, out: str | None, rc: int | None, cwd: Path) -> None:
         try:

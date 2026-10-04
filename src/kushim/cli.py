@@ -89,6 +89,40 @@ def _show_wiki(out, use_llm: bool, cfg: Config, root) -> int:
     return 0
 
 
+def _voice_tools(cfg: Config, root):
+    """Sprachbefehle für Werkzeuge (docs/tools-plan.md): geprüfte Bausteine, Schalter immer frisch aus config.toml."""
+    from .claude_cli import ask as claude_ask
+    from .claude_cli import base as claude_base
+    from .claude_cli import folders as cfolders
+    from .claude_cli.control import Control
+    from .claude_cli.session import ClaudeSessions
+    from .config import LiveConfig
+    from .llm.ollama import OllamaClient
+    from .net import web as netweb
+    from .privacy import EgressGate
+    from .research import Research
+    from .tasks import TaskRegistry
+    from .tools.registry import ToolRegistry, default_tools
+    from .voice.tool_commands import ToolCommands
+    from .web import search as websearch
+    from .web.answer import answer_from_sources
+    live = LiveConfig()
+    exe = claude_base.find_claude()
+    cache = claude_base.AuthCache(exe)
+    tasks = TaskRegistry()
+    reg = ToolRegistry(default_tools(live, cache), live.tools_enabled)
+    egress = EgressGate(live.claude_enabled, confirm=lambda dest, payload: True)       # die Freigabe der Vorschau passiert vorher per "ja"
+    sessions = ClaudeSessions(root, exe, vault=cfolders.vault_path(live.memory_location), tasks=tasks)
+    wiki = websearch.make_search(reg, netweb.fetch_text)
+    research = Research(reg, lambda q, c: claude_ask.ask(q, exe, root / "run" / "claude-research", cancelled=c), wiki, cache.get, egress, tasks=tasks)
+    folders = lambda: cfolders.parse(live.claude_folders)
+    control = Control(reg, sessions, egress, cache.get, folders, tasks=tasks)
+    chat = OllamaClient(live.llm_model).chat
+    tc = ToolCommands(live, reg, research, control, sessions, lambda wiki: str(answer_from_sources(chat, wiki)), folders)
+    tc.before = lambda: setattr(egress, "enabled", live.claude_enabled)               # Modus C ausschalten wirkt sofort, auch hier
+    return tc, tasks
+
+
 def _claude_dev(args, cfg: Config, root) -> int:
     """`kushim claude folders|add|remove|start|status|stop|result|answer`: Claude entwickelt in freigegebenen Ordnern (docs/claude-cli-plan.md)."""
     import time as _time
@@ -687,12 +721,16 @@ def _main(argv: list[str] | None = None) -> int:
         launcher = Launcher(root, cuda_devices=plan.llm_visible)
         try:
             launcher.start_ollama()
+            tool_cmds, tasks = _voice_tools(cfg, root)
+            from .voice.commands import CommandChain
             pipeline, kill, mic, ack = build_live(root, audio.find_device(args.out, "output"),
                                                   audio.find_device(args.mic, "input"),
-                                                  verifier=verifier, commands=WakeWordCommands(root),
+                                                  verifier=verifier, commands=CommandChain([WakeWordCommands(root), tool_cmds]),
+                                                  tasks=tasks,
                                                   wake_names=[w.name for w in wcfg.enabled()],
                                                   llm_model=cfg.llm_model, whisper_device=plan.whisper_device,
                                                   whisper_index=plan.whisper_index)
+            kill.actions.append(tool_cmds.sessions.stop)          # Notaus beendet auch einen laufenden Claude-Lauf
             det = build_detector(wcfg, root)
             wait_ms = int(wcfg.settings.listen_seconds * 1000)
             first_ms = int(wcfg.settings.command_wait_seconds * 1000)
@@ -711,6 +749,7 @@ def _main(argv: list[str] | None = None) -> int:
                             first_collector=lambda: utter(first_ms),
                             follow_collector=(lambda: utter(follow_ms)) if follow_ms > 0 else None,
                             barge=barge, preroll_frames=round(st.preroll_seconds / 0.08),
+                            announce=tool_cmds.announcement, say=pipeline.say_text,
                             on_note=lambda s: print(f"[Hinweis] {s}"))
             print("Wake Words: " + ", ".join(w.name for w in wcfg.enabled())
                   + ". Notaus: 'Notaus' sagen oder die Verknüpfung. Strg+C beendet.")

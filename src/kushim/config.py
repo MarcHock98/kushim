@@ -12,6 +12,34 @@ from .llm.ollama import DEFAULT_MODEL, validate_model
 TOOL_NAME = re.compile(r"[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)?")      # z. B. "web.search"
 
 
+class LiveConfig:
+    """Liest `config.toml` höchstens alle `ttl` Sekunden neu. Für lange laufende Gespräche: Schaltet der Nutzer in einem anderen Fenster
+    ein Werkzeug oder Modus C um, gilt das ohne Neustart (zu einem Zeitpunkt, den der Nutzer sieht, nie durch Sprache oder das LLM)."""
+
+    def __init__(self, ttl: float = 2.0, loader=None, clock=None):
+        import time
+        self._ttl, self._clock = ttl, clock or time.monotonic
+        self._loader = loader or Config.load
+        self._cfg: "Config | None" = None
+        self._at = 0.0
+
+    def get(self) -> "Config":
+        now = self._clock()
+        if self._cfg is None or now - self._at >= self._ttl:
+            try:
+                self._cfg, self._at = self._loader(), now
+            except Exception:                              # kaputte Datei: den letzten guten Stand behalten (nie "alles an")
+                if self._cfg is None:
+                    self._cfg = Config()
+                self._at = now
+        return self._cfg
+
+    def __getattr__(self, name):
+        if name.startswith("_"):
+            raise AttributeError(name)
+        return getattr(self.get(), name)
+
+
 def config_path() -> Path:
     env = os.environ.get("KUSHIM_CONFIG")
     if env:
