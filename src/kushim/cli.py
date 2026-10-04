@@ -310,7 +310,7 @@ def _api_start(cfg: Config, root, extra=None):
     from .net.server import LocalServer
     store = None
     try:
-        store = open_store(cfg)
+        store = open_store(cfg, shared=True)           # die API-Threads dürfen den Vault nur über die Sperre benutzen
     except Exception:
         print("Hinweis: Vault nicht offen, Notaus-Aktionen werden nicht im Audit protokolliert.")
     token = new_token()
