@@ -65,6 +65,32 @@ _RESEARCH_DROP = {"recherchiere", "recherchier", "recherche", "recherchieren", "
                   "internet", "online", "netz", "kushim", "hey", "bitte", "mal", "doch", "mir", "mich", "claude"}
 
 
+_BRANCH_WORDS = {"branch", "branches", "zweig", "zweige", "worktree", "worktrees", "branchs"}
+_CONTINUE = {"weiter", "weitermachen", "weiterarbeiten", "fortsetzen", "fortfahren", "arbeite", "mach", "mache", "nutze"}
+_NUMBERS = {"eins": 1, "ein": 1, "erste": 1, "ersten": 1, "neueste": 1, "neuesten": 1, "letzte": 1, "letzten": 1, "zwei": 2, "zweite": 2, "zweiten": 2,
+            "drei": 3, "dritte": 3, "dritten": 3, "vier": 4, "vierte": 4, "vierten": 4, "funf": 5, "funfte": 5, "funften": 5}
+CONTINUE_TASK = ("Mach dort weiter, wo du aufgehört hast: sieh dir den Stand im Branch an (git status, git log), schließe die offene Arbeit ab, "
+                 "teste, committe lokal und pushe nicht.")
+_MONTHS = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"]
+
+
+def _when(name: str) -> str:
+    """"kushim-20261004-051157" -> "vom 4. Oktober um 5 Uhr 11" (Name des Worktrees trägt den Startzeitpunkt)."""
+    m = re.search(r"(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})", name)
+    if not m or not 1 <= int(m.group(2)) <= 12:
+        return name
+    return f"vom {int(m.group(3))}. {_MONTHS[int(m.group(2)) - 1]} um {int(m.group(4))} Uhr {int(m.group(5))}"
+
+
+def _number(tokens: list[str]) -> int | None:
+    for t in tokens:
+        if t.isdigit() and 1 <= int(t) <= 9:
+            return int(t)
+        if t in _NUMBERS:
+            return _NUMBERS[t]
+    return None
+
+
 @dataclass
 class Intent:
     kind: str                   # list | enable_how | research | start | status | stop | result | answer | allow
@@ -92,6 +118,13 @@ def parse(text: str) -> Intent | None:
         return Intent("list")
     if toks[:3] == ["was", "kannst", "du"] and len(toks) <= 4:
         return Intent("list")
+    # --- vorhandene Claude-Branches anzeigen / dort weitermachen
+    if s & _BRANCH_WORDS or (s & {"nummer", "nr"} and s & _CONTINUE and (claude or s & {"weiter", "weitermachen", "weiterarbeiten"})):
+        if s & {"weiter", "weitermachen", "weiterarbeiten", "fortsetzen", "fortfahren"} or (s & {"nummer", "nr"} and s & _CONTINUE):
+            tail = _after_marker(text, r"\bund\s+(.{8,})$")
+            return Intent("resume", tail, text)
+        if s & {"welche", "gibt", "zeig", "zeige", "liste", "offen", "vorhanden", "habe", "hast", "hat", "gibts", "nenne"}:
+            return Intent("branches")
     # --- Recherche
     if s & {"recherchiere", "recherchier", "recherche", "recherchieren"} or ("schau" in s or "schaue" in s or "schauen" in s) and "nach" in s \
             or (s & {"suche", "such", "suchen"} and s & {"internet", "online", "netz", "web"}):
@@ -182,6 +215,7 @@ class ToolCommands:
         self.say: Callable[[str], None] | None = None       # sofortige Ansage vor langen Aktionen (Pipeline.say_text)
         self.before: Callable[[], None] = lambda: None      # vor jedem Satz: frischen Stand übernehmen (z. B. Modus C im EgressGate)
         self._pending: _Pending | None = None
+        self._branch_list: list = []
         self._announcements: "queue.SimpleQueue[str]" = queue.SimpleQueue()
         self.sessions.on_finish = self._on_turn_finished
 
@@ -232,6 +266,8 @@ class ToolCommands:
             return "Das mache ich nur auf deine Stimme."
         if k == "research":
             return self._research(intent)
+        if k == "branches":
+            return self._branches()
         if k == "stop":
             return "Okay, Claude wird gestoppt. Der Branch bleibt erhalten." if self.sessions.stop() else "Es läuft kein Claude-Lauf."
         if k == "status":
@@ -242,6 +278,8 @@ class ToolCommands:
             return ("Für Claude brauche ich eine etwas längere, deutliche Äußerung. Sag den Befehl bitte noch einmal in einem ganzen Satz.")
         if k == "start":
             return self._start(intent)
+        if k == "resume":
+            return self._resume(intent)
         if k == "answer":
             return self._answer(intent.text, ())
         if k == "allow":
@@ -294,6 +332,41 @@ class ToolCommands:
             return self._run_direct(f"Ich antworte Claude: {p.task}.{extra} ")
         extra = " Dabei erlaube ich Claude für diese Sitzung: " + ", ".join(allow) + "." if allow else ""
         return f"Ich antworte Claude: {p.task}.{extra} Soll ich das senden? Sage ja oder nein."
+
+    def _branches(self) -> str:
+        """Vorhandene Claude-Branches aller freigegebenen Ordner, nummeriert (neueste zuerst); nur lesend."""
+        self._branch_list = []
+        for f in self.folders():
+            self._branch_list += [(f, w, dirty, ahead) for w, dirty, ahead in self.sessions.branches(f)]
+        if not self._branch_list:
+            return "Es gibt keine Claude-Branches in den freigegebenen Ordnern."
+        parts = []
+        for i, (f, w, dirty, ahead) in enumerate(self._branch_list[:5], 1):
+            parts.append(f"Nummer {i}: Ordner {f.name}, {_when(w.path.name)}, {dirty} ungesicherte Dateien, {ahead} Commits.")
+        return (f"Es gibt {len(self._branch_list)} Claude-Branches. " + " ".join(parts)
+                + " Sag zum Beispiel: Mach bei Nummer eins weiter.")
+
+    def _resume(self, intent: Intent) -> str:
+        tool = self.registry.tools.get("claude.code")
+        if tool is None or not self.registry.is_active("claude.code"):
+            why = _short_reason(tool.available()) if tool is not None else "es gibt es nicht"
+            return f"Claude zum Entwickeln ist nicht eingeschaltet: {why or 'das Werkzeug ist aus'}. {ENABLE_HOW}"
+        if not self._branch_list:
+            self._branches()
+        if not self._branch_list:
+            return "Es gibt keine Claude-Branches in den freigegebenen Ordnern."
+        n = _number([f for _, f in words(intent.folder_hint)])
+        if n is None and len(self._branch_list) > 1:
+            return "Welchen Branch meinst du? Frag: Welche Claude-Branches gibt es? Dann sag die Nummer."
+        n = n or 1
+        if n > len(self._branch_list):
+            return f"So viele Branches gibt es nicht, es sind {len(self._branch_list)}."
+        folder, wt, _dirty, _ahead = self._branch_list[n - 1]
+        try:
+            self.sessions.adopt(folder, wt.path.name)
+        except SessionError as e:
+            return f"Das geht nicht: {e}"
+        return self._answer(intent.text or CONTINUE_TASK, ())
 
     def _direct(self) -> bool:
         """Direkt handeln: der gesprochene Befehl der verifizierten Stimme ist die Freigabe (Einstellung [tools] direct, Standard an).

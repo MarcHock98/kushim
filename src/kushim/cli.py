@@ -183,6 +183,15 @@ def _claude_dev(args, cfg: Config, root) -> int:
         print(f"Freigabe für «{args.name}» entzogen.")
         return 0
 
+    if action == "branches":
+        sessions = ClaudeSessions(root, None, vault=vault)
+        n = 0
+        for f in known:
+            for w, dirty, ahead in sessions.branches(f):
+                n += 1
+                print(f"{f.name}  {w.path.name}  Branch {w.branch}  ungesichert: {dirty}  Commits: {ahead}")
+        print("Keine Claude-Branches." if not n else "Weitermachen: per Sprache \"Mach bei Nummer eins weiter\" (kushim talk).")
+        return 0
     if action == "watch":
         from .claude_cli.watch import run_watch
         try:
@@ -358,6 +367,7 @@ def _main(argv: list[str] | None = None) -> int:
     cs.add_argument("--folder", help="Name des Ordners (bei nur einem Ordner nicht nötig)")
     cs.add_argument("auftrag", nargs="*", help="Auftrag; ohne Angabe: nächster offener Roadmap-Punkt")
     cl.add_parser("status", help="Stand des Claude-Laufs")
+    cl.add_parser("branches", help="Vorhandene Claude-Branches (Worktrees) der freigegebenen Ordner")
     cl.add_parser("watch", help="Live-Ansicht: zeigt, was Claude gerade tut (nur Anzeige, Schließen stoppt nichts)")
     cl.add_parser("stop", help="Laufenden Claude-Lauf stoppen (der Branch bleibt)")
     cl.add_parser("result", help="Übersicht: was Claude getan hat, Fakten aus Git, nächste Schritte")
@@ -513,7 +523,7 @@ def _main(argv: list[str] | None = None) -> int:
         if out.kind == "wikipedia" and out.wiki is not None:
             return _show_wiki(out.wiki, args.llm, cfg, root)
         return 1
-    if args.cmd == "claude" and getattr(args, "sub", None) in ("folders", "add", "remove", "start", "status", "stop", "result", "answer", "watch"):
+    if args.cmd == "claude" and getattr(args, "sub", None) in ("folders", "add", "remove", "start", "status", "stop", "result", "answer", "watch", "branches"):
         return _claude_dev(args, cfg, root)
     if args.cmd == "claude":
         from .claude_cli import base as claude_base

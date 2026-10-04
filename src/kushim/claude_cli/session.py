@@ -182,11 +182,41 @@ class ClaudeSessions:
             self._launch(argv, path, st, first=True)
             return st
 
+    def branches(self, folder: folders.Folder) -> list[tuple[review.Worktree, int, int]]:
+        """Vorhandene Claude-Branches (Worktrees) im freigegebenen Ordner: (Worktree, ungesicherte Dateien, Commits), neueste zuerst."""
+        try:
+            path = folders.validate_path(folder.path, self.vault, self.home)
+        except ValueError:
+            return []
+        items = [(w, *review.worktree_facts(w, path, self._git)) for w in review.list_worktrees(path, self._git)]
+        return list(reversed(items))
+
+    def adopt(self, folder: folders.Folder, worktree_name: str) -> State:
+        """Einen vorhandenen Claude-Branch zur aktiven Sitzung machen (nur lokal, nichts geht raus). Weiter geht es mit `answer`."""
+        with self._lock:
+            st = self.state()
+            if st is not None and st.status == "running":
+                raise SessionError("Es läuft schon ein Claude-Lauf. Erst stoppen oder abwarten.")
+            try:
+                path = folders.validate_path(folder.path, self.vault, self.home)
+                base_sha = self._git(["rev-parse", "HEAD"], path).strip()
+                base_branch = self._git(["rev-parse", "--abbrev-ref", "HEAD"], path).strip()
+            except (ValueError, review.GitError) as e:
+                raise SessionError(f"Der Ordner «{folder.name}» ist nicht nutzbar: {e}")
+            wt = next((w for w in review.list_worktrees(path, self._git) if w.path.name == worktree_name), None)
+            if wt is None:
+                raise SessionError("Diesen Claude-Branch gibt es nicht (nur Branches unter .claude/worktrees des freigegebenen Ordners).")
+            now = self._now().isoformat(timespec="seconds")
+            st = State(id=uuid.uuid4().hex[:8], folder=folder.name, folder_path=str(path), worktree=wt.path.name, worktree_path=str(wt.path),
+                       branch=wt.branch, base_sha=base_sha, base_branch=base_branch, turn=0, status="waiting", started=now, updated=now)
+            save_state(self.root, st)
+            return st
+
     def answer(self, text: str, allow: Iterable[str] = ()) -> State:
         """Nächster Zug: die Antwort des Nutzers. `allow`: Muster, die kushim vorher angeboten hat (sonst Fehler)."""
         with self._lock:
             st = self.state()
-            if st is None or st.status != "waiting" or not st.claude_session or not st.worktree_path:
+            if st is None or st.status != "waiting" or not st.worktree_path:
                 raise SessionError("Es wartet keine Claude-Sitzung auf eine Antwort.")
             allow = list(allow)
             for p in allow:
@@ -194,7 +224,8 @@ class ClaudeSessions:
                     raise SessionError(f"«{p}» wurde nicht angeboten und darf nicht erlaubt werden.")
             extras = list(dict.fromkeys(st.extra_allowed + allow))
             try:
-                argv = dev.build_resume_argv(self.exe, text, st.claude_session, self.budget, tuple(extras))
+                argv = (dev.build_resume_argv(self.exe, text, st.claude_session, self.budget, tuple(extras)) if st.claude_session
+                        else dev.build_continue_argv(self.exe, text, self.budget, tuple(extras)))      # übernommener Branch: jüngste Sitzung des Ordners
             except ValueError as e:
                 raise SessionError(str(e))
             st.extra_allowed, st.offers, st.denied, st.status, st.error, st.turn = extras, [], [], "running", "", st.turn + 1

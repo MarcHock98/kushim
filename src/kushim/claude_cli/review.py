@@ -67,6 +67,43 @@ def find_worktree(folder: Path, name: str, git: Git = run_git) -> Worktree | Non
     return None
 
 
+def list_worktrees(folder: Path, git: Git = run_git) -> list[Worktree]:
+    """Alle von kushim/Claude angelegten Worktrees des Ordners (`<ordner>/.claude/worktrees/<name>`, Branch `worktree-<name>`), älteste zuerst."""
+    try:
+        out = git(["worktree", "list", "--porcelain"], folder)
+    except GitError:
+        return []
+    base = (Path(folder).resolve() / ".claude" / "worktrees")
+    found: list[Worktree] = []
+    for block in re.split(r"\r?\n\r?\n", out):
+        path = branch = ""
+        for line in block.splitlines():
+            if line.startswith("worktree "):
+                path = line[len("worktree "):].strip()
+            elif line.startswith("branch "):
+                branch = line[len("branch "):].strip().removeprefix("refs/heads/")
+        if not path or not branch.startswith("worktree-"):
+            continue
+        try:
+            inside = Path(path).resolve().parent == base and re.fullmatch(r"[a-z0-9][a-z0-9-]{0,60}", Path(path).name) is not None
+        except OSError:
+            inside = False
+        if inside:
+            found.append(Worktree(Path(path), branch))
+    return sorted(found, key=lambda w: w.path.name)
+
+
+def worktree_facts(wt: Worktree, folder: Path, git: Git = run_git) -> tuple[int, int]:
+    """(ungesicherte Dateien, Commits seit dem aktuellen Stand des Hauptordners) eines Worktrees, nur lesend."""
+    try:
+        base = git(["rev-parse", "HEAD"], folder).strip()
+        dirty = len([l for l in git(["status", "--porcelain"], wt.path).splitlines() if l.strip()])
+        ahead = len([l for l in git(["log", "--oneline", f"{base}..HEAD"], wt.path).splitlines() if l.strip()])
+        return dirty, ahead
+    except GitError:
+        return 0, 0
+
+
 @dataclass
 class Review:
     branch: str = ""
