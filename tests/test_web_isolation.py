@@ -132,7 +132,7 @@ def test_only_known_callers_use_the_web_package_so_far():
     users = {f.relative_to(SRC).as_posix() for f in SRC.rglob("*.py")
              if not f.relative_to(SRC).as_posix().startswith("web/") and _imports_web_package(f)}
     # cli.py: Befehle; research.py: Orchestrator (Claude zuerst, Wikipedia als Ersatz); claude_cli/*: nur die Hilfsmodule (siehe nächster Test)
-    assert users == {"cli.py", "research.py", "claude_cli/ask.py", "claude_cli/control.py", "claude_cli/report.py"}, users
+    assert users == {"cli.py", "research.py", "claude_cli/ask.py", "claude_cli/control.py", "claude_cli/report.py", "claude_cli/watch.py"}, users
 
 
 def _web_modules(path: Path) -> set[str]:

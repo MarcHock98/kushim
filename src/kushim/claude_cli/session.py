@@ -23,6 +23,7 @@ from ..launcher import kill_tree
 from ..tasks import TaskRegistry
 from . import dev, folders, report, review
 from .base import clean_env
+from .watch import last_result, live_path
 
 STATE = Path("run") / "claude-session.json"
 STOP_MARKER = Path("run") / "claude-stop"
@@ -123,6 +124,7 @@ class ClaudeSessions:
                  timeout_min: float = dev.TIMEOUT_MIN, budget: float = dev.BUDGET_USD, poll: float = POLL_S):
         self.root, self.exe, self.vault, self.home = root, exe, vault, home          # home=None: der echte Benutzerordner
         self._popen, self._kill, self._git, self._now, self._clock = popen, kill, git, now, clock
+        self.viewer: Callable[[], None] | None = None        # öffnet die Live-Ansicht (cli.py), None = kein Fenster
         self.tasks = tasks if tasks is not None else TaskRegistry()
         self.timeout_min, self.budget, self.poll = timeout_min, budget, poll
         self._lock = threading.Lock()
@@ -205,6 +207,11 @@ class ClaudeSessions:
     def _launch(self, argv: list[str], cwd: Path, st: State, first: bool) -> None:
         self._cancel.clear()
         (self.root / STOP_MARKER).unlink(missing_ok=True)
+        if self.viewer is not None:
+            try:
+                self.viewer()
+            except Exception:                                      # noqa: BLE001 (Fenster ist nur Komfort)
+                pass
         self._thread = threading.Thread(target=self._run, args=(argv, cwd, st, first), daemon=True, name="kushim-claude")
         self._thread.start()
 
@@ -227,9 +234,13 @@ class ClaudeSessions:
     def _run(self, argv: list[str], cwd: Path, st: State, first: bool) -> None:
         t0 = self._clock()
         proc = None
+        live = None
         with self.tasks.running("Claude (Entwicklung)", cancel=self._cancel.set) as tok:
             try:
-                proc = self._popen(argv, cwd=str(cwd), env=clean_env(), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                live_file = live_path(self.root)
+                live_file.parent.mkdir(parents=True, exist_ok=True)
+                live = live_file.open("w", encoding="utf-8", errors="replace")           # Ereignisse für die Live-Ansicht (nur lesend angezeigt)
+                proc = self._popen(argv, cwd=str(cwd), env=clean_env(), stdin=subprocess.DEVNULL, stdout=live,
                                    stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace")
                 st.proc_pid = proc.pid
                 save_state(self.root, st)
@@ -253,10 +264,16 @@ class ClaudeSessions:
                             return self._finish(st, t0, status="failed", error=f"Zeitgrenze von {self.timeout_min:g} Minuten erreicht.")
                 if self._cancel.is_set() or tok.cancelled() or marker.exists():
                     return self._finish(st, t0, status="stopped", error="Gestoppt.")
+                live.close()
+                live = None
+                if not out:                                  # echter Lauf: die Ausgabe steht in der Live-Datei
+                    out = last_result(live_file.read_text(encoding="utf-8", errors="replace"))
                 self._finish_with_output(st, t0, first, out, proc.returncode, cwd)
             except Exception as e:                           # noqa: BLE001 (nie eine Ausnahme aus dem Thread, nur ein kurzer Grund)
                 self._finish(st, t0, status="failed", error=f"Fehler: {type(e).__name__}")
             finally:
+                if live is not None:
+                    live.close()
                 if proc is not None and proc.poll() is None:
                     self._kill(proc.pid)
 

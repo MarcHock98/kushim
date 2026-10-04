@@ -119,8 +119,22 @@ def _voice_tools(cfg: Config, root):
     control = Control(reg, sessions, egress, cache.get, folders, tasks=tasks)
     chat = OllamaClient(live.llm_model).chat
     tc = ToolCommands(live, reg, research, control, sessions, lambda wiki: str(answer_from_sources(chat, wiki)), folders)
+    sessions.viewer = lambda: open_viewer(root)                                       # Claude läuft sichtbar in einem eigenen Fenster
     tc.before = lambda: setattr(egress, "enabled", live.claude_enabled)               # Modus C ausschalten wirkt sofort, auch hier
     return tc, tasks
+
+
+class SimpleState:
+    status = ""
+
+
+def open_viewer(root) -> None:
+    """Öffnet ein eigenes Terminalfenster mit der Live-Ansicht (Windows). Nur Anzeige; kein Einfluss auf den Lauf."""
+    import subprocess
+    import sys
+    if sys.platform == "win32":
+        subprocess.Popen([sys.executable, "-m", "kushim.cli", "claude", "watch"], cwd=str(root),
+                         creationflags=subprocess.CREATE_NEW_CONSOLE)
 
 
 def _claude_dev(args, cfg: Config, root) -> int:
@@ -169,9 +183,16 @@ def _claude_dev(args, cfg: Config, root) -> int:
         print(f"Freigabe für «{args.name}» entzogen.")
         return 0
 
+    if action == "watch":
+        from .claude_cli.watch import run_watch
+        try:
+            return run_watch(root, state=lambda: (ClaudeSessions(root, None).state() or SimpleState).status)
+        except KeyboardInterrupt:
+            return 0
     exe = claude_base.find_claude()
     cache = claude_base.AuthCache(exe)
     sessions = ClaudeSessions(root, exe, vault=vault)
+    sessions.viewer = lambda: open_viewer(root)
     if action == "status":
         st = sessions.state()
         if st is None:
@@ -337,6 +358,7 @@ def _main(argv: list[str] | None = None) -> int:
     cs.add_argument("--folder", help="Name des Ordners (bei nur einem Ordner nicht nötig)")
     cs.add_argument("auftrag", nargs="*", help="Auftrag; ohne Angabe: nächster offener Roadmap-Punkt")
     cl.add_parser("status", help="Stand des Claude-Laufs")
+    cl.add_parser("watch", help="Live-Ansicht: zeigt, was Claude gerade tut (nur Anzeige, Schließen stoppt nichts)")
     cl.add_parser("stop", help="Laufenden Claude-Lauf stoppen (der Branch bleibt)")
     cl.add_parser("result", help="Übersicht: was Claude getan hat, Fakten aus Git, nächste Schritte")
     cn = cl.add_parser("answer", help="Auf eine Rückfrage von Claude antworten (nächster Zug)")
@@ -491,7 +513,7 @@ def _main(argv: list[str] | None = None) -> int:
         if out.kind == "wikipedia" and out.wiki is not None:
             return _show_wiki(out.wiki, args.llm, cfg, root)
         return 1
-    if args.cmd == "claude" and getattr(args, "sub", None) in ("folders", "add", "remove", "start", "status", "stop", "result", "answer"):
+    if args.cmd == "claude" and getattr(args, "sub", None) in ("folders", "add", "remove", "start", "status", "stop", "result", "answer", "watch"):
         return _claude_dev(args, cfg, root)
     if args.cmd == "claude":
         from .claude_cli import base as claude_base

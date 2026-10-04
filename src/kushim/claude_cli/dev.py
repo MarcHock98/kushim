@@ -59,7 +59,7 @@ def _task(task: str) -> str:
 
 def _common(extra_allowed: tuple[str, ...], budget: float) -> list[str]:
     allowed = ",".join(ALLOWED_TOOLS + tuple(extra_allowed))
-    return ["--output-format", "json", "--permission-mode", "acceptEdits", "--permission-prompts", "none",
+    return ["--output-format", "stream-json", "--verbose", "--permission-mode", "acceptEdits", "--permission-prompts", "none",
             "--allowedTools", allowed, "--disallowedTools", ",".join(DENIED_TOOLS),
             "--strict-mcp-config", "--disable-slash-commands",
             # NUR die Benutzer-Einstellungen des Nutzers laden, nie die des Projekts/lokale: Claude darf im Worktree Dateien bearbeiten, also auch
