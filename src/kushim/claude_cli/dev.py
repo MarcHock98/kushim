@@ -85,6 +85,11 @@ def build_resume_argv(exe: Path, answer: str, session_id: str, budget: float = B
     return [str(exe), "-p", _task(answer), "--resume", session_id] + _common(extra_allowed, budget)
 
 
+def build_continue_argv(exe: Path, task: str, budget: float = BUDGET_USD, extra_allowed: tuple[str, ...] = ()) -> list[str]:
+    """Weiterarbeiten in einem vorhandenen Worktree (Arbeitsordner = Worktree): jüngste Sitzung dieses Ordners fortsetzen."""
+    return [str(exe), "-p", _task(task), "--continue"] + _common(extra_allowed, budget)
+
+
 def preview_text(folder: str, task: str, worktree: str, method: str, budget: float, minutes: int,
                  resume: bool = False, extra_allowed: tuple[str, ...] = ()) -> str:
     login = "Abo (claude.ai)" if method == SUBSCRIPTION else "API-Konto (kann Geld kosten)"
