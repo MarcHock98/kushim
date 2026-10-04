@@ -37,3 +37,45 @@ def test_rust_part_has_no_network_or_process_code():
     assert not re.search(r"std::net|std::process|Command::new|reqwest|hyper|tokio::net|fs::write|remove_file", rs)
     toml = (UI / "src-tauri" / "Cargo.toml").read_text(encoding="utf-8")
     assert not re.search(r"reqwest|hyper|tauri-plugin", toml)
+
+
+# --- Responsives Verhalten: Regeln im Stylesheet (Vitest liefert CSS leer, deshalb hier) -----------------------------
+
+CSS = (UI / "src" / "styles" / "app.css").read_text(encoding="utf-8")
+
+
+def test_css_has_the_three_layout_steps_and_the_two_column_home():
+    assert re.search(r'@media \(max-width: 799px\)[\s\S]*?grid-template-areas: "head" "view" "rail"', CSS)       # Leiste unten
+    assert re.search(r"@media \(min-width: 1100px\)[\s\S]*?--rail-w: 200px", CSS)                              # Beschriftung neben dem Symbol
+    assert re.search(r"@media \(min-width: 1000px\)[\s\S]*?\.home \{ grid-template-columns:", CSS)             # zwei Spalten
+    assert re.search(r"@media \(max-width: 599px\)", CSS)                                                       # schmale Telefone
+
+
+def test_css_cards_and_lists_wrap_by_themselves_and_nothing_has_a_fixed_width():
+    assert re.search(r"\.dash \{[^}]*repeat\(auto-fit, minmax\(min\(100%, 340px\), 1fr\)\)", CSS)
+    assert re.search(r"\.security \{[^}]*repeat\(auto-fit, minmax\(min\(100%, 360px\), 1fr\)\)", CSS)
+    assert re.search(r"\.facts \{[^}]*repeat\(auto-fill, minmax\(min\(100%, 340px\), 1fr\)\)", CSS)
+    assert not re.search(r"width: min\(100%, (480|640)px\)", CSS)
+
+
+def test_css_touch_targets_hidden_elements_and_box_sizing():
+    assert re.search(r"button \{[^}]*min-height: var\(--hit\)", CSS)
+    assert "[hidden] { display: none !important; }" in CSS
+    assert "*, *::before, *::after { box-sizing: border-box; }" in CSS
+
+
+def test_css_uses_only_tokens_for_colors():
+    assert not re.search(r"#[0-9a-fA-F]{3,8}\b", CSS)
+    for f in (UI / "src").rglob("*.tsx"):
+        if ".test." not in f.name:
+            assert not re.search(r'["\']#[0-9a-fA-F]{3,8}["\']', f.read_text(encoding="utf-8").replace('|| "#888"', "")), f.name
+
+
+def test_css_approval_bar_stays_in_view_and_scrolls_inside():
+    assert re.search(r"\.approval \{[^}]*position: sticky[^}]*overflow: auto", CSS)
+
+
+def test_no_emoji_in_the_ui_source():
+    emoji = re.compile("[\U0001F300-\U0001FAFF☀-➿⇧]")
+    bad = [f.name for f in (UI / "src").rglob("*.tsx") if ".test." not in f.name and emoji.search(f.read_text(encoding="utf-8"))]
+    assert not bad, bad

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { ApprovalBar, type Pending } from "./components/ApprovalBar";
 import { Avatar } from "./components/Avatar";
 import { ClaudePanel } from "./components/ClaudePanel";
@@ -6,10 +6,12 @@ import { Dashboard, type DashData } from "./components/Dashboard";
 import { MemoryPanel } from "./components/MemoryPanel";
 import { SecurityPanel, type Overview } from "./components/SecurityPanel";
 import { Transcript, type Entry } from "./components/Transcript";
+import { IconHome, IconMemory, IconOverview, IconShield } from "./components/Icons";
 import { HaltedBanner, KillButton } from "./components/KillButton";
 import { ApiClient, type Credentials } from "./lib/api";
 import { isAvatarState, resolveState, STATE_VIEW, type AvatarState } from "./lib/avatarState";
 import { MockSocket } from "./lib/mock";
+import { avatarSize, useBoxSize } from "./lib/useBoxSize";
 
 const WHY: Record<string, string> = {
   offline: "kein laufender Dienst gefunden (run/api.json fehlt oder ist nicht lesbar)",
@@ -17,6 +19,8 @@ const WHY: Record<string, string> = {
   "ws-connect": "Verbindung zum Dienst auf 127.0.0.1 fehlgeschlagen (Dienst beendet oder Verbindung gesperrt)",
   "no-credentials": "keine Zugangsdaten (nur in der App oder mit ?mock)",
 };
+
+type View = "home" | "dashboard" | "security" | "memory";
 
 const POLL_MS = 2000;
 const VOICE_POLL_MS = 200;
@@ -42,13 +46,16 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
   const [pending, setPending] = useState<Pending | null>(null);
   const [toast, setToast] = useState("");
   const [why, setWhy] = useState("");
-  const [view, setView] = useState<"home" | "dashboard" | "security" | "memory">("home");
+  const [view, setView] = useState<View>("home");
   const [overview, setOverview] = useState<Overview | null>(null);
   const [dash, setDash] = useState<DashData | null>(null);
+  const [dashNo, setDashNo] = useState(false);
   const [entries, setEntries] = useState<Entry[]>([]);
   const lastId = useRef(0);
   const [rated, setRated] = useState<Record<number, 1 | -1>>({});
   const client = useRef<ApiClient | null>(null);
+  const viewRef = useRef<HTMLElement | null>(null);
+  const box = useBoxSize(viewRef);
 
   const refresh = useCallback(async () => {
     const c = client.current;
@@ -148,6 +155,7 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
       if (document.hidden) return;
       const r = await client.current?.call("dashboard.get");
       if (!stop && r?.ok && Array.isArray(r.timers)) setDash(r as unknown as DashData);
+      else if (!stop && r && !r.ok && r.error === "unknown_type") setDashNo(true);       // dieser Dienst hat keine Übersicht (ohne Sprachdienst)
     };
     void pull();
     const id = setInterval(pull, 2000);
@@ -192,45 +200,58 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
   const state = resolveState({ connected, killActive: kill, backendState: voice.active ? voice.state : undefined });
   const stateView = STATE_VIEW[state];
 
+  const NAV: { id: View; label: string; icon: ReactNode }[] = [
+    { id: "home", label: "Start", icon: <IconHome /> },
+    { id: "dashboard", label: "Übersicht", icon: <IconOverview /> },
+    { id: "memory", label: "Gedächtnis", icon: <IconMemory /> },
+    { id: "security", label: "Sicherheit", icon: <IconShield /> },
+  ];
+
   return (
     <div className={`app ${state === "halted" ? "is-halted" : ""}`}>
       <header className="head">
         <img className="logo" src="/kushim.png" alt="" width={28} height={28} />
         <span className="brand">kushim</span>
-        <span className="status" aria-live={stateView.live}>{stateView.label}</span>
+        <span className="status" aria-live={stateView.live} title={stateView.label}>{stateView.label}</span>
         {overview?.mode === "C" && <span className="chip mode-c" title="Claude ist erlaubt: freigegebene Texte gehen an Anthropic">Modus C</span>}
         <KillButton onKill={() => void doKill()} />
       </header>
-      <nav className="tabs" aria-label="Bereiche">
-        <button type="button" aria-pressed={view === "home"} onClick={() => setView("home")}>Start</button>
-        <button type="button" aria-pressed={view === "dashboard"} onClick={() => setView("dashboard")}>Übersicht</button>
-        <button type="button" aria-pressed={view === "memory"} onClick={() => setView("memory")}>Gedächtnis</button>
-        <button type="button" aria-pressed={view === "security"} onClick={() => setView("security")}>Sicherheit</button>
+      <nav className="rail" aria-label="Bereiche">
+        {NAV.map((n) => (
+          <button key={n.id} type="button" aria-current={view === n.id ? "page" : undefined} onClick={() => setView(n.id)}>
+            {n.icon}<span className="rail-label">{n.label}</span>
+          </button>
+        ))}
       </nav>
-      {state === "halted" && <HaltedBanner onResume={() => void doResume()} />}
-      {pending && state === "asking" && <ApprovalBar pending={pending} onDecide={(a) => void decide(a)} />}
-      <div className="toast" role="status" aria-live="polite">{toast}</div>
-      <main className="stage" hidden={view !== "memory"}>
-        <MemoryPanel client={client} connected={connected} active={view === "memory"} />
+      <main className="view" ref={viewRef}>
+        {state === "halted" && <HaltedBanner onResume={() => void doResume()} />}
+        {pending && state === "asking" && <ApprovalBar pending={pending} onDecide={(a) => void decide(a)} />}
+        <div className="toast" role="status" aria-live="polite">{toast}</div>
+        <div className="content">
+          <MemoryPanel client={client} connected={connected} active={view === "memory"} />
+          {view === "dashboard" && <Dashboard data={dash} overview={overview} unavailable={dashNo} />}
+          {view === "security" && <SecurityPanel overview={overview} />}
+          {view === "home" && (
+            <div className="home">
+              <section className="home-main" aria-label="Gespräch">
+                <Avatar state={state} size={avatarSize(box)} level={voice.level} />
+                <p className="line">{stateView.label}</p>
+                {connected && <Transcript entries={entries} rated={rated} onRate={(id, r) => void rate(id, r)} />}
+                {connected && !voice.active && state === "idle" && (
+                  <p className="hint">Der Sprachdienst läuft nicht. Starte ihn mit „kushim talk“.</p>
+                )}
+                {state === "offline" && why && <p className="hint">Grund: {WHY[why] ?? why}</p>}
+                {state === "offline" && (
+                  <button type="button" className="primary" onClick={() => void connect()}>Erneut versuchen</button>
+                )}
+              </section>
+              <aside className="home-side" aria-label="Claude">
+                <ClaudePanel client={client} connected={connected} />
+              </aside>
+            </div>
+          )}
+        </div>
       </main>
-      {view === "dashboard" && <main className="stage"><Dashboard data={dash} overview={overview} /></main>}
-      {view === "security" ? (
-        <main className="stage"><SecurityPanel overview={overview} /></main>
-      ) : view === "home" && (
-      <main className="stage">
-        <Avatar state={state} size={240} level={voice.level} />
-        <p className="line">{stateView.label}</p>
-        {connected && <Transcript entries={entries} rated={rated} onRate={(id, r) => void rate(id, r)} />}
-        <ClaudePanel client={client} connected={connected} />
-        {connected && !voice.active && state === "idle" && (
-          <p className="hint">Der Sprachdienst läuft nicht. Starte ihn mit „kushim talk“.</p>
-        )}
-        {state === "offline" && why && <p className="hint">Grund: {WHY[why] ?? why}</p>}
-        {state === "offline" && (
-          <button type="button" className="primary" onClick={() => void connect()}>Erneut versuchen</button>
-        )}
-      </main>
-      )}
     </div>
   );
 }

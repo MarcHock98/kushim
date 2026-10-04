@@ -15,12 +15,13 @@ const mmss = (s: number) => {
 
 /** Übersicht: Heute (Timer, Aufgaben), Ergebnisse (Recherchen mit Quellen), Aktivität (letzte Gate-Entscheidungen).
  *  Nur echte Daten, sonst Leerzustand mit Hinweis. Quellen sind Text: nichts wird automatisch geöffnet oder nachgeladen. */
-export function Dashboard({ data, overview }: { data: DashData | null; overview: Overview | null }) {
+export function Dashboard({ data, overview, unavailable = false }: { data: DashData | null; overview: Overview | null; unavailable?: boolean }) {
   const [tick, setTick] = useState(0);
   useEffect(() => { const id = setInterval(() => setTick((t) => t + 1), 1000); return () => clearInterval(id); }, []);
   useEffect(() => { setTick(0); }, [data]);                          // neue Daten: Zähler neu ansetzen
 
-  if (!data) return <p className="hint">Übersicht wird geladen … (läuft nur mit „kushim talk --ui“)</p>;
+  if (!data && unavailable) return <p className="hint">Die Übersicht gibt es nur mit dem Sprachdienst (kushim talk --ui).</p>;
+  if (!data) return <p className="hint">Übersicht wird geladen …</p>;
   const activity = (overview?.audit ?? []).slice(-8).reverse();
 
   return (

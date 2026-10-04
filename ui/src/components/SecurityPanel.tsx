@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import { IconCheck, IconCross, IconWarn } from "./Icons";
 
 export interface Overview {
   mode: "A" | "C";
@@ -11,7 +12,7 @@ export interface Overview {
 }
 
 type Tone = "ok" | "warn" | "alarm";
-const ICON: Record<Tone, string> = { ok: "✓", warn: "!", alarm: "✕" };
+const ICON: Record<Tone, ReactNode> = { ok: <IconCheck />, warn: <IconWarn />, alarm: <IconCross /> };
 
 function Row({ label, tone, text }: { label: string; tone: Tone; text: string }) {
   // Zustand immer mit Wort UND Symbol UND Farbe, nie nur Farbe.
@@ -49,13 +50,14 @@ export function SecurityPanel({ overview }: { overview: Overview | null }) {
       <ul className="sec-list">
         <Row label="Modus" tone={o.mode === "A" ? "ok" : "warn"} text={o.mode === "A" ? "Lokal (Modus A)" : "Claude erlaubt (Modus C)"} />
         <Row label="Notaus" tone={o.kill ? "alarm" : "ok"} text={o.kill ? "aktiv" : "bereit"} />
-        <Row label="Werkzeuge" tone="ok" text={o.tools_active === null ? "unbekannt" : o.tools_active.length ? o.tools_active.join(", ") : "keines eingeschaltet"} />
+        <Row label="Werkzeuge" tone={o.tools_active === null ? "warn" : "ok"} text={o.tools_active === null ? "unbekannt" : o.tools_active.length ? o.tools_active.join(", ") : "keines eingeschaltet"} />
         <Row label="Vault" tone={o.vault.exists && o.vault.open ? "ok" : "warn"}
           text={`${o.vault.where === "local" ? "lokal" : "im Netz"}, ${o.vault.exists ? (o.vault.open ? "offen" : "nicht geöffnet") : "nicht gefunden"}`} />
         <Row label="Sicherung" tone={!o.backup.configured ? "warn" : o.backup.age_days !== null && o.backup.age_days <= BACKUP_WARN_DAYS ? "ok" : "warn"}
           text={!o.backup.configured ? "nicht eingerichtet" : o.backup.age_days === null ? "noch keine" : `vor ${o.backup.age_days.toLocaleString("de-DE")} Tagen`} />
         <Row label="Geldlimit" tone="ok" text={o.money_limit_eur === 0 ? "0 €, gesperrt" : `${o.money_limit_eur} €`} />
       </ul>
+      <div className="sec-log">
       <h2 className="sec-h">Protokoll (nur lesen)</h2>
       <input type="search" aria-label="Protokoll filtern" placeholder="Filtern …" value={filter} onChange={(e) => setFilter(e.target.value)} />
       {o.audit.length === 0 ? <p className="hint">Noch keine Einträge (oder der Vault ist nicht offen).</p> : (
@@ -65,6 +67,7 @@ export function SecurityPanel({ overview }: { overview: Overview | null }) {
           ))}
         </ol>
       )}
+      </div>
     </section>
   );
 }
