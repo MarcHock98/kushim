@@ -13,6 +13,10 @@ export class MockSocket implements Socket {
   folders: string[] = [];
   session: unknown = null;
   proposals = new Map<string, string>();
+  overview: Record<string, unknown> = {
+    mode: "A", kill: false, tools_active: [], vault: { where: "local", exists: true, open: true },
+    backup: { configured: true, age_days: 2 }, money_limit_eur: 0, audit: [],
+  };
   sent: unknown[] = [];
 
   constructor(public url: string, private token = "t".repeat(43), private fail = false) {
@@ -31,6 +35,7 @@ export class MockSocket implements Socket {
       const entries = this.entries.filter((e) => e.id > since);
       reply = { ok: true, entries, last: entries.length ? entries[entries.length - 1].id : since };
     }
+    else if (msg.type === "safety.overview") reply = { ok: true, ...this.overview, kill: this.kill };
     else if (msg.type === "claude.folders") reply = { ok: true, folders: this.folders };
     else if (msg.type === "claude.status") reply = { ok: true, session: this.session };
     else if (msg.type === "claude.review") reply = { ok: true, review: null };

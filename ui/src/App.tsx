@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ApprovalBar, type Pending } from "./components/ApprovalBar";
 import { Avatar } from "./components/Avatar";
 import { ClaudePanel } from "./components/ClaudePanel";
+import { SecurityPanel, type Overview } from "./components/SecurityPanel";
 import { Transcript, type Entry } from "./components/Transcript";
 import { HaltedBanner, KillButton } from "./components/KillButton";
 import { ApiClient, type Credentials } from "./lib/api";
@@ -31,6 +32,8 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
   const [voice, setVoice] = useState<{ active: boolean; state?: AvatarState; level: number }>({ active: false, level: 0 });
   const [pending, setPending] = useState<Pending | null>(null);
   const [toast, setToast] = useState("");
+  const [view, setView] = useState<"home" | "security">("home");
+  const [overview, setOverview] = useState<Overview | null>(null);
   const [entries, setEntries] = useState<Entry[]>([]);
   const lastId = useRef(0);
   const client = useRef<ApiClient | null>(null);
@@ -111,6 +114,19 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
     return () => { stop = true; clearInterval(id); };
   }, [connected]);
 
+  useEffect(() => {                                     // Sicherheitsstatus: immer (Modus C bleibt sichtbar), selten abfragen
+    if (!connected) { setOverview(null); return; }
+    let stop = false;
+    const pull = async () => {
+      if (document.hidden) return;
+      const r = await client.current?.call("safety.overview");
+      if (!stop && r?.ok && typeof r.mode === "string") setOverview(r as unknown as Overview);
+    };
+    void pull();
+    const id = setInterval(pull, view === "security" ? 3000 : 10000);
+    return () => { stop = true; clearInterval(id); };
+  }, [connected, view]);
+
   const decide = useCallback(async (approve: boolean) => {
     const p = pending;
     if (!p) return;
@@ -141,22 +157,30 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
   }, [doKill]);
 
   const state = resolveState({ connected, killActive: kill, backendState: voice.active ? voice.state : undefined });
-  const view = STATE_VIEW[state];
+  const stateView = STATE_VIEW[state];
 
   return (
     <div className={`app ${state === "halted" ? "is-halted" : ""}`}>
       <header className="head">
         <img className="logo" src="/kushim.png" alt="" width={28} height={28} />
         <span className="brand">kushim</span>
-        <span className="status" aria-live={view.live}>{view.label}</span>
+        <span className="status" aria-live={stateView.live}>{stateView.label}</span>
+        {overview?.mode === "C" && <span className="chip mode-c" title="Claude ist erlaubt: freigegebene Texte gehen an Anthropic">Modus C</span>}
         <KillButton onKill={() => void doKill()} />
       </header>
+      <nav className="tabs" aria-label="Bereiche">
+        <button type="button" aria-pressed={view === "home"} onClick={() => setView("home")}>Start</button>
+        <button type="button" aria-pressed={view === "security"} onClick={() => setView("security")}>Sicherheit</button>
+      </nav>
       {state === "halted" && <HaltedBanner onResume={() => void doResume()} />}
       {pending && state === "asking" && <ApprovalBar pending={pending} onDecide={(a) => void decide(a)} />}
       <div className="toast" role="status" aria-live="polite">{toast}</div>
+      {view === "security" ? (
+        <main className="stage"><SecurityPanel overview={overview} /></main>
+      ) : (
       <main className="stage">
         <Avatar state={state} size={240} level={voice.level} />
-        <p className="line">{view.label}</p>
+        <p className="line">{stateView.label}</p>
         {connected && <Transcript entries={entries} />}
         <ClaudePanel client={client} connected={connected} />
         {connected && !voice.active && state === "idle" && (
@@ -166,6 +190,7 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
           <button type="button" className="primary" onClick={() => void connect()}>Erneut versuchen</button>
         )}
       </main>
+      )}
     </div>
   );
 }

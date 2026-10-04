@@ -301,7 +301,7 @@ def _vault_state(cfg: Config) -> str:
 
 
 def _api_start(cfg: Config, root, extra=None):
-    """Baut den API-Kern (setup, safety, voice; `extra(core)` hängt mehr an) und startet den Server auf 127.0.0.1.
+    """Baut den API-Kern (setup, safety, voice; `extra(core, store)` hängt mehr an) und startet den Server auf 127.0.0.1.
     Port und Token kommen nach run/api.json (nur für die eigene Oberfläche). Gibt (server, store, info) zurück."""
     import json
     from .api.protocol import ApiCore, new_token
@@ -318,8 +318,12 @@ def _api_start(cfg: Config, root, extra=None):
     register_voice(core, root)
     register_setup(core, root, lambda: _vault_state(cfg), llm_model=cfg.llm_model,
                    audit=store.audit if store else None)
+    from .api.safety_view import register_safety_view
+    from .config import LiveConfig
     if extra is not None:
-        extra(core)
+        extra(core, store)
+    else:
+        register_safety_view(core, LiveConfig(), root, store=store)
     server = LocalServer(core)
     port = server.start()
     info = root / "run" / "api.json"
@@ -912,13 +916,15 @@ def _main(argv: list[str] | None = None) -> int:
             if args.ui:                                   # die API muss im selben Prozess laufen: nur hier liegen die wartenden Freigaben
                 from .api.approvals_api import register_approvals
                 from .api.claude_api import register_claude
+                from .api.safety_view import register_safety_view
                 from .api.tasks_api import register_tasks
                 from .api.transcript_api import register_transcript
 
-                def extra(core):
+                def extra(core, store):
                     register_approvals(core, tool_cmds)
                     register_tasks(core, tasks)
                     register_claude(core, tool_cmds.control)
+                    register_safety_view(core, tool_cmds.cfg, root, registry=tool_cmds.registry, store=store)
                     register_transcript(core, transcript)
                 api = _api_start(cfg, root, extra)
             loop = TalkLoop(mic, pipeline, kill, wake=lambda f: det.process(f) is not None, ack=ack,

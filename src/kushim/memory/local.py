@@ -90,6 +90,11 @@ class LocalStore(MemoryStore):
                          (time.time(), event, detail))
         self.con.commit()
 
+    def audit_tail(self, limit=50):
+        rows = self.con.execute("select ts,event,coalesce(detail,'') from audit order by id desc limit ?",
+                                (max(1, min(int(limit), 200)),)).fetchall()
+        return [(float(t), str(e), str(d)) for t, e, d in reversed(rows)]
+
     def counts(self) -> dict[str, int]:
         return {t: self.con.execute(f"select count(*) from {t}").fetchone()[0]
                 for t in ("facts", "episodes", "feedback", "profile", "audit")}

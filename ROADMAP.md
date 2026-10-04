@@ -50,6 +50,8 @@ Oberste Regel: Schäden jeder Art sind verboten. Lokal zuerst (Modus A), Claude 
 - [x] Notaus-Kern (`safety/killswitch.py`): Marker-Datei per Verknüpfung `kushim NOTAUS.lnk`/`kushim kill`, Sprachbefehl-Erkennung ("Notaus", "stopp alles" ...), ohne Sprecherverifikation, Aufheben nur per `kushim resume`; `kushim start` beendet sich bei Notaus und startet bei aktivem Notaus nicht (2026-10-03)
 - [x] Sprachbefehl-Notaus in der Pipeline (vor LLM, Dialog.halt); ActionGate.kill beim Anschluss des Gates noch als Aktion in `KillSwitch` registrieren
 - [ ] Dashboard, Gedächtnis-Ansicht, Sicherheitsstatus in der UI
+  - [x] Sicherheitsstatus (2026-10-04): API `safety.overview` (`api/safety_view.py`: Modus A/C, Notaus, aktive Werkzeuge, Vault lokal/Netz/offen, Backup-Alter, Geldlimit 0, letzte 50 Audit-Einträge gekürzt; nie Pfade oder Schlüssel; nur lesend), `MemoryStore.audit_tail` (nur lesen), UI `SecurityPanel` (jede Zeile mit Wort, Symbol und Farbe, Warnungen oben, Modus C zusätzlich als Chip in der Kopfzeile, Protokoll filterbar, Text nie als HTML, keine Schaltflächen), Reiter Start/Sicherheit; 8 Python- und 5 UI-Tests
+  - [ ] Dashboard (Ergebnisse mit Quellen, Aktivität, Heute), Gedächtnis-Ansicht (Suchen, Bearbeiten, Löschen mit Rückgängig; braucht API `memory.*` mit Vault-Zugriff), Diff-Ansicht
 
 ## Phase 3: Tools (jeweils mit ActionSpec und Tests)
 - [x] Tool-Verwaltung (2026-10-04, Nutzerwunsch "Tools über die UI aktivierbar"): `tools/registry.py` (alle Tools standardmäßig AUS, Einschalten nur bestätigt und nur wenn verfügbar, Ausschalten sofort, `ToolGate` um den `ActionGate`), `[tools] enabled` in `config.toml` (atomar), API-Typen `tools.list`/`tools.set` (`api/tools_api.py`), `kushim tools [enable|disable]`; Plan in `docs/tools-plan.md`; 20 Tests
