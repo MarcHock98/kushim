@@ -25,7 +25,7 @@ class TalkLoop:
     Hintergrund-Thread, während das Mikrofon weiter gelesen wird: Spricht der Nutzer dazwischen, wird die Ausgabe
     gestoppt und seine Äußerung ist die nächste Frage (Unterbrechen)."""
 
-    CONTINUES = ("spoken", "command", "interrupted")      # Ergebnisse, nach denen das Gespräch weitergeht
+    CONTINUES = ("spoken", "command", "interrupted", "cancelled")      # Ergebnisse, nach denen das Gespräch weitergeht
 
     def __init__(self, frames: Iterable[Any], pipeline: Pipeline, kill: KillSwitch,
                  wake: Callable[[Any], bool],
@@ -56,6 +56,7 @@ class TalkLoop:
         self._turn_mode = "idle"     # Modus, in dem die laufende Antwort angefordert wurde
         self._busy: Any = None       # laufende Antwort (Future), nur mit barge
         self._queued: Any = None     # Äußerung, die nach dem Ende der unterbrochenen Antwort drankommt
+        self._cancelled = False      # "abbrechen" wurde während der laufenden Antwort gesagt
         self._pool: Any = None
 
     def _ask_again(self) -> UtteranceCollector:
@@ -92,7 +93,12 @@ class TalkLoop:
             return self._finish_busy()
         if self._collecting is not None:             # Nutzer hat schon dazwischengesprochen: Äußerung zu Ende sammeln
             if self._collecting.feed(frame):
-                self._queued, self._collecting = self._collecting.audio(), None
+                audio, self._collecting = self._collecting.audio(), None
+                check = getattr(self.pipeline, "try_cancel", None)
+                if check is not None and check(audio):          # "abbrechen": Laufendes beenden, nicht als neue Frage einreihen
+                    self._cancelled = True
+                else:
+                    self._queued = audio
             return None
         if self.barge.feed(frame):
             self.pipeline.interrupt()                # Ausgabe sofort stoppen
@@ -104,6 +110,12 @@ class TalkLoop:
     def _finish_busy(self) -> str | None:
         res = self._busy.result()
         self._busy = None
+        if self._cancelled:                                      # nach dem Ende der abgebrochenen Antwort kurz bestätigen
+            self._cancelled = False
+            confirm = getattr(self.pipeline, "say_cancelled", None)
+            if confirm is not None:
+                confirm()
+            self.on_note("Abgebrochen.")
         r = self._process(res)
         if r is None and self._queued is not None:
             r = self._submit(self._take_queued(), "barge")

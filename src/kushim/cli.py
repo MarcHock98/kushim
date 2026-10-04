@@ -106,7 +106,7 @@ def _vault(cfg: Config):
         raise SystemExit(3)
 
 
-def main(argv: list[str] | None = None) -> int:
+def _main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="kushim")
     sub = p.add_subparsers(dest="cmd", required=True)
     mem = sub.add_parser("memory", help="Vault anlegen, Info, Backup, Umzug").add_subparsers(dest="sub", required=True)
@@ -287,7 +287,7 @@ def main(argv: list[str] | None = None) -> int:
         wiki = websearch.make_search(reg, netweb.fetch_text)
         from .privacy import EgressGate
         egress = EgressGate(cfg.claude_enabled, confirm=lambda dest, payload: True)    # Freigabe der exakten Vorschau ist schon erfolgt
-        res = Research(reg, lambda q: claude_ask.ask(q, exe, root / "run" / "claude-research"), wiki, cache.get, egress)
+        res = Research(reg, lambda q, c: claude_ask.ask(q, exe, root / "run" / "claude-research", cancelled=c), wiki, cache.get, egress)
         prop = res.propose(" ".join(args.frage), speaker_verified=True)       # am Terminal sitzt der Nutzer selbst
         if prop.decision is not Decision.ASK:
             print(prop.reason or "Nicht erlaubt.")
@@ -625,6 +625,17 @@ def main(argv: list[str] | None = None) -> int:
             store_key(args.vault_id, args.hexkey)
             print("Schlüssel gespeichert.")
     return 0
+
+
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Strg+C bricht den laufenden Befehl ab (laufende Prozesse werden dabei beendet), ohne Fehlermeldung."""
+    try:
+        return _main(argv)
+    except KeyboardInterrupt:
+        print("\nAbgebrochen.")
+        return 130
 
 
 if __name__ == "__main__":

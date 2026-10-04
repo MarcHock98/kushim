@@ -211,7 +211,7 @@ def build(claude=True, wiki=True, answer=None, auth=ABO, ttl=120.0, modus_c=True
         fetched.append(url)
         return WIKI_BODY
 
-    def ask(q):
+    def ask(q, cancelled=lambda: False):
         asked.append(q)
         return answer if answer is not None else Answer(True, Untrusted("Der Eiffelturm ist 330 m hoch."), "", 0.02, 3.0)
     ws = make_search(reg, fetch)

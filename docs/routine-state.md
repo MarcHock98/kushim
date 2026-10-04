@@ -2,12 +2,12 @@
 
 Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
 
-- Letzter Durchlauf: 2026-10-04 (/loop kushim-routine): UI-Setup-Backend Teil 1, Tool-Verwaltung, Web-Recherche (Logik, `net/web.py` auf Nutzerfreigabe, `kushim search`, Quarantäne für Web-Inhalte), Modellwechsel-Backend Teil 1. 483 Tests grün
+- Letzter Durchlauf: 2026-10-04 (/loop kushim-routine; Loop auf Wunsch des Nutzers gestoppt): Web-Recherche, Claude-Recherche (CLI) mit Wikipedia-Ersatz, Abbruch-Befehl, Modellwechsel-Backend, Roadmap vollständig durchgesehen. Alles lokal gemerged, nicht gepusht
 - Seit 2026-10-03 zusätzlich gemerged (alle lokal, nicht gepusht): Notaus beendet auch llama-server, `voice threshold`, Wake Word + Befehl in einem Zug, Gesprächsmodus ohne Wake Word, Unterbrechen (Barge-in) mit echten Pegeln, `voice level`, `kushim gpu`/[gpu], `kushim help`, `kushim`-Befehl im PATH, qwen3.5:9b (think aus), Designer-Skill, Pläne `docs/ui-llm-plan.md`, `docs/tools-plan.md`, `kushim setup`, `kushim tools`, API `setup.*`/`audio.devices`/`safety.*`/`tools.*`
 - Aktueller Branch: master (routine/p2-setup-backend, routine/p3-web-plan, fluent-talk, direct-command-fix u. a. gemerged; routine/p1-wake, p1-stt, p1-speaker, p1-dialog, p1-tts, p2-api-core, p2-approvals, p4-bandit, p2-loopback, p1-llm, p1-whisper-model, p1-ollama-setup, branding, p1-piper, p2b-launcher, p2b-icon, p2b-killswitch, p1-pipeline, p1-audio, p1-talk, p1-streaming, p1-wake-only, p1-speaker-model, voice-record, readme-installer gemerged, Branches bleiben)
 - Erledigt: Stimmkette (Wake Word, Sprecher, STT, LLM, TTS), Notaus, Launcher, Verknüpfungen, README/Installer, Umbenennung kushim, Wake-Word-Sprachbefehle. 195 Tests grün
 - Erledigt zusätzlich: Dialog-/Barge-in-Logik, TTS-Logik, API-Kern (Token/Dispatch), Freigabe-Warteschlange, 136 Tests grün
-- Nächster Schritt: Web-Recherche in die Sprach-Pipeline hängen (Absicht aus dem Gesagten des Nutzers erkennen, Vorschau per UI/Sprache, nur über `web.answer` und `Untrusted`-Sperre), danach Modellwechsel Teil 2 (Laden/Entfernen mit Freigabe), UI-Setup Teil 2, Timer/Notizen (lokal). Nutzer: Zweite-Person-Test der Sprecher-Prüfung (Schwelle 0,79), Live-Test Notaus/Gespräch/Websuche (`kushim tools enable web.search`, `kushim search ...`). Später: Stimmklon (Torch/CUDA >2 GB, vorher fragen), Tauri/Node-UI (Toolchain freigeben)
+- Nächster Schritt: **Stimmklon mit Chatterbox** (vom Nutzer freigegeben, Auflage: beim Klonen nichts nach außen; Loop erst neu starten, wenn der Nutzer es will). Danach Recherche in die Sprach-Pipeline hängen, Claude entwickelt Projekt (Teile 1 bis 4 laut `docs/claude-cli-plan.md`, vorher Entscheidungen des Nutzers: Rechteprofil, Budget/Zeit, Ordner), Modellwechsel Teil 2, UI-Setup Teil 2, Timer/Notizen. Nutzer: Live-Test `kushim research` (echter Claude-Aufruf, bisher nicht gemacht), Zweite-Person-Test der Sprecher-Prüfung
 - Branches bereit zum Push durch den Nutzer: master, routine/p1-wake, routine/p1-stt, routine/p1-speaker, routine/p1-dialog, routine/p1-tts, routine/p2-api-core, routine/p2-approvals, routine/p4-bandit, routine/p2-loopback, routine/p1-llm
 
 ## Slack
@@ -26,6 +26,10 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
 - openwakeword braucht `requests` trotz --no-deps (gelöst, in pyproject-Extra `voice`)
 
 ## Entscheidungen des Nutzers
+- 2026-10-04: **Claude primär für Recherche (bessere Websuche), Wikipedia als Ersatz**; Claude über die Claude CLI des angemeldeten Nutzers (kein API-Schlüssel); soll in angegebenen, in der UI einstellbaren Ordnern arbeiten, per Sprache gesteuert werden (starten, Rückfragen, Übersichten, nächste Schritte); Plan `docs/claude-cli-plan.md`
+- 2026-10-04: **Abbrechen per Sprache** ("abbrechen" beendet den laufenden Befehl) zusätzlich zum Notaus; umgesetzt
+- 2026-10-04: Stimmklon mit **Chatterbox** freigegeben, beim Klonen dürfen keine Daten nach außen gehen
+- 2026-10-04: Roadmap nach jedem Paket pflegen und am Ende vollständig durchsehen (erledigt)
 - 2026-10-04: `net/web.py` freigegeben, **keine Downloads erlauben** (nur Text/JSON, nie auf die Platte); Websuche über Wikipedia (de), Tool standardmäßig aus
 - 2026-10-04: **Web-Inhalte dürfen nie als Prompt/Anweisung genutzt werden, um das LLM etwas tun oder Tools nutzen zu lassen**; umgesetzt als Quarantäne (`Untrusted`, werkzeugloser Antwortpfad `web/answer.py`, Tests)
 - 2026-10-04: Werkzeuge (Tools) sollen über die UI aktivierbar sein: alle standardmäßig aus, Einschalten nur bewusst durch den Nutzer; erstes Tool Recherche/Web mit Vorschau und Freigabe dessen, was nach außen geht. Umgesetzt (Logik), Netz-Modul wartet auf Freigabe

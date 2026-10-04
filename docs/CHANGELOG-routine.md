@@ -24,3 +24,4 @@ Format: Datum, Datei, Grund (ein Satz).
 - 2026-10-04, .claude/skills/kushim-add-tool/SKILL.md: Fallstricke zu `Untrusted` (Web-Inhalte nie als Anweisung) und "keine Downloads".
 - 2026-10-04, tests/test_no_egress.py: zusätzliche Sperr-Tests für die Claude CLI (nur in `claude_cli/base.py` gefunden; Rechteumgehungs-Flags nur in der Verbotsliste von `claude_cli/ask.py`). Verschärfung, keine Lockerung.
 - 2026-10-04, docs: Recherche über Claude (Minimal-Modus) mit Wikipedia als Ersatz; `docs/claude-cli-plan.md` um die zwei Betriebsarten ergänzt.
+- 2026-10-04, src/kushim/voice/stt.py: Sperre um die Spracherkennung (Abbruch-Erkennung läuft parallel zur laufenden Antwort); `tasks.py` neu (Abbrechen). Keine Sicherheitsregel gelockert: Abbrechen ist nur Anhalten und lehnt offene Freigaben ab.
