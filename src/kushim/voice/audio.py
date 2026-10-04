@@ -28,6 +28,19 @@ def find_device(name_part: str | None, kind: str) -> int | None:
     raise LookupError(f"Kein {kind}-Gerät mit '{name_part}'")
 
 
+def list_devices() -> dict[str, list[str]]:
+    """Namen der Ein- und Ausgabegeräte (nur Namen, ohne ein Gerät zu öffnen)."""
+    import sounddevice as sd
+    ins: list[str] = []
+    outs: list[str] = []
+    for d in sd.query_devices():
+        if d["max_input_channels"] > 0 and d["name"] not in ins:
+            ins.append(d["name"])
+        if d["max_output_channels"] > 0 and d["name"] not in outs:
+            outs.append(d["name"])
+    return {"inputs": ins, "outputs": outs}
+
+
 class Mic:
     """Mikrofon als Frame-Iterator. `flush()` verwirft Gepuffertes (z. B. nach einer Sprachausgabe,
     damit kushim sich nicht selbst zuhört)."""
