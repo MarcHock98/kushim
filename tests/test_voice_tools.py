@@ -78,10 +78,10 @@ class FakeSessions:
         return self.st, None, ov
 
 
-def make(enabled=(), folders=(Folder("kushim", "C:/p"),), tools=None):
+def make(enabled=(), folders=(Folder("kushim", "C:/p"),), tools=None, direct=False):
     reg = ToolRegistry(tools or [_tool("web.search", "Websuche"), _tool("claude.research", "Claude-Recherche"),
                                   _tool("claude.code", "Claude-Entwicklung")], enabled)
-    cfg = SimpleNamespace(tools_enabled=list(enabled))
+    cfg = SimpleNamespace(tools_enabled=list(enabled), voice_direct=direct)
     research, control, sessions = FakeResearch(), FakeControl(), FakeSessions()
     tc = ToolCommands(cfg, reg, research, control, sessions, lambda w: "Zusammenfassung", lambda: list(folders))
     return tc, reg, research, control, sessions
@@ -317,3 +317,26 @@ def test_natural_yes_words_confirm(yes):
     tc.handle("Recherchiere Wetter Hamburg", True)
     tc.handle(yes, True)
     assert research.calls == ["approve", "execute"]
+
+
+# --- Direkt handeln (Nutzerwunsch: kein zweites "ja" für Recherche und Claude-Start)
+def test_direct_research_runs_without_yes():
+    tc, _, research, *_ = make(enabled=["claude.research"], direct=True)
+    reply = tc.handle("Recherchiere die Höhe des Eiffelturms", True)
+    assert "Laut Claude: 324 Meter" in reply and research.calls == ["approve", "execute"] and not tc.awaiting
+
+
+def test_direct_claude_start_runs_without_yes_but_needs_strong_voice():
+    tc, _, _, control, _s = make(enabled=["claude.code"], direct=True)
+    assert "deutliche" in tc.handle("Claude soll die Tests schreiben", True, False) and not control.proposed
+    reply = tc.handle("Claude soll die Tests schreiben", True, True)
+    assert "Claude arbeitet" in reply and control.calls == ["approve", "execute"]
+
+
+def test_direct_never_skips_verification_or_answers():
+    tc, _, research, control, sessions = make(enabled=["claude.research", "claude.code"], direct=True)
+    assert "deine Stimme" in tc.handle("Recherchiere Wetter", False) and not research.proposed
+    sessions.st = State(folder="kushim", status="waiting", offers=["Bash(pytest *)"])
+    assert "ja oder nein" in tc.handle("Antwort an Claude: Variante zwei", True, True) and control.calls == []   # Antworten fragen nach
+    tc.handle("nein", True, True)
+    assert "ja oder nein" in tc.handle("Erlaube das", True, True)                                                   # Erlaubnisse auch

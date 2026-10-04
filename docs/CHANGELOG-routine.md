@@ -31,3 +31,5 @@ Format: Datum, Datei, Grund (ein Satz).
 - 2026-10-04, .gitignore: `.claude/worktrees/` (Claude-Worktrees).
 - 2026-10-04, .claude/skills/kushim-routine und kushim-add-tool: Fallstricke aus dem Claude-CLI-Praxistest (Skripte schreiben Quellcode, Wegwerf-Repo, CLI-Regelschreibweise, Verweigerungen der ganzen Sitzung).
 - 2026-10-04, src/kushim/claude_cli/dev.py: `--setting-sources user` im Entwicklungs-Modus (Verschärfung; Selbst-Eskalation über Projekt-Einstellungen am echten Aufruf nachgewiesen und verhindert); tests/test_no_egress.py: Test, dass `ClaudeSessions.start/answer` nur aus control.py aufgerufen werden.
+
+- 2026-10-04, voice/tool_commands.py + config.py: Auf ausdrücklichen Wunsch des Nutzers ("kushim soll direkt handeln") gilt der gesprochene Befehl der verifizierten Stimme als Freigabe für Recherche und Claude-Start (`[tools] direct`, Standard an, `false` bringt Vorschau und "ja" zurück). Prüfer, Hash-Bindung, Gate, Sprecher-Prüfung (Claude-Start stark), Notaus und "abbrechen" unverändert; Antworten an Claude und Erlaubnisse fragen weiter nach.
