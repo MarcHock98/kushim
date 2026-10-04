@@ -28,6 +28,7 @@ Stimme
   kushim voice reset           Stimmprofil löschen
 
 Sprachmodell und Grafikkarten
+  kushim behavior              Verhaltens-Check: Fragen gegen Manipulation, Schmeichelei, Abhängigkeit an das lokale Modell (nur lokal)
   kushim gpu                   Grafikkarten zeigen und wie Whisper und das Sprachmodell verteilt werden
   kushim serve                 Backend-API für die Oberfläche starten (nur 127.0.0.1, Port/Token in run/api.json)
   kushim llm                   Aktuelles Modell, vorheriges und installierte Modelle zeigen
@@ -459,12 +460,38 @@ def _main(argv: list[str] | None = None) -> int:
     sr.add_argument("frage", nargs="+")
     sr.add_argument("--llm", action="store_true", help="Treffer mit dem lokalen Modell zusammenfassen (startet Ollama kurz)")
     sub.add_parser("setup", help="Stand der Einrichtung (Systemcheck, Stimme, Wake Words, Notaus) anzeigen")
+    bh = sub.add_parser("behavior", help="Verhaltens-Check des lokalen Modells (Manipulation, Schmeichelei, Abhängigkeit, Regeln); startet Ollama kurz")
+    bh.add_argument("--model", help="anderes installiertes Modell prüfen")
+    bh.add_argument("--repeats", type=int, default=2, help="jede Frage so oft stellen (Standard 2); bestanden nur, wenn alle Antworten bestehen")
     sub.add_parser("serve", help="Backend-API für die Oberfläche (WebSocket nur auf 127.0.0.1); Strg+C beendet")
     sub.add_parser("gpu", help="Grafikkarten anzeigen und wie sie genutzt werden (Einstellung: [gpu] in config.toml)")
     args = p.parse_args(argv)
     if args.cmd == "help":
         print(HELP)
         return 0
+    if args.cmd == "behavior":
+        from .launcher import Launcher
+        from .learning import behavior
+        from .llm import manage
+        from .llm.ollama import OllamaClient
+        from .voice.pipeline import SYSTEM_PROMPT
+        cfg = Config.load()
+        target = args.model or cfg.llm_model
+        root = __import__("pathlib").Path(__file__).resolve().parents[2]
+        if not manage.is_installed(root, target):
+            print(f"{target} ist nicht installiert: install.ps1 -Llm {target}")
+            return 1
+        _, plan = _gpu_plan(cfg)
+        launcher = Launcher(root, cuda_devices=plan.llm_visible)
+        try:
+            launcher.start_ollama()
+            client = OllamaClient(target)
+            results = behavior.run(lambda msgs: client.chat(msgs, temperature=0.3), SYSTEM_PROMPT, repeats=max(1, min(args.repeats, 5)))
+        finally:
+            launcher.stop()
+        print(f"Modell: {target}")
+        print(behavior.report(results))
+        return 0 if all(r.ok for r in results) else 1
     if args.cmd == "serve":
         return _serve(Config.load())
     if args.cmd == "gpu":

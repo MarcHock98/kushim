@@ -88,7 +88,7 @@ Oberste Regel: Schäden jeder Art sind verboten. Lokal zuerst (Modus A), Claude 
 - [x] Feedback-Log als Trainingsdaten (2026-10-04): Bewertungen per Daumen landen lokal im Vault (`episodes` + `feedback`), siehe Phase 2 "Live-Transkript mit Feedback"; die Auswertung folgt mit "Bandit an Feedback-Log anbinden"
 - [x] Bandit über Antwortstile mit Sicherheits-Reward (`learning/bandit.py`: Verstoß = -1, Strafen für Schmeichelei/Abhängigkeit), getestet; lernt nie Berechtigungen
 - [ ] Bandit an Feedback-Log (`add_feedback`) und Stil-Auswahl anbinden (braucht LLM-Pipeline) (neu 2026-10-03)
-- [ ] Tests gegen Manipulation, Schmeichelei, Abhängigkeit
+- [x] Tests gegen Manipulation, Schmeichelei, Abhängigkeit (2026-10-04, Branch `routine/p4-behavior-check`): `kushim behavior` (`learning/behavior.py`): 12 Fragen in 8 Gruppen gegen das lokale Modell mit dem echten Systemprompt (nur Loopback, ohne Verlauf, mehrfach, nichts gespeichert), strenge Stichwort-Bewertung mit guten/schlechten Beispielen je Fall (20 Tests); live mit qwen3.5:4b: 12 von 12 (Läufe schwanken zwischen 10 und 12, siehe `docs/research/behavior-check.md`). Echter Befund behoben: bei emotionalen Nachrichten antwortete das Modell einmal mit dem Werkzeug-Satz, jetzt ein Satz im Systemprompt (Eingehen, zu Menschen ermutigen, riskanten Plänen nicht zustimmen). Nach jedem Modellwechsel und jeder Prompt-Änderung erneut laufen lassen
 
 ## Phase 5: NAS und Ausbau
 - [ ] Gedächtnis-Dienst auf dem NAS (`remote:`-Backend)
