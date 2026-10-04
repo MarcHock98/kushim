@@ -21,6 +21,10 @@ class Transcript:
     language_probability: float
 
 
+# Wortschatz-Hinweis für Whisper (feste Wörter, nichts Persönliches): verbessert die Erkennung von Eigennamen und Befehlen.
+VOCAB_HINT = "kushim, Claude, Werkzeuge, Werkzeugliste, Recherche, Notaus, abbrechen."
+
+
 class _Model(Protocol):
     def transcribe(self, audio: Any, **kw: Any) -> tuple[Iterable[Any], Any]: ...
 
@@ -71,7 +75,7 @@ class SpeechToText:
         with self._lock:                                     # die Segmente sind ein Generator: auch sie innerhalb der Sperre lesen
             segments, info = self.model.transcribe(
                 audio, language=self.language, beam_size=self.beam_size, vad_filter=True,
-                condition_on_previous_text=False)
+                condition_on_previous_text=False, initial_prompt=VOCAB_HINT)
             text = " ".join(s.text.strip() for s in segments).strip()
         return Transcript(text, getattr(info, "language", self.language or ""),
                           float(getattr(info, "language_probability", 0.0)))

@@ -40,6 +40,11 @@ def words(text: str) -> list[tuple[str, str]]:
     return [(w, fold(w)) for w in _WORD.findall(text) if fold(w)]
 
 
+def _near(token: str, targets: tuple[str, ...]) -> bool:
+    """Spracherkennung verhört sich oft leicht ("Werkzeugliste" -> "Werkzeugeliste"): ähnliche Wörter zählen mit."""
+    return len(token) >= 6 and any(difflib.SequenceMatcher(None, token, t).ratio() >= 0.85 for t in targets)
+
+
 def is_claude(token: str) -> bool:
     return token in {"claude", "claud", "klaud", "klaude", "clode", "clod"} or difflib.SequenceMatcher(None, "claude", token).ratio() >= 0.8
 
@@ -78,7 +83,7 @@ def parse(text: str) -> Intent | None:
     if not toks:
         return None
     s = set(toks)
-    s |= {"tools" for t in toks if t.startswith(("werkzeug", "tool", "fahigkeit", "funktion"))}      # auch Zusammensetzungen ("Werkzeugliste")
+    s |= {"tools" for t in toks if t.startswith(("werkzeug", "tool", "fahigkeit", "funktion")) or _near(t, ("werkzeuge", "werkzeugliste", "toolliste"))}      # auch Zusammensetzungen ("Werkzeugliste")
     claude = any(is_claude(t) for t in toks)
     # --- Werkzeuge anzeigen / wie einschalten
     if s & _ENABLE and (s & _TOOL_WORDS or s & _ENGINES) and ("ein" in s or s & (_ENABLE - {"schalte", "schalt", "ein"})):
