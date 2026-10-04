@@ -19,6 +19,14 @@ Oberste Regel (src/kushim/safety/rules.py): Schäden jeder Art sind verboten. Im
 7. **Audit:** Jede Entscheidung wird geloggt (macht das Gate; nicht umgehen).
 8. Danach `kushim-safety-review` ausführen und `pytest` grün bekommen.
 
+## Gelernte Fallstricke
+- **Registry:** Jedes Tool kommt in `tools/registry.py` (`ToolInfo`) und ist standardmäßig AUS; der Nutzer schaltet es in der UI oder mit `kushim tools enable`. `available()` liefert den Grund, wenn eine Voraussetzung fehlt (z. B. fehlende Netz-Freigabe). Aktionen laufen über `ToolGate`.
+- **`Risk.READ` mit `external_effect=True`** (z. B. Websuche) braucht seit 2026-10-04 einen verifizierten Sprecher im Gate. Einen Test dafür schreiben (Fremder: DENY, Verifiziert: ASK).
+- **Prüfer** (`reviewer`) ist Pflicht bei Außenwirkung (sonst "Fail-Closed"): echte, unabhängige Prüfung schreiben, nicht `lambda: set()`.
+- **Freigabe-Text = Ausführung:** Den Abruf aus dem FREIGEGEBENEN Vorschautext neu berechnen, nicht aus einem gemerkten Wert (Hash-Bindung der `ApprovalQueue`).
+- **Neues Netz-Modul = neuer ALLOWLIST-Eintrag in `tests/test_no_egress.py`:** nie selbst, nur nach ausdrücklicher Freigabe des Nutzers. Bis dahin Logik mit eingereichtem `fetch` bauen und mit Fake testen.
+- **Nach neuen Ordnern `git status` ansehen:** `.gitignore` hatte `tools/` (traf auch `src/kushim/tools/`), die Dateien wären still nicht committet worden. Jetzt `/tools/`.
+
 ## Nie tun
 - Fähigkeiten oder Rechte automatisch erweitern.
 - Daten über Dritte sammeln oder weitergeben.
