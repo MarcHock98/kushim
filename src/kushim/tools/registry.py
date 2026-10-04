@@ -112,6 +112,16 @@ WEB_SEARCH = ToolInfo(
 )                                  # Netz-Modul net/web.py freigegeben am 2026-10-04 (keine Downloads), Tool bleibt standardmäßig aus
 
 
+TIMER = ToolInfo(
+    name="timer.local",
+    title="Timer und Erinnerungen",
+    description=("Stellt Timer und Erinnerungen per Sprache (\"Timer auf zehn Minuten\", \"Erinnere mich in einer Stunde an ...\"). Alles bleibt "
+                 "auf deinem PC: nur Zeit und ein Kurztext in run/timers.json, höchstens 20 Timer und 7 Tage. Läuft einer ab, sagt kushim es an."),
+    spec=ActionSpec("timer.local", Risk.READ),           # nur lokaler Zustand von kushim selbst, keine Außenwirkung, nichts Fremdes
+    sends_data_out=False,
+)
+
+
 CLAUDE_RESEARCH = ToolInfo(
     name="claude.research",
     title="Recherche über Claude",
@@ -177,4 +187,4 @@ def claude_code_tool(cfg=None, cache=None) -> ToolInfo:
 
 
 def default_tools(cfg=None, cache=None) -> list[ToolInfo]:
-    return [WEB_SEARCH, claude_research_tool(cfg, cache), claude_code_tool(cfg, cache)]
+    return [WEB_SEARCH, claude_research_tool(cfg, cache), claude_code_tool(cfg, cache), TIMER]

@@ -103,6 +103,10 @@ def _voice_tools(cfg: Config, root):
     from .research import Research
     from .tasks import TaskRegistry
     from .tools.registry import ToolRegistry, default_tools
+    from .safety.gate import ActionGate
+    from .timers import TimerStore
+    from .tools.registry import TIMER, ToolGate
+    from .voice.timer_commands import TimerCommands
     from .voice.tool_commands import ToolCommands
     from .web import search as websearch
     from .web.answer import answer_from_sources
@@ -119,6 +123,7 @@ def _voice_tools(cfg: Config, root):
     control = Control(reg, sessions, egress, cache.get, folders, tasks=tasks)
     chat = OllamaClient(live.llm_model).chat
     tc = ToolCommands(live, reg, research, control, sessions, lambda wiki: str(answer_from_sources(chat, wiki)), folders)
+    tc.timers = TimerCommands(live, reg, ToolGate(ActionGate([TIMER.spec]), reg), TimerStore(root))
     sessions.viewer = lambda: open_viewer(root)                                       # Claude läuft sichtbar in einem eigenen Fenster
     tc.before = lambda: setattr(egress, "enabled", live.claude_enabled)               # Modus C ausschalten wirkt sofort, auch hier
     return tc, tasks
@@ -765,7 +770,7 @@ def _main(argv: list[str] | None = None) -> int:
             from .voice.commands import CommandChain
             pipeline, kill, mic, ack = build_live(root, audio.find_device(args.out, "output"),
                                                   audio.find_device(args.mic, "input"),
-                                                  verifier=verifier, commands=CommandChain([WakeWordCommands(root), tool_cmds]),
+                                                  verifier=verifier, commands=CommandChain([WakeWordCommands(root), tool_cmds, tool_cmds.timers]),
                                                   tasks=tasks,
                                                   wake_names=[w.name for w in wcfg.enabled()],
                                                   llm_model=cfg.llm_model, whisper_device=plan.whisper_device,
@@ -790,7 +795,7 @@ def _main(argv: list[str] | None = None) -> int:
                             first_collector=lambda: utter(first_ms),
                             follow_collector=(lambda: utter(follow_ms)) if follow_ms > 0 else None,
                             barge=barge, preroll_frames=round(st.preroll_seconds / 0.08),
-                            announce=tool_cmds.announcement, say=pipeline.say_text,
+                            announce=lambda: tool_cmds.announcement() or tool_cmds.timers.announcement(), say=pipeline.say_text,
                             on_note=lambda s: print(f"[Hinweis] {s}"))
             print("Wake Words: " + ", ".join(w.name for w in wcfg.enabled())
                   + ". Notaus: 'Notaus' sagen oder die Verknüpfung. Strg+C beendet.")

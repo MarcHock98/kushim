@@ -99,6 +99,9 @@ Am Ende jedes Durchlaufs eine kurze Rückschau: Was hat gehakt? Was wurde wieder
 - **Nach neuen Ordnern `git status`:** `.gitignore` kann neue Quellordner verschlucken.
 - **Sicherheitsregeln:** Muss ein Test oder die ALLOWLIST für ein Feature gelockert werden, ist das eine Entscheidung des Nutzers: Plan schreiben, alles Netzfreie fertig bauen, dann fragen.
 
+- **Zustandsdateien können auf Gelöschtes zeigen** (z. B. `run/claude-session.json` auf einen entfernten Worktree): vor dem Benutzen prüfen, ob das Ziel noch existiert, und sonst wie "kein Zustand" behandeln. Nach dem Aufräumen von Branches/Worktrees sofort den Sprach-/CLI-Weg gegenprobieren.
+- **Sprachbefehle immer mit echten Satzbeispielen testen** (auch Fehlschläge aus dem Live-Log des Nutzers als Testfälle übernehmen): Spracherkennung liefert Zusammensetzungen, Verhörer und Füllwörter; Auslöse-Wörter großzügig, aber Alltagssätze ("Wie spät ist es") müssen beim Sprachmodell bleiben.
+
 ## Takt und Ende
 - Im `/loop`-Modus: weitere Durchläufe über `ScheduleWakeup`. Arbeit offen und frei: 270 s bis wenige Minuten. Nur auf Antwort gewartet: 1200-1800 s. Alles blockiert: 3600 s.
 - **Ziel erreicht**, wenn alle Roadmap-Punkte abgehakt sind (und keine neuen sinnvollen offen), alle Pakete gemerged, Tests grün, Review sauber: Abschlussbericht per Slack und im Terminal, dann `ScheduleWakeup` mit `stop: true`.
