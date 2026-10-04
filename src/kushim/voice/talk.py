@@ -19,20 +19,38 @@ ACK_TEXT = "Ja?"
 
 
 class TalkLoop:
+    """Wake Word -> (Befehl direkt | "Ja?" und warten) -> Antwort -> Gespräch ohne Wake Word -> Ende bei Stille.
+
+    Ohne `barge` läuft alles nacheinander im selben Thread (wie früher). Mit `barge` läuft die Antwort in einem
+    Hintergrund-Thread, während das Mikrofon weiter gelesen wird: Spricht der Nutzer dazwischen, wird die Ausgabe
+    gestoppt und seine Äußerung ist die nächste Frage (Unterbrechen)."""
+
+    CONTINUES = ("spoken", "command", "interrupted")      # Ergebnisse, nach denen das Gespräch weitergeht
+
     def __init__(self, frames: Iterable[Any], pipeline: Pipeline, kill: KillSwitch,
                  wake: Callable[[Any], bool],
                  ack: Callable[[], None] = lambda: None,
                  flush: Callable[[], None] = lambda: None,
                  new_collector: Callable[[], UtteranceCollector] = UtteranceCollector,
                  on_result: Callable[[Result], None] = lambda r: None,
-                 first_collector: Callable[[], UtteranceCollector] | None = None):
+                 first_collector: Callable[[], UtteranceCollector] | None = None,
+                 follow_collector: Callable[[], UtteranceCollector] | None = None,
+                 barge: Any = None):
         """`first_collector`: Befehl direkt nach dem Wake Word ("hey kushim, wie spät ist es?") ohne "Ja?" davor.
         Kommt kein Befehl (nur Wake Word, nur Rauschen oder nur der Rest des Wake Words), folgt "Ja?" und
-        `new_collector` wartet auf den Befehl. Ohne `first_collector` gibt es "Ja?" sofort."""
+        `new_collector` wartet auf den Befehl. Ohne `first_collector` gibt es "Ja?" sofort.
+        `follow_collector`: nach einer Antwort ohne Wake Word weiter zuhören; Stille beendet das Gespräch.
+        `barge`: Unterbrechungs-Detektor (`BargeIn`), schaltet Unterbrechen ein."""
         self.frames, self.pipeline, self.kill, self.wake = frames, pipeline, kill, wake
         self.ack, self.flush = ack, flush
         self.new_collector, self.on_result = new_collector, on_result
-        self.first_collector = first_collector
+        self.first_collector, self.follow_collector, self.barge = first_collector, follow_collector, barge
+        self._collecting: UtteranceCollector | None = None
+        self._mode = "idle"          # idle | direct | ack | follow | barge
+        self._turn_mode = "idle"     # Modus, in dem die laufende Antwort angefordert wurde
+        self._busy: Any = None       # laufende Antwort (Future), nur mit barge
+        self._queued: Any = None     # Äußerung, die nach dem Ende der unterbrochenen Antwort drankommt
+        self._pool: Any = None
 
     def _ask_again(self) -> UtteranceCollector:
         self.ack()
@@ -41,35 +59,101 @@ class TalkLoop:
 
     def run(self) -> str:
         """Läuft, bis Notaus greift oder die Frames enden. Gibt den Grund zurück."""
-        collecting: UtteranceCollector | None = None
-        direct = False                               # True: Befehl direkt nach dem Wake Word, noch ohne "Ja?"
-        for frame in self.frames:
-            if self.kill.poll():
-                return "killed"
-            if collecting is None:
-                if self.wake(frame):                 # nur der Detektor sieht Audio vor dem Wake Word
-                    if self.first_collector is not None:
-                        collecting, direct = self.first_collector(), True
-                    else:
-                        collecting, direct = self._ask_again(), False
-                continue
-            if collecting.feed(frame):
-                audio, heard = collecting.audio(), collecting.heard_speech
-                collecting = None
-                if not heard:                        # nur Wake Word gesagt: Quittung genügt
-                    if direct:
-                        collecting, direct = self._ask_again(), False
-                    continue
-                res = self.pipeline.handle(audio)
-                if direct and res.outcome in ("wake_only", "empty"):
-                    collecting, direct = self._ask_again(), False   # nur Rest des Wake Words oder nichts Verständliches
-                    continue
-                direct = False
-                if res.outcome != "wake_only":
-                    self.on_result(res)
-                if res.outcome == "killed":
+        if self.barge is not None:
+            from concurrent.futures import ThreadPoolExecutor
+            self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="kushim-turn")
+        try:
+            for frame in self.frames:
+                if self.kill.poll():
+                    if self._busy is not None:
+                        self.pipeline.interrupt()
                     return "killed"
-        return "ended"
+                r = self._tick_busy(frame) if self._busy is not None else self._tick(frame)
+                if r:
+                    return r
+            while self._busy is not None or self._queued is not None:   # Frames zu Ende: laufende Antwort abwarten
+                r = self._finish_busy() if self._busy is not None else self._submit(self._take_queued(), "barge")
+                if r:
+                    return r
+            return "ended"
+        finally:
+            if self._pool is not None:
+                self._pool.shutdown(wait=False, cancel_futures=True)
+
+    # --- Zustand: es läuft gerade eine Antwort (nur mit barge)
+    def _tick_busy(self, frame: Any) -> str | None:
+        if self._busy.done():
+            return self._finish_busy()
+        if self._collecting is not None:             # Nutzer hat schon dazwischengesprochen: Äußerung zu Ende sammeln
+            if self._collecting.feed(frame):
+                self._queued, self._collecting = self._collecting.audio(), None
+            return None
+        if self.barge.feed(frame):
+            self.pipeline.interrupt()                # Ausgabe sofort stoppen
+            self._collecting, self._mode = self.new_collector(), "barge"
+            for f in self.barge.recent():            # Anfang des Satzes nicht verlieren
+                self._collecting.feed(f)
+        return None
+
+    def _finish_busy(self) -> str | None:
+        res = self._busy.result()
+        self._busy = None
+        r = self._process(res)
+        if r is None and self._queued is not None:
+            r = self._submit(self._take_queued(), "barge")
+        return r
+
+    def _take_queued(self) -> Any:
+        audio, self._queued = self._queued, None
+        return audio
+
+    # --- Zustand: wartet auf das Wake Word oder sammelt eine Äußerung
+    def _tick(self, frame: Any) -> str | None:
+        if self._collecting is None:
+            if self.wake(frame):                     # nur der Detektor sieht Audio vor dem Wake Word
+                if self.first_collector is not None:
+                    self._collecting, self._mode = self.first_collector(), "direct"
+                else:
+                    self._collecting, self._mode = self._ask_again(), "ack"
+            return None
+        if self._collecting.feed(frame):
+            audio, heard = self._collecting.audio(), self._collecting.heard_speech
+            self._collecting = None
+            if not heard:                            # nur Wake Word gesagt: Quittung genügt
+                if self._mode == "direct":
+                    self._collecting, self._mode = self._ask_again(), "ack"
+                else:
+                    self._mode = "idle"              # Stille nach "Ja?" oder im Gespräch: zurück zum Wake Word
+                return None
+            return self._submit(audio, self._mode)
+        return None
+
+    def _submit(self, audio: Any, mode: str) -> str | None:
+        self._turn_mode = mode
+        if self._pool is None:
+            return self._process(self.pipeline.handle(audio))
+        if self.barge is not None:
+            self.barge.reset()
+        self._busy = self._pool.submit(self.pipeline.handle, audio)
+        return None
+
+    def _process(self, res: Result) -> str | None:
+        """Ergebnis einer Antwort: anzeigen, Gespräch fortsetzen oder beenden."""
+        if self._turn_mode == "direct" and res.outcome in ("wake_only", "empty"):
+            self._collecting, self._mode = self._ask_again(), "ack"      # nur Rest des Wake Words oder nichts Verständliches
+            return None
+        if res.outcome != "wake_only":
+            self.on_result(res)
+        if res.outcome == "killed":
+            return "killed"
+        if self._collecting is not None or self._queued is not None:     # Nutzer spricht schon weiter (Unterbrechen)
+            return None
+        if self.follow_collector is not None and res.outcome in self.CONTINUES:
+            self.flush()                             # eigene Stimme aus dem Puffer verwerfen
+            self._collecting, self._mode = self.follow_collector(), "follow"
+        else:
+            self._mode = "idle"
+        return None
 
 
 def build_live(root: Path, out_device: int | None, in_device: int | None = None,

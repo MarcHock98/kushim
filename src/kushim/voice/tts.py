@@ -12,7 +12,9 @@ _SPLIT = re.compile(r"(?<=[.!?…])\s+")
 
 
 def prefetch(source: Iterable[str], stop: Callable[[], bool] = lambda: False, size: int = 2) -> Iterator[str]:
-    """Erzeugt Sätze in einem Hintergrund-Thread vor, damit das LLM während der Wiedergabe weiterschreibt."""
+    """Erzeugt Sätze in einem Hintergrund-Thread vor, damit das LLM während der Wiedergabe weiterschreibt.
+
+    Bei `stop()` (Notaus, Unterbrechen) endet der Strom sofort, auch wenn das LLM gerade noch an einem Satz schreibt."""
     import queue
     import threading
     q: queue.Queue = queue.Queue(maxsize=size)
@@ -35,7 +37,12 @@ def prefetch(source: Iterable[str], stop: Callable[[], bool] = lambda: False, si
 
     threading.Thread(target=work, daemon=True).start()
     while True:
-        item = q.get()
+        try:
+            item = q.get(timeout=0.1)
+        except queue.Empty:
+            if stop():                   # Erzeuger hängt noch im LLM: nicht auf ihn warten
+                return
+            continue
         if item is END:
             return
         if isinstance(item, tuple) and item and item[0] is ERR:
@@ -76,7 +83,10 @@ class Speaker:
         for s in sentences:
             if self.should_stop():
                 break
-            self.play(self.engine.synthesize(s))
+            wav = self.engine.synthesize(s)
+            if self.should_stop():          # während der Synthese unterbrochen
+                break
+            self.play(wav)
             n += 1
         return n
 
