@@ -57,6 +57,31 @@ class Config:
             path=path,
         )
 
+    def set_claude_enabled(self, on: bool) -> None:
+        """Schreibt nur `claude_enabled` im Abschnitt [privacy] (Modus C); übrige Datei bleibt erhalten. Atomar."""
+        path = self.path or config_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        line = f"claude_enabled = {'true' if on else 'false'}"
+        lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+        in_priv, done = False, False
+        for i, l in enumerate(lines):
+            s = l.strip()
+            if s.startswith("["):
+                in_priv = s == "[privacy]"
+            elif in_priv and s.startswith("claude_enabled"):
+                lines[i] = line
+                done = True
+        if not done:
+            heads = [l.strip() for l in lines]
+            if "[privacy]" in heads:
+                lines.insert(heads.index("[privacy]") + 1, line)
+            else:
+                lines += ([""] if lines else []) + ["[privacy]", line]
+        tmp = path.with_suffix(".toml.tmp")
+        tmp.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        os.replace(tmp, path)
+        self.claude_enabled = on
+
     def set_tools_enabled(self, names: list[str]) -> None:
         """Schreibt nur `enabled` im Abschnitt [tools]; übrige Datei bleibt erhalten. Ungültige Namen: ValueError."""
         clean = sorted({n for n in names})

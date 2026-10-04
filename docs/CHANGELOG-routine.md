@@ -22,3 +22,5 @@ Format: Datum, Datei, Grund (ein Satz).
 - 2026-10-04, .gitignore: `tools/` -> `/tools/`, weil sonst `src/kushim/tools/` ignoriert wurde.
 - 2026-10-04, tests/test_no_egress.py: ALLOWLIST um `net/web.py` erweitert, auf ausdrückliche Zustimmung des Nutzers ("erstelle eine Websuche mit net/web.py, keine Downloads erlauben"); zusätzliche Tests sperren Importe, Domain/Pfad/Content-Type und das Fehlen jeder Schreibfunktion; Aufrufer nur `cli.py`.
 - 2026-10-04, .claude/skills/kushim-add-tool/SKILL.md: Fallstricke zu `Untrusted` (Web-Inhalte nie als Anweisung) und "keine Downloads".
+- 2026-10-04, tests/test_no_egress.py: zusätzliche Sperr-Tests für die Claude CLI (nur in `claude_cli/base.py` gefunden; Rechteumgehungs-Flags nur in der Verbotsliste von `claude_cli/ask.py`). Verschärfung, keine Lockerung.
+- 2026-10-04, docs: Recherche über Claude (Minimal-Modus) mit Wikipedia als Ersatz; `docs/claude-cli-plan.md` um die zwei Betriebsarten ergänzt.
