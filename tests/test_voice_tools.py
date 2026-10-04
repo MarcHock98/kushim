@@ -89,7 +89,7 @@ def make(enabled=(), folders=(Folder("kushim", "C:/p"),), tools=None):
 
 # --- Parser
 @pytest.mark.parametrize("text,kind", [
-    ("Hast du Tools?", "list"), ("Gib mir die Werkzeugliste.", "list"), ("Zeig mir deine Toolliste", "list"), ("Liste deine Werkzeuge auf", "list"), ("Welche Werkzeuge hast du", "list"), ("Zeig mir die Tools", "list"), ("Was kannst du?", "list"),
+    ("Hast du Tools?", "list"), ("Werkzeugliste", "list"), ("Werkzeug Liste", "list"), ("Deine Tools", "list"), ("Gib mir die Werkzeugliste.", "list"), ("Zeig mir deine Toolliste", "list"), ("Liste deine Werkzeuge auf", "list"), ("Welche Werkzeuge hast du", "list"), ("Zeig mir die Tools", "list"), ("Was kannst du?", "list"),
     ("Wie schalte ich die Tools ein?", "enable_how"), ("Aktiviere die Werkzeuge", "enable_how"),
     ("Recherchiere die Höhe des Eiffelturms", "research"), ("Schau mir bitte die Höhe vom Eiffelturm nach", "research"),
     ("Suche im Internet nach Wetter Hamburg", "research"),
