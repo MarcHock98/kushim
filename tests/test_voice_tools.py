@@ -333,13 +333,14 @@ def test_direct_claude_start_runs_without_yes_but_needs_strong_voice():
     assert "Claude arbeitet" in reply and control.calls == ["approve", "execute"]
 
 
-def test_direct_never_skips_verification_or_answers():
+def test_direct_never_skips_verification():
     tc, _, research, control, sessions = make(enabled=["claude.research", "claude.code"], direct=True)
     assert "deine Stimme" in tc.handle("Recherchiere Wetter", False) and not research.proposed
     sessions.st = State(folder="kushim", status="waiting", offers=["Bash(pytest *)"])
-    assert "ja oder nein" in tc.handle("Antwort an Claude: Variante zwei", True, True) and control.calls == []   # Antworten fragen nach
-    tc.handle("nein", True, True)
-    assert "ja oder nein" in tc.handle("Erlaube das", True, True)                                                   # Erlaubnisse auch
+    assert "Ich antworte Claude" in tc.handle("Antwort an Claude: Variante zwei", True, True) and control.calls == ["approve", "execute"]
+    assert control.proposed[-1] == ("answer", "Variante zwei", ())
+    tc.handle("Erlaube das", True, True)
+    assert control.proposed[-1][2] == ("Bash(pytest *)",)                                                          # nur Angebotenes
 
 
 def test_direct_announces_before_running():
