@@ -35,16 +35,22 @@ class TalkLoop:
                  on_result: Callable[[Result], None] = lambda r: None,
                  first_collector: Callable[[], UtteranceCollector] | None = None,
                  follow_collector: Callable[[], UtteranceCollector] | None = None,
-                 barge: Any = None):
+                 barge: Any = None, preroll_frames: int = 0, on_note: Callable[[str], None] = lambda s: None):
         """`first_collector`: Befehl direkt nach dem Wake Word ("hey kushim, wie spät ist es?") ohne "Ja?" davor.
         Kommt kein Befehl (nur Wake Word, nur Rauschen oder nur der Rest des Wake Words), folgt "Ja?" und
         `new_collector` wartet auf den Befehl. Ohne `first_collector` gibt es "Ja?" sofort.
         `follow_collector`: nach einer Antwort ohne Wake Word weiter zuhören; Stille beendet das Gespräch.
-        `barge`: Unterbrechungs-Detektor (`BargeIn`), schaltet Unterbrechen ein."""
+        `barge`: Unterbrechungs-Detektor (`BargeIn`), schaltet Unterbrechen ein.
+        `preroll_frames`: so viele Frames VOR dem Auslösen des Wake Words (nur im Arbeitsspeicher) kommen zum Befehl
+        dazu, weil der Detektor erst kurz nach dem Wort auslöst und der Anfang des Befehls sonst fehlt.
+        `on_note`: Hinweise zur Diagnose (warum "Ja?" kam)."""
         self.frames, self.pipeline, self.kill, self.wake = frames, pipeline, kill, wake
         self.ack, self.flush = ack, flush
         self.new_collector, self.on_result = new_collector, on_result
         self.first_collector, self.follow_collector, self.barge = first_collector, follow_collector, barge
+        self.on_note = on_note
+        from collections import deque
+        self._ring: Any = deque(maxlen=preroll_frames) if preroll_frames > 0 else None
         self._collecting: UtteranceCollector | None = None
         self._mode = "idle"          # idle | direct | ack | follow | barge
         self._turn_mode = "idle"     # Modus, in dem die laufende Antwort angefordert wurde
@@ -110,17 +116,24 @@ class TalkLoop:
     # --- Zustand: wartet auf das Wake Word oder sammelt eine Äußerung
     def _tick(self, frame: Any) -> str | None:
         if self._collecting is None:
+            if self._ring is not None:
+                self._ring.append(frame)             # nur im Arbeitsspeicher, verworfen ohne Wake Word
             if self.wake(frame):                     # nur der Detektor sieht Audio vor dem Wake Word
                 if self.first_collector is not None:
                     self._collecting, self._mode = self.first_collector(), "direct"
+                    if self._ring is not None:
+                        self._collecting.preload(list(self._ring))
+                        self._ring.clear()
                 else:
                     self._collecting, self._mode = self._ask_again(), "ack"
             return None
         if self._collecting.feed(frame):
             audio, heard = self._collecting.audio(), self._collecting.heard_speech
+            peak = getattr(self._collecting, "peak", 0.0)
             self._collecting = None
             if not heard:                            # nur Wake Word gesagt: Quittung genügt
                 if self._mode == "direct":
+                    self.on_note(f"Nach dem Wake Word kam kein Befehl (Stille, lautester Pegel {peak:.0f}, Schwelle siehe speech_level)")
                     self._collecting, self._mode = self._ask_again(), "ack"
                 else:
                     self._mode = "idle"              # Stille nach "Ja?" oder im Gespräch: zurück zum Wake Word

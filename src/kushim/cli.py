@@ -24,6 +24,7 @@ Stimme
   kushim voice status          Profil und Schwelle anzeigen
   kushim voice threshold 0.79  Schwelle setzen (0,5 bis 0,9; niedriger = lockerer)
   kushim voice record          Absätze für den Stimmklon aufnehmen [--redo] [--auto] [--mic NAME]
+  kushim voice level           Mikrofonpegel messen, Schwellen vorschlagen [--apply] [--mic NAME]
   kushim voice reset           Stimmprofil löschen
 
 Sprachmodell und Grafikkarten
@@ -95,6 +96,9 @@ def main(argv: list[str] | None = None) -> int:
             v.add_argument("--quick", action="store_true", help="altes kurzes Einschreiben mit 5 Sätzen")
             v.add_argument("--auto", action="store_true", help="Ende eines Absatzes automatisch per Stille statt per Enter")
     vo.add_parser("status")
+    lv = vo.add_parser("level", help="Mikrofonpegel messen und Schwellen fürs Sprechen/Unterbrechen vorschlagen")
+    lv.add_argument("--mic", help="Namensteil des Mikrofons, sonst Systemstandard")
+    lv.add_argument("--apply", action="store_true", help="Vorschlag in wakewords.toml übernehmen")
     th = vo.add_parser("threshold", help="Schwelle der Sprecherprüfung setzen (0,5 bis 0,9; niedriger = lockerer)")
     th.add_argument("value", type=float)
     vo.add_parser("reset")
@@ -175,6 +179,33 @@ def main(argv: list[str] | None = None) -> int:
         from .voice.embedder import SherpaEmbedder
         from .voice.enrollment import enroll as run_quick_enroll, frames_recorder
         from .voice.verify import AudioVerifier
+        if args.sub == "level":
+            from dataclasses import replace
+            from .voice import levels, wakeconfig
+            frames = iter(audio.Mic(audio.find_device(args.mic, "input")))
+            input("Gleich 3 Sekunden Ruhe messen. Sei still, dann Enter: ")
+            noise = levels.frame_rms([next(frames) for _ in range(38)])
+            input("Jetzt 6 Sekunden normal sprechen, wie bei einem Befehl (z. B. einen Satz mit kurzen Pausen). Enter zum Start: ")
+            speech = levels.frame_rms([next(frames) for _ in range(75)])
+            try:
+                sg = levels.suggest(noise, speech)
+            except ValueError as e:
+                print(f"Keine Auswertung möglich: {e}")
+                return 1
+            cur = wakeconfig.load(root).settings
+            print(f"Ruhe (95 %): {sg.noise_p95}; Sprechen: untere Hälfte ab {sg.speech_p25}, Median {sg.speech_p50} ({sg.speech_frames} Frames).")
+            print(f"speech_level:    jetzt {cur.speech_level:g}, Vorschlag {sg.speech_level:g}")
+            print(f"barge_in_level:  jetzt {cur.barge_in_level:g}, Vorschlag {sg.barge_in_level:g}")
+            if sg.warning:
+                print("Hinweis:", sg.warning)
+            if args.apply:
+                cfgw = wakeconfig.load(root)
+                wakeconfig.save(root, replace(cfgw, settings=replace(cfgw.settings, speech_level=float(sg.speech_level),
+                                                                    barge_in_level=float(sg.barge_in_level))))
+                print("Übernommen in wakewords.toml (gilt ab dem nächsten Start von kushim talk).")
+            else:
+                print("Übernehmen mit: kushim voice level --apply")
+            return 0
         model = root / "models" / "speaker" / "wespeaker_en_voxceleb_CAM++_LM.onnx"
         with _vault(cfg) as store:
             if args.sub == "status":
@@ -307,13 +338,14 @@ def main(argv: list[str] | None = None) -> int:
                                   + (" [unterbrochen]" if r.outcome == "interrupted" else "")
                                   + (f"  [{r.detail}]" if r.detail else ""))
             barge = BargeIn(level=st.barge_in_level, min_ms=st.barge_in_ms) if st.barge_in else None
+            utter = lambda wait: UtteranceCollector(wait_ms=wait, silence_ms=end_ms, max_ms=max_ms, energy_threshold=st.speech_level)
             loop = TalkLoop(mic, pipeline, kill, wake=lambda f: det.process(f) is not None, ack=ack,
-                            flush=mic.flush, new_collector=lambda: UtteranceCollector(wait_ms=wait_ms, silence_ms=end_ms, max_ms=max_ms),
+                            flush=mic.flush, new_collector=lambda: utter(wait_ms),
                             on_result=out,
-                            first_collector=lambda: UtteranceCollector(wait_ms=first_ms, silence_ms=end_ms, max_ms=max_ms),
-                            follow_collector=(lambda: UtteranceCollector(wait_ms=follow_ms, silence_ms=end_ms, max_ms=max_ms))
-                            if follow_ms > 0 else None,
-                            barge=barge)
+                            first_collector=lambda: utter(first_ms),
+                            follow_collector=(lambda: utter(follow_ms)) if follow_ms > 0 else None,
+                            barge=barge, preroll_frames=round(st.preroll_seconds / 0.08),
+                            on_note=lambda s: print(f"[Hinweis] {s}"))
             print("Wake Words: " + ", ".join(w.name for w in wcfg.enabled())
                   + ". Notaus: 'Notaus' sagen oder die Verknüpfung. Strg+C beendet.")
             if follow_ms > 0:

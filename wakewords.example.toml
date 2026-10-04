@@ -13,8 +13,10 @@ end_silence_seconds = 0.9   # so lange Stille beendet deine Äußerung (länger 
 max_seconds = 60.0          # längste einzelne Äußerung
 follow_up_seconds = 8.0     # Gespräch: nach einer Antwort so lange ohne Wake Word zuhören (0 = aus); "das war's" beendet es
 barge_in = true             # Unterbrechen: Dazwischensprechen stoppt kushim sofort (Kopfhörer empfohlen)
-barge_in_level = 1200.0     # Mikrofonpegel, ab dem es als Sprechen zählt (höher = unempfindlicher, z. B. bei Lautsprechern)
-barge_in_ms = 320           # so lange muss der Pegel anhalten
+barge_in_level = 250.0      # Mikrofonpegel, ab dem es als Unterbrechen zählt (höher = unempfindlicher, z. B. bei Lautsprechern)
+speech_level = 200.0        # Mikrofonpegel, ab dem es als Sprechen zählt; passt es nicht zu deinem Mikrofon: `kushim voice level --apply`
+preroll_seconds = 1.0       # so viel Audio VOR dem Wake Word (nur im Speicher) kommt zum Befehl dazu, damit der Anfang nicht fehlt
+barge_in_ms = 240           # so lange muss der Pegel anhalten
 
 # Deine Wörter (freie Erkennung ohne Training). Hinweis: Sehr kurze Wörter ("kush", "kushi") lösen im Test
 # leichter versehentlich aus (z. B. bei "Kusch"). Das öffnet nur das Zuhören; Befehle brauchen weiter deine Stimme.
