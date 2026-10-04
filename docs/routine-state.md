@@ -62,3 +62,5 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
 - Modus A (lokal) Standard, Modus C (Claude auf Befehl) Opt-in
 - Gedächtnis zunächst lokal, später NAS (Modell noch offen)
 - Oberste Regel: Schäden jeder Art sind verboten
+
+- 2026-10-04: Stimmklon gebaut und offline geprüft (Branch routine/p1-voice-clone), 904 Tests grün; wartet auf den Hörtest des Nutzers (`kushim voice clone-test`), danach `[voice] clone = true`.
