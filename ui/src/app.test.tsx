@@ -339,3 +339,15 @@ describe("Claude: Rückfragen und Erlaubnisse", () => {
     expect(screen.queryByLabelText("Auftrag")).toBeNull();
   });
 });
+
+describe("Dienst mit weniger Fähigkeiten (kushim serve ohne Sprachdienst)", () => {
+  it("fragt einen unbekannten Typ nur einmal ab und bleibt verbunden", async () => {
+    const sock: { current?: MockSocket } = {};
+    const client = new ApiClient({ port: 5000, token: TOKEN }, (u) => (sock.current = new MockSocket(u, TOKEN)));
+    await client.connect();
+    expect(await client.call("gibt-es-nicht")).toEqual({ ok: false, error: "unknown_type" });
+    expect(await client.call("gibt-es-nicht")).toEqual({ ok: false, error: "unknown_type" });
+    expect(sock.current!.sent.filter((m) => (m as { type: string }).type === "gibt-es-nicht")).toHaveLength(1);
+    expect((await client.call("safety.status")).ok).toBe(true);                   // andere Typen funktionieren weiter
+  });
+});

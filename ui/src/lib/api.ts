@@ -19,6 +19,7 @@ const TIMEOUT_MS = 10_000;
 export class ApiClient {
   private sock: Socket | null = null;
   private waiting: Array<(r: ApiReply) => void> = [];
+  private unsupported = new Set<string>();           // Typen, die dieser Dienst nicht kennt: nicht erneut abfragen
   onDisconnect: () => void = () => {};
 
   constructor(private creds: Credentials, private make: SocketFactory = (u) => new WebSocket(u) as unknown as Socket) {
@@ -30,7 +31,7 @@ export class ApiClient {
       const s = this.make(`ws://127.0.0.1:${this.creds.port}`);   // Host ist fest, nie aus Eingaben
       this.sock = s;
       s.onopen = () => resolve();
-      s.onerror = () => reject(new Error("offline"));
+      s.onerror = () => reject(new Error("ws-connect"));
       s.onmessage = (e) => {
         const next = this.waiting.shift();           // der Server antwortet in Reihenfolge
         if (!next) return;
@@ -47,9 +48,16 @@ export class ApiClient {
   call(type: string, data: Record<string, unknown> = {}): Promise<ApiReply> {
     const s = this.sock;
     if (!s) return Promise.resolve({ ok: false, error: "offline" });
+    if (this.unsupported.has(type)) return Promise.resolve({ ok: false, error: "unknown_type" });
     return new Promise((resolve) => {
       let done = false;
-      const finish = (r: ApiReply) => { if (!done) { done = true; clearTimeout(t); resolve(r); } };
+      const finish = (r: ApiReply) => {
+        if (done) return;
+        done = true;
+        clearTimeout(t);
+        if (!r.ok && r.error === "unknown_type") this.unsupported.add(type);
+        resolve(r);
+      };
       const t = setTimeout(() => {
         finish({ ok: false, error: "timeout" });
         s.close();                                   // Antworten wären sonst verschoben: neu verbinden

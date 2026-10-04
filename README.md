@@ -53,7 +53,7 @@ Das Skript macht der Reihe nach und ist jederzeit wiederholbar (Vorhandenes wird
 4. Modelle laden und per SHA-256 prüfen: Whisper large-v3-turbo, deutsche Piper-Stimme, Sprecher-Modell, Wake-Word-Modelle
 5. Ollama laden (Prüfsumme geprüft, Standalone ohne Auto-Updater) und das LLM `qwen2.5:7b` holen
 6. Logo-Icon erzeugen
-7. Desktop-Verknüpfungen anlegen: **kushim**, **kushim sprechen**, **kushim NOTAUS**
+7. Desktop-Verknüpfungen anlegen: **kushim App**, **kushim**, **kushim sprechen**, **kushim NOTAUS**
 8. Am Ende fragt es, ob es den Vault anlegen und deine Stimme einschreiben soll (nur mit deinem Ja)
 
 Schalter:
@@ -135,6 +135,7 @@ Diese Schritte machst nur du (sie betreffen deinen Schlüssel und deine Stimme).
 
 | Aktion | So |
 |---|---|
+| Oberfläche öffnen | Desktop-Verknüpfung **kushim App** (oder `kushim app`): startet Sprache und API im Hintergrund, öffnet das Fenster und beendet beim Schließen alles, was sie selbst gestartet hat. `kushim app --no-voice` öffnet nur das Fenster mit der API (ohne Mikrofon). Einmalig bauen: `cd ui` und `npx tauri build --no-bundle` (braucht Node und Rust). |
 | Starten und sprechen | Desktop-Verknüpfung **kushim sprechen** (oder `python -m kushim.cli talk`). Nach dem Start steht im Fenster, welche Wake Words gelten. |
 | Sprechen | Wake Word und Befehl in einem Zug sagen („hey kushim, wie spät ist es?“), kushim antwortet direkt. Sagst du nur das Wake Word, kommt nach `command_wait_seconds` (Standard 1,5) ein „Ja?“ und kushim wartet `listen_seconds` (Standard 4) auf den Befehl; bleibt es still, hört kushim wieder nur aufs Wake Word. |
 | Beenden | `Strg+C` im Fenster |

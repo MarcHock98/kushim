@@ -183,12 +183,13 @@ elseif (Test-Path $Py) {
     $ws = New-Object -ComObject WScript.Shell
     $defs = @(
         @{ Name = "kushim.lnk";         Args = "-m kushim.cli start"; Desc = "kushim starten (lokale Dienste, nur 127.0.0.1)"; Icon = $ico },
+        @{ Name = "kushim App.lnk";     Args = "-m kushim.cli app";   Desc = "kushim App öffnen (Oberfläche, startet Sprache und API selbst)"; Icon = $ico; Target = (Join-Path (Split-Path $Py) "pythonw.exe") },
         @{ Name = "kushim sprechen.lnk"; Args = "-m kushim.cli talk";  Desc = "kushim sprechen (Wake Word)";                       Icon = $ico },
         @{ Name = "kushim NOTAUS.lnk";   Args = "-m kushim.cli kill";  Desc = "kushim NOTAUS";                                     Icon = "$env:SystemRoot\System32\shell32.dll,131" }
     )
     foreach ($d in $defs) {
         $s = $ws.CreateShortcut((Join-Path $desk $d.Name))
-        $s.TargetPath = $Py; $s.Arguments = $d.Args; $s.WorkingDirectory = $Root
+        $s.TargetPath = $(if ($d.Target -and (Test-Path $d.Target)) { $d.Target } else { $Py }); $s.Arguments = $d.Args; $s.WorkingDirectory = $Root
         $s.IconLocation = $d.Icon; $s.Description = $d.Desc; $s.Save()
         Ok "$($d.Name) auf dem Desktop"
     }

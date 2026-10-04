@@ -1,4 +1,6 @@
+*, *::before, *::after { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
+[hidden] { display: none !important; }
 body { background: var(--bg-1); color: var(--text); font-family: var(--font-ui); font-size: var(--fs-md); line-height: var(--lh); }
 button { font: inherit; cursor: pointer; min-height: var(--hit); padding: 0 var(--s-4); border-radius: var(--r-sm); border: 1px solid var(--line-strong); background: var(--bg-3); color: var(--text); }
 button:disabled { opacity: .5; cursor: default; }
@@ -15,7 +17,8 @@ button:disabled { opacity: .5; cursor: default; }
 .banner .ghost { margin-left: auto; background: transparent; }
 .primary { background: var(--amber); color: var(--amber-ink); border-color: var(--amber); font-weight: 600; }
 
-.stage { flex: 1; display: grid; place-content: center; justify-items: center; gap: var(--s-4); padding: var(--s-6); }
+.stage { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: safe center; gap: var(--s-4); padding: var(--s-6); }
+.stage > * { flex-shrink: 0; }
 .line { margin: 0; color: var(--text-muted); font-size: var(--fs-lg); text-align: center; }
 
 @media (max-width: 480px) { .head { padding: var(--s-2) var(--s-3); } .brand { display: none; } }
