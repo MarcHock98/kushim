@@ -220,3 +220,89 @@ def test_end_phrase_ends_conversation_without_llm(tmp_path):
     assert not called
     p, _ = make_pipeline(tmp_path, "Das war's nicht, erzähl weiter", lambda m: iter(["Okay."]), played)
     assert p.handle(PCM).outcome == "spoken"
+
+
+# --- Vorlauf, Hinweise, Pegel --------------------------------------------------------------------
+
+def test_preroll_brings_the_words_spoken_during_detection_lag(tmp_path):
+    p, notes = Fake(["spoken"]), []
+    # Befehl beginnt VOR dem Auslösen des Wake Words (Detektor ist spät) und wird danach nur noch leise Stille
+    frames = [QUIET, LOUD, LOUD, LOUD, QUIET, QUIET, QUIET, QUIET]
+    seen = {}
+
+    class P(Fake):
+        def handle(self, pcm):
+            seen["frames"] = len(pcm) // FRAME
+            return super().handle(pcm)
+    p = P(["spoken"])
+    loop = TalkLoop(frames, p, KillSwitch(tmp_path, []), wake=fires_at(3), first_collector=collector, new_collector=collector,
+                    preroll_frames=4, on_note=notes.append)
+    assert loop.run() == "ended"
+    assert p.calls == 1 and seen["frames"] >= 5 and not notes     # ohne Vorlauf wäre es "Ja?" gewesen
+
+
+def test_without_preroll_the_late_detector_loses_the_command_and_says_ja(tmp_path):
+    p, events, notes = Fake(["spoken"]), [], []
+    frames = [QUIET, LOUD, LOUD, LOUD] + [QUIET] * 30
+    TalkLoop(frames, p, KillSwitch(tmp_path, []), wake=fires_at(3), first_collector=lambda: UtteranceCollector(wait_ms=160),
+             new_collector=lambda: UtteranceCollector(wait_ms=160), ack=lambda: events.append("ack"),
+             on_note=notes.append).run()
+    assert events == ["ack"] and p.calls == 0 and notes and "kein Befehl" in notes[0]
+
+
+def test_preroll_is_dropped_when_no_wake_word_fires(tmp_path):
+    p = Fake([])
+    made = []
+    TalkLoop([LOUD] * 20, p, KillSwitch(tmp_path, []), wake=lambda f: False,
+             first_collector=lambda: made.append(1) or collector(), preroll_frames=4).run()
+    assert p.calls == 0 and made == []
+
+
+def test_notes_explain_why_ja_came_after_wake_only(tmp_path):
+    notes, events = [], []
+    p = Fake(["wake_only"])
+    frames = [QUIET, LOUD, LOUD, QUIET, QUIET, QUIET, QUIET, QUIET]
+    TalkLoop(frames, p, KillSwitch(tmp_path, []), wake=fires_at(0), first_collector=collector, new_collector=collector,
+             ack=lambda: events.append("ack"), on_note=notes.append).run()
+    assert events == ["ack"]
+
+
+def test_collector_preload_and_peak():
+    c = UtteranceCollector(silence_ms=160, min_ms=80)
+    c.preload([QUIET, LOUD])
+    assert c.heard_speech and c.peak >= 3000 and len(c.audio()) == 2 * FRAME
+    assert not c.feed(LOUD)                                   # preload beendet nie von selbst
+
+
+def test_level_suggestion_matches_a_quiet_headset_voice():
+    from kushim.voice.levels import suggest
+    noise = [5.0] * 40
+    speech = [5.0] * 10 + [200, 250, 300, 440, 500, 450, 700, 900, 400, 350, 600, 480, 300, 280, 260, 800]   # wie die echten Messwerte
+    s = suggest(noise, speech)
+    assert 100 <= s.speech_level <= 300 and 150 <= s.barge_in_level <= 600
+    assert s.barge_in_level >= 1.25 * s.speech_level - 1 and not s.warning
+
+
+def test_level_suggestion_rejects_missing_speech_and_warns_in_noise():
+    import pytest
+    from kushim.voice.levels import suggest
+    with pytest.raises(ValueError):
+        suggest([5.0] * 40, [5.0] * 40)
+    with pytest.raises(ValueError):
+        suggest([5.0] * 3, [300.0] * 40)
+    loud_room = suggest([500.0] * 40, [1700, 1800, 1900, 2000, 2100, 1900, 1800, 1700, 2200, 2000, 1900, 1950])
+    assert loud_room.warning
+
+
+def test_settings_new_fields_roundtrip_and_bounds(tmp_path):
+    from dataclasses import replace
+    import pytest
+    from kushim.voice import wakeconfig as wc
+    cfg = wc.WakeConfig(settings=replace(wc.Settings(), speech_level=180.0, barge_in_level=350.0, preroll_seconds=1.5))
+    wc.save(tmp_path, cfg)
+    s = wc.load(tmp_path).settings
+    assert (s.speech_level, s.barge_in_level, s.preroll_seconds) == (180.0, 350.0, 1.5)
+    assert wc.Settings().barge_in_level == 250.0 and wc.Settings().speech_level == 200.0 and wc.Settings().barge_in_ms == 240
+    for bad in (replace(wc.Settings(), speech_level=10.0), replace(wc.Settings(), preroll_seconds=9.0)):
+        with pytest.raises(ValueError):
+            wc.save(tmp_path, wc.WakeConfig(settings=bad))

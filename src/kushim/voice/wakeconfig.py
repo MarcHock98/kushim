@@ -48,8 +48,10 @@ class Settings:
     command_wait_seconds: float = 1.5    # direkt nach dem Wake Word: so lange auf den Befehl warten, bevor "Ja?" kommt
     follow_up_seconds: float = 8.0       # Gespräch: nach einer Antwort so lange ohne Wake Word zuhören (0 = aus)
     barge_in: bool = True                # Unterbrechen: Sprechen stoppt kushim sofort (Kopfhörer empfohlen)
-    barge_in_level: float = 1200.0       # Mikrofonpegel (0 bis 32767), ab dem es als Sprechen zählt; höher = unempfindlicher
-    barge_in_ms: int = 320               # so lange muss der Pegel anhalten
+    barge_in_level: float = 250.0        # Mikrofonpegel (0 bis 32767), ab dem es als Unterbrechen zählt; höher = unempfindlicher
+    barge_in_ms: int = 240               # so lange muss der Pegel anhalten
+    speech_level: float = 200.0          # Mikrofonpegel, ab dem es als Sprechen zählt (Beginn und Ende einer Äußerung)
+    preroll_seconds: float = 1.0         # so viel Audio VOR dem Wake Word (nur im Speicher) kommt zum Befehl dazu
 
 
 @dataclass(frozen=True)
@@ -77,6 +79,8 @@ def validate(cfg: WakeConfig, root: Path) -> None:
         raise ValueError("command_wait_seconds muss 0,5 bis 5 sein")
     if s.follow_up_seconds != 0 and not 2 <= s.follow_up_seconds <= 120:
         raise ValueError("follow_up_seconds muss 0 (aus) oder 2 bis 120 sein")
+    if not 50 <= s.speech_level <= 5000 or not 0 <= s.preroll_seconds <= 3:
+        raise ValueError("speech_level muss 50 bis 5000 und preroll_seconds 0 bis 3 sein")
     if not 100 <= s.barge_in_level <= 20000 or not 100 <= s.barge_in_ms <= 2000:
         raise ValueError("barge_in_level muss 100 bis 20000 und barge_in_ms 100 bis 2000 sein")
     if not cfg.words or len(cfg.words) > MAX_WORDS:
@@ -116,7 +120,9 @@ def _parse(text: str) -> WakeConfig:
                         float(st.get("follow_up_seconds", d.follow_up_seconds)),
                         bool(st.get("barge_in", d.barge_in)),
                         float(st.get("barge_in_level", d.barge_in_level)),
-                        int(st.get("barge_in_ms", d.barge_in_ms)))
+                        int(st.get("barge_in_ms", d.barge_in_ms)),
+                        float(st.get("speech_level", d.speech_level)),
+                        float(st.get("preroll_seconds", d.preroll_seconds)))
     words = []
     for e in data.get("wakeword", []):
         engine = str(e.get("engine", "kws"))
@@ -162,7 +168,9 @@ def dumps(cfg: WakeConfig) -> str:
            f"follow_up_seconds = {cfg.settings.follow_up_seconds}",
            f"barge_in = {'true' if cfg.settings.barge_in else 'false'}",
            f"barge_in_level = {cfg.settings.barge_in_level}",
-           f"barge_in_ms = {cfg.settings.barge_in_ms}", ""]
+           f"barge_in_ms = {cfg.settings.barge_in_ms}",
+           f"speech_level = {cfg.settings.speech_level}",
+           f"preroll_seconds = {cfg.settings.preroll_seconds}", ""]
     for w in cfg.words:
         out += ["[[wakeword]]", f"name = {json.dumps(w.name, ensure_ascii=False)}",
                 f"engine = {json.dumps(w.engine)}", f"enabled = {'true' if w.enabled else 'false'}"]

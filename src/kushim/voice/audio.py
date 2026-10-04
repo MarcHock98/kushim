@@ -89,12 +89,15 @@ class UtteranceCollector:
         self._frames: list[np.ndarray] = []
         self._quiet = 0
         self._heard_speech = False
+        self.peak = 0.0                  # lautester Frame (RMS), nur zur Diagnose
 
     def feed(self, frame: Any) -> bool:
         """True, sobald die Äußerung vollständig ist."""
         f = np.asarray(frame, dtype=np.int16)
         self._frames.append(f)
-        loud = float(np.sqrt(np.mean(f.astype(np.float64) ** 2))) >= self.threshold
+        rms = float(np.sqrt(np.mean(f.astype(np.float64) ** 2)))
+        self.peak = max(self.peak, rms)
+        loud = rms >= self.threshold
         if loud:
             self._heard_speech, self._quiet = True, 0
         else:
@@ -105,6 +108,18 @@ class UtteranceCollector:
             return True
         return self._heard_speech and self._quiet >= self.silence_frames \
             and len(self._frames) >= self.min_frames
+
+    def preload(self, frames: Any) -> None:
+        """Frames von VOR dem Start voranstellen (Vorlauf). Beendet die Äußerung nie von selbst."""
+        for frame in frames:
+            f = np.asarray(frame, dtype=np.int16)
+            self._frames.append(f)
+            rms = float(np.sqrt(np.mean(f.astype(np.float64) ** 2)))
+            self.peak = max(self.peak, rms)
+            if rms >= self.threshold:
+                self._heard_speech, self._quiet = True, 0
+            else:
+                self._quiet += 1
 
     def audio(self) -> np.ndarray:
         return np.concatenate(self._frames) if self._frames else np.zeros(0, dtype=np.int16)
