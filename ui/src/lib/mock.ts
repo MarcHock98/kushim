@@ -22,6 +22,7 @@ export class MockSocket implements Socket {
   dash: Record<string, unknown> = { timers: [], tasks: [], pending_approvals: 0, results: [] };
   review: unknown = null;
   diffText = "";
+  folderProposal: { name: string; path: string } | null = null;
   sent: unknown[] = [];
 
   constructor(public url: string, private token = "t".repeat(43), private fail = false) {
@@ -59,6 +60,24 @@ export class MockSocket implements Socket {
     }
     else if (msg.type === "dashboard.get") reply = { ok: true, ...this.dash };
     else if (msg.type === "claude.folders") reply = { ok: true, folders: this.folders };
+    else if (msg.type === "claude.folder_list") reply = { ok: true, folders: this.folders.map((n) => ({ name: n, path: `C:/proj/${n}` })) };
+    else if (msg.type === "claude.folder_propose") {
+      const m = msg as { name?: string; path?: string };
+      if (m.path === "C:/Windows") reply = { ok: true, allowed: false, reason: "Dieser Ordner liegt in einem geschützten Bereich (System, AppData, .ssh, .claude)." };
+      else { this.folderProposal = { name: m.name ?? "", path: m.path ?? "" }; reply = { ok: true, allowed: true, proposal: "f1", name: m.name, preview: `Claude darf in «${m.path}» arbeiten (Name «${m.name}»)`, expires_in: 120 }; }
+    }
+    else if (msg.type === "claude.folder_confirm") {
+      const m = msg as { proposal?: string; confirm?: boolean };
+      if (m.confirm !== true) reply = { ok: false, error: "confirm_required" };
+      else if (m.proposal !== "f1" || !this.folderProposal) reply = { ok: false, error: "unknown_proposal" };
+      else { this.folders.push(this.folderProposal.name); this.folderProposal = null; reply = { ok: true, folders: this.folders.map((n) => ({ name: n, path: "x" })) }; }
+    }
+    else if (msg.type === "claude.folder_deny") { this.folderProposal = null; reply = { ok: true, denied: true }; }
+    else if (msg.type === "claude.folder_remove") {
+      const n = (msg as { name?: string }).name ?? "";
+      this.folders = this.folders.filter((x) => x !== n);
+      reply = { ok: true, folders: this.folders.map((x) => ({ name: x, path: "x" })) };
+    }
     else if (msg.type === "claude.status") reply = { ok: true, session: this.session };
     else if (msg.type === "claude.review") reply = { ok: true, review: this.review };
     else if (msg.type === "claude.diff") {
