@@ -101,6 +101,8 @@ Am Ende jedes Durchlaufs eine kurze Rückschau: Was hat gehakt? Was wurde wieder
 
 - **Zustandsdateien können auf Gelöschtes zeigen** (z. B. `run/claude-session.json` auf einen entfernten Worktree): vor dem Benutzen prüfen, ob das Ziel noch existiert, und sonst wie "kein Zustand" behandeln. Nach dem Aufräumen von Branches/Worktrees sofort den Sprach-/CLI-Weg gegenprobieren.
 - **Sprachbefehle immer mit echten Satzbeispielen testen** (auch Fehlschläge aus dem Live-Log des Nutzers als Testfälle übernehmen): Spracherkennung liefert Zusammensetzungen, Verhörer und Füllwörter; Auslöse-Wörter großzügig, aber Alltagssätze ("Wie spät ist es") müssen beim Sprachmodell bleiben.
+- **Prozessgrenzen bei der UI:** `kushim serve` und `kushim talk` sind getrennte Prozesse. Zustand (Freigaben, Aufgaben) liegt nur im Sprachprozess. Reine Anzeigewerte (Zustand, Pegel) gehen über eine kleine Datei (`run/voice-state.json`, mit Lebenszeichen), alles, was entscheidet oder ausführt (Freigabe), muss im selben Prozess laufen (`talk --ui`). Vor dem Entwurf eines neuen API-Typs prüfen, in welchem Prozess sein Zustand liegt.
+- **Jede Hilfsdatei, die ein anderer Prozess liest, ist Eingabe von außen:** Leser prüft Typen, bekannte Zustände und Alter (siehe `voice/statefile.read`).
 
 ## Takt und Ende
 - Im `/loop`-Modus: weitere Durchläufe über `ScheduleWakeup`. Arbeit offen und frei: 270 s bis wenige Minuten. Nur auf Antwort gewartet: 1200-1800 s. Alles blockiert: 3600 s.

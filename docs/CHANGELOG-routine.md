@@ -49,3 +49,5 @@ Format: Datum, Datei, Grund (ein Satz).
 - 2026-10-04, claude_cli/dev.py: Auf Wunsch des Nutzers (Auswahl "Erweitert") darf Claude beim Entwickeln zusätzlich feste Prüf- und Lesebefehle ausführen (compileall, mypy, ruff check, pyflakes, npm test/build/lint, git blame/ls-files/rev-parse). Verbotsliste (push, Löschen, Netz, PowerShell/cmd, pip), Selbst-Eskalationsschutz und Flag-Verbote unverändert; kein freies python/npx/pip.
 
 - 2026-10-04, api/claude_api.py: API-Typen claude.* (von einem Claude-Entwicklungslauf geschrieben, vom Routine-Lauf geprüft und übernommen). Zweistufig mit Vorschau und confirm, kein neuer Netzzugriff, Allowlists unverändert.
+
+- 2026-10-04, `.claude/skills/kushim-routine/SKILL.md`: Fallstrick "Prozessgrenzen" ergänzt (UI-Funktionen, die Zustand aus dem Sprachprozess brauchen, müssen im selben Prozess laufen oder über eine Datei gehen); aus der Freigabe-Leiste gelernt, weil `kushim serve` und `kushim talk` getrennte Prozesse sind.
