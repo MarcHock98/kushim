@@ -43,6 +43,13 @@ export class MockSocket implements Socket {
       const q = ((msg as { query?: string }).query ?? "").toLowerCase();
       reply = { ok: true, facts: this.facts.filter((f) => !this.deleted.includes(f.id) && f.text.toLowerCase().includes(q)) };
     }
+    else if (msg.type === "memory.update") {
+      const m = msg as { id?: number; text?: string; kind?: string; confirm?: boolean };
+      const f = this.facts.find((x) => x.id === m.id);
+      if (m.confirm !== true) reply = { ok: false, error: "confirm_required" };
+      else if (!f) reply = { ok: false, error: "not_found" };
+      else { f.text = m.text ?? f.text; f.kind = m.kind ?? f.kind; f.source = "user"; reply = { ok: true, updated: m.id }; }
+    }
     else if (msg.type === "memory.delete") {
       const m = msg as { id?: number; confirm?: boolean };
       if (m.confirm !== true) reply = { ok: false, error: "confirm_required" };

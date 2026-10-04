@@ -31,6 +31,21 @@ async function setup(undoMs = 150) {
 const sentTypes = (s: MockSocket) => s.sent.map((m) => (m as { type: string }).type);
 
 describe("Gedächtnis", () => {
+  it("Bearbeiten: Speichern sendet Text, Art und confirm; Abbrechen sendet nichts", async () => {
+    const sock = await setup();
+    await act(async () => { fireEvent.click(screen.getAllByRole("button", { name: /^Bearbeiten/ })[0]); });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Abbrechen" })); });
+    expect(sentTypes(sock)).not.toContain("memory.update");
+    await act(async () => { fireEvent.click(screen.getAllByRole("button", { name: /^Bearbeiten/ })[0]); });
+    fireEvent.change(screen.getByLabelText("Erinnerung bearbeiten"), { target: { value: "Ich trinke gern Kaffee" } });
+    fireEvent.change(screen.getByLabelText("Art"), { target: { value: "routine" } });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Speichern" })); });
+    const upd = sock.sent.find((m) => (m as { type: string }).type === "memory.update") as { id: number; text: string; kind: string; confirm: boolean };
+    expect(upd).toMatchObject({ id: 1, text: "Ich trinke gern Kaffee", kind: "routine", confirm: true });
+    await waitFor(() => screen.getByText("Ich trinke gern Kaffee"), { timeout: 2000 });
+    expect(screen.getByText("Gespeichert.")).toBeInTheDocument();
+  });
+
   it("zeigt Einträge als reinen Text und filtert beim Suchen", async () => {
     await setup();
     expect(screen.getByText("Meine Katze heißt <b>Mia</b>")).toBeInTheDocument();

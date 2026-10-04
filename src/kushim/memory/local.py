@@ -66,6 +66,14 @@ class LocalStore(MemoryStore):
         self.con.execute("delete from facts where id=?", (fact_id,))
         self.con.commit()
 
+    def update_fact(self, fact_id, text, kind=None):
+        if kind is None:
+            cur = self.con.execute("update facts set text=?, source='user', confidence=1.0 where id=?", (text, fact_id))
+        else:
+            cur = self.con.execute("update facts set text=?, kind=?, source='user', confidence=1.0 where id=?", (text, kind, fact_id))
+        self.con.commit()
+        return cur.rowcount > 0
+
     def log_episode(self, role, text, session=""):
         cur = self.con.execute("insert into episodes(ts,session,role,text) values(?,?,?,?)",
                                (time.time(), session, role, text))
