@@ -57,3 +57,4 @@ Format: Datum, Datei, Grund (ein Satz).
 - 2026-10-04, `docs/routine-state.md`: Ergebnis des Safety-Audits für `routine/p2-ui-approvals` festgehalten (freigegeben, niedrige Funde behoben).
 - 2026-10-04, `.claude/skills/kushim-routine/SKILL.md`: Fallstrick zu parallelen Aufrufen präzisiert (zweites Auftreten des npm-Fehlers `enoent`, wenn pytest und npm im selben Block liefen).
 - 2026-10-04, `.claude/skills/kushim-routine/SKILL.md`: Fallstricke "Backslashes in Heredoc-Skripten (unsichtbares Steuerzeichen)" und "Modell-Checks sind stochastisch" ergänzt.
+- 2026-10-04, `.claude/skills/kushim-routine/SKILL.md`: Fallstricke "Fenster unter pythonw (procflags.hidden)" und "gegen den echten Start prüfen" ergänzt (Nutzermeldung: ständig aufpoppende Fenster).

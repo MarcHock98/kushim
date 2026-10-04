@@ -11,6 +11,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
+from ..procflags import hidden
+
 Git = Callable[[list[str], Path], str]
 
 # Änderungen daran werden rot markiert und nie automatisch übernommen ("Regeln ändert nur der Nutzer").
@@ -30,7 +32,7 @@ def run_git(args: list[str], cwd: Path) -> str:
         raise GitError("git-Befehl nicht erlaubt")
     try:
         r = subprocess.run(["git", *args], cwd=str(cwd), capture_output=True, text=True, timeout=30, check=False,
-                           encoding="utf-8", errors="replace")
+                           encoding="utf-8", errors="replace", **hidden())
     except (OSError, subprocess.SubprocessError) as e:
         raise GitError(type(e).__name__)
     if r.returncode != 0:

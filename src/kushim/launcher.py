@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .net.loopback import request_json
+from .procflags import hidden
 
 OLLAMA_URL = "http://127.0.0.1:11434"
 
@@ -41,7 +42,7 @@ def kill_tree(pid: int) -> None:
     if os.name != "nt":
         return
     try:
-        subprocess.run(["taskkill", "/PID", str(int(pid)), "/T", "/F"], capture_output=True, timeout=15, check=False)
+        subprocess.run(["taskkill", "/PID", str(int(pid)), "/T", "/F"], capture_output=True, timeout=15, check=False, **hidden())
     except Exception:
         pass
 
@@ -66,7 +67,7 @@ class Launcher:
         if not self.exe.exists():
             raise FileNotFoundError(f"Ollama fehlt: {self.exe}")
         self._proc = self._popen([str(self.exe), "serve"], env=ollama_env(self.root, cuda_devices=self._cuda_devices),
-                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **hidden())
         waited = 0.0
         while waited < timeout:
             if self._alive():
