@@ -27,6 +27,11 @@ class MemoryStore(ABC):
     @abstractmethod
     def delete_fact(self, fact_id: int) -> None: ...
 
+    def update_fact(self, fact_id: int, text: str, kind: str | None = None) -> bool:
+        """Ändert Text (und optional Art) einer Erinnerung auf Wunsch des Nutzers; die Erinnerung gilt danach als vom Nutzer
+        bestätigt (source "user", confidence 1). Gibt zurück, ob es den Eintrag gab. Standard: nicht unterstützt."""
+        raise NotImplementedError
+
     @abstractmethod
     def log_episode(self, role: str, text: str, session: str = "") -> int: ...
 

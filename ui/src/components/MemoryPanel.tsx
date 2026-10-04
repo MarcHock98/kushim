@@ -16,6 +16,8 @@ export function MemoryPanel({ client, connected, active, undoMs = UNDO_MS }: {
   const [facts, setFacts] = useState<Fact[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [undo, setUndo] = useState<Fact[]>([]);                       // Einträge in der Rückgängig-Frist
+  const [editing, setEditing] = useState<{ id: number; text: string; kind: string } | null>(null);
+  const [note, setNote] = useState("");
   const timers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
   const input = useRef<HTMLInputElement>(null);
 
@@ -58,6 +60,15 @@ export function MemoryPanel({ client, connected, active, undoMs = UNDO_MS }: {
     setUndo((u) => u.filter((x) => x.id !== f.id));
   };
 
+  const save = async () => {
+    if (!editing || !editing.text.trim()) return;
+    const e = editing;
+    setEditing(null);
+    const r = await client.current?.call("memory.update", { id: e.id, text: e.text, kind: e.kind, confirm: true });
+    setNote(r?.ok ? "Gespeichert." : "Nicht gespeichert (Eintrag nicht gefunden oder Vault nicht erreichbar).");
+    void load();
+  };
+
   const hiding = new Set(undo.map((u) => u.id));
   const shown = (facts ?? []).filter((f) => !hiding.has(f.id));
 
@@ -72,12 +83,32 @@ export function MemoryPanel({ client, connected, active, undoMs = UNDO_MS }: {
       <ul className="facts">
         {shown.map((f) => (
           <li key={f.id} className="fact">
-            <p className="fact-text">{f.text}</p>
-            <p className="fact-meta">{KIND[f.kind] ?? f.kind} · {f.source} · {new Date(f.created * 1000).toLocaleDateString("de-DE")}</p>
-            <button type="button" onClick={() => remove(f)} aria-label={`Löschen: ${f.text.slice(0, 40)}`}>Löschen</button>
+            {editing?.id === f.id ? (
+              <form className="fact-edit" onSubmit={(e) => { e.preventDefault(); void save(); }}>
+                <textarea aria-label="Erinnerung bearbeiten" value={editing.text} rows={3} maxLength={2000} autoFocus
+                  onChange={(e) => setEditing({ ...editing, text: e.target.value })} />
+                <select aria-label="Art" value={editing.kind} onChange={(e) => setEditing({ ...editing, kind: e.target.value })}>
+                  {Object.entries(KIND).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+                </select>
+                <div className="fact-actions">
+                  <button type="button" onClick={() => setEditing(null)}>Abbrechen</button>
+                  <button type="submit" className="primary" disabled={!editing.text.trim()}>Speichern</button>
+                </div>
+              </form>
+            ) : (
+              <>
+                <p className="fact-text">{f.text}</p>
+                <p className="fact-meta">{KIND[f.kind] ?? f.kind} · {f.source} · {new Date(f.created * 1000).toLocaleDateString("de-DE")}</p>
+                <div className="fact-actions">
+                  <button type="button" onClick={() => setEditing({ id: f.id, text: f.text, kind: f.kind })} aria-label={`Bearbeiten: ${f.text.slice(0, 40)}`}>Bearbeiten</button>
+                  <button type="button" onClick={() => remove(f)} aria-label={`Löschen: ${f.text.slice(0, 40)}`}>Löschen</button>
+                </div>
+              </>
+            )}
           </li>
         ))}
       </ul>
+      {note && <p className="hint" role="status">{note}</p>}
       <div className="undo" role="status" aria-live="polite">
         {undo.map((f) => (
           <p key={f.id}>Gelöscht in 10 Sekunden. <button type="button" onClick={() => restore(f)}>Rückgängig</button></p>

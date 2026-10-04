@@ -68,3 +68,58 @@ def test_works_from_worker_threads(tmp_path):
     with ThreadPoolExecutor(2) as pool:
         r = pool.submit(core.handle, json.dumps({"token": TOKEN, "type": "memory.search"})).result()
     assert json.loads(r)["ok"] is True
+
+
+def test_update_needs_confirm_and_changes_nothing_without_it(tmp_path):
+    core, store = make(tmp_path)
+    fid = store.add_fact("Ich trinke gern Tee", "preference", source="auto", confidence=0.4)
+    assert call(core, type="memory.update", id=fid, text="Ich trinke gern Kaffee")["error"] == "confirm_required"
+    assert [f.text for f in store.search_facts("Tee")] == ["Ich trinke gern Tee"]
+
+
+def test_update_changes_text_marks_it_confirmed_and_audits_only_the_id(tmp_path):
+    core, store = make(tmp_path)
+    fid = store.add_fact("Ich trinke gern Tee", "preference", source="auto", confidence=0.4)
+    r = call(core, type="memory.update", id=fid, text="  Ich trinke   gern\x07 Kaffee ", kind="routine", confirm=True)
+    assert r == {"ok": True, "updated": fid}
+    f = store.search_facts("Kaffee")[0]
+    assert (f.text, f.kind, f.source, f.confidence) == ("Ich trinke gern Kaffee", "routine", "user", 1.0)
+    tail = store.audit_tail(5)
+    assert tail[-1][1:] == ("memory_update", f"id={fid}") and "Kaffee" not in json.dumps(tail)
+
+
+def test_update_without_kind_keeps_the_kind(tmp_path):
+    core, store = make(tmp_path)
+    fid = store.add_fact("Mia", "person")
+    call(core, type="memory.update", id=fid, text="Mia, die Katze", confirm=True)
+    assert store.search_facts("Katze")[0].kind == "person"
+
+
+def test_update_unknown_id_and_bad_input(tmp_path):
+    core, store = make(tmp_path)
+    assert call(core, type="memory.update", id=999, text="x", confirm=True)["error"] == "not_found"
+    fid = store.add_fact("a")
+    for bad in ({"id": "1", "text": "x"}, {"id": True, "text": "x"}, {"id": fid, "text": 5}, {"id": fid, "text": "   "},
+                {"id": fid, "text": "x" * 2001}, {"id": fid, "text": "x", "kind": "root"}):
+        assert call(core, type="memory.update", confirm=True, **bad)["error"] == "bad_request", bad
+    assert store.search_facts("a")[0].text == "a"
+
+
+def test_update_from_a_worker_thread(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+    core, store = make(tmp_path)
+    fid = store.add_fact("alt")
+    with ThreadPoolExecutor(1) as pool:
+        r = pool.submit(core.handle, json.dumps({"token": TOKEN, "type": "memory.update", "id": fid, "text": "neu", "confirm": True})).result()
+    assert json.loads(r)["ok"] is True and store.search_facts("neu")
+
+
+def test_store_without_update_support_gives_a_neutral_error(tmp_path):
+    class Old:
+        def update_fact(self, *a):
+            raise NotImplementedError
+        def audit(self, *a):
+            pass
+    core = ApiCore(TOKEN)
+    register_memory(core, Old())
+    assert call(core, type="memory.update", id=1, text="x", confirm=True)["error"] == "unavailable"
