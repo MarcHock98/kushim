@@ -515,3 +515,73 @@ def test_live_view_formats_events_and_strips_escape_codes():
     assert "\x1b" not in "".join(lines) and any("Bash: pytest -q" in l for l in lines)
     assert last_result("x\n" + result_json() + "\nnoise") is not None
     assert last_result("nur\nText") is None
+
+
+# --- API-Typen claude.* --------------------------------------------------------------------------
+
+def api_call(core, token, type_, **payload):
+    return json.loads(core.handle(json.dumps({"token": token, "type": type_, **payload})))
+
+
+def build_api(env, *procs, **kw):
+    from kushim.api.claude_api import register_claude
+    from kushim.api.protocol import ApiCore, new_token
+    ctl, sessions, popper, _events = build_control(env, *procs, **kw)
+    token = new_token()
+    core = ApiCore(token)
+    register_claude(core, ctl)
+    return core, token, ctl, sessions, popper
+
+
+def test_api_start_is_two_step_and_runs_only_after_confirmed_approval(env):
+    core, tok, ctl, sessions, popper = build_api(env, FakeProc(result_json()))
+    assert api_call(core, tok, "claude.folders") == {"ok": True, "folders": ["kushim"]}
+    assert api_call(core, tok, "claude.status") == {"ok": True, "session": None}
+    r = api_call(core, tok, "claude.start", task="Baue den Timer", folder="kushim")
+    assert r["ok"] and r["allowed"] and r["kind"] == "start" and "Auftrag: «Baue den Timer»" in r["preview"]
+    assert popper.calls == []
+    assert api_call(core, tok, "claude.approve", proposal=r["proposal"])["error"] == "confirm_required"
+    assert popper.calls == []
+    st = api_call(core, tok, "claude.approve", proposal=r["proposal"], confirm=True)
+    assert st["ok"] and st["session"]["status"] == "running"
+    finish(sessions)
+    assert len(popper.calls) == 1
+    assert api_call(core, tok, "claude.approve", proposal=r["proposal"], confirm=True)["error"] == "unknown_proposal"   # einmalig
+    assert api_call(core, tok, "claude.status")["session"]["status"] == "waiting"
+
+
+def test_api_denies_without_token_bad_input_and_unknown_proposals(env):
+    core, tok, ctl, sessions, popper = build_api(env, FakeProc(result_json()))
+    assert api_call(core, "x" * 40, "claude.start", task="a")["error"] == "unauthorized"
+    assert api_call(core, tok, "claude.start", task=5)["error"] == "bad_request"
+    assert api_call(core, tok, "claude.answer", text="ja", allow="Bash(x*)")["error"] == "bad_request"
+    assert api_call(core, tok, "claude.approve", proposal="nix", confirm=True)["error"] == "unknown_proposal"
+    secret = api_call(core, tok, "claude.start", task="Zahle auf DE89 3704 0044 0532 0130 00 ein", folder="kushim")
+    assert secret["allowed"] is False and "IBAN" in secret["reason"] and "proposal" not in secret
+    assert popper.calls == []
+
+
+def test_api_deny_and_kill_void_the_proposal(env):
+    core, tok, ctl, sessions, popper = build_api(env, FakeProc(result_json()))
+    r = api_call(core, tok, "claude.start", task="Baue den Timer", folder="kushim")
+    assert api_call(core, tok, "claude.deny", proposal=r["proposal"]) == {"ok": True, "denied": True}
+    r2 = api_call(core, tok, "claude.start", task="Baue den Timer", folder="kushim")
+    ctl.queue.gate.kill()
+    assert api_call(core, tok, "claude.approve", proposal=r2["proposal"], confirm=True)["error"] == "not_approved"
+    assert popper.calls == []
+
+
+def test_api_answer_review_and_stop(env):
+    core, tok, ctl, sessions, popper = build_api(env, FakeProc(result_json()), FakeProc(result_json(denials=[])))
+    assert api_call(core, tok, "claude.answer", text="Ja")["allowed"] is False                 # nichts wartet
+    r = api_call(core, tok, "claude.start", task="Baue den Timer", folder="kushim")
+    api_call(core, tok, "claude.approve", proposal=r["proposal"], confirm=True)
+    finish(sessions)
+    rev = api_call(core, tok, "claude.review")
+    assert rev["ok"] and rev["session"]["status"] == "waiting" and "overview" in rev["review"]
+    assert api_call(core, tok, "claude.answer", text="Ja", allow=["Bash(git push*)"])["allowed"] is False
+    a = api_call(core, tok, "claude.answer", text="Ja, bitte", allow=[])
+    assert a["allowed"] and a["kind"] == "answer"
+    assert api_call(core, tok, "claude.approve", proposal=a["proposal"], confirm=True)["session"]["turn"] == 2
+    finish(sessions)
+    assert api_call(core, tok, "claude.stop") == {"ok": True, "stopped": False}
