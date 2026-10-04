@@ -105,7 +105,9 @@ def _voice_tools(cfg: Config, root):
     from .tools.registry import ToolRegistry, default_tools
     from .safety.gate import ActionGate
     from .timers import TimerStore
-    from .tools.registry import TIMER, ToolGate
+    from .memory import open_store
+    from .tools.registry import NOTES, TIMER, ToolGate
+    from .voice.note_commands import DELETE_SPEC, NoteCommands, notes_reviewer
     from .voice.timer_commands import TimerCommands
     from .voice.tool_commands import ToolCommands
     from .web import search as websearch
@@ -124,6 +126,8 @@ def _voice_tools(cfg: Config, root):
     chat = OllamaClient(live.llm_model).chat
     tc = ToolCommands(live, reg, research, control, sessions, lambda wiki: str(answer_from_sources(chat, wiki)), folders)
     tc.timers = TimerCommands(live, reg, ToolGate(ActionGate([TIMER.spec]), reg), TimerStore(root))
+    note_gate = ToolGate(ActionGate([NOTES.spec, DELETE_SPEC], reviewer=notes_reviewer), reg)
+    tc.notes = NoteCommands(live, reg, note_gate, lambda: open_store(live.get()))
     sessions.viewer = lambda: open_viewer(root)                                       # Claude läuft sichtbar in einem eigenen Fenster
     tc.before = lambda: setattr(egress, "enabled", live.claude_enabled)               # Modus C ausschalten wirkt sofort, auch hier
     return tc, tasks
@@ -770,7 +774,7 @@ def _main(argv: list[str] | None = None) -> int:
             from .voice.commands import CommandChain
             pipeline, kill, mic, ack = build_live(root, audio.find_device(args.out, "output"),
                                                   audio.find_device(args.mic, "input"),
-                                                  verifier=verifier, commands=CommandChain([WakeWordCommands(root), tool_cmds, tool_cmds.timers]),
+                                                  verifier=verifier, commands=CommandChain([WakeWordCommands(root), tool_cmds, tool_cmds.timers, tool_cmds.notes]),
                                                   tasks=tasks,
                                                   wake_names=[w.name for w in wcfg.enabled()],
                                                   llm_model=cfg.llm_model, whisper_device=plan.whisper_device,

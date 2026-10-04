@@ -480,7 +480,7 @@ def test_claude_code_tool_availability_matrix():
     assert claude_code_tool(cfg, cache).available() == ""
     assert "nicht gefunden" in claude_code_tool(cfg, SimpleNamespace(get=lambda: Auth(False, error="not_installed"))).available()
     assert "angemeldet" in claude_code_tool(cfg, SimpleNamespace(get=lambda: Auth(False))).available()
-    assert [t.name for t in default_tools(cfg, cache)] == ["web.search", "claude.research", "claude.code", "timer.local"]
+    assert [t.name for t in default_tools(cfg, cache)] == ["web.search", "claude.research", "claude.code", "timer.local", "notes.local"]
     assert not ToolRegistry(default_tools()).is_active("claude.code")                # Standard: aus
 
 
