@@ -46,6 +46,12 @@ export class MockSocket implements Socket {
       else { this.session = { id: "s", folder: "kushim", branch: "b", turn: 1, status: "running", cost_usd: 0, seconds: 1, error: "" }; reply = { ok: true, session: this.session }; }
     }
     else if (msg.type === "claude.deny") reply = { ok: true, denied: this.proposals.delete((msg as { proposal?: string }).proposal ?? "") };
+    else if (msg.type === "claude.answer") {
+      const m = msg as { text?: string; allow?: string[] };
+      this.proposals.set("p2", m.text ?? "");
+      const extra = m.allow && m.allow.length ? ` Erlaubt: ${m.allow.join(", ")}` : "";
+      reply = { ok: true, allowed: true, proposal: "p2", kind: "answer", preview: `Antwort: «${m.text}».${extra}`, expires_in: 60 };
+    }
     else if (msg.type === "claude.stop") { this.session = null; reply = { ok: true, stopped: true }; }
     else if (msg.type === "approvals.get") reply = { ok: true, pending: this.pending };
     else if (msg.type === "approvals.decide") {

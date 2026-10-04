@@ -4,7 +4,7 @@ import { ApprovalBar, type Pending } from "./ApprovalBar";
 
 interface Session {
   id: string; folder: string; branch: string; turn: number; status: string;
-  cost_usd: number; seconds: number; error: string;
+  cost_usd: number; seconds: number; error: string; offers: string[];
 }
 interface Review {
   files: { status: string; path: string }[];
@@ -24,6 +24,8 @@ export function ClaudePanel({ client, connected }: { client: React.RefObject<Api
   const [review, setReview] = useState<Review | null>(null);
   const [folder, setFolder] = useState("");
   const [task, setTask] = useState("");
+  const [reply, setReply] = useState("");
+  const [allow, setAllow] = useState<string[]>([]);
   const [proposal, setProposal] = useState<{ id: string; pending: Pending } | null>(null);
   const [note, setNote] = useState("");
   const busy = useRef(false);
@@ -72,6 +74,16 @@ export function ClaudePanel({ client, connected }: { client: React.RefObject<Api
       expires_in: typeof r.expires_in === "number" ? r.expires_in : 0, sends_data_out: true } });
   };
 
+  const proposeAnswer = async () => {
+    setNote("");
+    const r = await client.current?.call("claude.answer", { text: reply, allow });
+    if (!r?.ok) return setNote("Das hat nicht geklappt.");
+    if (r.allowed !== true) return setNote(typeof r.reason === "string" && r.reason ? r.reason : "Das darf ich gerade nicht.");
+    setProposal({ id: String(r.proposal), pending: {
+      kind: "answer", preview: String(r.preview), digest: String(r.proposal),
+      expires_in: typeof r.expires_in === "number" ? r.expires_in : 0, sends_data_out: true } });
+  };
+
   const decide = async (approve: boolean) => {
     const p = proposal;
     if (!p) return;
@@ -79,7 +91,7 @@ export function ClaudePanel({ client, connected }: { client: React.RefObject<Api
     if (approve) {
       const r = await client.current?.call("claude.approve", { proposal: p.id, confirm: true });
       setNote(r?.ok ? "Claude arbeitet." : "Nicht gestartet (abgelaufen, abgelehnt oder Notaus).");
-      setTask("");
+      setTask(""); setReply(""); setAllow([]);
     } else {
       await client.current?.call("claude.deny", { proposal: p.id });
       setNote("Abgelehnt. Es wurde nichts gesendet.");
@@ -88,6 +100,8 @@ export function ClaudePanel({ client, connected }: { client: React.RefObject<Api
   };
 
   const running = session?.status === "running";
+  const waiting = session?.status === "waiting";
+  const offers = waiting ? (session?.offers ?? []) : [];
 
   return (
     <section className="claude" aria-label="Claude">
@@ -112,7 +126,26 @@ export function ClaudePanel({ client, connected }: { client: React.RefObject<Api
       {proposal ? (
         <ApprovalBar pending={proposal.pending} onDecide={(a) => void decide(a)} />
       ) : (
-        !running && (
+        waiting ? (
+          <form className="cl-form" onSubmit={(e) => { e.preventDefault(); if (reply.trim()) void proposeAnswer(); }}>
+            <label>Antwort an Claude
+              <textarea value={reply} onChange={(e) => setReply(e.target.value)} rows={3} maxLength={2000} />
+            </label>
+            {offers.length > 0 && (
+              <fieldset className="cl-offers">
+                <legend>Claude darf zusätzlich ausführen (nur diese, nur für den nächsten Zug):</legend>
+                {offers.map((o) => (
+                  <label key={o} className="cl-offer">
+                    <input type="checkbox" checked={allow.includes(o)}
+                      onChange={(e) => setAllow((old) => (e.target.checked ? [...old, o] : old.filter((x) => x !== o)))} />
+                    <code>{o}</code>
+                  </label>
+                ))}
+              </fieldset>
+            )}
+            <button type="submit" disabled={!reply.trim()}>Vorschau ansehen</button>
+          </form>
+        ) : !running && (
           <form className="cl-form" onSubmit={(e) => { e.preventDefault(); if (task.trim()) void propose(); }}>
             <label>Ordner
               <select value={folder} onChange={(e) => setFolder(e.target.value)}>

@@ -267,3 +267,46 @@ describe("Claude-Bereich", () => {
     expect(screen.queryByLabelText("Auftrag")).toBeNull();
   });
 });
+
+describe("Claude: Rückfragen und Erlaubnisse", () => {
+  async function waiting() {
+    const sock: { current?: MockSocket } = {};
+    const loader = async () => ({
+      client: new ApiClient({ port: 5000, token: TOKEN }, (u) => {
+        sock.current = new MockSocket(u, TOKEN);
+        sock.current.folders = ["kushim"];
+        sock.current.session = { id: "s", folder: "kushim", branch: "b", turn: 2, status: "waiting", cost_usd: 0, seconds: 5, error: "",
+          offers: ["Bash(pytest*)"] };
+        return sock.current;
+      }),
+    });
+    render(<App load={loader} />);
+    await waitFor(() => screen.getByLabelText("Antwort an Claude"));
+    return sock;
+  }
+
+  it("zeigt Erlaubnisse als nicht vorausgewählte Kästchen und sendet nur die angehakten", async () => {
+    const sock = await waiting();
+    const box = screen.getByRole("checkbox") as HTMLInputElement;
+    expect(box.checked).toBe(false);                                           // nichts vorausgefüllt
+    fireEvent.change(screen.getByLabelText("Antwort an Claude"), { target: { value: "Ja, mach weiter" } });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Vorschau ansehen" })); });
+    await waitFor(() => screen.getByRole("alertdialog"));
+    const first = sock.current!.sent.find((m) => (m as { type: string }).type === "claude.answer") as { allow: string[] };
+    expect(first.allow).toEqual([]);                                           // ohne Haken keine Erlaubnis
+    expect(screen.getByText("Antwort an Claude", { selector: "h2" })).toBeInTheDocument();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Ablehnen" })); });
+    await waitFor(() => screen.getByLabelText("Antwort an Claude"));
+    fireEvent.click(screen.getByRole("checkbox"));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Vorschau ansehen" })); });
+    await waitFor(() => screen.getByText(/Erlaubt: Bash\(pytest\*\)/));
+    const answers = sock.current!.sent.filter((m) => (m as { type: string }).type === "claude.answer") as { allow: string[] }[];
+    expect(answers[answers.length - 1].allow).toEqual(["Bash(pytest*)"]);
+    expect(sock.current!.sent.some((m) => (m as { type: string }).type === "claude.approve")).toBe(false);   // erst nach Klick
+  });
+
+  it("zeigt im Wartezustand kein Startformular", async () => {
+    await waiting();
+    expect(screen.queryByLabelText("Auftrag")).toBeNull();
+  });
+});

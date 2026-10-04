@@ -46,3 +46,7 @@ button:disabled { opacity: .5; cursor: default; }
 .cl-form { display: grid; gap: var(--s-3); }
 .cl-form label { display: grid; gap: var(--s-1); font-size: var(--fs-sm); color: var(--text-muted); }
 .cl-form select, .cl-form textarea { font: inherit; color: var(--text); background: var(--bg-0); border: 1px solid var(--line-strong); border-radius: var(--r-sm); padding: var(--s-2) var(--s-3); min-height: var(--hit); }
+.cl-offers { margin: 0; padding: var(--s-3); border: 1px solid var(--line); border-radius: var(--r-sm); display: grid; gap: var(--s-2); }
+.cl-offers legend { font-size: var(--fs-sm); color: var(--text-muted); padding: 0 var(--s-2); }
+.cl-offer { display: flex !important; grid-template-columns: none; align-items: center; gap: var(--s-3); min-height: var(--hit); color: var(--text) !important; }
+.cl-offer input { width: 20px; height: 20px; accent-color: var(--amber); }
