@@ -110,8 +110,8 @@ class ActionGate:
         if spec.costs_money or req.amount > 0:
             if req.amount > self.max_amount:
                 return deny(f"Betrag {req.amount} über Limit {self.max_amount}")
-        if spec.risk is not Risk.READ and not req.speaker_verified:
-            return deny("Sprecher nicht verifiziert")
+        if (spec.risk is not Risk.READ or spec.external_effect) and not req.speaker_verified:
+            return deny("Sprecher nicht verifiziert")      # auch Nur-Lesen-Aktionen mit Außenwirkung (z. B. Websuche)
         if not req.user_initiated and (spec.external_effect or spec.risk is not Risk.READ):
             return deny("Nicht vom Nutzer ausgelöst")
 

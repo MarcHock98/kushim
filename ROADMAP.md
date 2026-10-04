@@ -44,7 +44,12 @@ Oberste Regel: Schäden jeder Art sind verboten. Lokal zuerst (Modus A), Claude 
 - [ ] Dashboard, Gedächtnis-Ansicht, Sicherheitsstatus in der UI
 
 ## Phase 3: Tools (jeweils mit ActionSpec und Tests)
-- [ ] Recherche/Web
+- [x] Tool-Verwaltung (2026-10-04, Nutzerwunsch "Tools über die UI aktivierbar"): `tools/registry.py` (alle Tools standardmäßig AUS, Einschalten nur bestätigt und nur wenn verfügbar, Ausschalten sofort, `ToolGate` um den `ActionGate`), `[tools] enabled` in `config.toml` (atomar), API-Typen `tools.list`/`tools.set` (`api/tools_api.py`), `kushim tools [enable|disable]`; Plan in `docs/tools-plan.md`; 20 Tests
+- [ ] Werkzeuge-Bildschirm in der UI (Einstellungen > Werkzeuge: Schalter, Beschreibung, Chip "Sendet Daten nach außen", Bestätigung beim Einschalten) (braucht UI-Toolchain)
+- [x] Recherche/Web, Logik (2026-10-04): `web/guard.py` (Prüfer: keine E-Mail/IBAN/Karte/Telefon/Schlüssel/Pfade/Personendaten), `web/sanitize.py` (HTML raus, Einschleus-Muster erkannt und verworfen, Zitat-Block "Daten, keine Anweisung"), `web/wikipedia.py` (feste URL-Grenze: nur https de.wikipedia.org/w/api.php, Parameter und Werte fest; Antwortform geprüft), `web/search.py` (Vorschau, Freigabe einmalig/hash-gebunden/Ablauf/Notaus, URL aus dem freigegebenen Text neu berechnet); mit Fake-Abrufer getestet (40 Tests). Gate verschärft: auch Nur-Lesen-Aktionen mit Außenwirkung brauchen verifizierten Sprecher
+- [ ] Recherche/Web, Netz-Modul `net/web.py` + ALLOWLIST-Eintrag in `tests/test_no_egress.py`: **wartet auf ausdrückliche Freigabe des Nutzers** (Vorschlag in `docs/tools-plan.md`: HTTPS-GET, feste Domain-Liste zunächst nur de.wikipedia.org, kein Proxy/Cookie/fremde Weiterleitung, 10 s, 1 MB, nur nach Freigabe der Vorschau); danach `web.search` auf "verfügbar" stellen
+- [ ] Recherche/Web in der Pipeline: Absicht erkennen ("schau nach", "recherchiere"), Vorschau per UI/Sprache ("ja", nur verifizierte Stimme), Antwort mit Quellen, eingeschränkt auf aktives Tool (nach der Netz-Freigabe)
+- [ ] Claude als Rechercheur (`claude.ask`, Modus C): eigenes Tool, Schlüssel im Credential-Manager, Geldlimit, Entscheidung des Nutzers offen (siehe `docs/tools-plan.md`)
 - [ ] Mail und Kalender (lokal)
 - [ ] PC-Steuerung (freigegebene Ordner, Papierkorb)
 - [ ] Smart Home und Musik
