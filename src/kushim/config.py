@@ -60,6 +60,7 @@ class Config:
     gpu_whisper: str = "auto"      # "auto", "cpu" oder Kartennummer (kushim gpu)
     gpu_llm: str = "auto"          # "auto", "all" oder Nummern wie "0,1"
     tools_enabled: tuple[str, ...] = ()   # nur diese Werkzeuge sind aktiv (Standard: keines); ändert nur der Nutzer
+    voice_direct: bool = True             # [tools] direct: gesprochener Befehl gilt als Freigabe für Recherche/Claude-Start (kein zweites "ja"); false = immer Vorschau und "ja"
     claude_folders: tuple[str, ...] = ()  # freigegebene Ordner für Claude als "name|pfad"; ändert nur der Nutzer (UI/CLI)
     path: Path | None = field(default=None, repr=False)
 
@@ -85,6 +86,7 @@ class Config:
             gpu_whisper=str(gpu.get("whisper", "auto")),
             gpu_llm=str(gpu.get("llm", "auto")),
             tools_enabled=tools,
+            voice_direct=bool(data.get("tools", {}).get("direct", True)),
             claude_folders=folders,
             path=path,
         )

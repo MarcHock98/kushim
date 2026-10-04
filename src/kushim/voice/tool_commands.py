@@ -257,6 +257,8 @@ class ToolCommands:
         if p.approval is None:
             return p.reason or "Das darf ich gerade nicht."
         self._pending = _Pending("research", p)
+        if self._direct():
+            return self._run_direct(f"Ich frage Claude im Internet nach: {intent.text}. " if p.route == "claude" else f"Ich frage Wikipedia nach: {intent.text}. ")
         if p.route == "claude":
             fallback = " Falls Claude nicht antwortet, frage ich stattdessen Wikipedia." if "Wikipedia" in p.preview else ""
             return (f"Ich frage Claude im Internet nach: {intent.text}. Der Suchtext geht an Anthropic.{fallback} "
@@ -276,6 +278,8 @@ class ToolCommands:
         if p.approval is None:
             return p.reason or "Das darf ich gerade nicht."
         self._pending = _Pending("start", p, control=True)
+        if self._direct():
+            return self._run_direct(f"Claude arbeitet im Ordner {folder.name}, in einem eigenen Branch. Auftrag: {p.task}. ")
         return (f"Claude soll im Ordner {folder.name} arbeiten, in einem eigenen Branch. Auftrag: {p.task}. "
                 "Der Auftrag und Ausschnitte aus den Dateien gehen an Anthropic. Soll ich starten? Sage ja oder nein.")
 
@@ -286,6 +290,14 @@ class ToolCommands:
         self._pending = _Pending("answer", p, control=True)
         extra = " Dabei erlaube ich Claude für diese Sitzung: " + ", ".join(allow) + "." if allow else ""
         return f"Ich antworte Claude: {p.task}.{extra} Soll ich das senden? Sage ja oder nein."
+
+    def _direct(self) -> bool:
+        """Direkt handeln: der gesprochene Befehl der verifizierten Stimme ist die Freigabe (Einstellung [tools] direct, Standard an).
+        Alles andere bleibt: Prüfer, Hash-Bindung, Gate, Notaus, "abbrechen". Antworten an Claude und Erlaubnisse fragen immer nach."""
+        return bool(getattr(self.cfg, "voice_direct", False))
+
+    def _run_direct(self, intro: str) -> str:
+        return intro + self._confirm("ja", True)
 
     def _status(self) -> str:
         st = self.sessions.state()
