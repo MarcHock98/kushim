@@ -21,6 +21,7 @@ const STATUS: Record<string, string> = {
 /** Claude als Entwickler: Status, Start mit exakter Vorschau, Stopp, Übersicht. Alles Anzeige: jede Aktion entscheidet das Backend. */
 export function ClaudePanel({ client, connected }: { client: React.RefObject<ApiClient | null>; connected: boolean }) {
   const [folders, setFolders] = useState<string[]>([]);
+  const [noClaude, setNoClaude] = useState(false);              // dieser Dienst hat kein Claude (kushim serve ohne Sprachdienst)
   const [session, setSession] = useState<Session | null>(null);
   const [review, setReview] = useState<Review | null>(null);
   const [folder, setFolder] = useState("");
@@ -49,6 +50,7 @@ export function ClaudePanel({ client, connected }: { client: React.RefObject<Api
 
   const loadFolders = useCallback(async () => {
     const f = await client.current?.call("claude.folders");
+    if (f && !f.ok && f.error === "unknown_type") setNoClaude(true);
     if (f?.ok && Array.isArray(f.folders)) {
       const names = (f.folders as unknown[]).filter((x): x is string => typeof x === "string");
       setFolders(names);
@@ -69,7 +71,7 @@ export function ClaudePanel({ client, connected }: { client: React.RefObject<Api
     return (
       <section className="claude" aria-label="Claude">
         <h2>Claude</h2>
-        <p className="hint">Claude: kein Ordner freigegeben.</p>
+        <p className="hint">{noClaude ? "Claude steht nur mit dem Sprachdienst zur Verfügung (kushim talk --ui)." : "Claude: kein Ordner freigegeben."}</p>
         {note && <p className="hint" role="status">{note}</p>}
         <FolderManager client={client} connected={connected} onChange={(m) => { if (m) setNote(m); void loadFolders(); }} />
       </section>

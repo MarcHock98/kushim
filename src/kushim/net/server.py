@@ -25,7 +25,9 @@ MAX_FAILURES = 3
 HANDSHAKE_TIMEOUT = 5.0
 IDLE_TIMEOUT = 600.0
 BODY_TIMEOUT = 10.0                # Maske und Inhalt eines begonnenen Frames müssen zügig folgen
-ATTACK_ERRORS = frozenset({"unauthorized", "bad_json", "unknown_type", "too_large"})   # nur diese zählen für die Trennung
+# Nur diese zählen für die Trennung. "unknown_type" gehört NICHT dazu: es kommt nur mit gültigem Token (die Prüfung steht davor) und
+# entsteht ganz normal, wenn die Oberfläche einen Typ abfragt, den dieser Dienst nicht hat (z. B. `kushim serve` ohne Sprachdienst).
+ATTACK_ERRORS = frozenset({"unauthorized", "bad_json", "too_large"})
 MAX_HEADER_BYTES = 8192
 HEADER_END = bytes([13, 10, 13, 10])          # Leerzeile nach den Kopfzeilen
 _GUID = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11"

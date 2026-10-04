@@ -30,6 +30,7 @@ Stimme
 Sprachmodell und Grafikkarten
   kushim behavior              Verhaltens-Check: Fragen gegen Manipulation, Schmeichelei, Abhängigkeit an das lokale Modell (nur lokal)
   kushim gpu                   Grafikkarten zeigen und wie Whisper und das Sprachmodell verteilt werden
+  kushim app                   Die Oberfläche öffnen (startet Sprache und API selbst; --no-voice nur Oberfläche)
   kushim serve                 Backend-API für die Oberfläche starten (nur 127.0.0.1, Port/Token in run/api.json)
   kushim llm                   Aktuelles Modell, vorheriges und installierte Modelle zeigen
   kushim llm set <name>        Modell wechseln (z. B. qwen3.5:9b); laden mit install.ps1 -Llm <name>
@@ -463,6 +464,8 @@ def _main(argv: list[str] | None = None) -> int:
     bh = sub.add_parser("behavior", help="Verhaltens-Check des lokalen Modells (Manipulation, Schmeichelei, Abhängigkeit, Regeln); startet Ollama kurz")
     bh.add_argument("--model", help="anderes installiertes Modell prüfen")
     bh.add_argument("--repeats", type=int, default=2, help="jede Frage so oft stellen (Standard 2); bestanden nur, wenn alle Antworten bestehen")
+    ap = sub.add_parser("app", help="Die Oberfläche öffnen: startet Sprache und API im Hintergrund und beendet sie beim Schließen des Fensters")
+    ap.add_argument("--no-voice", action="store_true", help="nur API und Fenster, ohne Sprachdienst")
     sub.add_parser("serve", help="Backend-API für die Oberfläche (WebSocket nur auf 127.0.0.1); Strg+C beendet")
     sub.add_parser("gpu", help="Grafikkarten anzeigen und wie sie genutzt werden (Einstellung: [gpu] in config.toml)")
     args = p.parse_args(argv)
@@ -492,6 +495,9 @@ def _main(argv: list[str] | None = None) -> int:
         print(f"Modell: {target}")
         print(behavior.report(results))
         return 0 if all(r.ok for r in results) else 1
+    if args.cmd == "app":
+        from . import appstart
+        return appstart.run(__import__("pathlib").Path(__file__).resolve().parents[2], voice=not args.no_voice)
     if args.cmd == "serve":
         return _serve(Config.load())
     if args.cmd == "gpu":

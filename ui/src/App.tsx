@@ -11,6 +11,13 @@ import { ApiClient, type Credentials } from "./lib/api";
 import { isAvatarState, resolveState, STATE_VIEW, type AvatarState } from "./lib/avatarState";
 import { MockSocket } from "./lib/mock";
 
+const WHY: Record<string, string> = {
+  offline: "kein laufender Dienst gefunden (run/api.json fehlt oder ist nicht lesbar)",
+  bad_file: "run/api.json ist beschädigt",
+  "ws-connect": "Verbindung zum Dienst auf 127.0.0.1 fehlgeschlagen (Dienst beendet oder Verbindung gesperrt)",
+  "no-credentials": "keine Zugangsdaten (nur in der App oder mit ?mock)",
+};
+
 const POLL_MS = 2000;
 const VOICE_POLL_MS = 200;
 
@@ -34,6 +41,7 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
   const [voice, setVoice] = useState<{ active: boolean; state?: AvatarState; level: number }>({ active: false, level: 0 });
   const [pending, setPending] = useState<Pending | null>(null);
   const [toast, setToast] = useState("");
+  const [why, setWhy] = useState("");
   const [view, setView] = useState<"home" | "dashboard" | "security" | "memory">("home");
   const [overview, setOverview] = useState<Overview | null>(null);
   const [dash, setDash] = useState<DashData | null>(null);
@@ -58,8 +66,10 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
       await c.connect();
       client.current = c;
       await refresh();
-    } catch {
+    } catch (e) {
       setConnected(false);
+      const msg = e instanceof Error ? e.message : typeof e === "string" ? e : "unbekannt";
+      setWhy(/^[a-z_-]{1,30}$/.test(msg) ? msg : "unbekannt");     // nur kurze feste Codes, nie Text oder Pfade
     }
   }, [load, refresh]);
 
@@ -215,6 +225,7 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
         {connected && !voice.active && state === "idle" && (
           <p className="hint">Der Sprachdienst läuft nicht. Starte ihn mit „kushim talk“.</p>
         )}
+        {state === "offline" && why && <p className="hint">Grund: {WHY[why] ?? why}</p>}
         {state === "offline" && (
           <button type="button" className="primary" onClick={() => void connect()}>Erneut versuchen</button>
         )}

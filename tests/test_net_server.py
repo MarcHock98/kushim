@@ -190,3 +190,14 @@ def test_half_sent_frame_is_dropped_after_the_body_timeout(server, monkeypatch):
     c.settimeout(3)
     assert c.recv(10) == b""                                     # Server trennt von selbst
     c.close()
+
+
+def test_unknown_types_with_a_valid_token_never_disconnect(server):
+    """Eine Oberfläche, die mehr abfragt als der Dienst kann (z. B. `kushim serve` ohne Sprachdienst), darf nicht getrennt werden."""
+    c, _, _ = handshake(server.port)
+    for _ in range(6):
+        c.sendall(frame(json.dumps({"token": TOKEN, "type": "gibt-es-nicht"}).encode()))
+        assert json.loads(read_frame(c)[1]) == {"ok": False, "error": "unknown_type"}
+    c.sendall(frame(json.dumps({"token": TOKEN, "type": "ping"}).encode()))
+    assert json.loads(read_frame(c)[1])["ok"] is True
+    c.close()
