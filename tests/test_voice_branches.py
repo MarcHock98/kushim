@@ -147,3 +147,34 @@ def test_everyday_sentences_still_go_to_the_llm(text):
 
 def test_answer_text_loses_leading_mit():
     assert parse("Antworte Claude mit nein").text == "nein"
+
+
+# --- "Mach dort weiter" ohne Namen und entfernter Worktree (Fehler aus dem Live-Test)
+def test_soft_continue_only_with_a_claude_session():
+    tc, control, sessions = make_branches(direct=True)
+    assert tc.handle("Mach dort weiter.", True, True) is None and not control.proposed          # keine Sitzung: geht an das Sprachmodell
+    sessions.st = State(folder="kushim", status="waiting", worktree="w", worktree_path="C:/w")
+    tc.handle("Mach dort weiter.", True, True)
+    assert control.proposed[-1][0] == "answer"
+
+
+@pytest.mark.parametrize("text", ["Ich möchte weiter schlafen", "Mach das Licht an", "Mach weiter so wie gestern beim Kochen für alle"])
+def test_soft_continue_is_not_triggered_by_everyday_talk(text):
+    assert parse(text) is None or parse(text).kind != "continue_soft"
+
+
+def test_continue_with_removed_worktree_does_not_crash_and_starts_new_run():
+    tc, control, sessions = make_branches(direct=True)
+    sessions.branches = lambda folder: []
+    sessions.worktree_ok = lambda st: False
+    sessions.st = State(folder="kushim", status="waiting", worktree="gone", worktree_path="C:/gone")
+    reply = tc.handle("Sag Claude er soll weitermachen mit der Roadmap", True, True)
+    assert "Claude arbeitet" in reply and control.proposed[-1][0] == "mit der Roadmap" or control.proposed[-1][1] == "kushim"
+
+
+def test_answer_refuses_missing_worktree(tmp_path):
+    from kushim.claude_cli.session import ClaudeSessions, SessionError, save_state
+    s = ClaudeSessions(tmp_path, None)
+    save_state(tmp_path, State(id="x", folder="k", status="waiting", worktree_path=str(tmp_path / "weg")))
+    with pytest.raises(SessionError, match="existiert nicht mehr"):
+        s.answer("weiter")

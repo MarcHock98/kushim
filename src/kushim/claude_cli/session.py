@@ -191,6 +191,11 @@ class ClaudeSessions:
         items = [(w, *review.worktree_facts(w, path, self._git)) for w in review.list_worktrees(path, self._git)]
         return list(reversed(items))
 
+    @staticmethod
+    def worktree_ok(st: State | None) -> bool:
+        """Gibt es den Worktree der Sitzung noch (er kann von Hand entfernt worden sein)?"""
+        return bool(st is not None and st.worktree_path and Path(st.worktree_path).is_dir())
+
     def adopt(self, folder: folders.Folder, worktree_name: str) -> State:
         """Einen vorhandenen Claude-Branch zur aktiven Sitzung machen (nur lokal, nichts geht raus). Weiter geht es mit `answer`."""
         with self._lock:
@@ -218,6 +223,8 @@ class ClaudeSessions:
             st = self.state()
             if st is None or st.status != "waiting" or not st.worktree_path:
                 raise SessionError("Es wartet keine Claude-Sitzung auf eine Antwort.")
+            if not self.worktree_ok(st):
+                raise SessionError("Der Worktree dieser Sitzung existiert nicht mehr. Starte einen neuen Lauf.")
             allow = list(allow)
             for p in allow:
                 if p not in st.offers or not _EXTRA.fullmatch(p):
