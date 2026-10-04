@@ -59,3 +59,13 @@ describe("Diff-Ansicht", () => {
     expect(screen.queryByLabelText("Diff README.md")).toBeNull();
   });
 });
+
+describe("Abfragen", () => {
+  it("holt den Bericht (mehrere git-Befehle im Backend) nur einmal, solange sich der Lauf nicht ändert", async () => {
+    const sock = await open();
+    await new Promise((r) => setTimeout(r, 4600));                                   // mehr als zwei Abfragerunden
+    const types = sock.current!.sent.map((m) => (m as { type: string }).type);
+    expect(types.filter((t) => t === "claude.status").length).toBeGreaterThanOrEqual(2);
+    expect(types.filter((t) => t === "claude.review")).toHaveLength(1);
+  }, 15000);
+});

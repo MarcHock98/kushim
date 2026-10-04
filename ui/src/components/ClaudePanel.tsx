@@ -32,6 +32,7 @@ export function ClaudePanel({ client, connected }: { client: React.RefObject<Api
   const [note, setNote] = useState("");
   const [diff, setDiff] = useState<{ path: string; text: string; truncated: boolean; protected: boolean } | null>(null);
   const busy = useRef(false);
+  const reviewKey = useRef("");
 
   const refresh = useCallback(async () => {
     if (busy.current) return;
@@ -41,9 +42,12 @@ export function ClaudePanel({ client, connected }: { client: React.RefObject<Api
       const s = (st.session as Session | null) ?? null;
       setSession(s);
       if (s && s.status !== "running") {
-        const rv = await client.current?.call("claude.review");
-        if (rv?.ok) setReview((rv.review as Review | null) ?? null);
-      } else setReview(null);
+        const key = `${s.id}|${s.turn}|${s.status}|${s.error}`;         // der Bericht ruft mehrere git-Befehle auf: nur bei Änderung holen
+        if (key !== reviewKey.current) {
+          const rv = await client.current?.call("claude.review");
+          if (rv?.ok) { setReview((rv.review as Review | null) ?? null); reviewKey.current = key; }
+        }
+      } else { setReview(null); reviewKey.current = ""; }
     }
     busy.current = false;
   }, [client]);

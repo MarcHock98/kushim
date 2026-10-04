@@ -8,6 +8,8 @@ from __future__ import annotations
 import re
 from typing import Any, Callable, Iterable, Iterator, Protocol
 
+from ..procflags import hidden
+
 _SPLIT = re.compile(r"(?<=[.!?…])\s+")
 
 
@@ -169,7 +171,7 @@ class CloneEngine:
         Path(self.out_dir).mkdir(parents=True, exist_ok=True)
         log = open(Path(self.out_dir) / "worker.log", "w", encoding="utf-8", errors="replace")      # nur Fehlermeldungen des Workers, lokal
         self._proc = self._popen(self.argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log, text=True,
-                                 encoding="utf-8", errors="replace", env=self._env())
+                                 encoding="utf-8", errors="replace", env=self._env(), **hidden())
         ok = bool(self._read_json(self.ready_timeout).get("ready"))
         if not ok:
             self.close()

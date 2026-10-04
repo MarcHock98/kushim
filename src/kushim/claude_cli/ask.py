@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Callable
 
 from ..launcher import kill_tree
+from ..procflags import hidden
 from ..web.sanitize import Untrusted, clean_text
 from .base import clean_env
 
@@ -88,7 +89,7 @@ def ask(question: str, exe: Path | None, work_root: Path, timeout: float = TIMEO
     proc = None
     try:
         proc = popen(argv, cwd=str(scratch), env=clean_env(), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                     stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace")
+                     stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace", **hidden())
         deadline = t0 + timeout
         while True:                                          # kurz warten und dabei auf Abbruch/Zeitgrenze achten
             try:
