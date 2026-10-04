@@ -64,3 +64,5 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
 - Oberste Regel: Schäden jeder Art sind verboten
 
 - 2026-10-04: Stimmklon gebaut und offline geprüft (Branch routine/p1-voice-clone), 904 Tests grün; wartet auf den Hörtest des Nutzers (`kushim voice clone-test`), danach `[voice] clone = true`.
+
+- 2026-10-04: Modellwechsel Teil 2 (llm pull/remove, CLI) fertig, Tests grün. Offen/blockiert: Fortschritt beim Laden braucht Strom-Funktion in net/loopback.py (Nutzer-Ja nötig), UI-Teile brauchen Toolchain.
