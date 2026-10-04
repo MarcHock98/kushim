@@ -14,3 +14,6 @@ Format: Datum, Datei, Grund (ein Satz).
 - 2026-10-03, voice/: zentrale Wake-Word-Konfiguration `wakewords.toml` (wakeconfig.py) eingeführt, freie Wörter per KWS-Detektor; `[voice] wake_words` in config.toml und Vault-Speicherung entfernt, damit es nur eine Quelle gibt. Standard-Wörter auf Wunsch des Nutzers ohne "hey jarvis".
 
 - 2026-10-04, voice/: Sprecher-Prüfung neu (profile.py, verify.py): Mehr-Prototypen-Profil, Schwelle aus Daten, Fenster-Prüfung, "stark"-Stufe für Änderungen, kurzes Audio auf 3 s aufgefüllt; Einschreiben aus den 10 Klon-Absätzen; längere Spracheingabe (end_silence_seconds/max_seconds); zusätzlich Piper-MLS-Mehrsprecher-Modell (77 MB, Hugging Face rhasspy/piper-voices, SHA-256 gepinnt) als Vergleichsgruppe. Sicherheitsregeln und Allowlist unverändert.
+
+- 2026-10-04, src/kushim/safety/gate.py: Sprecher-Prüfung gilt jetzt auch für Nur-Lesen-Aktionen mit Außenwirkung (Verschärfung, Lücke beim Test der Web-Recherche gefunden).
+- 2026-10-04, ROADMAP.md/docs: Tool-Verwaltung und Web-Recherche-Logik ergänzt; Netz-Modul `net/web.py` wartet auf ausdrückliche Freigabe (Egress-Sperre, docs/tools-plan.md).

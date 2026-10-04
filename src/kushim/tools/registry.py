@@ -1,0 +1,111 @@
+"""Werkzeug-Verwaltung: Jedes Tool ist standardmäßig AUS und lässt sich nur vom Nutzer einschalten (UI oder CLI).
+
+- Aktiv ist ein Tool nur, wenn es in `[tools] enabled` steht UND verfügbar ist (Voraussetzungen erfüllt).
+- `ToolGate` ist eine Hülle um den `ActionGate`: Aktionen eines nicht aktiven Tools werden verweigert. Der Gate selbst
+  und `safety/rules.py` bleiben unverändert; ein aktives Tool unterliegt weiter allen Regeln (Vorschau, Freigabe, Notaus).
+- Nie per Sprache, nie durch das LLM, nie durch Web-/Mail-Inhalte einschaltbar ("Fähigkeiten nie selbst erweitern").
+Siehe docs/tools-plan.md.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Callable, Iterable
+
+from ..safety.gate import ActionGate, ActionRequest, ActionSpec, Decision, Risk, Verdict
+
+
+@dataclass(frozen=True)
+class ToolInfo:
+    name: str                       # z. B. "web.search"; gleich dem Aktionsnamen im Gate
+    title: str
+    description: str                # Klartext: was darf das Tool, was verlässt den PC
+    spec: ActionSpec
+    sends_data_out: bool            # verlassen Daten den PC (für die Bestätigung beim Einschalten)
+    available: Callable[[], str] = lambda: ""    # "" = verfügbar, sonst der Grund (z. B. fehlende Freigabe)
+
+
+class ToolNotAllowed(Exception):
+    """Einschalten/Ausschalten nicht möglich (unbekannt, nicht verfügbar, ohne Bestätigung)."""
+
+    def __init__(self, code: str):
+        super().__init__(code)
+        self.code = code
+
+
+class ToolRegistry:
+    def __init__(self, tools: Iterable[ToolInfo], enabled: Iterable[str] = ()):
+        self.tools = {t.name: t for t in tools}
+        # Unbekannte Namen in der Aktiv-Liste werden ignoriert (nie "alles an" durch Tippfehler).
+        self._enabled = {n for n in enabled if n in self.tools}
+
+    def info(self, name: str) -> ToolInfo:
+        if name not in self.tools:
+            raise ToolNotAllowed("bad_tool")
+        return self.tools[name]
+
+    def is_enabled(self, name: str) -> bool:
+        return name in self._enabled
+
+    def is_active(self, name: str) -> bool:
+        """Eingeschaltet UND verfügbar. Nur das zählt für das Gate."""
+        t = self.tools.get(name)
+        return t is not None and name in self._enabled and not t.available()
+
+    def enabled_names(self) -> list[str]:
+        return sorted(self._enabled)
+
+    def set_enabled(self, name: str, on: bool, confirmed: bool = False,
+                    persist: Callable[[list[str]], None] = lambda names: None) -> None:
+        """Ausschalten geht immer. Einschalten nur bestätigt und nur, wenn das Tool verfügbar ist.
+        `persist` schreibt die Aktiv-Liste (z. B. `Config.set_tools_enabled`); scheitert es, ändert sich nichts."""
+        tool = self.info(name)
+        new = set(self._enabled)
+        if on:
+            if not confirmed:
+                raise ToolNotAllowed("confirm_required")
+            if tool.available():
+                raise ToolNotAllowed("not_available")
+            new.add(name)
+        else:
+            new.discard(name)
+        persist(sorted(new))
+        self._enabled = new
+
+    def specs(self) -> list[ActionSpec]:
+        return [t.spec for t in self.tools.values()]
+
+
+class ToolGate:
+    """Prüft zuerst, ob das Tool aktiv ist, und reicht dann an den ActionGate weiter."""
+
+    def __init__(self, gate: ActionGate, registry: ToolRegistry):
+        self.gate, self.registry = gate, registry
+
+    def check(self, req: ActionRequest) -> Verdict:
+        if req.action in self.registry.tools and not self.registry.is_active(req.action):
+            v = Verdict(Decision.DENY, "Werkzeug deaktiviert")
+            if self.gate.audit:
+                self.gate.audit.audit("action_deny", f"{req.action}: {v.reason}")
+            return v
+        return self.gate.check(req)
+
+    def __getattr__(self, name):               # kill/resume/specs usw. des ActionGate bleiben nutzbar
+        return getattr(self.gate, name)
+
+
+# --- eingebaute Werkzeuge ---------------------------------------------------------------------------
+# Neue Tools nur über den Skill `kushim-add-tool` (ActionSpec, Tests, kein Weg am Gate vorbei).
+
+WEB_SEARCH = ToolInfo(
+    name="web.search",
+    title="Web-Recherche",
+    description=("Sucht auf Wikipedia (de) nach deiner Frage. Gesendet wird nur der Suchtext, den du vorher in einer Vorschau "
+                 "siehst und freigibst. Treffer sind nur Daten und lösen nie eine Aktion aus."),
+    spec=ActionSpec("web.search", Risk.READ, external_effect=True),
+    sends_data_out=True,
+    available=lambda: "Netz-Modul noch nicht freigegeben (siehe docs/tools-plan.md)",
+)
+
+
+def default_tools() -> list[ToolInfo]:
+    return [WEB_SEARCH]

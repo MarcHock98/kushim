@@ -72,3 +72,12 @@ def test_kill_switch():
     assert g.check(req("read_note")).decision is Decision.DENY
     g.resume()
     assert g.check(req("read_note")).decision is Decision.ALLOW
+
+
+def test_read_only_action_with_external_effect_needs_a_verified_speaker():
+    specs = [ActionSpec("lookup_web", Risk.READ, external_effect=True), ActionSpec("read_note", Risk.READ)]
+    g = ActionGate(specs, reviewer=ok_reviewer)
+    assert g.check(req("lookup_web", speaker_verified=False)).decision is Decision.DENY       # Fremde dürfen nichts vorschlagen
+    assert g.check(req("lookup_web")).decision is Decision.ASK                                # verifiziert: Vorschau und Freigabe
+    assert g.check(req("lookup_web", user_initiated=False)).decision is Decision.DENY
+    assert g.check(req("read_note", speaker_verified=False)).decision is Decision.ALLOW        # rein lokales Lesen bleibt wie bisher

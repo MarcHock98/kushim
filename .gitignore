@@ -7,7 +7,7 @@ config.toml
 .claude/settings.local.json
 *.iml
 models/
-tools/
+/tools/
 run/
 voice-data/
 wakewords.toml
