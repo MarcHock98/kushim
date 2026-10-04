@@ -33,6 +33,24 @@ _TOKEN = re.compile(r"[\wäöüßÄÖÜ]+")
 END_PHRASES = {"das wars", "das war es", "das war es dann", "das reicht", "das reicht danke", "danke das wars",
                "danke das reicht", "tschüss", "tschüs", "bis später", "bis dann", "bis gleich", "ende", "gespräch beenden"}
 END_REPLY = "Bis gleich."
+SHUTDOWN_REPLY = "Okay, ich beende mich."
+_SHUTDOWN_WORDS = {"beende", "beenden", "exit", "quit", "herunter", "runter", "ausschalten", "abschalten", "herunterfahren", "runterfahren"}
+_SHUTDOWN_SELF = {"dich", "kushim", "programm", "alles", "exit", "quit", "herunter", "runter", "herunterfahren", "runterfahren", "ausschalten",
+                  "abschalten", "komplett", "ganz"}
+
+
+def is_shutdown_phrase(text: str) -> bool:
+    """"Beende dich", "exit", "kushim beenden", "fahr herunter", "schalte dich aus": kushim samt Diensten beenden. Kurze Sätze; nie wenn es um
+    Claude geht ("Beende Claude" stoppt nur Claude) und nicht das bloße "Gespräch beenden" (das beendet nur das Gespräch)."""
+    toks = [t.lower() for t in _TOKEN.findall(re.sub(r"['’`]", "", text))]
+    if not toks or len(toks) > 6 or any(t.startswith(("claud", "klaud")) for t in toks):
+        return False
+    if "gespräch" in toks or "gespraech" in toks:
+        return False
+    if "aus" in toks and "schalte" in toks or "schalt" in toks and "aus" in toks:
+        return bool(set(toks) & {"dich", "kushim"})
+    return bool(set(toks) & _SHUTDOWN_WORDS) and bool(set(toks) & _SHUTDOWN_SELF)
+
 CANCEL_REPLY = "Okay, abgebrochen."
 NOTHING_REPLY = "Es läuft nichts, das ich abbrechen könnte."
 MATCH = 0.8      # Ähnlichkeit, ab der ein erkanntes Wort als Wake Word zählt ("Kuschim" statt "kushim")
@@ -148,6 +166,9 @@ class Pipeline:
             if verified or self.verifier is None or not self.verifier.enrolled:
                 self.speaker.say([END_REPLY])
                 return Result(text, END_REPLY, "end_conversation")
+        if is_shutdown_phrase(text) and (verified or self.verifier is None or not self.verifier.enrolled):     # kushim beenden (nur verifizierte Stimme)
+            self.speaker.say([SHUTDOWN_REPLY])
+            return Result(text, SHUTDOWN_REPLY, "shutdown")
         if self.commands is not None:
             answer = self.commands.handle(text, verified, strong)
             if answer is not None:                       # Befehl oder Bestätigung: kein LLM

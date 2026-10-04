@@ -186,6 +186,8 @@ class TalkLoop:
             self.on_result(res)
         if res.outcome == "killed":
             return "killed"
+        if res.outcome == "shutdown":
+            return "shutdown"
         if self._collecting is not None or self._queued is not None:     # Nutzer spricht schon weiter (Unterbrechen)
             return None
         if self.follow_collector is not None and res.outcome in self.CONTINUES:

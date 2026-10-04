@@ -306,3 +306,22 @@ def test_settings_new_fields_roundtrip_and_bounds(tmp_path):
     for bad in (replace(wc.Settings(), speech_level=10.0), replace(wc.Settings(), preroll_seconds=9.0)):
         with pytest.raises(ValueError):
             wc.save(tmp_path, wc.WakeConfig(settings=bad))
+
+
+def test_shutdown_phrase_ends_everything_without_llm(tmp_path):
+    called, played = [], []
+    for text in ("Beende dich.", "Kushim beenden", "Exit"):
+        p, _ = make_pipeline(tmp_path, text, lambda m: called.append(1) or iter([]), played)
+        r = p.handle(PCM)
+        assert r.outcome == "shutdown" and r.reply == "Okay, ich beende mich."
+    assert not called
+    p, _ = make_pipeline(tmp_path, "Beende Claude", lambda m: iter(["Okay."]), played)
+    assert p.handle(PCM).outcome == "spoken"                       # nur Claude: nicht kushim selbst
+
+
+def test_talk_loop_returns_shutdown(tmp_path):
+    p = Fake(["shutdown"])
+    frames = [LOUD, LOUD, QUIET, QUIET, LOUD, LOUD, QUIET, QUIET]
+    assert TalkLoop(frames, p, KillSwitch(tmp_path, []), wake=fires_at(0), new_collector=collector,
+                    follow_collector=follow).run() == "shutdown"
+    assert p.calls == 1
