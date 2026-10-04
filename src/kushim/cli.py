@@ -534,6 +534,14 @@ def _main(argv: list[str] | None = None) -> int:
         try:
             tool = reg.info(args.name)
             if sub_cmd == "enable":
+                if tool.available().startswith("Modus C ist aus") and args.name.startswith("claude."):
+                    print("Modus C ist aus. Claude wird nur über deine angemeldete Claude CLI genutzt (nur Abo-Kontingent, nie API-Credits), "
+                          "und nur nach Vorschau und deinem Ja.")
+                    if input("Modus C jetzt einschalten? (j/N): ").strip().lower() in ("j", "ja", "y", "yes"):
+                        cfg.set_claude_enabled(True)
+                        cfg = Config.load()
+                        reg = ToolRegistry(default_tools(cfg, claude_base.AuthCache(claude_base.find_claude())), cfg.tools_enabled)
+                        tool = reg.info(args.name)
                 if tool.available():
                     print(f"Nicht verfügbar: {tool.available()}")
                     return 1
