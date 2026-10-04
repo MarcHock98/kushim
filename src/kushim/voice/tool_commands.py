@@ -83,7 +83,7 @@ def parse(text: str) -> Intent | None:
     # --- Werkzeuge anzeigen / wie einschalten
     if s & _ENABLE and (s & _TOOL_WORDS or s & _ENGINES) and ("ein" in s or s & (_ENABLE - {"schalte", "schalt", "ein"})):
         return Intent("enable_how")
-    if s & _TOOL_WORDS and (s & _SHOW) and len(toks) <= 12:
+    if s & _TOOL_WORDS and ((s & _SHOW) and len(toks) <= 12 or len(toks) <= 3):          # auch kurz: "Werkzeugliste", "Deine Tools"
         return Intent("list")
     if toks[:3] == ["was", "kannst", "du"] and len(toks) <= 4:
         return Intent("list")
