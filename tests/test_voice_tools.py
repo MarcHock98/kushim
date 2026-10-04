@@ -309,3 +309,11 @@ def test_liveconfig_reloads_after_ttl_and_keeps_last_good():
     assert live.v == 2
     now[0] = 6.0
     assert live.v == 2                                                   # Lesefehler: letzter guter Stand
+
+
+@pytest.mark.parametrize("yes", ["Yep.", "Ja bitte", "Genau, starte", "Okay", "Jawohl", "In Ordnung"])
+def test_natural_yes_words_confirm(yes):
+    tc, _, research, *_ = make()
+    tc.handle("Recherchiere Wetter Hamburg", True)
+    tc.handle(yes, True)
+    assert research.calls == ["approve", "execute"]

@@ -40,7 +40,8 @@ _ADD = {"fuge", "fuege", "hinzu", "hinzufugen", "hinzufuegen", "aktiviere", "spe
         "ergaenze", "erganze", "setze", "stelle"}
 _REMOVE = {"entferne", "losche", "loesche", "deaktiviere", "streiche", "vergiss", "entfernen"}
 _LIST = {"welche", "liste", "zeige", "nenne", "aktuell"}
-_YES = {"ja", "jawohl", "klar", "bestatigt", "bestaetigt", "okay", "ok", "mach", "mache"}
+_YES = {"ja", "jawohl", "klar", "bestatigt", "bestaetigt", "okay", "ok", "mach", "mache",
+        "yep", "yup", "jep", "jup", "jo", "jawoll", "genau", "gerne", "sicher", "einverstanden", "ordnung", "passt", "starte", "starten", "los"}
 _NO = {"nein", "abbrechen", "stopp", "stop", "nicht", "lass"}
 
 
