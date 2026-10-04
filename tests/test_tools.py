@@ -218,7 +218,7 @@ def test_cli_lists_tools_and_refuses_unavailable_enable(tmp_path, monkeypatch, c
     out = capsys.readouterr().out
     assert "web.search" in out and "[aus]" in out and "sendet Daten nach außen" in out and "keine Downloads" in out
     import kushim.tools.registry as reg
-    monkeypatch.setattr(reg, "default_tools", lambda: [BLOCKED])
+    monkeypatch.setattr(reg, "default_tools", lambda *a, **k: [BLOCKED])
     assert cli.main(["tools", "enable", "demo.blocked"]) == 1                  # nicht verfügbar: gar nicht erst gefragt
     assert "Voraussetzung fehlt" in capsys.readouterr().out and not f.exists()
     assert cli.main(["tools", "enable", "gibt.es.nicht"]) == 2
@@ -229,7 +229,7 @@ def test_cli_enable_asks_and_defaults_to_no(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("KUSHIM_CONFIG", str(f))
     monkeypatch.setattr(cli, "default_tools", lambda: [LOCAL], raising=False)
     import kushim.tools.registry as reg
-    monkeypatch.setattr(reg, "default_tools", lambda: [LOCAL])
+    monkeypatch.setattr(reg, "default_tools", lambda *a, **k: [LOCAL])
     monkeypatch.setattr("builtins.input", lambda prompt="": "")
     assert cli.main(["tools", "enable", "demo.local"]) == 1 and not f.exists()          # Enter = Nein
     monkeypatch.setattr("builtins.input", lambda prompt="": "j")

@@ -63,13 +63,15 @@ Quellen und sagt, wenn es unsicher ist.
    mit Quelle und Unsicherheit antworten. Quellen erscheinen auch in der UI.
 7. Audit-Eintrag (nur Anzahl Zeichen und Ziel, nie der Inhalt).
 
-## Claude als Rechercheur (`claude.ask`, Modus C), getrennt und später
-- Standard bleibt Modus A (`claude_enabled = false`). Eigenes Tool, eigener Schalter, zusätzlich `claude_enabled`.
-- Läuft über `EgressGate.send` (nur auf ausdrücklichen Befehl des verifizierten Nutzers, mit exakter Vorschau des ausgehenden Textes,
-  Bestätigung, Audit). Persönliche Daten und Gedächtnis gehen **nie** automatisch mit.
-- **Kostet Geld** und braucht einen API-Schlüssel im Windows-Credential-Manager (nie in Dateien/Logs). Das Geldlimit steht auf 0
-  und wird nur vom Nutzer angehoben; die UI zeigt Limit und Verbrauch.
-- Eigene Entscheidung des Nutzers: Konto/Schlüssel, Monatslimit, welches Modell.
+## Recherche: Claude zuerst, Wikipedia als Ersatz (Nutzerwunsch 2026-10-04, umgesetzt)
+Claude hat die bessere Websuche und ist deshalb die **erste Wahl**; die Wikipedia-Suche (`net/web.py`) ist der **Ersatz**, wenn Claude nicht erreichbar ist.
+- **Claude über die Claude CLI** des angemeldeten Nutzers (kein API-Schlüssel, kushim speichert keine Zugangsdaten; `claude auth status` zeigt nur angemeldet ja/nein und die Art).
+- Eigener **Minimal-Modus**: leerer Wegwerf-Ordner, nur `WebSearch` und `WebFetch`, `dontAsk` + `--permission-prompts none`, keine Dateien, keine Befehle, keine MCP-Server/Skills,
+  kein gespeicherter Verlauf, Budget 0,50 USD, Zeitgrenze 120 s, API-Schlüssel-Variablen aus der Umgebung entfernt. Eine eingeschleuste Webseiten-Anweisung kann höchstens den Antworttext beeinflussen.
+- **Eine Vorschau, eine Freigabe, beide Ziele sichtbar:** "Recherche über Claude (Anthropic): «…»" und, wenn `web.search` an ist, der Satz "Falls Claude nicht antwortet, wird stattdessen Wikipedia … gefragt".
+  Der Ersatz läuft **nur**, wenn die freigegebene Vorschau ihn nannte (hash-gebunden). Bei API-Abrechnung statt Abo stoppt das Geldlimit 0.
+- Tool `claude.research` (Modus C), standardmäßig aus; verfügbar nur mit `claude_enabled`, gefundener und angemeldeter CLI. `kushim claude check|enable|disable`, `kushim research <frage>`.
+- Claudes Antwort ist `Untrusted`: nur anzeigen/sprechen, löst nie eine Recherche, Aktion oder ein Tool aus (Test). Angaben stehen als "laut Claude".
 
 ## Weitere Tools (Reihenfolge, jeweils eigenes Registry-Tool, standardmäßig aus)
 Timer/Erinnerungen und Notizen (lokal, ohne Netz), Dateien in freigegebenen Ordnern, PC-Steuerung (Programmliste), Kalender (lokal),

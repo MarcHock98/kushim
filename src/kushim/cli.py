@@ -43,6 +43,8 @@ Gedächtnis und Schlüssel
   kushim key import <vault_id> <hexkey>
 
 Prüfen und Hilfe
+  kushim research <frage>      Recherche: erst Claude (Internet), Ersatz Wikipedia; Vorschau und Bestätigung
+  kushim claude [check|enable|disable]  Claude CLI und Anmeldung prüfen; Modus C ein/aus
   kushim search <frage> [--llm]  Websuche (Wikipedia) mit Vorschau und Bestätigung; erst `tools enable web.search`
   kushim tools                 Werkzeuge anzeigen; enable|disable <name> schaltet ein/aus (alle standardmäßig aus)
   kushim doctor                Prüft, ob alles installiert und eingerichtet ist
@@ -59,6 +61,30 @@ def _gpu_plan(cfg: Config):
     from . import gpu
     gpus = gpu.list_gpus()
     return gpus, gpu.make_plan(gpus, cfg.gpu_whisper, cfg.gpu_llm)
+
+
+def _show_wiki(out, use_llm: bool, cfg: Config, root) -> int:
+    """Wikipedia-Treffer anzeigen; mit `use_llm` fasst das lokale Modell sie über den werkzeuglosen Pfad zusammen."""
+    if not out.sources:
+        print("Keine brauchbaren Treffer." + (f" Ausgelassen (auffälliger Inhalt): {', '.join(out.skipped)}" if out.skipped else ""))
+        return 0
+    for i, s in enumerate(out.sources, 1):
+        print(f"[{i}] {s.title}  {s.url}\n    {s.text}")
+    if out.skipped:
+        print("Ausgelassen (auffälliger Inhalt, nicht ans Modell gegeben): " + ", ".join(out.skipped))
+    if use_llm:
+        from .launcher import Launcher
+        from .llm.ollama import OllamaClient
+        from .web.answer import answer_from_sources
+        _, plan = _gpu_plan(cfg)
+        launcher = Launcher(root, cuda_devices=plan.llm_visible)
+        try:
+            launcher.start_ollama()
+            answer = answer_from_sources(OllamaClient(cfg.llm_model).chat, out)       # werkzeuglos; Antwort nur anzeigen
+        finally:
+            launcher.stop()
+        print("\nkushim:", answer)
+    return 0
 
 
 def _vault_state(cfg: Config) -> str:
@@ -132,6 +158,13 @@ def main(argv: list[str] | None = None) -> int:
     tl = sub.add_parser("tools", help="Werkzeuge anzeigen, ein- und ausschalten (alle standardmäßig aus)").add_subparsers(dest="sub")
     tl.add_parser("enable", help="Werkzeug einschalten (mit Rückfrage)").add_argument("name")
     tl.add_parser("disable", help="Werkzeug sofort ausschalten").add_argument("name")
+    rs = sub.add_parser("research", help="Recherche: erst Claude (Internet), Ersatz Wikipedia; mit Vorschau und Bestätigung")
+    rs.add_argument("frage", nargs="+")
+    rs.add_argument("--llm", action="store_true", help="Bei Wikipedia-Ersatz: Treffer mit dem lokalen Modell zusammenfassen")
+    cl = sub.add_parser("claude", help="Claude CLI prüfen, Modus C ein-/ausschalten").add_subparsers(dest="sub")
+    cl.add_parser("check", help="Zeigt CLI, Anmeldung und Schalter")
+    cl.add_parser("enable", help="Modus C einschalten (mit Rückfrage)")
+    cl.add_parser("disable", help="Modus C sofort ausschalten")
     sr = sub.add_parser("search", help="Websuche (Wikipedia) mit Vorschau und Bestätigung; web.search muss eingeschaltet sein")
     sr.add_argument("frage", nargs="+")
     sr.add_argument("--llm", action="store_true", help="Treffer mit dem lokalen Modell zusammenfassen (startet Ollama kurz)")
@@ -239,29 +272,75 @@ def main(argv: list[str] | None = None) -> int:
         except (websearch.WebDenied, netweb.WebDenied) as e:
             print(f"Abruf nicht möglich: {e}")
             return 1
-        if not out.sources:
-            print("Keine brauchbaren Treffer." + (f" Ausgelassen (auffälliger Inhalt): {', '.join(out.skipped)}" if out.skipped else ""))
+        return _show_wiki(out, args.llm, cfg, root)
+    if args.cmd == "research":
+        from .claude_cli import ask as claude_ask
+        from .claude_cli import base as claude_base
+        from .net import web as netweb
+        from .research import Research
+        from .safety.gate import Decision
+        from .tools.registry import ToolRegistry, default_tools
+        from .web import search as websearch
+        exe = claude_base.find_claude()
+        cache = claude_base.AuthCache(exe)
+        reg = ToolRegistry(default_tools(cfg, cache), cfg.tools_enabled)
+        wiki = websearch.make_search(reg, netweb.fetch_text)
+        from .privacy import EgressGate
+        egress = EgressGate(cfg.claude_enabled, confirm=lambda dest, payload: True)    # Freigabe der exakten Vorschau ist schon erfolgt
+        res = Research(reg, lambda q: claude_ask.ask(q, exe, root / "run" / "claude-research"), wiki, cache.get, egress)
+        prop = res.propose(" ".join(args.frage), speaker_verified=True)       # am Terminal sitzt der Nutzer selbst
+        if prop.decision is not Decision.ASK:
+            print(prop.reason or "Nicht erlaubt.")
+            return 1
+        print(prop.preview)
+        if input("Senden? (j/N): ").strip().lower() not in ("j", "ja", "y", "yes"):
+            res.deny(prop)
+            print("Nichts gesendet.")
+            return 1
+        if not res.approve(prop):
+            print("Freigabe ungültig oder abgelaufen.")
+            return 1
+        try:
+            out = res.execute(prop)
+        except (websearch.WebDenied, netweb.WebDenied) as e:
+            print(f"Recherche nicht möglich: {e}")
+            return 1
+        if out.note:
+            print(f"[Hinweis] {out.note}")
+        if out.kind == "claude":
+            print("Quelle: Claude (Internetsuche, Angaben laut Claude)")
+            print(out.answer)
             return 0
-        for i, s in enumerate(out.sources, 1):
-            print(f"[{i}] {s.title}  {s.url}\n    {s.text}")
-        if out.skipped:
-            print("Ausgelassen (auffälliger Inhalt, nicht ans Modell gegeben): " + ", ".join(out.skipped))
-        if args.llm:
-            from .launcher import Launcher
-            from .llm.ollama import OllamaClient
-            from .web.answer import answer_from_sources
-            _, plan = _gpu_plan(cfg)
-            launcher = Launcher(root, cuda_devices=plan.llm_visible)
-            try:
-                launcher.start_ollama()
-                answer = answer_from_sources(OllamaClient(cfg.llm_model).chat, out)   # werkzeuglos; Antwort nur anzeigen
-            finally:
-                launcher.stop()
-            print("\nkushim:", answer)
+        if out.kind == "wikipedia" and out.wiki is not None:
+            return _show_wiki(out.wiki, args.llm, cfg, root)
+        return 1
+    if args.cmd == "claude":
+        from .claude_cli import base as claude_base
+        action = getattr(args, "sub", None) or "check"
+        if action == "enable":
+            print("Modus C: Fragen, die du an Claude richtest, gehen an Anthropic (über deine angemeldete Claude CLI; kushim speichert keine Zugangsdaten).")
+            if input("Einschalten? (j/N): ").strip().lower() not in ("j", "ja", "y", "yes"):
+                print("Nicht eingeschaltet.")
+                return 1
+            cfg.set_claude_enabled(True)
+            print("Modus C ist an. Recherche über Claude zusätzlich einschalten: kushim tools enable claude.research")
+            return 0
+        if action == "disable":
+            cfg.set_claude_enabled(False)
+            print("Modus C ist aus. Nichts geht mehr an Claude.")
+            return 0
+        exe = claude_base.find_claude()
+        print(f"Claude CLI: {exe if exe else 'nicht gefunden'}")
+        if exe:
+            auth = claude_base.auth_status(exe)
+            print("Angemeldet: " + (f"ja ({'Abo' if auth.subscription else 'Konto: ' + auth.method})" if auth.logged_in else "nein (claude auth login)"))
+        print(f"Modus C: {'an' if cfg.claude_enabled else 'aus (kushim claude enable)'}")
+        print(f"Werkzeug claude.research: {'an' if 'claude.research' in cfg.tools_enabled else 'aus (kushim tools enable claude.research)'}")
         return 0
     if args.cmd == "tools":
+        from .claude_cli import base as claude_base
         from .tools.registry import ToolNotAllowed, ToolRegistry, default_tools
-        reg = ToolRegistry(default_tools(), cfg.tools_enabled)
+        reg = ToolRegistry(default_tools(cfg, claude_base.AuthCache(claude_base.find_claude())), cfg.tools_enabled)
         sub_cmd = getattr(args, "sub", None)
         if sub_cmd is None:
             for t in reg.tools.values():

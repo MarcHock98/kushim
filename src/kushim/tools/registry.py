@@ -107,5 +107,35 @@ WEB_SEARCH = ToolInfo(
 )                                  # Netz-Modul net/web.py freigegeben am 2026-10-04 (keine Downloads), Tool bleibt standardmäßig aus
 
 
-def default_tools() -> list[ToolInfo]:
-    return [WEB_SEARCH]
+CLAUDE_RESEARCH = ToolInfo(
+    name="claude.research",
+    title="Recherche über Claude",
+    description=("Fragt Claude (über deine angemeldete Claude CLI) im Internet. Der Suchtext geht an Anthropic; du siehst ihn vorher in einer "
+                 "Vorschau und gibst ihn frei. Claude darf nur im Internet suchen und lesen: keine Dateien, keine Befehle. Seine Antwort ist nur "
+                 "Text und löst nie eine Aktion aus. Ist Claude nicht erreichbar, nimmt kushim Wikipedia als Ersatz (wenn web.search an ist)."),
+    spec=ActionSpec("claude.research", Risk.READ, external_effect=True, costs_money=True),
+    sends_data_out=True,
+    available=lambda: "Modus C ist aus (kushim claude enable)",
+)
+
+
+def claude_research_tool(cfg=None, cache=None) -> ToolInfo:
+    """`claude.research` mit echter Verfügbarkeit: Modus C an, CLI gefunden, angemeldet. Ohne `cfg`: nicht verfügbar."""
+    if cfg is None:
+        return CLAUDE_RESEARCH
+
+    def available() -> str:
+        if not cfg.claude_enabled:
+            return "Modus C ist aus (kushim claude enable)"
+        auth = cache.get() if cache is not None else None
+        if auth is None or auth.error == "not_installed":
+            return "Claude CLI nicht gefunden"
+        if not auth.logged_in:
+            return "In der Claude CLI nicht angemeldet (claude auth login)"
+        return ""
+    from dataclasses import replace
+    return replace(CLAUDE_RESEARCH, available=available)
+
+
+def default_tools(cfg=None, cache=None) -> list[ToolInfo]:
+    return [WEB_SEARCH, claude_research_tool(cfg, cache)]

@@ -100,7 +100,13 @@ class WebSearch:
         req = self.queue.take(approval_id)
         if req is None:
             raise WebDenied("Keine gültige Freigabe (abgelehnt, abgelaufen, benutzt oder Notaus).")
-        query = query_from_preview(req.description)
+        return self._fetch(query_from_preview(req.description))
+
+    def fallback_fetch(self, query: str) -> Outcome:
+        """Nur für den Ersatzweg einer Freigabe, deren Vorschau Wikipedia als Ersatz AUSDRÜCKLICH genannt hat (siehe research.py)."""
+        return self._fetch(guard.validate(query))
+
+    def _fetch(self, query: str) -> Outcome:
         if guard.reasons(query):                                        # nochmals, kurz vor dem Abruf
             raise WebDenied("Anfrage nicht erlaubt.")
         url = wikipedia.check_url(wikipedia.build_url(query))           # feste Grenze: nur diese Domain und dieser Pfad

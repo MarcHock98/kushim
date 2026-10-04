@@ -9,6 +9,10 @@ Geprüft am 2026-10-04 (lokal, `claude --help`, CLI 2.1.289): `-p/--print` (ohne
 dontAsk, plan), `--permission-prompts none` (alles, was fragen müsste, wird automatisch abgelehnt), `--allowedTools`/`--disallowedTools`, `--max-budget-usd`,
 `--output-format stream-json`, `-w/--worktree [name]` (eigener Git-Worktree), `--append-system-prompt`, `--no-session-persistence`.
 
+## Zwei Betriebsarten
+1. **Recherche-Modus (umgesetzt 2026-10-04):** Claude nur als Internetsuche, ohne Dateien und Befehle, in einem leeren Wegwerf-Ordner (siehe `docs/tools-plan.md`). Braucht keinen freigegebenen Ordner.
+2. **Entwicklungs-Modus (geplant, dieses Dokument):** Claude arbeitet in freigegebenen Projektordnern an Code. Deutlich riskanter, deshalb Worktree, enges Rechteprofil und Rückfragen/Übersichten.
+
 ## Gefahren (ehrlich)
 Claude Code kann Dateien ändern und Befehle ausführen. Über kushim per Sprache gestartet ist das mächtig und riskant:
 1. **Selbstveränderung:** Im Ordner `kushim` könnte Claude die Sicherheitsregeln, die Egress-Sperre oder die Skills verändern ("Regeln ändert nur der Nutzer").

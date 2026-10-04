@@ -73,3 +73,17 @@ def test_only_web_search_code_calls_the_web_module():
     users = [f.relative_to(SRC).as_posix() for f in SRC.rglob("*.py")
              if f.name != "web.py" and "net.web" in f.read_text(encoding="utf-8").replace("from .net import web", "net.web")]
     assert set(users) <= {"cli.py"}, users          # Aufrufer nur der CLI-Befehl `kushim search`, nie Tools oder das LLM direkt
+
+
+# --- Claude CLI: nur an einer Stelle gefunden und gestartet, Rechteumgehung nie im Aufruf ---------------------------
+
+def test_claude_executable_is_only_located_in_one_module():
+    users = [f.relative_to(SRC).as_posix() for f in SRC.rglob("*.py")
+             if 'which("claude")' in f.read_text(encoding="utf-8") or "which('claude')" in f.read_text(encoding="utf-8")]
+    assert users == ["claude_cli/base.py"], users
+
+
+def test_permission_bypass_flags_appear_only_in_the_deny_list_of_the_claude_module():
+    hits = {f.relative_to(SRC).as_posix() for f in SRC.rglob("*.py")
+            if any(flag in f.read_text(encoding="utf-8") for flag in ("--dangerously-skip-permissions", "bypassPermissions"))}
+    assert hits == {"claude_cli/ask.py"}, hits           # dort nur als Eintrag in FORBIDDEN_FLAGS (Test prüft: nie im Aufruf)

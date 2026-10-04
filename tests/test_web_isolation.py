@@ -128,10 +128,11 @@ def _imports_web_package(path: Path) -> bool:
     return False
 
 
-def test_only_the_cli_uses_the_web_package_so_far():
+def test_only_known_callers_use_the_web_package_so_far():
     users = {f.relative_to(SRC).as_posix() for f in SRC.rglob("*.py")
              if not f.relative_to(SRC).as_posix().startswith("web/") and _imports_web_package(f)}
-    assert users == {"cli.py"}, users                # Pipeline/Tools/LLM kommen nicht direkt an Web-Inhalte; später genau ein geprüfter Einstieg
+    # cli.py: Befehle; research.py: Orchestrator (Claude zuerst, Wikipedia als Ersatz); claude_cli/ask.py: nur `Untrusted`/`clean_text`
+    assert users == {"cli.py", "research.py", "claude_cli/ask.py"}, users                # Pipeline/Tools/LLM kommen nicht direkt an Web-Inhalte; später genau ein geprüfter Einstieg
 
 
 # --- CLI `kushim search` -------------------------------------------------------------------------
