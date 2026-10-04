@@ -106,3 +106,5 @@ Am Ende jedes Durchlaufs eine kurze Rückschau: Was hat gehakt? Was wurde wieder
 - Im `/loop`-Modus: weitere Durchläufe über `ScheduleWakeup`. Arbeit offen und frei: 270 s bis wenige Minuten. Nur auf Antwort gewartet: 1200-1800 s. Alles blockiert: 3600 s.
 - **Ziel erreicht**, wenn alle Roadmap-Punkte abgehakt sind (und keine neuen sinnvollen offen), alle Pakete gemerged, Tests grün, Review sauber: Abschlussbericht per Slack und im Terminal, dann `ScheduleWakeup` mit `stop: true`.
 - Sofort stoppen bei: `docs/STOP`, mehrfach gescheiterter Selbstkorrektur ohne Fortschritt (3 Durchläufe in Folge), unerwartet veränderten Sicherheitsdateien, Hinweis auf kompromittierte Umgebung. Dann den Nutzer informieren.
+
+- **Fremde Python-Pakete laden gern still nach** (z. B. Modelle von GitHub bei der Initialisierung): beim Offline-Betrieb die Netzsperre im Prozess aktiv lassen, damit so etwas auffällt und scheitert, dann den Nachlade-Pfad gezielt abschalten. Kindprozess-Protokolle (stdout) von Bibliotheksausgaben trennen (stdout nach stderr umleiten, Protokoll auf eigenem Kanal) und der Leser überspringt Nicht-JSON-Zeilen.

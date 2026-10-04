@@ -41,3 +41,5 @@ Format: Datum, Datei, Grund (ein Satz).
 - 2026-10-04, voice/ + tools/: Neues lokales Werkzeug timer.local (Timer und Erinnerungen per Sprache, standardmäßig aus, Einschalten nie per Sprache, verifizierte Stimme, Gate-geprüft, keine Netzfolgen). Sicherheitsregeln und Allowlists unverändert.
 
 - 2026-10-04, voice/ + tools/: Neues lokales Werkzeug notes.local (Notizen per Sprache im Vault, standardmäßig aus, Löschen nur mit Rückfrage, Audit ohne Text). Sicherheitsregeln und Allowlists unverändert.
+
+- 2026-10-04, scripts/ + voice/: Stimmklon (Chatterbox) lokal gebaut: eigenes venv unter tools/, einmaliger Modell-Download auf Freigabe des Nutzers, Betrieb ohne Netz (Sperre im Prozess, getestet), Ersatzstimme Piper, standardmäßig aus (`[voice] clone`). Sicherheitsregeln und Allowlists unverändert.

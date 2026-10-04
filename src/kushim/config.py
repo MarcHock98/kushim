@@ -61,6 +61,8 @@ class Config:
     gpu_llm: str = "auto"          # "auto", "all" oder Nummern wie "0,1"
     tools_enabled: tuple[str, ...] = ()   # nur diese Werkzeuge sind aktiv (Standard: keines); ändert nur der Nutzer
     voice_direct: bool = True             # [tools] direct: gesprochener Befehl gilt als Freigabe für Recherche/Claude-Start (kein zweites "ja"); false = immer Vorschau und "ja"
+    voice_clone: bool = False             # [voice] clone: eigene Stimme (Chatterbox, lokal) statt Piper; nur der Nutzer schaltet das ein
+    voice_clone_ref: str = ""             # [voice] clone_ref: bestimmte Referenzaufnahme (sonst automatisch aus voice-data/clone)
     claude_folders: tuple[str, ...] = ()  # freigegebene Ordner für Claude als "name|pfad"; ändert nur der Nutzer (UI/CLI)
     path: Path | None = field(default=None, repr=False)
 
@@ -86,6 +88,8 @@ class Config:
             gpu_whisper=str(gpu.get("whisper", "auto")),
             gpu_llm=str(gpu.get("llm", "auto")),
             tools_enabled=tools,
+            voice_clone=bool(data.get("voice", {}).get("clone", False)),
+            voice_clone_ref=str(data.get("voice", {}).get("clone_ref", "")),
             voice_direct=bool(data.get("tools", {}).get("direct", True)),
             claude_folders=folders,
             path=path,

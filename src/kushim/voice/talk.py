@@ -200,7 +200,8 @@ class TalkLoop:
 
 def build_live(root: Path, out_device: int | None, in_device: int | None = None,
                verifier: Any = None, commands: Any = None, wake_names: Iterable[str] = (),
-               llm_model: str = DEFAULT_MODEL, whisper_device: str = "cuda", whisper_index: int = 0, tasks: Any = None):
+               llm_model: str = DEFAULT_MODEL, whisper_device: str = "cuda", whisper_index: int = 0, tasks: Any = None,
+               clone: bool = False, clone_ref: str = "", on_note: Callable[[str], None] = lambda s: None):
     """Echte Komponenten. Ollama muss laufen (kushim start oder Launcher)."""
     from ..llm.ollama import OllamaClient
     from . import audio
@@ -220,6 +221,9 @@ def build_live(root: Path, out_device: int | None, in_device: int | None = None,
     llm = OllamaClient(llm_model)
     dialog = Dialog(audio.stop_playback)
     kill = KillSwitch(root, [audio.stop_playback])
+    if clone:                                         # eigene Stimme (lokal, ohne Netz), Piper als Ersatz
+        from .clone import build as build_clone
+        engine = build_clone(root, engine, clone_ref, on_note=on_note)
     speaker = Speaker(engine, lambda wav: audio.play_wav(wav, out_device), lambda: kill.fired)
     ack_wav = engine.synthesize(ACK_TEXT)
     mic = audio.Mic(in_device)
