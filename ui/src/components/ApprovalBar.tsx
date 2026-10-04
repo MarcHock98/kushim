@@ -12,6 +12,7 @@ const KIND_TITLE: Record<string, string> = {
   research: "Recherche im Internet",
   start: "Claude soll im Projekt arbeiten",
   answer: "Antwort an Claude",
+  folder: "Ordner für Claude freigeben",
 };
 
 const mmss = (s: number) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(Math.floor(s % 60)).padStart(2, "0")}`;

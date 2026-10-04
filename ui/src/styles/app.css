@@ -94,3 +94,9 @@ button:disabled { opacity: .5; cursor: default; }
 .cl-files .st { color: var(--text-muted); }
 .cl-diff pre { margin: 0; max-height: 360px; overflow: auto; padding: var(--s-3); background: var(--bg-0); border: 1px solid var(--line); border-radius: var(--r-sm); font-family: var(--font-mono); font-size: var(--fs-xs); }
 .cl-diff .add { color: var(--ok); } .cl-diff .del { color: var(--alarm); } .cl-diff .hunk { color: var(--cyan); }
+.folders { border-top: 1px solid var(--line); padding-top: var(--s-3); display: grid; gap: var(--s-3); }
+.folders summary { cursor: pointer; min-height: var(--hit); display: flex; align-items: center; }
+.folder-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-2); }
+.folder-list li { display: flex; justify-content: space-between; align-items: center; gap: var(--s-3); }
+.folder-list code { color: var(--text-muted); font-size: var(--fs-xs); overflow-wrap: anywhere; }
+.cl-form input { font: inherit; color: var(--text); background: var(--bg-0); border: 1px solid var(--line-strong); border-radius: var(--r-sm); padding: var(--s-2) var(--s-3); min-height: var(--hit); }

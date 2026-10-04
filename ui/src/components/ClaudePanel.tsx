@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ApiClient } from "../lib/api";
 import { ApprovalBar, type Pending } from "./ApprovalBar";
+import { FolderManager } from "./FolderManager";
 
 interface Session {
   id: string; folder: string; branch: string; turn: number; status: string;
@@ -46,23 +47,33 @@ export function ClaudePanel({ client, connected }: { client: React.RefObject<Api
     busy.current = false;
   }, [client]);
 
+  const loadFolders = useCallback(async () => {
+    const f = await client.current?.call("claude.folders");
+    if (f?.ok && Array.isArray(f.folders)) {
+      const names = (f.folders as unknown[]).filter((x): x is string => typeof x === "string");
+      setFolders(names);
+      setFolder((old) => (names.includes(old) ? old : names[0] || ""));
+    }
+  }, [client]);
+
   useEffect(() => {
     if (!connected) return;
-    void (async () => {
-      const f = await client.current?.call("claude.folders");
-      if (f?.ok && Array.isArray(f.folders)) {
-        const names = (f.folders as unknown[]).filter((x): x is string => typeof x === "string");
-        setFolders(names);
-        setFolder((old) => old || names[0] || "");
-      }
-    })();
+    void loadFolders();
     void refresh();
     const id = setInterval(() => { if (!document.hidden) void refresh(); }, 2000);
     return () => clearInterval(id);
-  }, [connected, client, refresh]);
+  }, [connected, client, refresh, loadFolders]);
 
-  if (!connected || folders.length === 0) {
-    return connected ? <p className="hint">Claude: kein Ordner freigegeben (kushim claude add).</p> : null;
+  if (!connected) return null;
+  if (folders.length === 0) {
+    return (
+      <section className="claude" aria-label="Claude">
+        <h2>Claude</h2>
+        <p className="hint">Claude: kein Ordner freigegeben.</p>
+        {note && <p className="hint" role="status">{note}</p>}
+        <FolderManager client={client} connected={connected} onChange={(m) => { if (m) setNote(m); void loadFolders(); }} />
+      </section>
+    );
   }
 
   const propose = async () => {
@@ -191,6 +202,7 @@ export function ClaudePanel({ client, connected }: { client: React.RefObject<Api
         )
       )}
       {note && <p className="hint" role="status">{note}</p>}
+      <FolderManager client={client} connected={connected} onChange={(m) => { if (m) setNote(m); void loadFolders(); }} />
     </section>
   );
 }

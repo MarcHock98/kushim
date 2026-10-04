@@ -320,6 +320,10 @@ def _api_start(cfg: Config, root, extra=None):
                    audit=store.audit if store else None)
     from .api.safety_view import register_safety_view
     from .config import LiveConfig
+    from .api.folders_api import register_folders
+    from .claude_cli import folders as cfolders
+    register_folders(core, Config.load, lambda raw: cfolders.validate_path(raw, cfolders.vault_path(cfg.memory_location)),
+                     audit=store.audit if store else None)
     if extra is not None:
         extra(core, store)
     else:
@@ -929,6 +933,14 @@ def _main(argv: list[str] | None = None) -> int:
                     register_approvals(core, tool_cmds)
                     register_tasks(core, tasks)
                     register_claude(core, tool_cmds.control)
+                    from .api.folders_api import register_folders
+                    from .claude_cli import folders as cfolders
+
+                    def busy(name):
+                        st = tool_cmds.sessions.state()
+                        return st is not None and st.folder == name and st.status == "running"
+                    register_folders(core, Config.load, lambda raw: cfolders.validate_path(raw, cfolders.vault_path(cfg.memory_location)),
+                                     busy=busy, audit=store.audit if store else None)
                     register_dashboard(core, tool_cmds, tool_cmds.timers.store, tasks)
                     if store is not None:
                         register_memory(core, store)
