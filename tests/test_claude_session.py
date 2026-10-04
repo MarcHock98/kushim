@@ -540,6 +540,7 @@ def test_api_start_is_two_step_and_runs_only_after_confirmed_approval(env):
     r = api_call(core, tok, "claude.start", task="Baue den Timer", folder="kushim")
     assert r["ok"] and r["allowed"] and r["kind"] == "start" and "Auftrag: «Baue den Timer»" in r["preview"]
     assert popper.calls == []
+    assert 0 < r["expires_in"] <= 120                                   # Restzeit der Vorschau für die UI
     assert api_call(core, tok, "claude.approve", proposal=r["proposal"])["error"] == "confirm_required"
     assert popper.calls == []
     st = api_call(core, tok, "claude.approve", proposal=r["proposal"], confirm=True)
@@ -585,3 +586,21 @@ def test_api_answer_review_and_stop(env):
     assert api_call(core, tok, "claude.approve", proposal=a["proposal"], confirm=True)["session"]["turn"] == 2
     finish(sessions)
     assert api_call(core, tok, "claude.stop") == {"ok": True, "stopped": False}
+
+
+def test_api_two_parallel_approvals_of_the_same_proposal_run_at_most_once(env):
+    import threading
+    core, tok, ctl, sessions, popper = build_api(env, FakeProc(result_json()))
+    r = api_call(core, tok, "claude.start", task="Baue den Timer", folder="kushim")
+    out, gate = [], threading.Barrier(2)
+
+    def go():
+        gate.wait()
+        out.append(api_call(core, tok, "claude.approve", proposal=r["proposal"], confirm=True))
+    ts = [threading.Thread(target=go) for _ in range(2)]
+    [t.start() for t in ts]
+    [t.join() for t in ts]
+    errors = sorted(o.get("error", "ok") for o in out)
+    assert errors == ["ok", "unknown_proposal"], errors            # nie "internal", nie zweimal gestartet
+    finish(sessions)
+    assert len(popper.calls) == 1

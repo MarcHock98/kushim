@@ -25,15 +25,16 @@ create table if not exists audit(
 """
 
 
-def _connect(db: Path, key: str):
-    con = sqlcipher3.connect(str(db))
+def _connect(db: Path, key: str, same_thread: bool = True):
+    con = sqlcipher3.connect(str(db), check_same_thread=same_thread)
     con.execute('pragma key="x\'%s\'"' % key)
     con.execute("select count(*) from sqlite_master")  # schlägt bei falschem Schlüssel fehl
     return con
 
 
 class LocalStore(MemoryStore):
-    def __init__(self, root: Path, create: bool = False, key: str | None = None):
+    def __init__(self, root: Path, create: bool = False, key: str | None = None, multithread: bool = False):
+        """`multithread`: Verbindung darf von mehreren Threads benutzt werden; dann nur über `memory.shared.SharedStore` (Sperre)."""
         self.root = root
         if create and not is_vault(root):
             self.manifest = create_vault(root)
@@ -44,7 +45,7 @@ class LocalStore(MemoryStore):
         if self.manifest.schema_version > SCHEMA_VERSION:
             raise RuntimeError("Vault stammt von einer neueren kushim-Version")
         self.key = key or get_or_create_key(self.manifest.vault_id, create=create)
-        self.con = _connect(root / DB_FILE, self.key)
+        self.con = _connect(root / DB_FILE, self.key, same_thread=not multithread)
         self.con.executescript(SCHEMA)
         self.con.commit()
 
@@ -89,6 +90,11 @@ class LocalStore(MemoryStore):
         self.con.execute("insert into audit(ts,event,detail) values(?,?,?)",
                          (time.time(), event, detail))
         self.con.commit()
+
+    def audit_tail(self, limit=50):
+        rows = self.con.execute("select ts,event,coalesce(detail,'') from audit order by id desc limit ?",
+                                (max(1, min(int(limit), 200)),)).fetchall()
+        return [(float(t), str(e), str(d)) for t, e, d in reversed(rows)]
 
     def counts(self) -> dict[str, int]:
         return {t: self.con.execute(f"select count(*) from {t}").fetchone()[0]

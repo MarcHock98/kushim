@@ -9,7 +9,9 @@ FORBIDDEN = {"requests", "httpx", "urllib3", "aiohttp", "socket", "ftplib", "smt
 # net/loopback.py: vom Nutzer am 2026-10-03 freigegeben, nur Loopback (127.0.0.1/::1).
 # net/web.py: vom Nutzer am 2026-10-04 freigegeben ("erstelle eine Websuche mit net/web.py, keine Downloads erlauben"):
 #   nur HTTPS-GET zu fester Domain-Liste, nur Text/JSON, nie auf die Platte (siehe die Tests unten).
-ALLOWLIST: set[str] = {"net/loopback.py", "net/web.py"}
+# net/server.py: vom Nutzer am 2026-10-04 freigegeben ("Transport freigeben"): WebSocket-Server nur auf 127.0.0.1,
+#   nur Standardbibliothek (asyncio), siehe die Tests unten.
+ALLOWLIST: set[str] = {"net/loopback.py", "net/web.py", "net/server.py"}
 
 
 def imports(path: Path):
@@ -33,8 +35,8 @@ def test_no_network_imports_outside_allowlist():
     assert not bad, "Netzwerk-Importe außerhalb der Allowlist:\n" + "\n".join(bad)
 
 
-def test_allowlist_is_exactly_the_two_approved_modules():
-    assert ALLOWLIST == {"net/loopback.py", "net/web.py"}
+def test_allowlist_is_exactly_the_approved_modules():
+    assert ALLOWLIST == {"net/loopback.py", "net/web.py", "net/server.py"}
 
 
 def test_loopback_module_has_no_other_network_imports():
@@ -112,3 +114,32 @@ def test_claude_runs_can_only_be_started_through_the_approval_flow():
                 if name == "sessions":
                     callers.setdefault(rel, set()).add(node.func.attr)
     assert set(callers) == {"claude_cli/control.py"}, callers
+
+
+# --- net/server.py: nur Loopback, nur Standardbibliothek (Freigabe 2026-10-04) ---------------------------------------
+
+SERVER = SRC / "net" / "server.py"
+
+
+def test_server_module_has_only_stdlib_imports_and_no_network_packages():
+    mods = set(imports(SERVER))
+    assert mods <= {"__future__", "asyncio", "base64", "hashlib", "json", "struct", "threading", "typing",
+                    "..api.protocol", "api.protocol"} | {m for m in mods if m.startswith("..")}, mods
+    assert not {m for m in mods if m.split(".")[0] in FORBIDDEN}
+
+
+def test_server_binds_only_to_the_fixed_loopback_address():
+    import importlib
+    srv = importlib.import_module("kushim.net.server")
+    assert srv.BIND_HOST == "127.0.0.1"
+    import inspect
+    assert "host" not in inspect.signature(srv.LocalServer.__init__).parameters
+    src = SERVER.read_text(encoding="utf-8")
+    assert "0.0.0.0" not in src and '"::"' not in src and src.count("start_server(") == 1
+    assert "BIND_HOST" in src.split("start_server(")[1].split(")")[0]
+
+
+def test_only_cli_or_launcher_start_the_server():
+    users = [f.relative_to(SRC).as_posix() for f in SRC.rglob("*.py")
+             if f.name != "server.py" and "LocalServer" in f.read_text(encoding="utf-8")]
+    assert set(users) <= {"cli.py", "launcher.py"}, users

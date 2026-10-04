@@ -101,6 +101,10 @@ Am Ende jedes Durchlaufs eine kurze Rückschau: Was hat gehakt? Was wurde wieder
 
 - **Zustandsdateien können auf Gelöschtes zeigen** (z. B. `run/claude-session.json` auf einen entfernten Worktree): vor dem Benutzen prüfen, ob das Ziel noch existiert, und sonst wie "kein Zustand" behandeln. Nach dem Aufräumen von Branches/Worktrees sofort den Sprach-/CLI-Weg gegenprobieren.
 - **Sprachbefehle immer mit echten Satzbeispielen testen** (auch Fehlschläge aus dem Live-Log des Nutzers als Testfälle übernehmen): Spracherkennung liefert Zusammensetzungen, Verhörer und Füllwörter; Auslöse-Wörter großzügig, aber Alltagssätze ("Wie spät ist es") müssen beim Sprachmodell bleiben.
+- **Prozessgrenzen bei der UI:** `kushim serve` und `kushim talk` sind getrennte Prozesse. Zustand (Freigaben, Aufgaben) liegt nur im Sprachprozess. Reine Anzeigewerte (Zustand, Pegel) gehen über eine kleine Datei (`run/voice-state.json`, mit Lebenszeichen), alles, was entscheidet oder ausführt (Freigabe), muss im selben Prozess laufen (`talk --ui`). Vor dem Entwurf eines neuen API-Typs prüfen, in welchem Prozess sein Zustand liegt.
+- **Jede Hilfsdatei, die ein anderer Prozess liest, ist Eingabe von außen:** Leser prüft Typen, bekannte Zustände und Alter (siehe `voice/statefile.read`).
+- **Threads:** SQLite/SQLCipher-Verbindungen gehören dem Thread, der sie anlegt. Alles, was die API-Handler (Executor-Threads) mit dem Vault tun, muss über `open_store(cfg, shared=True)` (`SharedStore`) laufen. Tests müssen solche Zugriffe AUS einem anderen Thread aufrufen: ein Fehler wurde sonst vom `try/except` der Audit-Aufrufe still verschluckt (Notaus-Audit und Protokoll waren unbemerkt leer).
+- **Parallele Werkzeugaufrufe teilen das Arbeitsverzeichnis:** `npm run build` neben `pytest` im selben Zug scheiterte zufällig mit `enoent`. Node-Befehle immer einzeln, mit `cd ui && ...` in derselben Zeile.
 
 ## Takt und Ende
 - Im `/loop`-Modus: weitere Durchläufe über `ScheduleWakeup`. Arbeit offen und frei: 270 s bis wenige Minuten. Nur auf Antwort gewartet: 1200-1800 s. Alles blockiert: 3600 s.

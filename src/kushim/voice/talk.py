@@ -36,7 +36,8 @@ class TalkLoop:
                  first_collector: Callable[[], UtteranceCollector] | None = None,
                  follow_collector: Callable[[], UtteranceCollector] | None = None,
                  barge: Any = None, preroll_frames: int = 0, on_note: Callable[[str], None] = lambda s: None,
-                 announce: Callable[[], str | None] | None = None, say: Callable[[str], None] | None = None):
+                 announce: Callable[[], str | None] | None = None, say: Callable[[str], None] | None = None,
+                 on_frame: Callable[[Any, str], None] = lambda frame, phase: None):
         """`first_collector`: Befehl direkt nach dem Wake Word ("hey kushim, wie spät ist es?") ohne "Ja?" davor.
         Kommt kein Befehl (nur Wake Word, nur Rauschen oder nur der Rest des Wake Words), folgt "Ja?" und
         `new_collector` wartet auf den Befehl. Ohne `first_collector` gibt es "Ja?" sofort.
@@ -52,6 +53,7 @@ class TalkLoop:
         self.first_collector, self.follow_collector, self.barge = first_collector, follow_collector, barge
         self.on_note = on_note
         self.announce, self.say = announce, say
+        self.on_frame = on_frame         # nur Anzeige: (Frame, Phase) je Frame, Fehler stören nie
         from collections import deque
         self._ring: Any = deque(maxlen=preroll_frames) if preroll_frames > 0 else None
         self._collecting: UtteranceCollector | None = None
@@ -61,6 +63,20 @@ class TalkLoop:
         self._queued: Any = None     # Äußerung, die nach dem Ende der unterbrochenen Antwort drankommt
         self._cancelled = False      # "abbrechen" wurde während der laufenden Antwort gesagt
         self._pool: Any = None
+
+    def phase(self) -> str:
+        """Zustand für die Anzeige: halted > speaking > thinking > listening > idle."""
+        from .dialog import State
+        st = self.pipeline.dialog.state
+        if st is State.HALTED:
+            return "halted"
+        if st is State.SPEAKING:
+            return "speaking"
+        if self._busy is not None or st is State.THINKING:
+            return "thinking"
+        if self._collecting is not None:
+            return "listening"
+        return "idle"
 
     def _ask_again(self) -> UtteranceCollector:
         self.ack()
@@ -74,6 +90,10 @@ class TalkLoop:
             self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="kushim-turn")
         try:
             for frame in self.frames:
+                try:
+                    self.on_frame(frame, self.phase())
+                except Exception:                # noqa: BLE001 (Anzeige darf den Betrieb nie stören)
+                    pass
                 if self.kill.poll():
                     if self._busy is not None:
                         self.pipeline.interrupt()

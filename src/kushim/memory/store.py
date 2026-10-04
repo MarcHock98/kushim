@@ -43,6 +43,10 @@ class MemoryStore(ABC):
     @abstractmethod
     def audit(self, event: str, detail: str = "") -> None: ...
 
+    def audit_tail(self, limit: int = 50) -> list[tuple[float, str, str]]:
+        """Die letzten Audit-Einträge (Zeit, Ereignis, Detail), neueste zuletzt. Nur lesen; Standard: leer."""
+        return []
+
     @abstractmethod
     def snapshot(self, dest: Path) -> None:
         """Konsistente Kopie des gesamten Vaults nach dest (auch bei laufendem Betrieb)."""

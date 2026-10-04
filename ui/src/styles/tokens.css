@@ -1,0 +1,73 @@
+/* kushim Design-Tokens. Quelle der Wahrheit für Farben, Abstände, Bewegung.
+   Herkunft der Farben: assets/logo.svg (Tontafel #1b2433/#0d1118, Keil-Bernstein, Zählmarken-Blau).
+   Kopie nach ui/src/styles/tokens.css. Nie Farbwerte in Komponenten hart codieren, nur var(--...).
+   Kontrast wird mit scripts/contrast.py geprüft (Text >= 4,5:1, große Schrift/Rahmen >= 3:1). */
+
+:root {
+  color-scheme: dark;
+
+  /* Flächen (von hinten nach vorn) */
+  --bg-0: #0a0e14;            /* Fenstergrund */
+  --bg-1: #0d1118;            /* Seite */
+  --bg-2: #141b27;            /* Karte */
+  --bg-3: #1b2433;            /* erhöhte Karte, Logo-Ton */
+  --line: #2c3a52;            /* Rahmen, Trenner */
+  --line-strong: #5f77a1;     /* Eingabefeld-Rahmen, >= 3:1 */
+
+  /* Text */
+  --text: #e8eef8;
+  --text-muted: #9aa9c2;
+  --text-faint: #6f7f9a;      /* nur für Deko und Hilfstext >= 18px */
+
+  /* Marke und Akzente */
+  --amber: #ffd37a;           /* Primär: Aktion, Fokus des Avatars */
+  --amber-deep: #e08a3c;      /* Verlaufsende */
+  --amber-ink: #1a1204;       /* Text auf Amber */
+  --cyan: #6fb7ff;            /* Sekundär: Zuhören, Information */
+  --cyan-ink: #04121f;
+
+  /* Zustand (immer zusätzlich Text/Icon, nie nur Farbe) */
+  --ok: #5fd39a;
+  --warn: #ffb454;
+  --alarm: #ff6b6b;           /* unbekannte Stimme, Notaus, Fehler */
+  --alarm-ink: #1f0505;
+  --alarm-bg: #2a1214;
+
+  /* Glas (nur auf dem Overlay; im Dashboard flache Karten) */
+  --glass: rgb(20 27 39 / 0.62);
+  --glass-line: rgb(111 183 255 / 0.18);
+  --glass-blur: 18px;
+
+  /* Typografie: lokale Systemschriften, keine Web-Fonts, kein CDN */
+  --font-ui: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "Cascadia Mono", "Consolas", ui-monospace, monospace;
+  --fs-xs: 12px; --fs-sm: 14px; --fs-md: 16px; --fs-lg: 20px; --fs-xl: 28px; --fs-2xl: 40px;
+  --lh: 1.5;
+
+  /* Raster 4 px */
+  --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 24px; --s-6: 32px; --s-7: 48px; --s-8: 64px;
+  --r-sm: 8px; --r-md: 14px; --r-lg: 22px; --r-pill: 999px;
+
+  /* Tiefe und Fokus */
+  --shadow-1: 0 1px 2px rgb(0 0 0 / .4), 0 4px 16px rgb(0 0 0 / .25);
+  --shadow-2: 0 8px 40px rgb(0 0 0 / .5);
+  --focus-ring: 0 0 0 2px var(--bg-1), 0 0 0 4px var(--amber);
+
+  /* Bewegung */
+  --ease: cubic-bezier(.2, .8, .2, 1);
+  --t-fast: 120ms; --t-base: 220ms; --t-slow: 420ms;
+
+  /* Mindestgrößen */
+  --hit: 44px;                /* Klickfläche */
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --t-fast: 0ms; --t-base: 0ms; --t-slow: 0ms; }
+}
+
+@media (prefers-contrast: more) {
+  :root { --line: #6a7fa6; --text-muted: #c4d0e4; }
+}
+
+*:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--r-sm); }
