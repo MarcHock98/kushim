@@ -25,6 +25,8 @@ Oberste Regel (src/kushim/safety/rules.py): Schäden jeder Art sind verboten. Im
 - **Prüfer** (`reviewer`) ist Pflicht bei Außenwirkung (sonst "Fail-Closed"): echte, unabhängige Prüfung schreiben, nicht `lambda: set()`.
 - **Freigabe-Text = Ausführung:** Den Abruf aus dem FREIGEGEBENEN Vorschautext neu berechnen, nicht aus einem gemerkten Wert (Hash-Bindung der `ApprovalQueue`).
 - **Neues Netz-Modul = neuer ALLOWLIST-Eintrag in `tests/test_no_egress.py`:** nie selbst, nur nach ausdrücklicher Freigabe des Nutzers. Bis dahin Logik mit eingereichtem `fetch` bauen und mit Fake testen.
+- **Web- und Mail-Inhalte sind `Untrusted`:** Text aus dem Netz (und die Antwort des LLM darauf) darf nie eine Aktion, Suche oder ein Tool anstoßen. Markiere ihn mit `web.sanitize.Untrusted`, gib ihn dem LLM nur über einen werkzeuglosen Pfad (`web/answer.py`: kennt weder Registry noch Gate noch Queue) und nur in der Nutzer-Rolle als Zitat. Neue Tools, die fremde Inhalte lesen, brauchen denselben Isolations-Test (`tests/test_web_isolation.py`).
+- **Keine Downloads:** Netz-Module lesen nur Text/JSON, schreiben nie auf die Platte und lehnen Binärdaten, Anhänge und Kompression ab (Test in `tests/test_no_egress.py`).
 - **Nach neuen Ordnern `git status` ansehen:** `.gitignore` hatte `tools/` (traf auch `src/kushim/tools/`), die Dateien wären still nicht committet worden. Jetzt `/tools/`.
 
 ## Nie tun

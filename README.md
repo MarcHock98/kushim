@@ -150,6 +150,8 @@ Geräte wählen (Namensteil genügt): `python -m kushim.cli talk --mic "Arctis 5
 
 Kopiere `config.example.toml` nach `config.toml` (oder `%APPDATA%\kushim\config.toml`). `config.toml` ist nicht im Git.
 
+**Web-Recherche:** Mit `kushim search <Frage>` (z. B. `kushim search Eiffelturm Höhe --llm`) fragt kushim Wikipedia (de). Das Werkzeug ist standardmäßig aus: `kushim tools enable web.search`. Du siehst vorher exakt, was gesendet wird (nur der Suchtext), und bestätigst mit `j`. Es werden nur Text-Antworten gelesen (keine Downloads, nichts wird gespeichert), Anfragen mit E-Mail-Adressen, IBAN, Telefonnummern, Pfaden oder Passwörtern gehen nicht hinaus. Inhalte aus dem Internet sind nur Daten: Sie können das Sprachmodell nie etwas tun oder ein Werkzeug nutzen lassen. Mit `--llm` fasst das lokale Modell die Treffer zusammen.
+
 **Grafikkarten:** `kushim gpu` zeigt die erkannten NVIDIA-Karten und wie sie genutzt werden. Mit einer Karte teilen sich Whisper und das Sprachmodell diese. Bei mehreren Karten bekommt Whisper automatisch eine für sich (die kleinste, die es noch trägt), das Sprachmodell nutzt alle übrigen. Anpassen unter `[gpu]` in `config.toml` (`whisper = "auto" | "cpu" | "1"`, `llm = "auto" | "all" | "0,1"`). Ein schon laufendes Ollama übernimmt die Einstellung nicht; kushim startet seines selbst (`kushim start`/`talk`).
 
 **Sprachmodell wechseln:** Das LLM ist austauschbar (jedes Ollama-Modell). `python -m kushim.cli llm set qwen3.5:9b` trägt es unter `[llm] model` ein, `.\install.ps1 -Llm qwen3.5:9b` lädt es einmalig (Prüfung mit `kushim doctor`). Ohne Eintrag gilt `qwen2.5:7b`.
