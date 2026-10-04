@@ -95,6 +95,7 @@ def env(tmp_path):
     project = tmp_path / "proj"
     (project / ".git").mkdir(parents=True)
     worktree = project / ".claude" / "worktrees" / WORKTREE
+    worktree.mkdir(parents=True)                       # der Worktree existiert (Claude hat ihn angelegt)
     root = tmp_path / "root"
     root.mkdir()
     return SimpleNamespace(root=root, project=project, worktree=worktree, folder=Folder("kushim", project), tmp=tmp_path)

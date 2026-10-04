@@ -156,6 +156,10 @@ def parse(text: str) -> Intent | None:
                 continue
             kept.append(orig)
         return Intent("research", " ".join(kept))
+    # --- "Mach dort weiter" / "Mach damit weiter" (ohne Namen): gilt nur, wenn eine Claude-Sitzung da ist (prüft der Aufrufer)
+    if not claude and has_continue and len(toks) <= 5 and toks[0] in {"mach", "mache", "arbeite", "fahr", "fahre", "geh", "gehe", "setz", "setze", "los"} \
+            and not s & _DEV_STRICT:
+        return Intent("continue_soft", "", text)
     # --- Claude
     if claude:
         if s & _STOP:
@@ -311,6 +315,11 @@ class ToolCommands:
             return self._resume(intent)
         if k == "continue":
             return self._continue(intent)
+        if k == "continue_soft":                                      # "Mach dort weiter" ohne "Claude": nur, wenn es eine Claude-Sitzung gibt
+            st = self.sessions.state()
+            if st is None or not st.worktree_path or not getattr(self.sessions, "worktree_ok", lambda s: True)(st):
+                return None
+            return self._continue(intent)
         if k == "answer":
             return self._answer(intent.text, ())
         if k == "allow":
@@ -386,6 +395,8 @@ class ToolCommands:
         if tool is None or not self.registry.is_active("claude.code"):
             why = _short_reason(tool.available()) if tool is not None else "es gibt es nicht"
             return f"Claude zum Entwickeln ist nicht eingeschaltet: {why or 'das Werkzeug ist aus'}. {ENABLE_HOW}"
+        if st is not None and not getattr(self.sessions, "worktree_ok", lambda s: True)(st):
+            st = None                                                  # Worktree wurde entfernt: wie "keine Sitzung" behandeln
         if st is not None and st.status == "waiting" and st.worktree_path:
             return self._answer(intent.text or CONTINUE_TASK, ())
         if st is not None and st.worktree and st.status in ("stopped", "failed"):                 # gleichen Branch wieder aufnehmen
@@ -397,7 +408,13 @@ class ToolCommands:
                     pass
                 else:
                     return self._answer(intent.text or CONTINUE_TASK, ())
+        if not self._branches_exist():
+            return self._start(Intent("start", intent.text, intent.folder_hint))      # nichts zum Fortsetzen: neuen Lauf starten
         return self._resume(intent)
+
+    def _branches_exist(self) -> bool:
+        self._branches()
+        return bool(self._branch_list)
 
     def _resume(self, intent: Intent) -> str:
         tool = self.registry.tools.get("claude.code")
