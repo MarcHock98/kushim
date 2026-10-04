@@ -5,6 +5,7 @@ Netzwerkzugriffe. Das Modell legt der Nutzer vorher selbst ab (siehe `docs/resea
 """
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass
 from typing import Any, Iterable, Protocol
 
@@ -51,6 +52,7 @@ def to_float32(pcm: Any) -> np.ndarray:
 class SpeechToText:
     def __init__(self, model: _Model, language: str | None = "de", beam_size: int = 5):
         self.model, self.language, self.beam_size = model, language, beam_size
+        self._lock = threading.Lock()          # Abbruch-Erkennung und Antwort dürfen das Modell nie gleichzeitig benutzen
 
     @classmethod
     def from_local(cls, model_path: str, device: str = "auto", compute_type: str = "default",
@@ -66,9 +68,10 @@ class SpeechToText:
         audio = to_float32(pcm)
         if audio.size == 0:
             return Transcript("", self.language or "", 0.0)
-        segments, info = self.model.transcribe(
-            audio, language=self.language, beam_size=self.beam_size, vad_filter=True,
-            condition_on_previous_text=False)
-        text = " ".join(s.text.strip() for s in segments).strip()
+        with self._lock:                                     # die Segmente sind ein Generator: auch sie innerhalb der Sperre lesen
+            segments, info = self.model.transcribe(
+                audio, language=self.language, beam_size=self.beam_size, vad_filter=True,
+                condition_on_previous_text=False)
+            text = " ".join(s.text.strip() for s in segments).strip()
         return Transcript(text, getattr(info, "language", self.language or ""),
                           float(getattr(info, "language_probability", 0.0)))

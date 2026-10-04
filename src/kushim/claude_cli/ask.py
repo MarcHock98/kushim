@@ -22,6 +22,7 @@ from ..web.sanitize import Untrusted, clean_text
 from .base import clean_env
 
 TIMEOUT_S = 120.0
+POLL_S = 0.25                  # so oft wird auf Abbruch geprüft
 BUDGET_USD = 0.50
 MAX_OUTPUT = 1_000_000
 MAX_ANSWER = 1500
@@ -55,7 +56,7 @@ def build_argv(exe: Path, question: str, budget: float = BUDGET_USD) -> list[str
 class Answer:
     ok: bool
     text: Untrusted = Untrusted("")
-    reason: str = ""            # "", "not_installed", "timeout", "limit", "not_logged_in", "budget", "error", "empty", "too_large"
+    reason: str = ""            # "", "not_installed", "timeout", "cancelled", "limit", "not_logged_in", "budget", "error", "empty", "too_large"
     cost_usd: float = 0.0
     seconds: float = 0.0
 
@@ -73,7 +74,7 @@ def _reason(text: str, subtype: str) -> str:
 
 def ask(question: str, exe: Path | None, work_root: Path, timeout: float = TIMEOUT_S, budget: float = BUDGET_USD,
         popen: Callable[..., subprocess.Popen] = subprocess.Popen, kill: Callable[[int], None] = kill_tree,
-        clock: Callable[[], float] = time.monotonic) -> Answer:
+        clock: Callable[[], float] = time.monotonic, cancelled: Callable[[], bool] = lambda: False) -> Answer:
     """Stellt die Frage über die CLI. Gibt nie eine Ausnahme nach außen (jeder Fehler ist ein kurzer Grund)."""
     if exe is None:
         return Answer(False, reason="not_installed")
@@ -88,13 +89,20 @@ def ask(question: str, exe: Path | None, work_root: Path, timeout: float = TIMEO
     try:
         proc = popen(argv, cwd=str(scratch), env=clean_env(), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                      stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace")
-        try:
-            out, _err = proc.communicate(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            kill(proc.pid)                                  # samt Kindprozessen
-            proc.kill()
-            proc.communicate()
-            return Answer(False, reason="timeout", seconds=clock() - t0)
+        deadline = t0 + timeout
+        while True:                                          # kurz warten und dabei auf Abbruch/Zeitgrenze achten
+            try:
+                out, _err = proc.communicate(timeout=min(POLL_S, max(0.0, deadline - clock())) or POLL_S)
+                break
+            except subprocess.TimeoutExpired:
+                stop = cancelled()
+                if stop or clock() >= deadline:
+                    kill(proc.pid)                           # samt Kindprozessen
+                    proc.kill()
+                    proc.communicate()
+                    return Answer(False, reason="cancelled" if stop else "timeout", seconds=clock() - t0)
+        if cancelled():                                      # kurz nach dem Ende abgebrochen: Ergebnis verwerfen
+            return Answer(False, reason="cancelled", seconds=clock() - t0)
         seconds = clock() - t0
         if out is None or len(out) > MAX_OUTPUT:
             return Answer(False, reason="too_large", seconds=seconds)

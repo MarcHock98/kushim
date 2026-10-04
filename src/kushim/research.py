@@ -25,11 +25,13 @@ from .tools.registry import CLAUDE_RESEARCH, WEB_SEARCH, ToolGate, ToolRegistry
 from .web import guard
 from .web.sanitize import Untrusted
 from .web.search import Outcome as WikiOutcome
+from .tasks import TaskRegistry
 from .web.search import WebDenied, WebSearch
 
 ACTION = CLAUDE_RESEARCH.name
 _HEAD = "Recherche über Claude (Anthropic): «"
 _FALLBACK_LINE = "Falls Claude nicht antwortet, wird stattdessen Wikipedia (de.wikipedia.org) mit demselben Suchtext gefragt."
+CANCELLED = "Abgebrochen."
 _REASONS = {"timeout": "Zeitüberschreitung", "limit": "Nutzungslimit erreicht", "not_logged_in": "nicht angemeldet",
             "budget": "Budget aufgebraucht", "error": "Fehler", "empty": "leere Antwort", "too_large": "Antwort zu groß",
             "not_installed": "Claude CLI nicht gefunden"}
@@ -85,14 +87,18 @@ class Outcome:
 
 
 class Research:
-    def __init__(self, registry: ToolRegistry, ask: Callable[[str], Answer], wiki: WebSearch | None,
+    def __init__(self, registry: ToolRegistry, ask: Callable[[str, Callable[[], bool]], Answer], wiki: WebSearch | None,
                  auth: Callable[[], Auth], egress: EgressGate, audit: Callable[[str, str], None] = lambda event, text: None,
-                 ttl: float = 120.0):
+                 ttl: float = 120.0, tasks: TaskRegistry | None = None):
         """`egress`: das EgressGate (Modus A/C). Der Claude-Aufruf läuft IMMER durch `egress.send`; ist Modus C aus, geht nichts raus,
         auch wenn das Tool fälschlich als aktiv gälte (zweite, unabhängige Sperre)."""
         self.registry, self.ask, self.wiki, self.auth, self.audit, self.egress = registry, ask, wiki, auth, audit, egress
         gate = ActionGate([CLAUDE_RESEARCH.spec], reviewer=reviewer, max_amount=0.0)       # Geldlimit 0: nur Abo
         self.queue = ApprovalQueue(ToolGate(gate, registry), ttl=ttl)
+        self.tasks = tasks if tasks is not None else TaskRegistry()      # gemeinsam mit der Pipeline: "abbrechen" beendet alles Laufende
+        self.tasks.add_queue(self.queue)                                  # offene Freigaben werden beim Abbrechen abgelehnt
+        if wiki is not None:
+            self.tasks.add_queue(wiki.queue)
 
     def propose(self, query: str, speaker_verified: bool, user_initiated: bool = True) -> Proposal:
         if isinstance(query, Untrusted):
@@ -134,9 +140,11 @@ class Research:
         return bool(proposal.approval) and queue.deny(proposal.approval_id)
 
     def execute(self, proposal: Proposal) -> Outcome:
-        """Nur mit gültiger, noch nicht benutzter Freigabe. Wirft WebDenied sonst."""
+        """Nur mit gültiger, noch nicht benutzter Freigabe. Wirft WebDenied sonst. Läuft als abbrechbare Aufgabe ("abbrechen")."""
         if proposal.route == "wikipedia":
-            return Outcome("wikipedia", wiki=self.wiki.execute(proposal.approval_id))
+            with self.tasks.running("Recherche über Wikipedia") as tok:
+                wiki = self.wiki.execute(proposal.approval_id)
+            return Outcome("none", note=CANCELLED) if tok.cancelled() else Outcome("wikipedia", wiki=wiki)
         req = self.queue.take(proposal.approval_id)
         if req is None:
             raise WebDenied("Keine gültige Freigabe (abgelehnt, abgelaufen, benutzt oder Notaus).")
@@ -144,17 +152,25 @@ class Research:
         if guard.reasons(query):
             raise WebDenied("Anfrage nicht erlaubt.")
         self.audit("claude_research", f"{len(query)} Zeichen")
-        try:
-            result = self.egress.send("claude-cli", query, user_initiated=req.user_initiated, transport=self.ask)
-        except EgressDenied as e:
-            raise WebDenied(str(e))
+        with self.tasks.running("Recherche über Claude") as tok:
+            try:
+                result = self.egress.send("claude-cli", query, user_initiated=req.user_initiated,
+                                          transport=lambda q: self.ask(q, tok.cancelled))
+            except EgressDenied as e:
+                raise WebDenied(str(e))
+        if tok.cancelled() or result.reason == "cancelled":                 # Nutzer hat abgebrochen: kein Ersatzweg
+            self.audit("research_cancelled", "")
+            return Outcome("none", note=CANCELLED, cost_usd=result.cost_usd)
         if result.ok:
             return Outcome("claude", answer=result.text, cost_usd=result.cost_usd)
         reason = _REASONS.get(result.reason, "Fehler")
         fallback_allowed = _FALLBACK_LINE in req.description and self.wiki is not None     # nur wenn die Freigabe es nannte
         if fallback_allowed:
             self.audit("research_fallback", reason)
-            wiki = self.wiki.fallback_fetch(query)
+            with self.tasks.running("Recherche über Wikipedia") as tok2:
+                wiki = self.wiki.fallback_fetch(query)
+            if tok2.cancelled():
+                return Outcome("none", note=CANCELLED, cost_usd=result.cost_usd)
             return Outcome("wikipedia", wiki=wiki, note=f"Claude nicht verfügbar ({reason}), Ersatz: Wikipedia",
                            cost_usd=result.cost_usd)
         return Outcome("none", note=f"Claude nicht verfügbar ({reason}); kein Ersatz freigegeben.", cost_usd=result.cost_usd)

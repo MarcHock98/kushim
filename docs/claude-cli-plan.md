@@ -48,7 +48,7 @@ Claude Code kann Dateien ändern und Befehle ausführen. Über kushim per Sprach
 |---|---|---|---|
 | Starten | "Nutze Claude um das Projekt kushim weiterzuentwickeln" (optional "… und baue den Timer") | stark + Freigabe | Worktree, Lauf im Hintergrund |
 | Status | "Was macht Claude?" | verifiziert | Zustand, Dauer, letzte Schritte (zusammengefasst) |
-| Stoppen | "Stopp Claude" | keine nötig | beendet den Lauf, Branch bleibt |
+| Stoppen | "Stopp Claude" oder "abbrechen" | keine nötig | beendet den Lauf, Branch bleibt (der Lauf meldet sich dafür bei `tasks.py` an, wie die Recherche) |
 | Ergebnis | "Was hat Claude gemacht?" | verifiziert | Zusammenfassung, geänderte Dateien, rote Markierung bei geschützten Dateien |
 | Antworten | "Antwort an Claude: nimm Variante zwei" / "ja" / "nein" | verifiziert (Rechte: stark) | nächster Zug derselben Sitzung (`--resume`) |
 | Weitermachen | "Mach mit dem ersten Vorschlag weiter" | stark + Freigabe | nächster Zug mit dem gewählten nächsten Schritt |

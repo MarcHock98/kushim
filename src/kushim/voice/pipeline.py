@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Iterable, Sequence
 
 from ..safety.killswitch import KillSwitch, is_kill_phrase
+from ..tasks import TaskRegistry, is_cancel_phrase
 from .dialog import Dialog, State
 from .verify import AudioVerifier
 from .stt import SpeechToText
@@ -31,6 +32,8 @@ _TOKEN = re.compile(r"[\wäöüßÄÖÜ]+")
 END_PHRASES = {"das wars", "das war es", "das war es dann", "das reicht", "das reicht danke", "danke das wars",
                "danke das reicht", "tschüss", "tschüs", "bis später", "bis dann", "bis gleich", "ende", "gespräch beenden"}
 END_REPLY = "Bis gleich."
+CANCEL_REPLY = "Okay, abgebrochen."
+NOTHING_REPLY = "Es läuft nichts, das ich abbrechen könnte."
 MATCH = 0.8      # Ähnlichkeit, ab der ein erkanntes Wort als Wake Word zählt ("Kuschim" statt "kushim")
 
 
@@ -61,7 +64,7 @@ def strip_wake_words(text: str, names: Sequence[str]) -> str:
 class Result:
     heard: str
     reply: str
-    outcome: str      # "spoken" | "killed" | "empty" | "wake_only" | "rejected_speaker" | "halted" | "interrupted" | "end_conversation"
+    outcome: str      # "spoken" | "killed" | "empty" | "wake_only" | "rejected_speaker" | "halted" | "interrupted" | "end_conversation" | "cancelled"
     detail: str = ""  # nur Anzeige, z. B. Score und Dauer bei abgelehntem Sprecher (kein Audio)
 
 
@@ -69,8 +72,9 @@ class Pipeline:
     def __init__(self, stt: SpeechToText, chat: ChatStream, speaker: Speaker, dialog: Dialog,
                  kill: KillSwitch, verifier: AudioVerifier | None = None,
                  history_limit: int = 6,
-                 commands: Any = None, wake_names: Sequence[str] = ()):
+                 commands: Any = None, wake_names: Sequence[str] = (), tasks: TaskRegistry | None = None):
         self.wake_names = tuple(wake_names)       # werden am Anfang des erkannten Textes entfernt
+        self.tasks = tasks if tasks is not None else TaskRegistry()      # laufende Aufgaben, die "abbrechen" beenden kann
         self._interrupted = threading.Event()     # gesetzt, wenn der Nutzer dazwischenspricht
         previous_stop = speaker.should_stop
         speaker.should_stop = lambda: previous_stop() or self._interrupted.is_set()
@@ -85,6 +89,29 @@ class Pipeline:
         self._interrupted.set()
         self.dialog.triggered()                   # stoppt laufende Wiedergabe (Barge-in), setzt auf Zuhören
 
+    def try_cancel(self, pcm: Any) -> bool:
+        """Für die Schleife, WÄHREND eine Antwort läuft: war die Äußerung "abbrechen"? Dann alles Laufende beenden (aus einem
+        anderen Thread). Nein: nichts tun (die Äußerung wird danach normal behandelt)."""
+        text = self.stt.transcribe(pcm).text
+        if not text or not is_cancel_phrase(text):
+            return False
+        self.tasks.cancel_all()
+        self._interrupted.set()                   # stoppt auch Denken/Sprechen
+        self.dialog.triggered()
+        return True
+
+    def say_cancelled(self) -> None:
+        """Kurze Bestätigung nach dem Abbruch (nachdem die laufende Antwort beendet ist)."""
+        self._interrupted.clear()
+        self.speaker.say([CANCEL_REPLY])
+
+    def _cancel(self, text: str) -> Result:
+        cancelled = self.tasks.cancel_all()
+        self._interrupted.clear()                 # die Bestätigung soll gesprochen werden
+        reply = CANCEL_REPLY if cancelled else NOTHING_REPLY
+        self.speaker.say([reply])
+        return Result(text, reply, "cancelled")
+
     def handle(self, pcm: Any) -> Result:
         self._interrupted.clear()
         if self.kill.poll() or self.dialog.state is State.HALTED:
@@ -96,6 +123,8 @@ class Pipeline:
             self.kill.on_transcript(text)
             self.dialog.halt()
             return Result(text, "", "killed")
+        if is_cancel_phrase(strip_wake_words(text, self.wake_names) or text):   # Abbrechen ist immer sicher: ohne Sprecher-Prüfung
+            return self._cancel(text)
         text = strip_wake_words(text, self.wake_names)
         if not text:
             return Result("", "", "wake_only")      # nur das Wake Word: kein Befehl, nichts prüfen, nichts antworten
