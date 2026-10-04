@@ -738,6 +738,7 @@ def _main(argv: list[str] | None = None) -> int:
                                                   wake_names=[w.name for w in wcfg.enabled()],
                                                   llm_model=cfg.llm_model, whisper_device=plan.whisper_device,
                                                   whisper_index=plan.whisper_index)
+            tool_cmds.say = pipeline.say_text
             kill.actions.append(tool_cmds.sessions.stop)          # Notaus beendet auch einen laufenden Claude-Lauf
             det = build_detector(wcfg, root)
             wait_ms = int(wcfg.settings.listen_seconds * 1000)
