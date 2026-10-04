@@ -46,7 +46,7 @@ def is_claude(token: str) -> bool:
 
 _TOOL_WORDS = {"tools", "tool", "werkzeuge", "werkzeug", "fahigkeiten", "fahigkeit", "funktionen"}
 _SHOW = {"hast", "hat", "welche", "zeig", "zeige", "zeigen", "nenne", "liste", "anzeigen", "gibt", "gibts", "habe", "verfugbar", "aktiv",
-         "sind", "stehen", "kannst"}
+         "sind", "stehen", "kannst", "gib", "geb", "liste", "auflisten", "aufzahlen", "uber"}
 _ENABLE = {"einschalten", "aktivieren", "anschalten", "freischalten", "aktiviere", "anmachen", "schalte", "schalt", "ein"}
 _ENGINES = {"web", "search", "recherche", "websuche", "claude", "modus"}
 _DEV = {"weiterzuentwickeln", "weiterentwickeln", "weiterentwickle", "weiterentwickelt", "entwickeln", "entwickle", "programmieren",
@@ -78,6 +78,7 @@ def parse(text: str) -> Intent | None:
     if not toks:
         return None
     s = set(toks)
+    s |= {"tools" for t in toks if t.startswith(("werkzeug", "tool", "fahigkeit", "funktion"))}      # auch Zusammensetzungen ("Werkzeugliste")
     claude = any(is_claude(t) for t in toks)
     # --- Werkzeuge anzeigen / wie einschalten
     if s & _ENABLE and (s & _TOOL_WORDS or s & _ENGINES) and ("ein" in s or s & (_ENABLE - {"schalte", "schalt", "ein"})):
@@ -123,6 +124,15 @@ def parse(text: str) -> Intent | None:
 
 
 # --- Antworttexte ---------------------------------------------------------------------------------
+
+def _speakable(text: str) -> str:
+    """Zum Vorlesen: Quellenliste und Links raus (stehen in der UI), Markdown-Zeichen weg, höchstens ~600 Zeichen."""
+    text = re.split(r"Quellen?:", text, maxsplit=1)[0]
+    text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"", text)
+    text = re.sub(r"https?://\S+|[*_`#>]", "", text)
+    text = " ".join(text.split())
+    return text if len(text) <= 600 else text[:600].rsplit(" ", 1)[0] + " ..."
+
 
 def _short_reason(why: str) -> str:
     return why.split(" (")[0].strip()
@@ -321,7 +331,7 @@ class ToolCommands:
     def _speak_research(self, out: Any) -> str:
         note = f"{out.note}. " if out.note and out.kind != "none" else ""
         if out.kind == "claude":
-            return f"{note}Laut Claude: {out.answer}"
+            return f"{note}Laut Claude: {_speakable(str(out.answer))}"
         if out.kind == "wikipedia" and out.wiki is not None:
             if not out.wiki.sources:
                 return f"{note}Ich habe keine brauchbaren Treffer gefunden."
