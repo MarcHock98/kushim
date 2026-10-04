@@ -87,6 +87,15 @@ Am Ende jedes Durchlaufs eine kurze Rückschau: Was hat gehakt? Was wurde wieder
 ### 12. Zustand speichern und Abschluss
 `docs/routine-state.md` aktualisieren: aktueller Branch, was erledigt wurde, offenes, blockiert-durch, offene Slack-Fragen (Kanal, ts, Datum), Probleme und Versuche, nächster Schritt. Dann eine kurze Zusammenfassung im Terminal (ehrlich, inkl. Fehlschläge).
 
+## Gelernte Fallstricke (Arbeitsweise)
+- **Shell:** Mehrere Heredocs mit Anführungszeichen/Apostrophen in einem Bash-Befehl führen zu Parserfehlern ("unexpected EOF"); der Befehl läuft dann gar nicht. Dateien mit dem Schreib-Werkzeug anlegen, Änderungen mit dem Edit-Werkzeug machen, Python-Skripte einzeln ausführen.
+- **Zeilenenden:** Quelldateien sind CRLF. Skripte, die Dateien umschreiben, müssen CRLF erkennen und wieder herstellen.
+- **Live prüfen, nicht nur Unit-Tests:** Echte Kette mit Piper-Stimme/Fake-Lautsprecher (Whisper, LLM, Piper) fand mehrere Fehler, die Tests nicht sahen (Hänger in `prefetch`, Schwellen über dem echten Sprechpegel). Messwerte aus den eigenen Aufnahmen des Nutzers (`voice-data/`, nur Pegelzahlen) statt zu raten.
+- **Messen vor Umbauen:** Latenz erst pro Stufe messen (STT, Embedding, LLM, TTS), dann ändern.
+- **Hängende Hintergrundläufe:** Skripte mit `faulthandler.dump_traceback_later(…, exit=True)` und Logdatei starten; danach die eigenen Ollama-Reste (`tools/ollama`) beenden.
+- **Nach neuen Ordnern `git status`:** `.gitignore` kann neue Quellordner verschlucken.
+- **Sicherheitsregeln:** Muss ein Test oder die ALLOWLIST für ein Feature gelockert werden, ist das eine Entscheidung des Nutzers: Plan schreiben, alles Netzfreie fertig bauen, dann fragen.
+
 ## Takt und Ende
 - Im `/loop`-Modus: weitere Durchläufe über `ScheduleWakeup`. Arbeit offen und frei: 270 s bis wenige Minuten. Nur auf Antwort gewartet: 1200-1800 s. Alles blockiert: 3600 s.
 - **Ziel erreicht**, wenn alle Roadmap-Punkte abgehakt sind (und keine neuen sinnvollen offen), alle Pakete gemerged, Tests grün, Review sauber: Abschlussbericht per Slack und im Terminal, dann `ScheduleWakeup` mit `stop: true`.

@@ -2,26 +2,33 @@
 
 Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
 
-- Letzter Durchlauf: 2026-10-03 (/loop kushim-routine, Wake-Word-Sprachbefehle; Loop auf Wunsch des Nutzers danach gestoppt)
-- Aktueller Branch: master (routine/p1-wake, p1-stt, p1-speaker, p1-dialog, p1-tts, p2-api-core, p2-approvals, p4-bandit, p2-loopback, p1-llm, p1-whisper-model, p1-ollama-setup, branding, p1-piper, p2b-launcher, p2b-icon, p2b-killswitch, p1-pipeline, p1-audio, p1-talk, p1-streaming, p1-wake-only, p1-speaker-model, voice-record, readme-installer gemerged, Branches bleiben)
+- Letzter Durchlauf: 2026-10-04 (/loop kushim-routine neu gestartet auf Wunsch des Nutzers): UI-Setup-Backend Teil 1, Tool-Verwaltung, Web-Recherche-Logik. 403 Tests grün
+- Seit 2026-10-03 zusätzlich gemerged (alle lokal, nicht gepusht): Notaus beendet auch llama-server, `voice threshold`, Wake Word + Befehl in einem Zug, Gesprächsmodus ohne Wake Word, Unterbrechen (Barge-in) mit echten Pegeln, `voice level`, `kushim gpu`/[gpu], `kushim help`, `kushim`-Befehl im PATH, qwen3.5:9b (think aus), Designer-Skill, Pläne `docs/ui-llm-plan.md`, `docs/tools-plan.md`, `kushim setup`, `kushim tools`, API `setup.*`/`audio.devices`/`safety.*`/`tools.*`
+- Aktueller Branch: master (routine/p2-setup-backend, routine/p3-web-plan, fluent-talk, direct-command-fix u. a. gemerged; routine/p1-wake, p1-stt, p1-speaker, p1-dialog, p1-tts, p2-api-core, p2-approvals, p4-bandit, p2-loopback, p1-llm, p1-whisper-model, p1-ollama-setup, branding, p1-piper, p2b-launcher, p2b-icon, p2b-killswitch, p1-pipeline, p1-audio, p1-talk, p1-streaming, p1-wake-only, p1-speaker-model, voice-record, readme-installer gemerged, Branches bleiben)
 - Erledigt: Stimmkette (Wake Word, Sprecher, STT, LLM, TTS), Notaus, Launcher, Verknüpfungen, README/Installer, Umbenennung kushim, Wake-Word-Sprachbefehle. 195 Tests grün
 - Erledigt zusätzlich: Dialog-/Barge-in-Logik, TTS-Logik, API-Kern (Token/Dispatch), Freigabe-Warteschlange, 136 Tests grün
-- Nächster Schritt: Nutzer: `kushim voice enroll` (10 Absätze aufnehmen, ~5 Min), `voice test` mit kurzen/langen Sätzen und einer zweiten Person, Zahlen melden. Danach: Live-Test Wake Words und längere Spracheingabe. Autonom später: Stimmklon (Torch/CUDA >2 GB, vorher fragen), Tauri/Node-UI
+- Nächster Schritt: **Entscheidung des Nutzers** zum Netz-Modul `net/web.py` (ALLOWLIST, Vorschlag in `docs/tools-plan.md`); danach `web.search` auf verfügbar stellen und in die Pipeline hängen. Autonom ohne Freigabe möglich: Timer/Erinnerungen und Notizen (lokal, `kushim-add-tool`), UI-Setup Backend Teil 2 (vault/voice/wake-API, Audit für kill/resume), Modellwechsel-Backend (`llm/manage.py`, `docs/ui-llm-plan.md`). Nutzer: Zweite-Person-Test der Sprecher-Prüfung (Schwelle 0,79 steht), Live-Test Notaus/Gespräch. Später: Stimmklon (Torch/CUDA >2 GB, vorher fragen), Tauri/Node-UI (Toolchain freigeben)
 - Branches bereit zum Push durch den Nutzer: master, routine/p1-wake, routine/p1-stt, routine/p1-speaker, routine/p1-dialog, routine/p1-tts, routine/p2-api-core, routine/p2-approvals, routine/p4-bandit, routine/p2-loopback, routine/p1-llm
 
 ## Slack
 - Nutzer-ID / Kanal-ID: nicht verwendet. Verbundenes Slack-Konto hat andere Mail (Arbeits-Workspace) als die Git-/Claude-Mail, Empfänger unsicher, daher nichts gesendet
 
 ## Offene Fragen an den Nutzer
-- (keine)
+- 2026-10-04 (im Terminal gestellt, nicht per Slack): ALLOWLIST-Eintrag `net/web.py` freigeben? Erste Quelle nur Wikipedia (de)? Allgemeine Websuche später (SearXNG/NAS)? Claude als Rechercheur (Konto/Schlüssel/Monatslimit)? Siehe `docs/tools-plan.md`
+- 2026-10-04: Backend-Transport (WebSocket 127.0.0.1) braucht Importe außerhalb des festgelegten Satzes von `net/loopback.py` (der Test legt ihn fest); die Freigabe vom 2026-10-03 galt dem Loopback-Client. Lockerung des Tests nur mit ausdrücklicher Zustimmung
 
 ## Blockiert
 - Live-Mikrofon-Test: nur der Nutzer kann ihn ausführen
+- Netz-Modul `net/web.py` und Backend-Transport: warten auf Freigabe der Egress-Sperre (siehe oben)
+- Tauri-UI: Toolchain-Installation (Node/Rust) noch nicht durchgeführt
 
 ## Probleme und Versuche
 - openwakeword braucht `requests` trotz --no-deps (gelöst, in pyproject-Extra `voice`)
 
 ## Entscheidungen des Nutzers
+- 2026-10-04: Werkzeuge (Tools) sollen über die UI aktivierbar sein: alle standardmäßig aus, Einschalten nur bewusst durch den Nutzer; erstes Tool Recherche/Web mit Vorschau und Freigabe dessen, was nach außen geht. Umgesetzt (Logik), Netz-Modul wartet auf Freigabe
+- 2026-10-04: Modelle bleiben in Ollamas Speicher `models/ollama` (kein Ordner je Modell); Verwaltung in der UI nur über die Ollama-Schnittstelle. LLM `qwen3.5:9b` aktiv (think aus), `qwen2.5:7b` bleibt installiert; GPU bleibt für Whisper und LLM (kein Auslagern auf CPU)
+- 2026-10-04: Flüssiges Gespräch: ohne Wake Word nach Antwort (`follow_up_seconds`), Unterbrechen per Sprechen, Wake Word + Befehl in einem Zug; Nutzer meldet "flüssiger"; `listen_seconds` 15 s nach "Ja?"
 - 2026-10-04: UI-Planung: Nach dem Start der Anwendung soll ein Setup erscheinen (beim ersten Start, danach wiederholbar), mit Systemcheck+Vault/Schlüssel, Mikrofon/Lautsprecher+Stimme einschreiben, Wake Words, Sicherheit+Notaus; alles überspringbar (Sprechen bleibt ohne Stimmprofil gesperrt). Plan: docs/ui-setup-plan.md
 - 2026-10-04: Beim Einschreiben/Aufnehmen will der Nutzer selbst bestätigen, wann ein Absatz fertig ist (Enter), nicht per Stille. Umgesetzt (Standard), `--auto` bleibt
 - 2026-10-04: Stimmerkennung neu gestalten: Sprecher-Prüfung UND längere Spracheingabe; Einschreiben mit den 10 Klon-Absätzen (~5 Min); längere Äußerung = sicherer (Änderungen nur bei "stark"). Umgesetzt (Profil v2). Nutzer muss neu einschreiben (`voice enroll`)
