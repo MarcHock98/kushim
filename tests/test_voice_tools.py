@@ -350,3 +350,15 @@ def test_direct_announces_before_running():
     reply = tc.handle("Recherchiere die Höhe des Eiffelturms", True)
     assert order[0][0] == "say" and "Ich starte." in order[0][1] and order[0][2] == ["approve"][:0] or order[0][2] == ["approve"][:0]
     assert reply == "Laut Claude: 324 Meter"                          # Ansage kam schon vorher, nicht doppelt in der Antwort
+
+
+# --- kushim per Sprache beenden
+@pytest.mark.parametrize("text,expected", [
+    ("Beende dich", True), ("Kushim beenden", True), ("Exit", True), ("Fahr herunter", True), ("Fahre dich herunter", True),
+    ("Schalte dich aus", True), ("Programm beenden", True), ("Beende alles", True),
+    ("Beende Claude", False), ("Gespräch beenden", False), ("Das war's", False), ("Wie beende ich einen Prozess in Linux unter Windows jetzt", False),
+    ("Beenden", False), ("Stopp Claude", False),
+])
+def test_shutdown_phrase(text, expected):
+    from kushim.voice.pipeline import is_shutdown_phrase
+    assert is_shutdown_phrase(text) is expected

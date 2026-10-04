@@ -790,7 +790,11 @@ def _main(argv: list[str] | None = None) -> int:
             if barge is not None:
                 print("Unterbrechen: einfach dazwischensprechen (Kopfhörer empfohlen; mit Lautsprechern kann kushim sich "
                       "selbst hören: barge_in_level erhöhen oder barge_in = false in wakewords.toml).")
-            print("Ende:", loop.run())
+            reason = loop.run()
+            print("Ende:", reason)
+            if reason == "shutdown":                                  # "beende dich": Claude-Lauf stoppen, Dienste beendet das finally
+                tool_cmds.sessions.stop()
+                tool_cmds.sessions.join(15)
         except KeyboardInterrupt:
             pass
         finally:
