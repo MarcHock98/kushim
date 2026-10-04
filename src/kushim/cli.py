@@ -29,8 +29,10 @@ Stimme
 
 Sprachmodell und Grafikkarten
   kushim gpu                   Grafikkarten zeigen und wie Whisper und das Sprachmodell verteilt werden
-  kushim llm                   Aktuelles Modell zeigen
+  kushim llm                   Aktuelles Modell, vorheriges und installierte Modelle zeigen
   kushim llm set <name>        Modell wechseln (z. B. qwen3.5:9b); laden mit install.ps1 -Llm <name>
+  kushim llm test [name]       Modell kurz ausprobieren und die Antwortzeit messen
+  kushim llm back              Zurück zum vorherigen Modell
 
 Gedächtnis und Schlüssel
   kushim memory init           Vault anlegen (erzeugt auch den Schlüssel)
@@ -121,6 +123,9 @@ def main(argv: list[str] | None = None) -> int:
     ll = sub.add_parser("llm", help="Lokales Sprachmodell anzeigen oder wechseln (Ollama-Modellname)").add_subparsers(dest="sub")
     ls = ll.add_parser("set", help="z. B. kushim llm set qwen3.5:9b")
     ls.add_argument("model")
+    lt = ll.add_parser("test", help="Modell mit einer kurzen Frage ausprobieren und die Zeit messen (startet Ollama kurz)")
+    lt.add_argument("model", nargs="?", help="Standard: das aktive Modell")
+    ll.add_parser("back", help="Zurück zum vorherigen Modell")
     sub.add_parser("doctor", help="Prüft, ob alles installiert und eingerichtet ist")
     sub.add_parser("help", help="Übersicht aller Befehle mit Beispielen")
     tl = sub.add_parser("tools", help="Werkzeuge anzeigen, ein- und ausschalten (alle standardmäßig aus)").add_subparsers(dest="sub")
@@ -154,16 +159,51 @@ def main(argv: list[str] | None = None) -> int:
             print("Notaus aufgehoben.")
         return 0
     if args.cmd == "llm":
+        from .llm import manage
         from .llm.ollama import manifest_rel
-        if getattr(args, "sub", None) == "set":
+        sub_llm = getattr(args, "sub", None)
+        if sub_llm == "set":
             try:
+                old = cfg.llm_model
                 cfg.set_llm_model(args.model)
+                if cfg.llm_model != old:
+                    manage.save_previous(root, old)          # für `kushim llm back`
             except ValueError as e:
                 print(e)
                 return 2
-            print(f"LLM gesetzt: {cfg.llm_model} (gilt ab dem nächsten Start)")
+            print(f"LLM gesetzt: {cfg.llm_model} (gilt ab dem nächsten Start). Zurück: kushim llm back")
+        elif sub_llm == "back":
+            res = manage.rollback(cfg, root, run_probe=False)
+            if not res.switched:
+                print("Kein vorheriges Modell gemerkt." if res.reason == "nothing_to_roll_back" else f"Nicht umgeschaltet ({res.reason}).")
+                return 1
+            print(f"LLM zurückgesetzt auf {res.model} (vorher {res.previous}). Gilt ab dem nächsten Start.")
+        elif sub_llm == "test":
+            from .launcher import Launcher
+            target = args.model or cfg.llm_model
+            if not manage.is_installed(root, target):
+                print(f"{target} ist nicht installiert: install.ps1 -Llm {target}")
+                return 1
+            _, plan = _gpu_plan(cfg)
+            launcher = Launcher(root, cuda_devices=plan.llm_visible)
+            try:
+                launcher.start_ollama()
+                res = manage.probe(target)
+            finally:
+                launcher.stop()
+            if res.ok:
+                print(f"{target}: ok. Erster Token nach {res.first_token_s:g} s, Antwort nach {res.total_s:g} s ({res.text!r}).")
+            else:
+                print(f"{target}: Probe fehlgeschlagen ({res.error}).")
+            return 0 if res.ok else 1
         else:
             print(f"LLM: {cfg.llm_model}")
+            prev = manage.load_previous(root)
+            if prev:
+                print(f"Vorher: {prev} (zurück mit: kushim llm back)")
+            names = [m.name for m in manage.installed(root)]
+            if names:
+                print("Installiert: " + ", ".join(names))
         if not (root / manifest_rel(cfg.llm_model)).exists():
             print(f"Noch nicht installiert. Laden (einmalig, Netzwerk nur zu registry.ollama.ai): "
                   f"install.ps1 -Llm {cfg.llm_model}")
