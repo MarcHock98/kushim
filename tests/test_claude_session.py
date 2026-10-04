@@ -502,3 +502,15 @@ def test_claude_folders_roundtrip_keeps_the_rest_and_ignores_junk(tmp_path):
     g = tmp_path / "neu.toml"
     Config(path=g).set_claude_folders(["a|C:/a"])
     assert Config.load(g).claude_folders == ("a|C:/a",)
+
+
+# --- Live-Ansicht
+def test_live_view_formats_events_and_strips_escape_codes():
+    from kushim.claude_cli.watch import format_event, last_result
+    ev = json.dumps({"type": "assistant", "message": {"content": [
+        {"type": "text", "text": "Ich lese \x1b]0;evil\x07 die README"},
+        {"type": "tool_use", "name": "Bash", "input": {"command": "pytest -q"}}]}})
+    lines = format_event(ev)
+    assert "\x1b" not in "".join(lines) and any("Bash: pytest -q" in l for l in lines)
+    assert last_result("x\n" + result_json() + "\nnoise") is not None
+    assert last_result("nur\nText") is None
