@@ -25,7 +25,10 @@ def _bash(*commands: str) -> tuple[str, ...]:
 # Erlaubt: Lesen, Bearbeiten und eine feste Liste harmloser Befehle. `--permission-prompts none` lehnt alles andere automatisch ab.
 ALLOWED_TOOLS = ("Read", "Glob", "Grep", "Edit", "Write") + _bash(
     "git status", "git diff", "git log", "git show", "git add", "git commit",
-    "python -m pytest", ".venv/Scripts/python -m pytest", "pytest")
+    "git blame", "git ls-files", "git rev-parse",                                              # Erweiterung 2026-10-04 (Nutzerwunsch): nur Lesen
+    "python -m pytest", ".venv/Scripts/python -m pytest", "pytest",
+    "python -m compileall", ".venv/Scripts/python -m compileall", "python -m mypy", "python -m ruff check", "python -m pyflakes",   # Prüfläufe
+    "python --version", "node --version", "npm test", "npm run build", "npm run lint")           # kein freies `python`/`npx`/`pip`: Umgehung der Sperren
 # Verboten (hat Vorrang vor Erlaubtem): alles, was Stand, Branches oder Rechner verlässt oder verändert.
 DENIED_TOOLS = _bash("git push", "git checkout", "git switch", "git merge", "git reset", "git rebase", "git branch", "git worktree",
                      "git remote", "git config", "git clean", "git stash", "rm", "del", "rmdir", "rd", "curl", "wget", "pip", "powershell",
