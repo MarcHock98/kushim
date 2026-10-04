@@ -27,6 +27,7 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
 
 ## Probleme und Versuche
 - openwakeword braucht `requests` trotz --no-deps (gelöst, in pyproject-Extra `voice`)
+- 2026-10-04: Gelegentlich genau 1 roter Test im Gesamtlauf (2 von ca. 12 Läufen, Name nicht erfasst, in 9 Wiederholungen nicht reproduzierbar). Verdacht: Zeit-/Thread-Test, wenn die Maschine gerade belastet ist (laufen gleichzeitig `kushim serve`, `tauri dev`, vite). Nächster Lauf: bei einem Fehlschlag sofort den Namen sichern (`pytest -q 2>&1 | grep FAILED`), nicht blind wiederholen.
 
 ## Entscheidungen des Nutzers
 - 2026-10-04: **Claude primär für Recherche (bessere Websuche), Wikipedia als Ersatz**; Claude über die Claude CLI des angemeldeten Nutzers (kein API-Schlüssel); soll in angegebenen, in der UI einstellbaren Ordnern arbeiten, per Sprache gesteuert werden (starten, Rückfragen, Übersichten, nächste Schritte); Plan `docs/claude-cli-plan.md`
@@ -69,4 +70,4 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
 
 - 2026-10-04: Claude-API-Typen (claude.*) übernommen, 925 Tests grün. Als Nächstes nur UI/Transport/Live-Tests (Nutzer). Optionale kleine Schalter angeboten: Whisper-Genauigkeit und Ollama-Speicher-Einstellungen (Nutzer hat nicht geantwortet).
 
-- 2026-10-04 (Loop /kushim-routine): Branch `routine/p2-ui-approvals` (4 Commits, nicht gemerged, nicht gepusht): WebSocket-Transport (net/server.py, vom Nutzer freigegeben), `kushim serve`, Zustand der Sprach-Pipeline für die UI (`voice.state`), Tauri-UI-Gerüst (`ui/`: Avatar, NOTAUS, ApiClient), Freigabe-Leiste (`approvals.*`, `kushim talk --ui`). 974 Python-, 18 UI-, 2 Rust-Tests grün. Nächster Schritt: Teil 2b-2 (Claude-Vorschau für UI-Läufe, Live-Transkript, Dashboard); Merge nach master, sobald Teil 2b abgenommen ist. Nutzer: `kushim talk --ui` und `npx tauri dev` (im Ordner ui/) live ansehen; das Aussehen der UI ist nicht von mir geprüft.
+- 2026-10-04 (Loop /kushim-routine): Branch `routine/p2-ui-approvals` (4 Commits, nicht gemerged, nicht gepusht): WebSocket-Transport (net/server.py, vom Nutzer freigegeben), `kushim serve`, Zustand der Sprach-Pipeline für die UI (`voice.state`), Tauri-UI-Gerüst (`ui/`: Avatar, NOTAUS, ApiClient), Freigabe-Leiste (`approvals.*`, `kushim talk --ui`). 974 Python-, 18 UI-, 2 Rust-Tests grün. Live-Transkript (Anzeige) ist fertig. Nächster Schritt: Teil 2b-2 (Claude-Vorschau für UI-Läufe, Dashboard, Daumen-Feedback braucht Phase 4); Merge nach master, sobald Teil 2b abgenommen ist. Nutzer: `kushim talk --ui` und `npx tauri dev` (im Ordner ui/) live ansehen; das Aussehen der UI ist nicht von mir geprüft.
