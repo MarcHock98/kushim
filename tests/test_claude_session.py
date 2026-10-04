@@ -540,6 +540,7 @@ def test_api_start_is_two_step_and_runs_only_after_confirmed_approval(env):
     r = api_call(core, tok, "claude.start", task="Baue den Timer", folder="kushim")
     assert r["ok"] and r["allowed"] and r["kind"] == "start" and "Auftrag: «Baue den Timer»" in r["preview"]
     assert popper.calls == []
+    assert 0 < r["expires_in"] <= 120                                   # Restzeit der Vorschau für die UI
     assert api_call(core, tok, "claude.approve", proposal=r["proposal"])["error"] == "confirm_required"
     assert popper.calls == []
     st = api_call(core, tok, "claude.approve", proposal=r["proposal"], confirm=True)

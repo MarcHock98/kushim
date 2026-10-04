@@ -10,6 +10,9 @@ export class MockSocket implements Socket {
   voice: { active: boolean; state: string; level: number } = { active: false, state: "idle", level: 0 };
   pending: { kind: string; preview: string; digest: string; expires_in: number; sends_data_out: boolean } | null = null;
   entries: { id: number; heard: string; reply: string; outcome: string }[] = [];
+  folders: string[] = [];
+  session: unknown = null;
+  proposals = new Map<string, string>();
   sent: unknown[] = [];
 
   constructor(public url: string, private token = "t".repeat(43), private fail = false) {
@@ -28,6 +31,22 @@ export class MockSocket implements Socket {
       const entries = this.entries.filter((e) => e.id > since);
       reply = { ok: true, entries, last: entries.length ? entries[entries.length - 1].id : since };
     }
+    else if (msg.type === "claude.folders") reply = { ok: true, folders: this.folders };
+    else if (msg.type === "claude.status") reply = { ok: true, session: this.session };
+    else if (msg.type === "claude.review") reply = { ok: true, review: null };
+    else if (msg.type === "claude.start") {
+      const m = msg as { task?: string };
+      if (/IBAN/.test(m.task ?? "")) reply = { ok: true, allowed: false, reason: "Enthält eine IBAN." };
+      else { this.proposals.set("p1", m.task ?? ""); reply = { ok: true, allowed: true, proposal: "p1", kind: "start", preview: `Auftrag: «${m.task}»`, expires_in: 90 }; }
+    }
+    else if (msg.type === "claude.approve") {
+      const m = msg as { proposal?: string; confirm?: boolean };
+      if (m.confirm !== true) reply = { ok: false, error: "confirm_required" };
+      else if (!m.proposal || !this.proposals.delete(m.proposal)) reply = { ok: false, error: "unknown_proposal" };
+      else { this.session = { id: "s", folder: "kushim", branch: "b", turn: 1, status: "running", cost_usd: 0, seconds: 1, error: "" }; reply = { ok: true, session: this.session }; }
+    }
+    else if (msg.type === "claude.deny") reply = { ok: true, denied: this.proposals.delete((msg as { proposal?: string }).proposal ?? "") };
+    else if (msg.type === "claude.stop") { this.session = null; reply = { ok: true, stopped: true }; }
     else if (msg.type === "approvals.get") reply = { ok: true, pending: this.pending };
     else if (msg.type === "approvals.decide") {
       const m = msg as { digest?: string };

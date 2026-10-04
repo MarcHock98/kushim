@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApprovalBar, type Pending } from "./components/ApprovalBar";
 import { Avatar } from "./components/Avatar";
+import { ClaudePanel } from "./components/ClaudePanel";
 import { Transcript, type Entry } from "./components/Transcript";
 import { HaltedBanner, KillButton } from "./components/KillButton";
 import { ApiClient, type Credentials } from "./lib/api";
@@ -157,6 +158,7 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
         <Avatar state={state} size={240} level={voice.level} />
         <p className="line">{view.label}</p>
         {connected && <Transcript entries={entries} />}
+        <ClaudePanel client={client} connected={connected} />
         {connected && !voice.active && state === "idle" && (
           <p className="hint">Der Sprachdienst läuft nicht. Starte ihn mit „kushim talk“.</p>
         )}

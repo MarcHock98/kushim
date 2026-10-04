@@ -38,3 +38,11 @@ button:disabled { opacity: .5; cursor: default; }
 .bubble.you { justify-self: end; border-color: var(--cyan); }
 .bubble.bot { justify-self: start; border-color: var(--amber); }
 .bubble.alarm { border-color: var(--alarm); background: var(--alarm-bg); }
+
+.claude { width: min(100%, 480px); display: grid; gap: var(--s-3); padding: var(--s-4); background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--r-md); }
+.claude h2 { margin: 0; font-size: var(--fs-md); font-family: var(--font-display); }
+.cl-status, .cl-review p { margin: 0; }
+.cl-warn { color: var(--alarm); }
+.cl-form { display: grid; gap: var(--s-3); }
+.cl-form label { display: grid; gap: var(--s-1); font-size: var(--fs-sm); color: var(--text-muted); }
+.cl-form select, .cl-form textarea { font: inherit; color: var(--text); background: var(--bg-0); border: 1px solid var(--line-strong); border-radius: var(--r-sm); padding: var(--s-2) var(--s-3); min-height: var(--hit); }

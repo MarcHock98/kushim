@@ -35,7 +35,8 @@ def register_claude(core: ApiCore, control: Control, clock: Callable[[], float] 
         pending[p.approval_id] = p
         for old in list(pending)[:-MAX_PENDING]:                       # nie unbegrenzt viele offene Vorschläge
             control.deny(pending.pop(old))
-        return {"allowed": True, "proposal": p.approval_id, "kind": p.kind, "preview": p.preview}
+        return {"allowed": True, "proposal": p.approval_id, "kind": p.kind, "preview": p.preview,
+                "expires_in": round(control.queue.remaining(p.approval), 1)}
 
     def folders(_: dict[str, Any]) -> dict[str, Any]:
         return {"folders": [f.name for f in control.folders()]}

@@ -211,3 +211,59 @@ describe("Live-Transkript", () => {
     expect(screen.getAllByText("Wie spät ist es?")).toHaveLength(1);
   });
 });
+
+describe("Claude-Bereich", () => {
+  async function ready() {
+    const sock: { current?: MockSocket } = {};
+    const loader = async () => ({
+      client: new ApiClient({ port: 5000, token: TOKEN }, (u) => {
+        sock.current = new MockSocket(u, TOKEN);
+        sock.current.folders = ["kushim"];
+        return sock.current;
+      }),
+    });
+    render(<App load={loader} />);
+    await waitFor(() => screen.getByLabelText("Auftrag"));
+    return sock;
+  }
+
+  it("zeigt erst die exakte Vorschau; gestartet wird nur nach Klick auf Erlauben, mit confirm", async () => {
+    const sock = await ready();
+    fireEvent.change(screen.getByLabelText("Auftrag"), { target: { value: "Baue den Timer" } });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Vorschau ansehen" })); });
+    await waitFor(() => screen.getByText("Auftrag: «Baue den Timer»"));
+    expect(screen.getByRole("button", { name: "Ablehnen" })).toHaveFocus();
+    expect(sock.current!.sent.some((m) => (m as { type: string }).type === "claude.approve")).toBe(false);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Erlauben" })); });
+    const sent = sock.current!.sent.find((m) => (m as { type: string }).type === "claude.approve") as { confirm: boolean; proposal: string };
+    expect(sent).toMatchObject({ confirm: true, proposal: "p1" });
+    await waitFor(() => screen.getByText(/Zug 1: arbeitet/), { timeout: 3000 });
+    expect(screen.getByRole("button", { name: "Stoppen" })).toBeInTheDocument();
+  });
+
+  it("Ablehnen sendet claude.deny und keinen Start", async () => {
+    const sock = await ready();
+    fireEvent.change(screen.getByLabelText("Auftrag"), { target: { value: "Etwas" } });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Vorschau ansehen" })); });
+    await waitFor(() => screen.getByRole("button", { name: "Ablehnen" }));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Ablehnen" })); });
+    const types = sock.current!.sent.map((m) => (m as { type: string }).type);
+    expect(types).toContain("claude.deny");
+    expect(types).not.toContain("claude.approve");
+    await waitFor(() => screen.getByText(/Abgelehnt/));
+  });
+
+  it("zeigt den Grund, wenn das Backend die Vorschau verweigert (z. B. IBAN), ohne Freigabe-Leiste", async () => {
+    await ready();
+    fireEvent.change(screen.getByLabelText("Auftrag"), { target: { value: "Zahle auf IBAN ein" } });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Vorschau ansehen" })); });
+    await waitFor(() => screen.getByText("Enthält eine IBAN."));
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+
+  it("ohne freigegebenen Ordner steht der Hinweis, kein Formular", async () => {
+    render(<App load={loaderWith({})} />);
+    await waitFor(() => screen.getByText(/kein Ordner freigegeben/));
+    expect(screen.queryByLabelText("Auftrag")).toBeNull();
+  });
+});

@@ -911,12 +911,14 @@ def _main(argv: list[str] | None = None) -> int:
             pipeline.dialog._on_change = lambda s: publisher.phase(s.value)
             if args.ui:                                   # die API muss im selben Prozess laufen: nur hier liegen die wartenden Freigaben
                 from .api.approvals_api import register_approvals
+                from .api.claude_api import register_claude
                 from .api.tasks_api import register_tasks
                 from .api.transcript_api import register_transcript
 
                 def extra(core):
                     register_approvals(core, tool_cmds)
                     register_tasks(core, tasks)
+                    register_claude(core, tool_cmds.control)
                     register_transcript(core, transcript)
                 api = _api_start(cfg, root, extra)
             loop = TalkLoop(mic, pipeline, kill, wake=lambda f: det.process(f) is not None, ack=ack,
