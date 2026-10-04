@@ -9,6 +9,7 @@ export class MockSocket implements Socket {
   kill = false;
   voice: { active: boolean; state: string; level: number } = { active: false, state: "idle", level: 0 };
   pending: { kind: string; preview: string; digest: string; expires_in: number; sends_data_out: boolean } | null = null;
+  entries: { id: number; heard: string; reply: string; outcome: string }[] = [];
   sent: unknown[] = [];
 
   constructor(public url: string, private token = "t".repeat(43), private fail = false) {
@@ -22,6 +23,11 @@ export class MockSocket implements Socket {
     if (msg.token !== this.token) reply = { ok: false, error: "unauthorized" };
     else if (msg.type === "safety.status") reply = { ok: true, kill: this.kill };
     else if (msg.type === "voice.state") reply = { ok: true, ...this.voice };
+    else if (msg.type === "transcript.get") {
+      const since = (msg as { since?: number }).since ?? 0;
+      const entries = this.entries.filter((e) => e.id > since);
+      reply = { ok: true, entries, last: entries.length ? entries[entries.length - 1].id : since };
+    }
     else if (msg.type === "approvals.get") reply = { ok: true, pending: this.pending };
     else if (msg.type === "approvals.decide") {
       const m = msg as { digest?: string };

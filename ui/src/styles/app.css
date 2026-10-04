@@ -29,3 +29,12 @@ button:disabled { opacity: .5; cursor: default; }
 .ap-actions { display: flex; gap: var(--s-4); }
 .ap-btn { flex: 1 1 0; }
 .toast { min-height: var(--s-5); padding: 0 var(--s-5); color: var(--text-muted); font-size: var(--fs-sm); }
+
+.stage { overflow: auto; }
+.transcript { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-3); width: min(100%, 480px); }
+.turn { display: grid; gap: var(--s-2); }
+.bubble { margin: 0; padding: var(--s-3) var(--s-4); background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--r-md); max-width: 85%; overflow-wrap: anywhere; }
+.bubble .who { display: block; font-size: var(--fs-xs); color: var(--text-muted); margin-bottom: var(--s-1); }
+.bubble.you { justify-self: end; border-color: var(--cyan); }
+.bubble.bot { justify-self: start; border-color: var(--amber); }
+.bubble.alarm { border-color: var(--alarm); background: var(--alarm-bg); }

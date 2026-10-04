@@ -899,19 +899,29 @@ def _main(argv: list[str] | None = None) -> int:
             barge = BargeIn(level=st.barge_in_level, min_ms=st.barge_in_ms) if st.barge_in else None
             utter = lambda wait: UtteranceCollector(wait_ms=wait, silence_ms=end_ms, max_ms=max_ms, energy_threshold=st.speech_level)
             from .voice import statefile
+            from .voice.transcript import Transcript
             publisher = statefile.StatePublisher(root, pending=tasks.pending_approvals)
+            transcript = Transcript()
+
+            def on_result(r):
+                out(r)
+                transcript.add(r)
+                if r.outcome == "rejected_speaker":
+                    publisher.alarm()
             pipeline.dialog._on_change = lambda s: publisher.phase(s.value)
             if args.ui:                                   # die API muss im selben Prozess laufen: nur hier liegen die wartenden Freigaben
                 from .api.approvals_api import register_approvals
                 from .api.tasks_api import register_tasks
+                from .api.transcript_api import register_transcript
 
                 def extra(core):
                     register_approvals(core, tool_cmds)
                     register_tasks(core, tasks)
+                    register_transcript(core, transcript)
                 api = _api_start(cfg, root, extra)
             loop = TalkLoop(mic, pipeline, kill, wake=lambda f: det.process(f) is not None, ack=ack,
                             flush=mic.flush, new_collector=lambda: utter(wait_ms),
-                            on_result=lambda r: (out(r), publisher.alarm() if r.outcome == "rejected_speaker" else None)[0],
+                            on_result=on_result,
                             on_frame=lambda f, p: publisher.phase(p, statefile.frame_level(f)),
                             first_collector=lambda: utter(first_ms),
                             follow_collector=(lambda: utter(follow_ms)) if follow_ms > 0 else None,

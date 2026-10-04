@@ -191,3 +191,23 @@ describe("Freigabe-Leiste", () => {
     expect(screen.queryByRole("alertdialog")).toBeNull();
   });
 });
+
+describe("Live-Transkript", () => {
+  it("zeigt neue Einträge als reinen Text (nie HTML) und holt jeden nur einmal", async () => {
+    const sock: { current?: MockSocket } = {};
+    render(<App load={loaderWith(sock)} />);
+    await waitFor(() => screen.getByText(/Noch nichts gesagt/));
+    sock.current!.entries = [
+      { id: 1, heard: "Wie spät ist es?", reply: "Es ist <b>zehn</b> Uhr.", outcome: "spoken" },
+      { id: 2, heard: "", reply: "", outcome: "rejected_speaker" },
+    ];
+    await waitFor(() => screen.getByText("Wie spät ist es?"), { timeout: 3000 });
+    expect(screen.getByText("Es ist <b>zehn</b> Uhr.")).toBeInTheDocument();      // als Text, nicht als Element
+    expect(document.querySelector(".bubble b")).toBeNull();
+    expect(screen.getByText("Stimme nicht erkannt. Keine Antwort.")).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 1300));
+    const gets = sock.current!.sent.filter((m) => (m as { type: string }).type === "transcript.get") as { since: number }[];
+    expect(gets[gets.length - 1].since).toBe(2);                                   // ab dem letzten Eintrag
+    expect(screen.getAllByText("Wie spät ist es?")).toHaveLength(1);
+  });
+});

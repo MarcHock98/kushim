@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApprovalBar, type Pending } from "./components/ApprovalBar";
 import { Avatar } from "./components/Avatar";
+import { Transcript, type Entry } from "./components/Transcript";
 import { HaltedBanner, KillButton } from "./components/KillButton";
 import { ApiClient, type Credentials } from "./lib/api";
 import { isAvatarState, resolveState, STATE_VIEW, type AvatarState } from "./lib/avatarState";
@@ -29,6 +30,8 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
   const [voice, setVoice] = useState<{ active: boolean; state?: AvatarState; level: number }>({ active: false, level: 0 });
   const [pending, setPending] = useState<Pending | null>(null);
   const [toast, setToast] = useState("");
+  const [entries, setEntries] = useState<Entry[]>([]);
+  const lastId = useRef(0);
   const client = useRef<ApiClient | null>(null);
 
   const refresh = useCallback(async () => {
@@ -88,6 +91,25 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
     return () => { stop = true; clearInterval(id); };
   }, [connected, voice.state]);
 
+  useEffect(() => {                                     // Verlauf: nur neue Einträge, nicht bei verdecktem Fenster
+    if (!connected) return;
+    let stop = false, busy = false;
+    const pull = async () => {
+      if (busy || document.hidden) return;
+      busy = true;
+      const r = await client.current?.call("transcript.get", { since: lastId.current });
+      busy = false;
+      if (stop || !r?.ok || !Array.isArray(r.entries) || r.entries.length === 0) return;
+      const fresh = (r.entries as Entry[]).filter((e) => typeof e.id === "number" && e.id > lastId.current);
+      if (fresh.length === 0) return;
+      lastId.current = Math.max(...fresh.map((e) => e.id));
+      setEntries((old) => [...old, ...fresh].slice(-20));
+    };
+    void pull();
+    const id = setInterval(pull, 1000);
+    return () => { stop = true; clearInterval(id); };
+  }, [connected]);
+
   const decide = useCallback(async (approve: boolean) => {
     const p = pending;
     if (!p) return;
@@ -134,6 +156,7 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
       <main className="stage">
         <Avatar state={state} size={240} level={voice.level} />
         <p className="line">{view.label}</p>
+        {connected && <Transcript entries={entries} />}
         {connected && !voice.active && state === "idle" && (
           <p className="hint">Der Sprachdienst läuft nicht. Starte ihn mit „kushim talk“.</p>
         )}
