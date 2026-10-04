@@ -20,3 +20,5 @@ Format: Datum, Datei, Grund (ein Satz).
 - 2026-10-04, .claude/skills/kushim-add-tool/SKILL.md: Abschnitt "Gelernte Fallstricke" (Registry, READ mit Außenwirkung, Prüfer, Freigabe-Text, Netz-Modul nur mit Freigabe, git status nach neuen Ordnern).
 - 2026-10-04, .claude/skills/kushim-routine/SKILL.md: Abschnitt "Gelernte Fallstricke (Arbeitsweise)" (Shell/Heredocs, CRLF, live prüfen, messen, hängende Läufe, .gitignore, Egress-Lockerung nur nach Frage).
 - 2026-10-04, .gitignore: `tools/` -> `/tools/`, weil sonst `src/kushim/tools/` ignoriert wurde.
+- 2026-10-04, tests/test_no_egress.py: ALLOWLIST um `net/web.py` erweitert, auf ausdrückliche Zustimmung des Nutzers ("erstelle eine Websuche mit net/web.py, keine Downloads erlauben"); zusätzliche Tests sperren Importe, Domain/Pfad/Content-Type und das Fehlen jeder Schreibfunktion; Aufrufer nur `cli.py`.
+- 2026-10-04, .claude/skills/kushim-add-tool/SKILL.md: Fallstricke zu `Untrusted` (Web-Inhalte nie als Anweisung) und "keine Downloads".

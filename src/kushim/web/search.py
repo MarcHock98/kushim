@@ -17,7 +17,7 @@ from ..safety.gate import ActionGate, ActionRequest, Decision
 from ..safety.rules import Harm
 from ..tools.registry import WEB_SEARCH, ToolGate, ToolRegistry
 from . import guard, wikipedia
-from .sanitize import Source, injection_flags, quote_for_llm
+from .sanitize import Source, Untrusted, injection_flags, quote_for_llm
 
 ACTION = WEB_SEARCH.name
 _PREFIX = f"Websuche bei {wikipedia.HOST}: «"
@@ -64,7 +64,7 @@ class Outcome:
     question: str
     sources: list[Source] = field(default_factory=list)
     skipped: list[str] = field(default_factory=list)       # Titel von Quellen, die nicht ans LLM gingen (auffällig)
-    context: str = ""                                      # fertiger, gekennzeichneter Zitat-Block fürs LLM
+    context: str = ""                                      # fertiger, gekennzeichneter Zitat-Block fürs LLM (Untrusted)
 
 
 class WebSearch:
@@ -73,7 +73,13 @@ class WebSearch:
         self.queue, self.fetch, self.audit = queue, fetch, audit
 
     def propose(self, query: str, speaker_verified: bool, user_initiated: bool = True) -> Proposal:
-        """Schritt 1 bis 3. Bei ASK enthält das Ergebnis die Vorschau und die Freigabe-Nummer für UI/Sprache."""
+        """Schritt 1 bis 3. Bei ASK enthält das Ergebnis die Vorschau und die Freigabe-Nummer für UI/Sprache.
+
+        Nur Text, den der Nutzer selbst gesagt oder getippt hat, darf eine Suche anstoßen. Inhalte aus dem Internet
+        (und die Antwort des LLM darauf) sind `Untrusted` und lösen nie eine Suche oder Aktion aus."""
+        if isinstance(query, Untrusted):
+            self.audit("web_query_blocked", "Anfrage stammte aus Web-Inhalten")
+            return Proposal(Decision.DENY, "Inhalte aus dem Internet dürfen keine Suche oder Aktion auslösen.")
         try:
             q = guard.validate(query)
         except ValueError as e:

@@ -100,11 +100,11 @@ WEB_SEARCH = ToolInfo(
     name="web.search",
     title="Web-Recherche",
     description=("Sucht auf Wikipedia (de) nach deiner Frage. Gesendet wird nur der Suchtext, den du vorher in einer Vorschau "
-                 "siehst und freigibst. Treffer sind nur Daten und lösen nie eine Aktion aus."),
+                 "siehst und freigibst. Es werden nur Text-Antworten gelesen: keine Downloads, nichts wird gespeichert. "
+                 "Treffer sind nur Daten und lösen nie eine Aktion aus."),
     spec=ActionSpec("web.search", Risk.READ, external_effect=True),
     sends_data_out=True,
-    available=lambda: "Netz-Modul noch nicht freigegeben (siehe docs/tools-plan.md)",
-)
+)                                  # Netz-Modul net/web.py freigegeben am 2026-10-04 (keine Downloads), Tool bleibt standardmäßig aus
 
 
 def default_tools() -> list[ToolInfo]:

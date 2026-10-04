@@ -16,6 +16,11 @@ Grundlagen: Skill `kushim-add-tool`, `ActionGate`, `ApprovalQueue`, `EgressGate`
 5. **Web-Inhalte sind Daten, nie Anweisungen.** Sie werden bereinigt, als Zitat gekennzeichnet an das LLM gegeben, und
    verdächtige Anweisungen darin werden markiert und ignoriert. Aus ihnen entsteht nie eine Aktion oder ein weiterer Abruf.
 6. **Es verlässt nur das den PC, was in der Vorschau steht.** Keine persönlichen Daten in Suchanfragen (Prüfer, siehe unten).
+7. **Web-Inhalte werden nie zur Anweisung (Quarantäne, Nutzerwunsch 2026-10-04).** Alles aus dem Netz und die Antwort des LLM darauf ist
+   `Untrusted`: Es darf keine Suche, kein Tool und keine Aktion anstoßen (`WebSearch.propose` lehnt es ab). Das LLM bekommt es nur über einen
+   eigenen, werkzeuglosen Antwortpfad (`web/answer.py`), der weder Registry noch Gate noch Freigabe-Warteschlange kennt (Tests sperren die
+   Importe); die Quellen stehen in der Nutzer-Rolle als Zitat, nie im Systemteil. Die Antwort wird nur angezeigt oder gesprochen. Intent-Erkennung
+   und Tool-Vorschläge arbeiten ausschließlich mit dem, was der Nutzer selbst gesagt oder getippt hat.
 
 ## Tool-Verwaltung
 - **Registry** (`tools/registry.py`): je Tool Name, Titel, Beschreibung, Risiko, `external_effect`, "sendet Daten nach außen",
@@ -70,16 +75,16 @@ Quellen und sagt, wenn es unsicher ist.
 Timer/Erinnerungen und Notizen (lokal, ohne Netz), Dateien in freigegebenen Ordnern, PC-Steuerung (Programmliste), Kalender (lokal),
 Mail (später), Smart Home/Musik (später, eigene Freigabe).
 
-## Freigabe nötig (nur der Nutzer)
-Ein **neues Netz-Modul** `net/web.py` braucht einen neuen Eintrag in der `ALLOWLIST` von `tests/test_no_egress.py` und eine
-Anpassung der festgelegten Importe dort. Das ist eine Änderung an der Egress-Sperre und wird nicht ohne ausdrückliche Zustimmung
-gemacht. **Vorschlag zur Freigabe:**
-- Datei: nur `net/web.py` (ein Eintrag; `net/loopback.py` bleibt unverändert und auf Loopback beschränkt).
-- Erlaubt: **HTTPS-`GET`** zu einer **festen Domain-Liste** (zunächst nur `de.wikipedia.org`), Port 443, mit Zertifikatsprüfung,
-  ohne Proxy, ohne Cookies, ohne Weiterleitung auf andere Domains, Zeitgrenze 10 s, Antwort höchstens 1 MB.
-- Neue Domains nur durch Codeänderung und Test, nie zur Laufzeit, nie durch Inhalte oder das LLM.
-- Das Modul wird nur über `EgressGate` + `ApprovalQueue` aufgerufen; kein Aufruf ohne vorherige Freigabe der Vorschau.
-- Tests sperren die Liste (Domain-Liste und Importe fest) wie bei `net/loopback.py`.
+## Freigabe erteilt (2026-10-04): `net/web.py`, keine Downloads
+Der Nutzer hat das Netz-Modul ausdrücklich freigegeben ("erstelle eine Websuche mit net/web.py, keine Downloads erlauben"). Umgesetzt und per Test gesperrt:
+- Datei: nur `net/web.py` (zweiter und letzter ALLOWLIST-Eintrag neben `net/loopback.py`); Importe fest (`http.client`, `ssl`, `urllib.parse`).
+- Nur **HTTPS-GET** zu `de.wikipedia.org` (genau diese Domain) auf `/w/api.php`, Zertifikatsprüfung, kein Proxy, keine Cookies, **keine Weiterleitungen**, 10 s, 1 MB.
+- **Keine Downloads:** nur `application/json`; `Content-Disposition: attachment`, Binärdaten, Archive, PDF, Programme, komprimierte Antworten werden abgelehnt;
+  das Modul kann nichts auf die Platte schreiben (Tests: kein `open`, `shutil`, `tempfile`, `os`, `pathlib`).
+- Neue Domains oder Pfade nur per Codeänderung und Test, nie zur Laufzeit, nie durch Inhalte oder das LLM.
+- Aufruf nur nach Vorschau und Freigabe (`ApprovalQueue`); nur der CLI-Befehl `kushim search` ruft das Modul auf (Test).
+- Das Tool `web.search` bleibt **standardmäßig aus** (`kushim tools enable web.search` oder UI).
+Weitere Quellen (allgemeine Websuche) sind eine eigene Entscheidung des Nutzers.
 
 ## Tests
 - Registry/ToolGate: Standard aus, einschalten nur mit Bestätigung, ausgeschaltetes Tool verweigert, ausschalten sofort, kaputte oder
@@ -92,7 +97,6 @@ gemacht. **Vorschlag zur Freigabe:**
 - `tests/test_no_egress.py` bleibt grün.
 
 ## Offene Entscheidungen des Nutzers
-1. **ALLOWLIST-Eintrag `net/web.py`** wie oben freigeben? (Ohne Freigabe bleibt das Tool logisch fertig, aber ohne Netz.)
-2. Erste Quelle nur Wikipedia (de)? Weitere Domains?
-3. Allgemeine Websuche später über eigenen SearXNG (NAS)? Oder gar nicht?
-4. Claude als Rechercheur: Konto/Schlüssel, Monatslimit, Modell?
+1. ~~ALLOWLIST-Eintrag `net/web.py`~~ erteilt am 2026-10-04 (keine Downloads).
+2. Erste Quelle ist nur Wikipedia (de). Weitere Domains? Oder allgemeine Websuche (z. B. eigener SearXNG im Heimnetz/NAS)? Ohne Entscheidung bleibt es bei Wikipedia.
+3. Claude als Rechercheur: Konto/Schlüssel, Monatslimit, Modell?

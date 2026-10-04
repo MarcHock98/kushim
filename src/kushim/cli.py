@@ -43,6 +43,7 @@ Gedächtnis und Schlüssel
   kushim key import <vault_id> <hexkey>
 
 Prüfen und Hilfe
+  kushim search <frage> [--llm]  Websuche (Wikipedia) mit Vorschau und Bestätigung; erst `tools enable web.search`
   kushim tools                 Werkzeuge anzeigen; enable|disable <name> schaltet ein/aus (alle standardmäßig aus)
   kushim doctor                Prüft, ob alles installiert und eingerichtet ist
   kushim setup                 Stand der Einrichtung: Systemcheck, Stimme, Wake Words, Notaus
@@ -131,6 +132,9 @@ def main(argv: list[str] | None = None) -> int:
     tl = sub.add_parser("tools", help="Werkzeuge anzeigen, ein- und ausschalten (alle standardmäßig aus)").add_subparsers(dest="sub")
     tl.add_parser("enable", help="Werkzeug einschalten (mit Rückfrage)").add_argument("name")
     tl.add_parser("disable", help="Werkzeug sofort ausschalten").add_argument("name")
+    sr = sub.add_parser("search", help="Websuche (Wikipedia) mit Vorschau und Bestätigung; web.search muss eingeschaltet sein")
+    sr.add_argument("frage", nargs="+")
+    sr.add_argument("--llm", action="store_true", help="Treffer mit dem lokalen Modell zusammenfassen (startet Ollama kurz)")
     sub.add_parser("setup", help="Stand der Einrichtung (Systemcheck, Stimme, Wake Words, Notaus) anzeigen")
     sub.add_parser("gpu", help="Grafikkarten anzeigen und wie sie genutzt werden (Einstellung: [gpu] in config.toml)")
     args = p.parse_args(argv)
@@ -207,6 +211,53 @@ def main(argv: list[str] | None = None) -> int:
         if not (root / manifest_rel(cfg.llm_model)).exists():
             print(f"Noch nicht installiert. Laden (einmalig, Netzwerk nur zu registry.ollama.ai): "
                   f"install.ps1 -Llm {cfg.llm_model}")
+        return 0
+    if args.cmd == "search":
+        from .net import web as netweb
+        from .safety.gate import Decision
+        from .tools.registry import ToolRegistry, default_tools
+        from .web import search as websearch
+        reg = ToolRegistry(default_tools(), cfg.tools_enabled)
+        if not reg.is_active("web.search"):
+            print("Das Werkzeug web.search ist aus. Einschalten: kushim tools enable web.search")
+            return 1
+        ws = websearch.make_search(reg, netweb.fetch_text)
+        prop = ws.propose(" ".join(args.frage), speaker_verified=True)        # am Terminal sitzt der Nutzer selbst
+        if prop.decision is not Decision.ASK:
+            print(prop.reason or "Nicht erlaubt.")
+            return 1
+        print(prop.preview)
+        if input("Senden? (j/N): ").strip().lower() not in ("j", "ja", "y", "yes"):
+            ws.queue.deny(prop.approval_id)
+            print("Nichts gesendet.")
+            return 1
+        if not ws.queue.approve(prop.approval_id, prop.approval.digest):
+            print("Freigabe ungültig oder abgelaufen.")
+            return 1
+        try:
+            out = ws.execute(prop.approval_id)
+        except (websearch.WebDenied, netweb.WebDenied) as e:
+            print(f"Abruf nicht möglich: {e}")
+            return 1
+        if not out.sources:
+            print("Keine brauchbaren Treffer." + (f" Ausgelassen (auffälliger Inhalt): {', '.join(out.skipped)}" if out.skipped else ""))
+            return 0
+        for i, s in enumerate(out.sources, 1):
+            print(f"[{i}] {s.title}  {s.url}\n    {s.text}")
+        if out.skipped:
+            print("Ausgelassen (auffälliger Inhalt, nicht ans Modell gegeben): " + ", ".join(out.skipped))
+        if args.llm:
+            from .launcher import Launcher
+            from .llm.ollama import OllamaClient
+            from .web.answer import answer_from_sources
+            _, plan = _gpu_plan(cfg)
+            launcher = Launcher(root, cuda_devices=plan.llm_visible)
+            try:
+                launcher.start_ollama()
+                answer = answer_from_sources(OllamaClient(cfg.llm_model).chat, out)   # werkzeuglos; Antwort nur anzeigen
+            finally:
+                launcher.stop()
+            print("\nkushim:", answer)
         return 0
     if args.cmd == "tools":
         from .tools.registry import ToolNotAllowed, ToolRegistry, default_tools

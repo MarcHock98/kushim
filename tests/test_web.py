@@ -227,11 +227,11 @@ def test_disabled_tool_is_refused_before_anything_else():
     assert p.decision is Decision.DENY and p.approval is None and fetch.calls == []
 
 
-def test_the_real_registry_entry_is_unavailable_so_nothing_can_run_yet():
-    reg = ToolRegistry([WEB_SEARCH], ["web.search"])
-    ws = make_search(reg, Fetcher())
-    p = ws.propose("Eiffelturm Höhe", speaker_verified=True)
-    assert p.decision is Decision.DENY and ws.fetch.calls == []
+def test_the_real_registry_entry_works_only_when_switched_on():
+    off = make_search(ToolRegistry([WEB_SEARCH], []), Fetcher())
+    assert off.propose("Eiffelturm Höhe", speaker_verified=True).decision is Decision.DENY and off.fetch.calls == []
+    on = make_search(ToolRegistry([WEB_SEARCH], ["web.search"]), Fetcher())
+    assert on.propose("Eiffelturm Höhe", speaker_verified=True).decision is Decision.ASK and on.fetch.calls == []
 
 
 def test_unknown_speaker_and_non_user_initiated_are_denied():

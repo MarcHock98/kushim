@@ -70,13 +70,16 @@ def test_enabled_but_unavailable_is_not_active():
     assert r.is_enabled("demo.blocked") and not r.is_active("demo.blocked")
 
 
-def test_web_search_is_not_usable_until_the_network_module_is_approved():
-    r = ToolRegistry(default_tools(), ["web.search"])
-    assert r.is_enabled("web.search") and not r.is_active("web.search")
+def test_web_search_is_available_but_off_until_the_user_confirms():
+    assert not ToolRegistry(default_tools()).is_active("web.search")                       # Standard: aus
+    r = ToolRegistry(default_tools())
     with pytest.raises(ToolNotAllowed) as e:
-        ToolRegistry(default_tools()).set_enabled("web.search", True, confirmed=True)
-    assert e.value.code == "not_available"
+        r.set_enabled("web.search", True)                                                  # ohne Bestätigung nie
+    assert e.value.code == "confirm_required" and not r.is_enabled("web.search")
+    r.set_enabled("web.search", True, confirmed=True)
+    assert r.is_active("web.search")
     assert WEB_SEARCH.sends_data_out and WEB_SEARCH.spec.external_effect
+    assert "keine Downloads" in WEB_SEARCH.description
 
 
 # --- ToolGate ------------------------------------------------------------------------------------
@@ -213,9 +216,11 @@ def test_cli_lists_tools_and_refuses_unavailable_enable(tmp_path, monkeypatch, c
     monkeypatch.setenv("KUSHIM_CONFIG", str(f))
     assert cli.main(["tools"]) == 0
     out = capsys.readouterr().out
-    assert "web.search" in out and "aus" in out and "Nicht verfügbar" in out and "sendet Daten nach außen" in out
-    assert cli.main(["tools", "enable", "web.search"]) == 1                  # nicht verfügbar: gar nicht erst gefragt
-    assert not f.exists()
+    assert "web.search" in out and "[aus]" in out and "sendet Daten nach außen" in out and "keine Downloads" in out
+    import kushim.tools.registry as reg
+    monkeypatch.setattr(reg, "default_tools", lambda: [BLOCKED])
+    assert cli.main(["tools", "enable", "demo.blocked"]) == 1                  # nicht verfügbar: gar nicht erst gefragt
+    assert "Voraussetzung fehlt" in capsys.readouterr().out and not f.exists()
     assert cli.main(["tools", "enable", "gibt.es.nicht"]) == 2
 
 
