@@ -42,6 +42,7 @@ Gedächtnis und Schlüssel
 
 Prüfen und Hilfe
   kushim doctor                Prüft, ob alles installiert und eingerichtet ist
+  kushim setup                 Stand der Einrichtung: Systemcheck, Stimme, Wake Words, Notaus
   kushim help                  Diese Übersicht
   kushim <befehl> --help       Optionen eines Befehls
 
@@ -54,6 +55,16 @@ def _gpu_plan(cfg: Config):
     from . import gpu
     gpus = gpu.list_gpus()
     return gpus, gpu.make_plan(gpus, cfg.gpu_whisper, cfg.gpu_llm)
+
+
+def _vault_state(cfg: Config) -> str:
+    """"ok" (Vault und Stimmprofil da), "kein-profil" oder "kein-vault" (für doctor und setup)."""
+    from .voice import voiceprint
+    try:
+        with open_store(cfg) as store:
+            return "ok" if voiceprint.load(store) else "kein-profil"
+    except FileNotFoundError:
+        return "kein-vault"
 
 
 def _vault(cfg: Config):
@@ -111,6 +122,7 @@ def main(argv: list[str] | None = None) -> int:
     ls.add_argument("model")
     sub.add_parser("doctor", help="Prüft, ob alles installiert und eingerichtet ist")
     sub.add_parser("help", help="Übersicht aller Befehle mit Beispielen")
+    sub.add_parser("setup", help="Stand der Einrichtung (Systemcheck, Stimme, Wake Words, Notaus) anzeigen")
     sub.add_parser("gpu", help="Grafikkarten anzeigen und wie sie genutzt werden (Einstellung: [gpu] in config.toml)")
     args = p.parse_args(argv)
     if args.cmd == "help":
@@ -152,17 +164,20 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Noch nicht installiert. Laden (einmalig, Netzwerk nur zu registry.ollama.ai): "
                   f"install.ps1 -Llm {cfg.llm_model}")
         return 0
+    if args.cmd == "setup":
+        from .setup import status as setup_status
+        steps = setup_status.compute(root, lambda: _vault_state(cfg), cfg.llm_model)
+        marks = {"done": "[ok]      ", "skipped": "[übersprungen] ", "open": "[offen]   "}
+        for s in steps:
+            print(f"{marks[s.status]}{s.title}: {s.detail}")
+        for note in setup_status.restricted_notes(steps):
+            print("Eingeschränkt:", note)
+        if setup_status.first_start(steps):
+            print("Offene Schritte erscheinen beim Start in der Oberfläche (sobald es sie gibt). Überspringen ändert keine Sicherheitsregel.")
+        return 0
     if args.cmd == "doctor":
         from .doctor import run_checks
-        from .voice import voiceprint
-
-        def vault_state() -> str:
-            try:
-                with open_store(cfg) as store:
-                    return "ok" if voiceprint.load(store) else "kein-profil"
-            except FileNotFoundError:
-                return "kein-vault"
-        results = run_checks(root, vault_state, cfg.llm_model)
+        results = run_checks(root, lambda: _vault_state(cfg), cfg.llm_model)
         for c in results:
             print(("[ok]    " if c.ok else "[FEHLT] ") + c.name + ("" if c.ok else f"  -> {c.hint}"))
         return 0 if all(c.ok for c in results) else 1

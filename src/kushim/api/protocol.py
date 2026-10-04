@@ -17,6 +17,14 @@ MAX_MESSAGE_BYTES = 64 * 1024
 Handler = Callable[[dict[str, Any]], dict[str, Any]]
 
 
+class ApiError(Exception):
+    """Ein Handler lehnt ab: nur ein kurzer fester Code geht nach außen (z. B. "bad_step"), nie Text oder Pfade."""
+
+    def __init__(self, code: str):
+        super().__init__(code)
+        self.code = code
+
+
 def new_token() -> str:
     return secrets.token_urlsafe(32)
 
@@ -53,6 +61,8 @@ class ApiCore:
         payload = {k: v for k, v in msg.items() if k != "token"}
         try:
             return json.dumps({"ok": True, **handler(payload)})
+        except ApiError as e:
+            return _err(e.code)
         except Exception:
             return _err("internal")
 
