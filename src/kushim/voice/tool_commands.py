@@ -49,20 +49,31 @@ def is_claude(token: str) -> bool:
     return token in {"claude", "claud", "klaud", "klaude", "clode", "clod"} or difflib.SequenceMatcher(None, "claude", token).ratio() >= 0.8
 
 
-_TOOL_WORDS = {"tools", "tool", "werkzeuge", "werkzeug", "fahigkeiten", "fahigkeit", "funktionen"}
+_TOOL_WORDS = {"tools", "tool", "werkzeuge", "werkzeug", "fahigkeiten", "fahigkeit", "funktionen", "hilfsmittel", "hilfsmitteln", "skills"}
+_LIST_FILLER = {"alles", "so", "noch", "fur", "mich", "mir", "tun", "helfen", "denn", "eigentlich", "sonst", "uberhaupt"}
 _SHOW = {"hast", "hat", "welche", "zeig", "zeige", "zeigen", "nenne", "liste", "anzeigen", "gibt", "gibts", "habe", "verfugbar", "aktiv",
-         "sind", "stehen", "kannst", "gib", "geb", "liste", "auflisten", "aufzahlen", "uber"}
+         "sind", "stehen", "kannst", "gib", "geb", "liste", "auflisten", "aufzahlen", "uber", "habt", "verfugst", "nutzt", "benutzt", "zeigst", "nennst",
+         "was", "alles", "drauf", "sag", "erzahl", "verfugung"}
 _ENABLE = {"einschalten", "aktivieren", "anschalten", "freischalten", "aktiviere", "anmachen", "schalte", "schalt", "ein"}
 _ENGINES = {"web", "search", "recherche", "websuche", "claude", "modus"}
-_DEV = {"weiterzuentwickeln", "weiterentwickeln", "weiterentwickle", "weiterentwickelt", "entwickeln", "entwickle", "programmieren",
-        "programmiere", "arbeiten", "arbeite", "coden", "bauen", "baue"}
-_USE = {"nutze", "nutz", "benutze", "starte", "lass", "lasse", "soll", "bitte", "los", "kannst", "nimm", "verwende", "setz", "setze"}
-_STATUS = {"status", "stand", "weit", "macht", "fertig", "lauft", "laeuft", "arbeitet", "dran"}
-_STOP = {"stopp", "stop", "stoppe", "stoppen", "beende", "beenden", "halt", "anhalten"}
-_RESULT = {"ergebnis", "gemacht", "getan", "zusammenfassung", "ubersicht", "uebersicht", "bericht", "fakten", "gebaut", "erreicht"}
-_ALLOW = {"erlaube", "erlauben", "erlaubt", "freigeben", "gib"}
+_DEV_STRICT = {"weiterzuentwickeln", "weiterentwickeln", "weiterentwickle", "weiterentwickelt", "entwickeln", "entwickle", "programmieren",
+               "programmiere", "coden", "bauen", "baue", "verbessern", "verbessere", "erweitern", "erweitere", "implementieren", "implementiere",
+               "fortentwickeln", "codieren", "umsetzen", "reparieren", "repariere", "testen", "teste", "entwicklung", "entwickelst"}
+_DEV = _DEV_STRICT | {"arbeiten", "arbeite", "arbeit"}                       # "arbeite weiter" ist Fortsetzen, nicht neu starten
+_USE = {"nutze", "nutz", "benutze", "starte", "lass", "lasse", "soll", "bitte", "los", "kannst", "nimm", "verwende", "setz", "setze", "mach", "mache", "kann", "sollst", "sollte", "dann", "jetzt",
+        "schick", "schicke", "beauftrage", "beginne", "fang", "fange", "aktiviere", "geh", "gehe", "hey"}
+_STATUS = {"status", "stand", "weit", "macht", "fertig", "lauft", "laeuft", "arbeitet", "dran", "fortschritt", "treibt", "tut", "passiert", "noch"}
+_STOP = {"stopp", "stop", "stoppe", "stoppen", "beende", "beenden", "halt", "anhalten", "aufhoren", "hor", "pause", "pausiere", "schluss", "abschalten"}
+_RESULT = {"ergebnis", "gemacht", "getan", "zusammenfassung", "ubersicht", "uebersicht", "bericht", "fakten", "gebaut", "erreicht", "erzahl", "erzahle", "berichte", "neues", "resultat", "geschafft", "erledigt",
+           "zusammenfassen", "uberblick", "ueberblick"}
+_ALLOW_VERBS = {"erlaube", "erlauben", "erlaubt", "freigeben", "genehmige", "genehmigen", "freigabe", "erlaubnis"}
+_CONTINUE_WORDS = {"weiter", "weitermachen", "weiterarbeiten", "fortsetzen", "fortfahren", "fort", "weiterfuhren", "weiterbauen", "dranbleiben",
+                   "weitergehen", "wiederaufnehmen", "fortsetze", "weitermache", "weiterarbeite"}
 _RESEARCH_DROP = {"recherchiere", "recherchier", "recherche", "recherchieren", "schau", "schaue", "schauen", "nach", "suche", "such", "suchen",
-                  "internet", "online", "netz", "kushim", "hey", "bitte", "mal", "doch", "mir", "mich", "claude"}
+                  "internet", "online", "netz", "kushim", "hey", "bitte", "mal", "doch", "mir", "mich", "claude", "frag", "frage", "fragen", "finde", "finden",
+                  "heraus", "google", "googel", "googele", "nachschlagen", "schlag", "sieh", "sehe", "nachsehen", "nachschauen", "guck", "gucke",
+                  "gucken", "nachgucken", "check", "checke", "prufe", "prufen", "informiere", "dich", "kannst", "du", "konntest", "web", "uber",
+                  "dann", "jetzt", "einmal"}
 
 
 _BRANCH_WORDS = {"branch", "branches", "zweig", "zweige", "worktree", "worktrees", "branchs"}
@@ -109,28 +120,37 @@ def parse(text: str) -> Intent | None:
     if not toks:
         return None
     s = set(toks)
-    s |= {"tools" for t in toks if t.startswith(("werkzeug", "tool", "fahigkeit", "funktion")) or _near(t, ("werkzeuge", "werkzeugliste", "toolliste"))}      # auch Zusammensetzungen ("Werkzeugliste")
+    s |= {"tools" for t in toks if t.startswith(("werkzeug", "tool", "fahigkeit", "funktion", "hilfsmittel")) or _near(t, ("werkzeuge", "werkzeugliste", "toolliste"))}      # auch Zusammensetzungen ("Werkzeugliste")
     claude = any(is_claude(t) for t in toks)
+    has_continue = bool(s & _CONTINUE_WORDS) or any(t.startswith("weiter") and not t.startswith(("weiterentw", "weiterzu")) for t in toks)
     # --- Werkzeuge anzeigen / wie einschalten
     if s & _ENABLE and (s & _TOOL_WORDS or s & _ENGINES) and ("ein" in s or s & (_ENABLE - {"schalte", "schalt", "ein"})):
         return Intent("enable_how")
     if s & _TOOL_WORDS and ((s & _SHOW) and len(toks) <= 12 or len(toks) <= 3):          # auch kurz: "Werkzeugliste", "Deine Tools"
         return Intent("list")
-    if toks[:3] == ["was", "kannst", "du"] and len(toks) <= 4:
+    if toks[:3] == ["was", "kannst", "du"] and len(toks) <= 6 and set(toks[3:]) <= _LIST_FILLER:
+        return Intent("list")
+    if (toks[:3] in (["was", "hast", "du"], ["womit", "kannst", "du"], ["wobei", "kannst", "du"]) or toks[:2] == ["was", "kann"]) and len(toks) <= 7 \
+            and set(toks[3:]) <= _LIST_FILLER | {"drauf", "helfen", "mir", "mich"}:
         return Intent("list")
     # --- vorhandene Claude-Branches anzeigen / dort weitermachen
-    if s & _BRANCH_WORDS or (s & {"nummer", "nr"} and s & _CONTINUE and (claude or s & {"weiter", "weitermachen", "weiterarbeiten"})):
-        if s & {"weiter", "weitermachen", "weiterarbeiten", "fortsetzen", "fortfahren"} or (s & {"nummer", "nr"} and s & _CONTINUE):
+    if s & _BRANCH_WORDS or (s & {"nummer", "nr"} and s & _CONTINUE and (claude or has_continue)):
+        if has_continue or (s & {"nummer", "nr"} and s & _CONTINUE):
             tail = _after_marker(text, r"\bund\s+(.{8,})$")
             return Intent("resume", tail, text)
-        if s & {"welche", "gibt", "zeig", "zeige", "liste", "offen", "vorhanden", "habe", "hast", "hat", "gibts", "nenne"}:
+        if s & {"welche", "gibt", "zeig", "zeige", "liste", "offen", "vorhanden", "habe", "hast", "hat", "gibts", "nenne", "zeigen"}:
             return Intent("branches")
-    # --- Recherche
-    if s & {"recherchiere", "recherchier", "recherche", "recherchieren"} or ("schau" in s or "schaue" in s or "schauen" in s) and "nach" in s \
-            or (s & {"suche", "such", "suchen"} and s & {"internet", "online", "netz", "web"}):
-        kept, skip_im = [], False
+    # --- Recherche ("recherchiere", "schau nach", "frag Claude", "finde heraus", "google", "such im Internet")
+    nach = bool(s & {"nach", "heraus", "nachschauen", "nachsehen", "nachgucken", "nachschlagen"})
+    if (s & {"recherchiere", "recherchier", "recherche", "recherchieren", "recherchiert", "google", "googel", "googele", "nachschlagen"}
+            or (s & {"schau", "schaue", "schauen", "guck", "gucke", "gucken", "sieh", "sehe", "nachschauen", "nachsehen", "nachgucken", "check",
+                     "checke", "prufe", "prufen", "such", "suche", "suchen", "schlag", "informiere"} and (nach or "dich" in s))
+            or (s & {"suche", "such", "suchen"} and s & {"internet", "online", "netz", "web"})
+            or (s & {"finde", "finden"} and "heraus" in s)
+            or (s & {"frag", "frage", "fragen"} and claude and len(toks) >= 4 and not s & _DEV)):
+        kept = []
         for i, (orig, f) in enumerate(ws):
-            if f in _RESEARCH_DROP:
+            if f in _RESEARCH_DROP or is_claude(f):
                 continue
             if f == "im" and i + 1 < len(ws) and ws[i + 1][1] in {"internet", "web", "netz"}:
                 continue
@@ -140,23 +160,32 @@ def parse(text: str) -> Intent | None:
     if claude:
         if s & _STOP:
             return Intent("stop")
-        if "status" in s or (s & {"was", "wie"} and s & (_STATUS - {"status"})):
+        if "status" in s or (len(toks) <= 8 and s & _STATUS and not has_continue and not s & _RESULT):
             return Intent("status")
-        if s & _RESULT and not s & _DEV:
+        if s & _RESULT and not s & _DEV_STRICT:
             return Intent("result")
-        ans = _after_marker(text, r"(?:antwort(?:e)?\s+(?:an|auf)\s+\w+|antworte\s+\w+|sag(?:e)?\s+(?:dem\s+)?\w+)\W+(.+)$")
-        if ans and re.search(r"(?:antwort\w*\s+(?:an|auf)\s+|antworte\s+|sag\w*\s+(?:dem\s+)?)(\w+)", text, re.IGNORECASE):
-            who = re.search(r"(?:antwort\w*\s+(?:an|auf)\s+|antworte\s+|sag\w*\s+(?:dem\s+)?)(\w+)", text, re.IGNORECASE).group(1)
-            if is_claude(fold(who)):
-                m = re.match(r"(?:er\s+)?soll\s+(.+)", ans, re.IGNORECASE)
-                return Intent("answer", ans, text) if not m else Intent("start", m.group(1).strip(" ,.:;-!?"), text)
-        task = _after_marker(text, r"\bclaude\W+soll\s+(.+)$") or _after_marker(text, r"\blass\w*\s+claude\s+(.+?)(?:\s+(?:machen|tun))?\W*$")
+        if has_continue and not s & _DEV_STRICT:                                                   # "Mach weiter mit Claude"
+            return Intent("continue", _after_marker(text, r"\bund\s+(.{8,})$"), text)
+        verb = r"(?:antwort\w*|sag\w*|schreib\w*|schick\w*|sende\w*|teil\w*(?:\s+mit)?|richte\w*\s+(?:\w+\s+)?aus|gib)"
+        m = re.search(verb + r"\s+(?:an\s+|auf\s+|dem\s+|ihm\s+)?(\w+)\W+(.+)$", text, re.IGNORECASE | re.UNICODE)
+        if m and is_claude(fold(m.group(1))):
+            ans = re.sub(r"^mit\s+", "", m.group(2).strip(" ,.:;-!?"), flags=re.IGNORECASE)
+            mm = re.match(r"(?:er\s+)?soll\s+(.+)", ans, re.IGNORECASE)
+            return Intent("start", mm.group(1).strip(" ,.:;-!?"), text) if mm else Intent("answer", ans, text)
+        task = (_after_marker(text, r"\bclaude\W+(?:soll|sollst|muss|möge)\s+(.+)$")
+                or _after_marker(text, r"\b(?:lass\w*|bitte|beauftrage|beauftrag)\s+claude\s+(.+?)(?:\s+(?:machen|tun))?\W*$"))
         if task:
             return Intent("start", task, text)
         if s & _DEV and s & _USE:
             tail = _after_marker(text, r"(?:weiterzuentwickeln|weiterentwickeln|entwickeln|programmieren)\W+und\s+(.{12,})$")
             return Intent("start", tail, text)
-    if s & _ALLOW and s & {"das", "pytest", "test", "tests", "ihm", "claude"}:
+        if s & _DEV_STRICT and len(toks) <= 12:                                                    # "Claude, entwickle das Projekt weiter"
+            return Intent("start", "", text)
+        first = toks[0]
+        if is_claude(first) and len(toks) >= 3 and first not in {"was", "wie"}:                    # "Claude, schreib die Tests für den Timer"
+            return Intent("start", " ".join(o for o, _ in ws[1:]), text)
+    if (s & _ALLOW_VERBS and (claude or s & {"das", "pytest", "test", "tests", "ihm", "es", "befehl", "befehle"})) \
+            or ("gib" in s and s & {"frei", "erlaubnis"}) or ("darf" in s and claude):
         return Intent("allow")
     return None
 
@@ -280,6 +309,8 @@ class ToolCommands:
             return self._start(intent)
         if k == "resume":
             return self._resume(intent)
+        if k == "continue":
+            return self._continue(intent)
         if k == "answer":
             return self._answer(intent.text, ())
         if k == "allow":
@@ -345,6 +376,28 @@ class ToolCommands:
             parts.append(f"Nummer {i}: Ordner {f.name}, {_when(w.path.name)}, {dirty} ungesicherte Dateien, {ahead} Commits.")
         return (f"Es gibt {len(self._branch_list)} Claude-Branches. " + " ".join(parts)
                 + " Sag zum Beispiel: Mach bei Nummer eins weiter.")
+
+    def _continue(self, intent: Intent) -> str:
+        """"Mach weiter mit Claude": die aktuelle Sitzung fortsetzen; ohne Sitzung (oder nach Stopp/Fehler) den letzten Branch bzw. die Auswahl."""
+        st = self.sessions.state()
+        if st is not None and st.status == "running":
+            return "Claude arbeitet gerade noch. Ich melde mich, wenn er fertig ist."
+        tool = self.registry.tools.get("claude.code")
+        if tool is None or not self.registry.is_active("claude.code"):
+            why = _short_reason(tool.available()) if tool is not None else "es gibt es nicht"
+            return f"Claude zum Entwickeln ist nicht eingeschaltet: {why or 'das Werkzeug ist aus'}. {ENABLE_HOW}"
+        if st is not None and st.status == "waiting" and st.worktree_path:
+            return self._answer(intent.text or CONTINUE_TASK, ())
+        if st is not None and st.worktree and st.status in ("stopped", "failed"):                 # gleichen Branch wieder aufnehmen
+            folder = next((f for f in self.folders() if f.name == st.folder), None)
+            if folder is not None:
+                try:
+                    self.sessions.adopt(folder, st.worktree)
+                except SessionError:
+                    pass
+                else:
+                    return self._answer(intent.text or CONTINUE_TASK, ())
+        return self._resume(intent)
 
     def _resume(self, intent: Intent) -> str:
         tool = self.registry.tools.get("claude.code")
