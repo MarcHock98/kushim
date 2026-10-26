@@ -20,10 +20,14 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
 - 2026-10-26 Loop-Durchlauf 5: A5 wartet auf den Nutzer, darum **A6 fertig** (Branch `routine/a6-local-llm`, gemerged, nicht
   gepusht): lokales Sprachmodell entfernt, `talk` antwortet bis B4 mit festem Hinweis. 506 Tests grün, Review freigegeben.
   Nicht live geprüft: `kushim talk` mit Mikrofon, `install.ps1` (nur der Nutzer).
-- Nächster Schritt: A7 (Rest: `learning/`, `setup/`, `net/loopback.py`, README, `kushim help`).
+- 2026-10-26 Loop-Durchlauf 6: **A7 fertig** (Branch `routine/a7-rest`, gemerged, nicht gepusht): `learning/` entfernt, README
+  und Hilfe auf Claude Code umgestellt, `net/loopback.py` bewusst behalten (für B3). 500 Tests grün, Review freigegeben.
+  Phase A ist bis auf A5 erledigt.
+- Nächster freier Schritt: Z4 (Statuszeile) als Teil von `scripts/claude_setup.py`, nur als Datei/Option, die der Nutzer selbst
+  ausführt; globale Einstellungen schreibt die Routine nie selbst.
 - Blockiert: A5 (Gates entfernen, Frage offen), Phase B ab B1 (B0).
 - Bereit zum Push durch den Nutzer: master, routine/a1-voice-commands, routine/a2-web-research, routine/a3-timers-notes,
-  routine/a4-claude-control, routine/a6-local-llm
+  routine/a4-claude-control, routine/a6-local-llm, routine/a7-rest
 
 - Letzter Durchlauf: 2026-10-04: Claude entwickelt Projekt (Teile 1 und 2: Ordner-Freigabe, Worktree, Rückfragen, Übersichten, Diff-Prüfung), am echten Aufruf im Wegwerf-Repo geprüft; Abbruch-Befehl; Claude-Recherche mit Wikipedia-Ersatz. Loop gestoppt (Wunsch des Nutzers), alles lokal gemerged, nicht gepusht. 693 Tests grün
 - Seit 2026-10-03 zusätzlich gemerged (alle lokal, nicht gepusht): Notaus beendet auch llama-server, `voice threshold`, Wake Word + Befehl in einem Zug, Gesprächsmodus ohne Wake Word, Unterbrechen (Barge-in) mit echten Pegeln, `voice level`, `kushim gpu`/[gpu], `kushim help`, `kushim`-Befehl im PATH, qwen3.5:9b (think aus), Designer-Skill, Pläne `docs/ui-llm-plan.md`, `docs/tools-plan.md`, `kushim setup`, `kushim tools`, API `setup.*`/`audio.devices`/`safety.*`/`tools.*`
