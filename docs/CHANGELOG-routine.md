@@ -61,3 +61,4 @@ Format: Datum, Datei, Grund (ein Satz).
 - 2026-10-04, `.claude/skills/kushim-ui-design/SKILL.md`: Abschnitt "Responsive (verbindlich)" ergänzt (Stufen, auto-fit, messen statt Festpixel, [hidden], safe center, SVG statt Emoji); aus dem Nutzerwunsch "soll responsive sein".
 - 2026-10-26, `.claude/skills/kushim-routine/SKILL.md`: Fallstrick "Löschschritte (Phase A)" ergänzt (A1 hing über `tool_commands` an zwei API-Typen der UI).
 - 2026-10-26, `.claude/skills/kushim-routine/SKILL.md`: Fallstrick "sed -i schreibt LF" ergänzt (trat bei A2 auf).
+- 2026-10-26, `.claude/skills/kushim-routine/SKILL.md`: Fallstrick "Heredoc und \n (dritter Fall)" ergänzt (Syntaxfehler in test_gpu.py bei A6).
