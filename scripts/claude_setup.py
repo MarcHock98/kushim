@@ -4,6 +4,7 @@ Aufruf:
     py scripts\\claude_setup.py                 # global: Graphify, Einstellungen, Token-Regeln
     py scripts\\claude_setup.py --project PFAD  # zusätzlich ein Projekt mit Graphify verbinden
     py scripts\\claude_setup.py --dry-run       # nur anzeigen, nichts ändern
+    py scripts\\claude_setup.py --statusline    # zusätzlich die Statuszeile (scripts/statusline.py) eintragen
 
 Was es tut (wiederholbar, ändert nur eigene, markierte Teile, legt vorher Sicherungen an):
 1. Installiert Graphify (PyPI-Paket `graphifyy`, feste Version) für den Benutzer und meldet den Skill in Claude Code an.
@@ -75,6 +76,23 @@ def merge_settings(data: dict) -> dict:
     return out
 
 
+STATUSLINE_SCRIPT = Path(__file__).resolve().with_name("statusline.py")
+
+
+def statusline_command(python: str = sys.executable, script: Path = STATUSLINE_SCRIPT) -> str:
+    return f'"{python}" -I "{script}"'
+
+
+def merge_statusline(data: dict, command: str) -> tuple[dict, str]:
+    """Trägt die kushim-Statuszeile ein. Eine fremde Statuszeile bleibt unberührt. Gibt (Daten, Meldung) zurück."""
+    current = data.get("statusLine")
+    if current and not (isinstance(current, dict) and "statusline.py" in str(current.get("command", ""))):
+        return dict(data), "Es gibt schon eine eigene Statuszeile; sie bleibt unverändert."
+    out = dict(data)
+    out["statusLine"] = {"type": "command", "command": command}
+    return out, "Statuszeile: Modell, Kontext-Füllstand, Abo-Grenzen."
+
+
 def merge_rules(text: str) -> str:
     """Ersetzt den eigenen Block zwischen den Markierungen oder hängt ihn an. Fremder Text bleibt unberührt."""
     if BEGIN in text and END in text:
@@ -138,12 +156,15 @@ def install_graphify(dry: bool) -> None:
         print("  Hinweis: `graphify` liegt nicht im PATH. Den Scripts-Ordner von `py -m site --user-base` zum PATH hinzufügen.")
 
 
-def setup_global(dry: bool) -> None:
+def setup_global(dry: bool, statusline: bool = False) -> None:
     base = claude_dir()
     print(f"== Einstellungen ({base})")
     sp = base / "settings.json"
-    data = json.loads(sp.read_text(encoding="utf-8")) if sp.exists() else {}
-    write_json(sp, merge_settings(data), dry)
+    data = merge_settings(json.loads(sp.read_text(encoding="utf-8")) if sp.exists() else {})
+    if statusline:
+        data, note = merge_statusline(data, statusline_command())
+        print(f"  {note}")
+    write_json(sp, data, dry)
     print("== Token-Regeln")
     cp = base / "CLAUDE.md"
     write_text(cp, merge_rules(cp.read_text(encoding="utf-8") if cp.exists() else ""), dry)
@@ -171,10 +192,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--project", type=Path, help="Projekt zusätzlich mit Graphify verbinden")
     ap.add_argument("--skip-install", action="store_true", help="Graphify nicht installieren (schon vorhanden)")
     ap.add_argument("--dry-run", action="store_true", help="nur anzeigen, nichts ändern")
+    ap.add_argument("--statusline", action="store_true", help="Statuszeile (Modell, Kontext, Abo-Grenzen) eintragen")
     a = ap.parse_args(argv)
     if not a.skip_install:
         install_graphify(a.dry_run)
-    setup_global(a.dry_run)
+    setup_global(a.dry_run, statusline=a.statusline)
     if a.project:
         setup_project(a.project, a.dry_run)
     print("Fertig. Claude Code neu starten, damit die Einstellungen greifen.")

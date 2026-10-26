@@ -27,7 +27,9 @@ Arbeitsweise: immer nur einen Schritt, danach Tests (`pytest`), Sicherheitsprüf
 - [x] Z1 Recherche Token-Sparen und Graphify (Quellcode auf Netzzugriffe geprüft, am Repo mit gesperrtem Netz getestet)
 - [x] Z2 `scripts/claude_setup.py`: Graphify (feste Version) + globale Einstellungen + Token-Regeln, `--project`, `--dry-run`; Tests
 - [ ] Z3 **(Nutzer)** auf dem PC ausführen: `py scripts\claude_setup.py --project .` (danach Claude Code neu starten)
-- [ ] Z4 Statuszeile mit Kontext-Füllstand, Kosten und Modell (global)
+- [x] Z4 Statuszeile mit Kontext-Füllstand, Kosten und Modell (global): `scripts/statusline.py`, einrichten mit
+      `py scripts\claude_setup.py --statusline` (2026-10-26, 509 grün). Kosten liefert Claude Code 2.1.310 nicht; gezeigt werden
+      stattdessen die Abo-Grenzen (5h/7d), Kosten nur, falls das Feld kommt. Live in Claude Code ansehen: **(Nutzer)**
 - [ ] Z5 Hook, der lange Testausgaben auf Fehlschläge kürzt (global)
 
 > **Stand nach dem Abgleich mit GitHub (2026-10-26):** Auf `master` kamen 35 Commits aus der alten Roadmap dazu, die beim

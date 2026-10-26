@@ -62,3 +62,4 @@ Format: Datum, Datei, Grund (ein Satz).
 - 2026-10-26, `.claude/skills/kushim-routine/SKILL.md`: Fallstrick "Löschschritte (Phase A)" ergänzt (A1 hing über `tool_commands` an zwei API-Typen der UI).
 - 2026-10-26, `.claude/skills/kushim-routine/SKILL.md`: Fallstrick "sed -i schreibt LF" ergänzt (trat bei A2 auf).
 - 2026-10-26, `.claude/skills/kushim-routine/SKILL.md`: Fallstrick "Heredoc und \n (dritter Fall)" ergänzt (Syntaxfehler in test_gpu.py bei A6).
+- 2026-10-26, `.claude/skills/kushim-routine/SKILL.md`: Fallstricke "Wissen über Claude Code ohne Netz (claude.exe lesen)" und "UTF-8 für andere Programme unter Windows" ergänzt (aus Z4).
