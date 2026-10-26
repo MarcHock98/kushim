@@ -36,6 +36,11 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
 - Nutzer-ID / Kanal-ID: nicht verwendet. Verbundenes Slack-Konto hat andere Mail (Arbeits-Workspace) als die Git-/Claude-Mail, Empfänger unsicher, daher nichts gesendet
 
 ## Offene Fragen an den Nutzer
+- 2026-10-26: **A5 freigeben?** Entfernt `safety/gate.py` (ActionGate), `privacy.py` (EgressGate), `safety/approvals.py`, `tools/`
+  und `api/tools_api.py`/`tasks_api.py`. Das sind Sicherheitsteile, deshalb nur mit deinem Ja. Optionen: (a) wie in der Roadmap
+  entfernen, `safety/rules.py`, Notaus, `test_no_egress.py` bleiben (Empfehlung: ihr Zweck, Werkzeuge von kushim selbst
+  abzusichern, fällt weg; Freigaben macht künftig Claude Code mit Phase C); (b) Gates behalten, nur `tools/` entfernen.
+  Bis zur Antwort: A6 und A7 zuerst.
 - 2026-10-26: B0 Channel-Weg und lokaler Port (127.0.0.1, Token) freigeben? Siehe ROADMAP Phase B
 - 2026-10-04: Websuche nur Wikipedia (de)? Allgemeine Websuche später (z. B. eigener SearXNG auf dem NAS) oder gar nicht? Claude als Rechercheur (Konto/Schlüssel/Monatslimit)? Siehe `docs/tools-plan.md`
 - 2026-10-04: Backend-Transport (WebSocket 127.0.0.1) braucht Importe außerhalb des festgelegten Satzes von `net/loopback.py`; Lockerung des Tests nur mit ausdrücklicher Zustimmung (die Freigabe vom 2026-10-03 galt dem Loopback-Client)
