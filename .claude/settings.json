@@ -1,0 +1,14 @@
+{
+  "env": {
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"
+  },
+  "enableAllProjectMcpServers": false,
+  "permissions": {
+    "deny": [
+      "mcp__Slack",
+      "mcp__Atlassian",
+      "mcp__Trello",
+      "mcp__Claude_Docs"
+    ]
+  }
+}
