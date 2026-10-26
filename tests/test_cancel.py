@@ -11,7 +11,6 @@ import pytest
 from kushim import cli
 from kushim.api.protocol import ApiCore, new_token
 from kushim.api.tasks_api import register_tasks
-from kushim.claude_cli import ask as claude_ask
 from kushim.safety.approvals import ApprovalQueue
 from kushim.safety.gate import ActionGate, ActionRequest, ActionSpec, Decision, Risk
 from kushim.safety.killswitch import KillSwitch
@@ -74,110 +73,6 @@ def test_cancel_all_denies_pending_approvals_but_leaves_decided_ones():
     assert names == ["Freigabe für web.search"] and t.pending_approvals() == 0
     assert q.take(pending.id) is None                                # abgelehnt: nicht mehr ausführbar
     assert q.take(approved.id) is not None                           # schon freigegeben und noch nicht gestartet: bleibt gültig
-
-
-# --- ask(): laufenden Claude-Aufruf abbrechen ----------------------------------------------------
-
-class HangingProc:
-    pid = 555
-
-    def __init__(self):
-        self.killed, self.returncode = False, 0
-
-    def communicate(self, timeout=None):
-        if not self.killed:
-            time.sleep(min(timeout or 0.01, 0.01))
-            raise subprocess.TimeoutExpired("claude", timeout)
-        return "", ""
-
-    def kill(self):
-        self.killed = True
-
-    def poll(self):
-        return self.returncode if self.killed else None
-
-
-def test_a_running_claude_call_is_killed_on_cancel_and_the_scratch_dir_removed(tmp_path):
-    proc, kills, scratch = HangingProc(), [], []
-    state = {"calls": 0}
-
-    def cancelled():
-        state["calls"] += 1
-        return state["calls"] >= 3                                    # nach ein paar Abfragen sagt der Nutzer "abbrechen"
-
-    def popen(argv, **kw):
-        scratch.append(Path(kw["cwd"]))
-        return proc
-    res = claude_ask.ask("Eiffelturm Höhe", Path("C:/fake/claude.exe"), tmp_path / "w", popen=popen, kill=kills.append,
-                         timeout=60, cancelled=cancelled)
-    assert not res.ok and res.reason == "cancelled" and kills == [555] and proc.killed and not scratch[0].exists()
-
-
-def test_a_result_that_arrives_just_after_cancel_is_discarded(tmp_path):
-    class Done:
-        pid, returncode = 1, 0
-
-        def communicate(self, timeout=None):
-            return json.dumps({"type": "result", "is_error": False, "result": "Antwort"}), ""
-
-        def poll(self):
-            return 0
-    res = claude_ask.ask("x", Path("C:/fake/claude.exe"), tmp_path / "w", popen=lambda a, **k: Done(), kill=lambda p: None,
-                         cancelled=lambda: True)
-    assert not res.ok and res.reason == "cancelled" and res.text == ""
-
-
-# --- Research: nach Abbruch kein Ersatzweg -------------------------------------------------------
-
-def make_research(ask):
-    from dataclasses import replace
-    from kushim.claude_cli.base import Auth
-    from kushim.privacy import EgressGate
-    from kushim.research import Research
-    from kushim.tools.registry import CLAUDE_RESEARCH, WEB_SEARCH, ToolRegistry
-    from kushim.web.search import make_search
-    reg = ToolRegistry([replace(CLAUDE_RESEARCH, available=lambda: ""), WEB_SEARCH], ["claude.research", "web.search"])
-    fetched = []
-    body = json.dumps({"query": {"pages": {"1": {"pageid": 1, "title": "T", "index": 1, "extract": "Text."}}}})
-    ws = make_search(reg, lambda url: fetched.append(url) or body)
-    return Research(reg, ask, ws, lambda: Auth(True, "claude.ai"), EgressGate(True, confirm=lambda d, p: True)), fetched
-
-
-def test_cancel_during_the_claude_call_ends_the_research_without_falling_back_to_wikipedia():
-    holder = {}
-
-    def ask(q, cancelled):
-        assert holder["r"].tasks.active() == ["Recherche über Claude"]          # läuft als abbrechbare Aufgabe
-        holder["r"].tasks.cancel_all()                                          # Nutzer sagt "abbrechen"
-        assert cancelled()
-        return claude_ask.Answer(False, reason="cancelled")
-    r, fetched = make_research(ask)
-    holder["r"] = r
-    p = r.propose("Eiffelturm Höhe", speaker_verified=True)
-    assert r.approve(p)
-    out = r.execute(p)
-    assert out.kind == "none" and out.note == "Abgebrochen." and fetched == [] and r.tasks.active() == []
-
-
-def test_cancel_also_wins_when_claude_fails_at_the_same_moment():
-    holder = {}
-
-    def ask(q, cancelled):
-        holder["r"].tasks.cancel_all()
-        return claude_ask.Answer(False, reason="timeout")                     # scheitert zufällig gerade jetzt
-    r, fetched = make_research(ask)
-    holder["r"] = r
-    p = r.propose("Eiffelturm Höhe", speaker_verified=True)
-    r.approve(p)
-    assert r.execute(p).kind == "none" and fetched == []
-
-
-def test_cancel_denies_a_research_that_still_waits_for_approval():
-    r, fetched = make_research(lambda q, c: claude_ask.Answer(True))
-    p = r.propose("Eiffelturm Höhe", speaker_verified=True)
-    assert r.tasks.pending_approvals() == 1
-    assert r.tasks.cancel_all() == ["Freigabe für claude.research"]
-    assert not r.approve(p)                                                   # abgelehnt: kann nicht mehr freigegeben werden
 
 
 # --- Pipeline ------------------------------------------------------------------------------------
@@ -382,12 +277,10 @@ def test_ctrl_c_cancels_a_cli_command_quietly(tmp_path, monkeypatch, capsys):
     from kushim.config import Config
     f = tmp_path / "config.toml"
     monkeypatch.setenv("KUSHIM_CONFIG", str(f))
-    Config.load(f).set_tools_enabled(["web.search"])
 
     def interrupted(prompt=""):
         raise KeyboardInterrupt
     monkeypatch.setattr("builtins.input", interrupted)
-    import kushim.net.web as netweb
-    monkeypatch.setattr(netweb, "fetch_text", lambda url: pytest.fail("nach Abbruch nichts senden"))
-    assert cli.main(["search", "Eiffelturm"]) == 130
+    assert cli.main(["claude", "enable"]) == 130
     assert "Abgebrochen." in capsys.readouterr().out
+    assert not Config.load(f).claude_enabled                  # nach Abbruch nichts eingeschaltet

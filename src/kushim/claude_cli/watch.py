@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 from typing import Callable
 
-from ..web.sanitize import clean_text
+from ..sanitize import clean_text
 
 LIVE = "run/claude-live.jsonl"
 

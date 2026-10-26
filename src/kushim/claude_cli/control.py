@@ -21,8 +21,8 @@ from ..safety.gate import ActionGate, ActionRequest, Decision
 from ..safety.rules import Harm
 from ..tasks import TaskRegistry
 from ..tools.registry import CLAUDE_CODE, ToolGate, ToolRegistry
-from ..web import guard
-from ..web.sanitize import Untrusted
+from . import guard
+from ..sanitize import Untrusted
 from . import dev
 from .base import Auth
 from .folders import Folder, resolve
