@@ -54,8 +54,10 @@ Abbrechen (`tasks.py`), Vault (`memory/`, für das Stimmprofil), `config.py`, `c
 - [x] A3 Timer und Notizen entfernen: `timers.py` samt Tests und CLI-Befehlen (2026-10-26, 733 grün; CLI-Befehle gab es
       keine, Notizen lebten nur in `note_commands.py` aus A1). Gespeicherte Notizen im Vault und `run/timers.json` bleiben
       unangetastet (Daten des Nutzers); Werkzeug-Einträge `timer.local`/`notes.local` fallen mit A5
-- [ ] A4 Alte Claude-Steuerung entfernen: `claude_cli/` bis auf `base.py` (CLI finden, Anmeldung prüfen, saubere Umgebung) und
-      `folders.py` (sichere Arbeitsordner), samt `api/claude_api.py` und Tests
+- [x] A4 Alte Claude-Steuerung entfernen: `claude_cli/` bis auf `base.py` (CLI finden, Anmeldung prüfen, saubere Umgebung) und
+      `folders.py` (sichere Arbeitsordner), samt `api/claude_api.py` und Tests (2026-10-26, 578 grün). `kushim claude` kann
+      noch check/enable/disable/folders/add/remove; Ordner-Tests jetzt in `tests/test_claude_folders.py`. Die UI zeigt den
+      Claude-Bereich bis Phase B/E als „nicht verfügbar“ (Ordner-Verwaltung `claude.folder_*` geht weiter)
 - [ ] A5 Werkzeug-Verwaltung und Gates entfernen: `tools/`, `privacy.py`, `safety/gate.py`, `safety/approvals.py`, `api/tools_api.py`,
       `api/tasks_api.py`; `safety/rules.py` bleibt (Grundsätze)
 - [ ] A6 Lokales Sprachmodell entfernen: `llm/`, `launcher.py` (Ollama), `api/llm_api.py`, `[llm]` in der Konfiguration, Ollama aus
