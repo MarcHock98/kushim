@@ -29,3 +29,9 @@ def test_help_command_prints_overview_and_returns_zero(capsys):
 def test_help_lists_every_command_so_it_cannot_drift():
     for name in top_level_commands():
         assert f"kushim {name}" in cli.HELP, f"{name} fehlt in der Hilfe"
+
+
+def test_help_names_only_commands_that_exist():
+    import re
+    named = set(re.findall(r"^  kushim ([a-z]+)", cli.HELP, re.M))
+    assert named and named <= top_level_commands(), named - top_level_commands()

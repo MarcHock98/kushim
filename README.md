@@ -1,20 +1,20 @@
 # kushim
 
-Ein persönlicher KI-Assistent im Stil von Jarvis: Du sprichst mit ihm, er erledigt Dinge für dich, lernt mit der Zeit, wie du denkst, und zeigt Ergebnisse und seinen Zustand in einer eigenen Oberfläche.
+Ein lokaler „Jarvis“ als Sprach-Vorderseite für **Claude Code**: Du sprichst, kushim erkennt lokal Wake Word, deine Stimme und deinen Befehl, gibt ihn an deine laufende Claude-Code-Sitzung und liest die Antwort vor. Claude Code ist die einzige KI; kushim selbst hat kein Sprachmodell.
 
-**Die Daten gehören dir.** kushim ist lokal-first gebaut: Standardmäßig verlässt nichts deinen PC. Spracherkennung, Sprachmodell und Stimme laufen komplett auf deinem Rechner.
+**Die Daten gehören dir.** Spracherkennung, Sprecherprüfung und Stimme laufen komplett auf deinem Rechner. Audio verlässt nie den PC; an Anthropic geht nur der erkannte Befehlstext über Claude Code selbst.
 
 Inhalt: [Was es heute kann](#was-es-heute-kann) · [Voraussetzungen](#voraussetzungen) · [Installation](#installation) · [Erster Start](#erster-start) · [Täglicher Gebrauch](#täglicher-gebrauch) · [Konfiguration](#konfiguration) · [Netzwerk und Datenschutz](#netzwerk-und-datenschutz) · [Eigene Stimme (Klon)](#eigene-stimme-klon) · [Fehlerbehebung](#fehlerbehebung) · [Deinstallation](#deinstallation) · [Entwicklung](#entwicklung)
 
 ## Was es heute kann
 
-- **Sprechen per Wake Word:** Du sagst eines deiner Wake Words („hey kushim“, „kushim“, „hi kushim“ …, alle in **einer zentralen Datei** einstellbar), kushim antwortet „Ja?“ und hört deinen Befehl. Vor dem Wake Word läuft nur ein kleines lokales Erkennungsmodell: keine Spracherkennung, kein LLM, keine Speicherung.
-- **Nur auf deine Stimme:** Sprecherverifikation mit Mehr-Prototypen-Profil aus langer Aufnahme. Fremde Stimmen bekommen keine Antwort. Längere Äußerungen werden in Fenstern geprüft (sicherer), Änderungen wie Wake-Word-Befehle brauchen eine „stark“ verifizierte Äußerung. Ohne eingeschriebenes Stimmprofil startet das Sprechen gar nicht.
+- **Sprechen per Wake Word:** Du sagst eines deiner Wake Words („hey kushim“, „kushim“, „hi kushim“ …, alle in **einer zentralen Datei** einstellbar), kushim antwortet „Ja?“ und hört deinen Befehl. Vor dem Wake Word läuft nur ein kleines lokales Erkennungsmodell: keine Spracherkennung, keine Weitergabe, keine Speicherung.
+- **Nur auf deine Stimme:** Sprecherverifikation mit Mehr-Prototypen-Profil aus langer Aufnahme. Fremde Stimmen bekommen keine Antwort. Längere Äußerungen werden in Fenstern geprüft (sicherer). Ohne eingeschriebenes Stimmprofil startet das Sprechen gar nicht.
 - **Notaus:** per Desktop-Verknüpfung oder per Sprachbefehl („Notaus“, „stopp alles“). Wirkt für jede Stimme.
-- **Lokal:** Whisper (Spracherkennung, GPU), Qwen 2.5 7B über Ollama (nur 127.0.0.1), Piper (deutsche Stimme).
-- **Verschlüsseltes Gedächtnis (Vault)** mit Backups, Sicherheitsschicht (ActionGate, Freigaben, Audit).
+- **Lokal:** Whisper (Spracherkennung, GPU), Piper (deutsche Stimme), optional eigene Stimme (Klon).
+- **Verschlüsseltes Gedächtnis (Vault)** für das Stimmprofil, mit Backups.
 
-Noch nicht fertig: Oberfläche mit Avatar, Tools (Web, Mail, Kalender, PC, Smart Home), Lernen und eigene Stimme (Klon). Stand und Pläne: [ROADMAP.md](ROADMAP.md).
+**Umbau (Roadmap v2):** Die alten lokalen Werkzeuge (Ollama-Sprachmodell, Websuche, Timer, Notizen, eigene Claude-Läufe) sind entfernt. Die Brücke zu Claude Code (Channel) und Freigaben per Stimme folgen; bis dahin antwortet kushim auf Befehle nur „Ich bin noch nicht mit Claude verbunden.“ Stand und Pläne: [ROADMAP.md](ROADMAP.md).
 
 ## Voraussetzungen
 
@@ -22,11 +22,12 @@ Noch nicht fertig: Oberfläche mit Avatar, Tools (Web, Mail, Kalender, PC, Smart
 |---|---|
 | System | Windows 10 oder 11 (64 Bit) |
 | Grafikkarte | NVIDIA mit mindestens 8 GB VRAM (getestet: RTX 3070), aktueller NVIDIA-Treiber |
-| Speicher | mindestens 15 GB frei (Modelle ca. 6 GB, Ollama ca. 2 GB, Python-Umgebung ca. 3 GB) |
+| Speicher | mindestens 10 GB frei (Modelle ca. 2 GB, Python-Umgebung ca. 3 GB, optional Stimmklon mehr) |
 | RAM | 16 GB, besser 32 GB |
 | Python | 3.11 oder 3.12 von [python.org](https://www.python.org/downloads/) (Haken bei „Add Python to PATH“) |
 | Hardware | Mikrofon und Lautsprecher/Kopfhörer |
-| Internet | nur für die Installation (ca. 10 GB Download), danach nicht mehr nötig |
+| Internet | für die Installation; im Betrieb nur Claude Code selbst (zu Anthropic) |
+| Claude Code | installiert und angemeldet (`claude`), siehe [ROADMAP.md](ROADMAP.md) Phase B |
 
 Git ist nur nötig, wenn du das Projekt von GitHub holst.
 
@@ -51,10 +52,9 @@ Das Skript macht der Reihe nach und ist jederzeit wiederholbar (Vorhandenes wird
 2. Python-Umgebung `.venv` anlegen
 3. Python-Pakete in festen Versionen installieren
 4. Modelle laden und per SHA-256 prüfen: Whisper large-v3-turbo, deutsche Piper-Stimme, Sprecher-Modell, Wake-Word-Modelle
-5. Ollama laden (Prüfsumme geprüft, Standalone ohne Auto-Updater) und das LLM `qwen2.5:7b` holen
-6. Logo-Icon erzeugen
-7. Desktop-Verknüpfungen anlegen: **kushim App**, **kushim**, **kushim sprechen**, **kushim NOTAUS**
-8. Am Ende fragt es, ob es den Vault anlegen und deine Stimme einschreiben soll (nur mit deinem Ja)
+5. Logo-Icon erzeugen
+6. Desktop-Verknüpfungen anlegen: **kushim App**, **kushim sprechen**, **kushim NOTAUS**
+7. Am Ende fragt es, ob es den Vault anlegen und deine Stimme einschreiben soll (nur mit deinem Ja)
 
 Schalter:
 
@@ -62,7 +62,6 @@ Schalter:
 |---|---|
 | `-Check` | nur prüfen, was fehlt; ändert und lädt nichts |
 | `-NoPrompt` | keine Rückfragen (Vault und Stimme werden dann nicht angelegt) |
-| `-SkipLlm` | LLM (4,7 GB) nicht laden |
 | `-SkipShortcuts` | keine Desktop-Verknüpfungen |
 | `-SkipPath` | den Befehl `kushim` nicht in den Benutzer-PATH eintragen (nachträglich: `.\scripts\add-path.ps1`, entfernen: `-Remove`) |
 
@@ -82,25 +81,16 @@ py -3.12 -m venv .venv
 # 2. Modelle (Whisper, Stimme, Sprecher, Wake Words), mit Prüfsummen
 .\.venv\Scripts\python scripts\fetch_models.py
 
-# 3. Ollama (Standalone) und LLM
-New-Item -ItemType Directory -Force tools | Out-Null
-curl.exe -L -o tools\ollama.zip https://github.com/ollama/ollama/releases/download/v0.35.1/ollama-windows-amd64.zip
-#   SHA-256 muss dc50b9ca7f9023c86525012632cd1615b093d0407987444a7f62ecab617e8e93 sein:
-Get-FileHash tools\ollama.zip -Algorithm SHA256
-Expand-Archive tools\ollama.zip tools\ollama; Remove-Item tools\ollama.zip
-$env:OLLAMA_HOST = "127.0.0.1:11434"; $env:OLLAMA_MODELS = "$PWD\models\ollama"
-Start-Process tools\ollama\ollama.exe -ArgumentList serve -WindowStyle Hidden
-tools\ollama\ollama.exe pull qwen2.5:7b
-Stop-Process -Name ollama -Force      # nur den eben gestarteten Server beenden
-
-# 4. Logo-Icon (für die Verknüpfungen)
+# 3. Logo-Icon (für die Verknüpfungen)
 .\.venv\Scripts\python scripts\make_icon.py
 
-# 5. Kontrolle
+# 4. Kontrolle
 .\.venv\Scripts\python -m kushim.cli doctor
 ```
 
-Die Desktop-Verknüpfungen legt nur `install.ps1` an; von Hand erstellst du Verknüpfungen auf `.venv\Scripts\python.exe` mit den Argumenten `-m kushim.cli start`, `-m kushim.cli talk` und `-m kushim.cli kill`, Arbeitsordner = Projektordner.
+Die Desktop-Verknüpfungen legt nur `install.ps1` an; von Hand erstellst du Verknüpfungen auf `.venv\Scripts\python.exe` mit den Argumenten `-m kushim.cli talk` und `-m kushim.cli kill`, Arbeitsordner = Projektordner.
+
+Von früheren Versionen können `tools\ollama`, `models\ollama` und die Verknüpfung **kushim** übrig sein; kushim braucht sie nicht mehr, du kannst sie löschen.
 
 ## Erster Start
 
@@ -137,11 +127,10 @@ Diese Schritte machst nur du (sie betreffen deinen Schlüssel und deine Stimme).
 |---|---|
 | Oberfläche öffnen | Desktop-Verknüpfung **kushim App** (oder `kushim app`): startet Sprache und API im Hintergrund, öffnet das Fenster und beendet beim Schließen alles, was sie selbst gestartet hat. `kushim app --no-voice` öffnet nur das Fenster mit der API (ohne Mikrofon). Einmalig bauen: `cd ui` und `npx tauri build --no-bundle` (braucht Node und Rust). |
 | Starten und sprechen | Desktop-Verknüpfung **kushim sprechen** (oder `python -m kushim.cli talk`). Nach dem Start steht im Fenster, welche Wake Words gelten. |
-| Sprechen | Wake Word und Befehl in einem Zug sagen („hey kushim, wie spät ist es?“), kushim antwortet direkt. Sagst du nur das Wake Word, kommt nach `command_wait_seconds` (Standard 1,5) ein „Ja?“ und kushim wartet `listen_seconds` (Standard 4) auf den Befehl; bleibt es still, hört kushim wieder nur aufs Wake Word. |
+| Sprechen | Wake Word und Befehl in einem Zug sagen („hey kushim, wie spät ist es?“), kushim antwortet direkt (bis zur Brücke zu Claude Code nur mit einem festen Hinweis). Sagst du nur das Wake Word, kommt nach `command_wait_seconds` (Standard 1,5) ein „Ja?“ und kushim wartet `listen_seconds` (Standard 4) auf den Befehl; bleibt es still, hört kushim wieder nur aufs Wake Word. |
 | Beenden | `Strg+C` im Fenster |
-| Nur die lokalen Dienste starten | Verknüpfung **kushim** (startet Ollama nur auf 127.0.0.1; `Strg+C` beendet). Das Sprechen startet sie selbst, wenn nötig. |
 | **Notaus** | Verknüpfung **kushim NOTAUS** anklicken oder „Notaus“ / „stopp alles“ sagen. Danach startet kushim erst wieder, wenn du bewusst aufhebst: `python -m kushim.cli resume`. |
-| Wake Words per Sprache ändern | Nach dem Wake Word sagen: „Füge das Wake Word Alexa hinzu“, „Entferne das Wake Word Alexa“ oder „Welche Wake Words sind aktiv?“. Nur mit deiner Stimme, kushim fragt zur Bestätigung zurück („Sage ja oder nein“), mindestens ein Wort bleibt aktiv, die Änderung gilt ab dem nächsten Start. Auch freie Wörter („Füge das Wake Word Computer hinzu“) gehen ohne Training; die Erkennung ist dann nicht garantiert. Geschrieben wird die zentrale Datei `wakewords.toml`. |
+| Wake Words ändern | In der zentralen Datei `wakewords.toml` (siehe unten); gilt ab dem nächsten Start. |
 | Stimmprofil prüfen / löschen | `python -m kushim.cli voice status` / `voice reset` |
 | Backup | `python -m kushim.cli memory backup` |
 
@@ -151,29 +140,23 @@ Geräte wählen (Namensteil genügt): `python -m kushim.cli talk --mic "Arctis 5
 
 Kopiere `config.example.toml` nach `config.toml` (oder `%APPDATA%\kushim\config.toml`). `config.toml` ist nicht im Git.
 
-**Web-Recherche:** Mit `kushim search <Frage>` (z. B. `kushim search Eiffelturm Höhe --llm`) fragt kushim Wikipedia (de). Das Werkzeug ist standardmäßig aus: `kushim tools enable web.search`. Du siehst vorher exakt, was gesendet wird (nur der Suchtext), und bestätigst mit `j`. Es werden nur Text-Antworten gelesen (keine Downloads, nichts wird gespeichert), Anfragen mit E-Mail-Adressen, IBAN, Telefonnummern, Pfaden oder Passwörtern gehen nicht hinaus. Inhalte aus dem Internet sind nur Daten: Sie können das Sprachmodell nie etwas tun oder ein Werkzeug nutzen lassen. Mit `--llm` fasst das lokale Modell die Treffer zusammen.
+**Arbeitsordner für Claude:** `kushim claude add <name> <pfad>` gibt einen Git-Ordner frei (Home, Laufwerk, System, AppData und der Vault gehen nie), `kushim claude folders` zeigt sie, `kushim claude remove <name>` entzieht die Freigabe. `kushim claude check` prüft, ob die Claude CLI da und angemeldet ist. Die Brücke, über die kushim Befehle an Claude Code gibt, folgt (Roadmap Phase B).
 
-**Claude entwickelt dein Projekt (Modus C, nur in freigegebenen Ordnern):** `kushim claude add <name> <pfad>` gibt einen Git-Ordner frei (Home, Laufwerk, System, AppData und der Vault gehen nie). Danach `kushim tools enable claude.code` und `kushim claude start "Baue den Timer"` (ohne Auftrag nimmt Claude den nächsten offenen Roadmap-Punkt). Du siehst vorher eine Vorschau und bestätigst. Claude arbeitet in einem **eigenen Worktree und Branch**, nie auf deinem Stand, darf nur Dateien lesen und bearbeiten, `git status/diff/log/add/commit` und `pytest` ausführen (kein push, merge, Löschen, keine Netzwerk-Werkzeuge) und braucht ein Limit von 2 USD und 45 Minuten je Zug. Fragt Claude etwas, zeigt kushim die Rückfrage mit einer Übersicht (was getan wurde laut Claude, Fakten aus Git, geänderte Sicherheitsdateien rot, nächste Schritte); antworten mit `kushim claude answer "..."`. `kushim claude status|stop|result` zeigt, stoppt und fasst zusammen. **Übernehmen (mergen) machst nur du.** Tipp: `.claude/worktrees/` in die `.gitignore` des Projekts eintragen.
+**Abbrechen:** Sag "abbrechen" (auch "brich das ab", "vergiss es"), und kushim beendet die laufende Sprachausgabe. Das geht ohne Sprecher-Prüfung (Abbrechen ist sicher). Im Terminal bricht Strg+C ab. Das ist **nicht der Notaus**: Abbrechen sperrt nichts, der Notaus hält alles an und sperrt bis `kushim resume`.
 
-**Abbrechen:** Sag "abbrechen" (auch "brich das ab", "vergiss es"), und kushim beendet den laufenden Befehl: eine Recherche (auch den Claude-Aufruf), eine offene Freigabe, die Sprachausgabe. Das geht auch, während kushim noch arbeitet, und ohne Sprecher-Prüfung (Abbrechen ist sicher). Danach gibt es keinen Ersatzweg (kein Wikipedia statt Claude). Im Terminal bricht Strg+C ab. Das ist **nicht der Notaus**: Abbrechen sperrt nichts, der Notaus hält alles an und sperrt bis `kushim resume`.
-
-**Recherche über Claude (Ersatz: Wikipedia):** Mit `kushim research <Frage>` fragt kushim zuerst Claude (über deine angemeldete Claude CLI, kein API-Schlüssel), weil dessen Websuche besser ist. Klappt das nicht (Zeitüberschreitung, Limit, abgemeldet), nimmt es Wikipedia als Ersatz, aber nur, wenn du das in der Vorschau gesehen und freigegeben hast. Einrichten: `kushim claude check` (CLI und Anmeldung prüfen), `kushim claude enable` (Modus C: der Suchtext geht an Anthropic), `kushim tools enable claude.research`, optional `kushim tools enable web.search` für den Ersatz. Claude darf dabei nur im Internet suchen und lesen (keine Dateien, keine Befehle), seine Antwort ist nur Text und löst nie etwas aus.
-
-**Grafikkarten:** `kushim gpu` zeigt die erkannten NVIDIA-Karten und wie sie genutzt werden. Mit einer Karte teilen sich Whisper und das Sprachmodell diese. Bei mehreren Karten bekommt Whisper automatisch eine für sich (die kleinste, die es noch trägt), das Sprachmodell nutzt alle übrigen. Anpassen unter `[gpu]` in `config.toml` (`whisper = "auto" | "cpu" | "1"`, `llm = "auto" | "all" | "0,1"`). Ein schon laufendes Ollama übernimmt die Einstellung nicht; kushim startet seines selbst (`kushim start`/`talk`).
-
-**Sprachmodell wechseln:** Das LLM ist austauschbar (jedes Ollama-Modell). `python -m kushim.cli llm set qwen3.5:9b` trägt es unter `[llm] model` ein, `.\install.ps1 -Llm qwen3.5:9b` lädt es einmalig (Prüfung mit `kushim doctor`). Ohne Eintrag gilt `qwen2.5:7b`.
+**Grafikkarten:** `kushim gpu` zeigt die erkannten NVIDIA-Karten und welche Whisper nutzt (bei mehreren: die größte). Anpassen unter `[gpu]` in `config.toml` (`whisper = "auto" | "cpu" | "1"`).
 
 ```toml
 [memory]
 location = "local:~/kushim-vault"   # einziger Ort, der den Speicherort kennt
 
 [privacy]
-claude_enabled = false               # Modus A (alles lokal); Claude nur als Opt-in
+claude_enabled = false               # alter Schalter (Modus C); wird mit der Brücke zu Claude Code neu geregelt
 ```
 
 ### Wake Words: eine zentrale Datei
 
-Alle Wake Words stehen **nur** in `wakewords.toml` im Projektordner. Fehlt sie, gilt die mitgelieferte Vorlage `wakewords.example.toml` (nicht ändern, sondern kopieren). Sprachbefehle („Füge das Wake Word … hinzu“) schreiben ebenfalls in `wakewords.toml`. Die Datei ist nicht im Git.
+Alle Wake Words stehen **nur** in `wakewords.toml` im Projektordner. Fehlt sie, gilt die mitgelieferte Vorlage `wakewords.example.toml` (nicht ändern, sondern kopieren). Die Datei ist nicht im Git.
 
 ```toml
 [settings]
@@ -212,8 +195,8 @@ Vault verschieben (z. B. auf ein anderes Laufwerk): `python -m kushim.cli memory
 
 ## Netzwerk und Datenschutz
 
-- **Installation:** Netzwerk nur zu `pypi.org` (Pakete), `github.com` (Ollama, Sprecher-Modell, Wake-Word-Modelle), `huggingface.co` (Whisper, Stimme) und `registry.ollama.ai` (LLM). Alles in festen Versionen, Modelle und Ollama per Größe und SHA-256 geprüft.
-- **Betrieb:** kushim arbeitet offline. Der einzige Netzwerkcode im Programm ist `src/kushim/net/loopback.py` und spricht ausschließlich 127.0.0.1 (lokales Ollama). Ein Test (`tests/test_no_egress.py`) verhindert anderen Netzwerkcode.
+- **Installation:** Netzwerk nur zu `pypi.org` (Pakete), `github.com` (Sprecher-Modell, Wake-Word-Modelle) und `huggingface.co` (Whisper, Stimme). Alles in festen Versionen, Modelle per Größe und SHA-256 geprüft.
+- **Betrieb:** kushim selbst geht nie ins Internet. Sein Netzwerkcode spricht ausschließlich 127.0.0.1: `src/kushim/net/server.py` (API für die eigene Oberfläche) und `src/kushim/net/loopback.py` (für die kommende Brücke zu Claude Code). Ein Test (`tests/test_no_egress.py`) verhindert anderen Netzwerkcode. Nach außen spricht nur Claude Code selbst (zu Anthropic).
 - **Mikrofon:** Audio bleibt im Arbeitsspeicher und wird nicht gespeichert. Vor dem Wake Word sieht nur das kleine Wake-Word-Modell das Signal.
 - **Stimmprofil:** nur ein Zahlenvektor, im verschlüsselten Vault.
 - **Schlüssel:** im Windows-Credential-Manager, nie im Vault, nie im Projekt.
@@ -237,13 +220,11 @@ Es nimmt 10 Absätze mit 24 kHz auf. Du startest und beendest jeden Absatz selbs
 | „Kein Stimmprofil“ beim Sprechen | `python -m kushim.cli voice enroll` |
 | „Notaus ist aktiv“ | `python -m kushim.cli resume` |
 | kushim erkennt meine Stimme nicht / zu oft nicht | `voice test` zeigt die Werte. Näher ans Mikrofon, ruhiger Raum, dasselbe Mikrofon wie beim Einschreiben. Sehr kurze Äußerungen („ja“) sind unzuverlässig: lieber ganze Sätze. Notfalls `python -m kushim.cli voice enroll --record` und neu aufnehmen. |
-| Eine Änderung (z. B. Wake Word) wird abgelehnt: „längere, deutliche Äußerung“ | Änderungen brauchen eine „stark“ verifizierte Äußerung (mind. 1,5 s). Den Befehl in einem ganzen Satz wiederholen. |
 | `cublas64_12.dll not found` | `install.ps1` erneut (installiert die NVIDIA-Bibliotheken) |
 | Nichts passiert beim Wake Word | Mikrofon prüfen (`--mic`), deutlicher sprechen, in `wakewords.toml` `threshold` senken (z. B. 0.10) oder mehr Wörter aktivieren |
 | Wake Word löst zu oft aus | `threshold` erhöhen (z. B. 0.25) oder kurze Wörter wie „kush“ ausschalten (`enabled = false`) |
-| Das erste Antworten dauert lange | Beim ersten Mal lädt das Modell (ca. 30 Sekunden), danach unter einer Sekunde |
+| Das erste Antworten dauert lange | Beim ersten Mal lädt Whisper sein Modell auf die Grafikkarte, danach geht es schneller |
 | PowerShell blockt `install.ps1` | Genau mit `-ExecutionPolicy Bypass` aufrufen (siehe oben) |
-| Ollama-Port belegt | Läuft schon ein Ollama, nutzt kushim es mit; sonst anderen Prozess auf Port 11434 beenden |
 
 ## Deinstallation
 
@@ -254,7 +235,7 @@ Es nimmt 10 Absätze mit 24 kHz auf. Du startest und beendest jeden Absatz selbs
 ## Grundprinzipien
 
 1. **Schäden jeder Art sind verboten:** seelisch, finanziell, körperlich, an Daten und Privatsphäre, an Dritten und langfristig. Im Zweifel nichts tun und fragen. Die Regeln stehen in `src/kushim/safety/rules.py` und können weder von der KI noch vom Lernen geändert werden.
-2. **Modus A (Standard):** Alles läuft lokal, nichts geht ins Netz. **Modus C (Opt-in):** Claude nur auf ausdrücklichen Befehl, mit Vorschau des exakten Textes und Bestätigung.
+2. **Nichts nach außen außer Claude Code:** kushim selbst spricht nur 127.0.0.1. Claude Code ist die einzige KI und die einzige Verbindung nach außen (Befehlstext an Anthropic); Audio verlässt nie den PC.
 3. **Default-Deny und Fail-Closed:** Unbekannte Aktionen, fehlender Prüfer oder Zweifel führen zu Ablehnung. Geldlimit standardmäßig 0, Zahlungen sind gesperrt, ein Notaus stoppt alles.
 4. **Nur du gibst Befehle:** Sprecherverifikation und zweiter Faktor bei riskanten Aktionen. Inhalte aus Web, Mail und Dateien sind nur Daten, nie Anweisungen.
 5. **Transparent:** Jede Entscheidung und jeder ausgehende Zugriff steht im verschlüsselten Audit-Log.
@@ -264,15 +245,13 @@ Es nimmt 10 Absätze mit 24 kHz auf. Du startest und beendest jeden Absatz selbs
 | Baustein | Stand |
 |---|---|
 | Verschlüsselter Vault (SQLCipher), Migration und Backups | fertig |
-| `EgressGate`, `ActionGate`, Freigabe-Warteschlange, Notaus, Audit | fertig |
+| Notaus, Audit; `EgressGate`/`ActionGate` (Entfernen offen, Roadmap A5) | fertig |
 | Statische Prüfung gegen Netzwerkcode außerhalb der Allowlist | fertig |
-| Stimme: Wake Word, Sprecherverifikation, Whisper, Ollama, Piper, Satz-Streaming, Barge-in | fertig, im Live-Test |
+| Stimme: Wake Word, Sprecherverifikation, Whisper, Piper, Satz-Streaming, Barge-in | fertig, im Live-Test |
 | Start-Verknüpfungen, `doctor`, Installationsskript | fertig |
-| Eigene Stimme (Klon), „Hey Kushim“ | in Arbeit |
-| UI (Tauri, Avatar, Dashboard) | geplant |
-| Tools (Web, Mail/Kalender, PC, Smart Home) | geplant |
-| Lernen (Stil-Bandit fertig, Reflexion, Feedback) | teilweise |
-| NAS-Gedächtnis-Dienst | geplant |
+| Eigene Stimme (Klon) | gebaut, Hörtest offen |
+| UI (Tauri, Avatar, Transkript, Notaus, Ordner) | fertig, wird auf Claude Code umgestellt (Phase E) |
+| Brücke zu Claude Code (Channel), Freigaben per Stimme | geplant (Phase B, C) |
 
 ## Entwicklung
 
@@ -290,4 +269,4 @@ Gedächtnis-Befehle: `kushim memory init|info|backup|migrate`. Tests brauchen ke
 
 ## Status
 
-Frühe Entwicklung. Die Sprachkette (Wake Word, nur deine Stimme, lokale Antworten per Stimme) steht und ist im Live-Test; Oberfläche, Tools und eigene Stimme folgen.
+Umbau auf Claude Code. Die Sprachkette (Wake Word, nur deine Stimme, Whisper, Piper) steht; die Brücke zu Claude Code und Freigaben per Stimme folgen.
