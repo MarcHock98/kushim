@@ -51,7 +51,9 @@ Abbrechen (`tasks.py`), Vault (`memory/`, für das Stimmprofil), `config.py`, `c
       (2026-10-26, 750 grün). Mit entfernt: `claude_cli/ask.py`, `kushim search`/`research`. Behalten und verschoben:
       `sanitize.py` (Paketwurzel, für C1/C2) und `claude_cli/guard.py` (geht mit A4). Die Werkzeug-Einträge `web.search`
       und `claude.research` in `tools/registry.py` fallen erst mit A5
-- [ ] A3 Timer und Notizen entfernen: `timers.py` samt Tests und CLI-Befehlen
+- [x] A3 Timer und Notizen entfernen: `timers.py` samt Tests und CLI-Befehlen (2026-10-26, 733 grün; CLI-Befehle gab es
+      keine, Notizen lebten nur in `note_commands.py` aus A1). Gespeicherte Notizen im Vault und `run/timers.json` bleiben
+      unangetastet (Daten des Nutzers); Werkzeug-Einträge `timer.local`/`notes.local` fallen mit A5
 - [ ] A4 Alte Claude-Steuerung entfernen: `claude_cli/` bis auf `base.py` (CLI finden, Anmeldung prüfen, saubere Umgebung) und
       `folders.py` (sichere Arbeitsordner), samt `api/claude_api.py` und Tests
 - [ ] A5 Werkzeug-Verwaltung und Gates entfernen: `tools/`, `privacy.py`, `safety/gate.py`, `safety/approvals.py`, `api/tools_api.py`,
