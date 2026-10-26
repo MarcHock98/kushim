@@ -23,6 +23,13 @@ Oberste Regel: Schäden jeder Art sind verboten. **Sprachdaten verlassen nie den
 Arbeitsweise: immer nur einen Schritt, danach Tests (`pytest`), Sicherheitsprüfung (`kushim-safety-review`), Commit. Schritte mit
 **(Nutzer)** kann nur der Nutzer erledigen (Mikrofon, echte Stimme, Entscheidung).
 
+## Querschnitt: Token sparen (alle Projekte), Grundlage: [docs/research/tokens-sparen.md](docs/research/tokens-sparen.md)
+- [x] Z1 Recherche Token-Sparen und Graphify (Quellcode auf Netzzugriffe geprüft, am Repo mit gesperrtem Netz getestet)
+- [x] Z2 `scripts/claude_setup.py`: Graphify (feste Version) + globale Einstellungen + Token-Regeln, `--project`, `--dry-run`; Tests
+- [ ] Z3 **(Nutzer)** auf dem PC ausführen: `py scripts\claude_setup.py --project .` (danach Claude Code neu starten)
+- [ ] Z4 Statuszeile mit Kontext-Füllstand, Kosten und Modell (global)
+- [ ] Z5 Hook, der lange Testausgaben auf Fehlschläge kürzt (global)
+
 ## Phase A: Aufräumen (nur löschen, nichts Neues)
 Bleibt: Wake Word (`voice/trigger.py`, `wakeconfig.py`, `wakebuild.py`), Sprecherprüfung (`speaker.py`, `verify.py`, `embedder.py`,
 `profile.py`, `enrollment.py`, `voiceprint.py`, `recorder.py`, `levels.py`), Audio (`audio.py`, `bargein.py`, `dialog.py`),

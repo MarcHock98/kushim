@@ -12,3 +12,4 @@ run/
 voice-data/
 wakewords.toml
 .claude/worktrees/
+graphify-out/
