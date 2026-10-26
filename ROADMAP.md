@@ -8,6 +8,17 @@ liest die Antwort lokal vor (Piper) und nimmt Freigaben per Stimme entgegen. Obe
 Oberste Regel: Schäden jeder Art sind verboten. **Sprachdaten verlassen nie den PC.** An Anthropic geht nur der erkannte Befehlstext
 (das ist der Zweck). Die alte Roadmap liegt in [docs/ROADMAP-v1.md](docs/ROADMAP-v1.md).
 
+## Datenschutz-Grundregeln (Nutzerwunsch 2026-10-26, gelten für jeden Schritt)
+1. Jeder Server, den kushim mitbringt oder startet (Channel, Brücke, Ollama, Whisper, Piper), bindet nur an **127.0.0.1** und
+   enthält **keinen Code, der nach außen sendet** (keine Telemetrie, keine Updates, keine Cloud-Fallbacks, keine Downloads im
+   Betrieb). Geprüft statisch durch `tests/test_no_egress.py` und im Test mit gesperrtem Netzwerk.
+2. Fremde Werkzeuge nur mit abgeschalteter Außenkommunikation: Claude Code mit `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`
+   (keine Telemetrie, Fehlerberichte, Auto-Updates); Web-Werkzeuge (`WebSearch`, `WebFetch`) gesperrt, solange der Nutzer nichts
+   anderes entscheidet.
+3. Downloads (Modelle, Pakete) nur bei der Installation, aus offiziellen Quellen, mit Prüfsumme.
+4. **Offen (B0):** Ob Claude Code mit Anthropics Modellen (dann geht der Befehlstext und was Claude liest an Anthropic) oder
+   komplett lokal mit einem Ollama-Modell läuft, entscheidet der Nutzer.
+
 Arbeitsweise: immer nur einen Schritt, danach Tests (`pytest`), Sicherheitsprüfung (`kushim-safety-review`), Commit. Schritte mit
 **(Nutzer)** kann nur der Nutzer erledigen (Mikrofon, echte Stimme, Entscheidung).
 
