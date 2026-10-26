@@ -7,23 +7,18 @@
   Schalter:
       -Check          Nur pruefen, was fehlt. Aendert nichts, laedt nichts.
       -NoPrompt       Keine Rueckfragen (Vault und Stimme werden dann NICHT angelegt).
-      -SkipLlm        Ollama-Modell nicht laden.
-      -Llm <name>     Anderes Ollama-Modell laden (z. B. qwen3.5:9b) und in config.toml eintragen.
-                      Ohne Angabe: das Modell aus config.toml ([llm] model), sonst qwen2.5:7b.
       -SkipShortcuts  Keine Desktop-Verknuepfungen anlegen.
       -SkipPath       Den Befehl `kushim` NICHT in den Benutzer-PATH eintragen (siehe scripts\add-path.ps1).
 
   Das Skript ist wiederholbar: Was schon da und geprueft ist, wird uebersprungen.
   Netzwerk nur waehrend der Installation und nur zu: pypi.org (Python-Pakete), github.com
-  (Ollama, Sprecher-Modell, Wake-Word-Modelle), huggingface.co (Whisper, Stimme),
-  registry.ollama.ai (LLM). Danach arbeitet kushim offline.
+  (Sprecher-Modell, Wake-Word-Modelle), huggingface.co (Whisper, Stimme). Danach arbeitet kushim offline.
+  Ein lokales Sprachmodell (Ollama) gibt es nicht mehr: die einzige KI ist Claude Code.
   Vault-Schluessel und Stimmprofil legt NUR du an (Rueckfrage am Ende).
 #>
 param(
     [switch]$Check,
     [switch]$NoPrompt,
-    [switch]$SkipLlm,
-    [string]$Llm = "",
     [switch]$SkipShortcuts,
     [switch]$SkipPath
 )
@@ -32,27 +27,8 @@ $ErrorActionPreference = "Stop"
 $Root = $PSScriptRoot
 Set-Location $Root
 
-$OllamaVersion = "v0.35.1"
-$OllamaUrl     = "https://github.com/ollama/ollama/releases/download/$OllamaVersion/ollama-windows-amd64.zip"
-$OllamaSize    = 1471094402
-$OllamaSha256  = "dc50b9ca7f9023c86525012632cd1615b093d0407987444a7f62ecab617e8e93"
-$LlmModel      = "qwen2.5:7b"
-if ($Llm) { $LlmModel = $Llm }
-elseif (Test-Path (Join-Path $PSScriptRoot "config.toml")) {
-    $m = Select-String -Path (Join-Path $PSScriptRoot "config.toml") -Pattern '^\s*model\s*=\s*"([^"]+)"' | Select-Object -First 1
-    if ($m) { $LlmModel = $m.Matches[0].Groups[1].Value }
-}
-if ($LlmModel -notmatch '^[A-Za-z0-9][A-Za-z0-9._/:-]*$' -or $LlmModel -match '\.\.') { throw "Ungueltiger Modellname: $LlmModel" }
 $Venv          = Join-Path $Root ".venv"
 $Py            = Join-Path $Venv "Scripts\python.exe"
-$OllamaExe     = Join-Path $Root "tools\ollama\ollama.exe"
-$OllamaModels  = Join-Path $Root "models\ollama"
-$LlmParts      = $LlmModel -split ":", 2
-$LlmTag        = if ($LlmParts.Count -gt 1) { $LlmParts[1] } else { "latest" }
-$LlmPath       = if ($LlmParts[0] -match "/") { $LlmParts[0] } else { "library/" + $LlmParts[0] }
-if (($LlmPath -split "/").Count -eq 2 -and $LlmPath -notmatch "^library/") { $LlmPath = "registry.ollama.ai/" + $LlmPath }
-elseif ($LlmPath -match "^library/") { $LlmPath = "registry.ollama.ai/" + $LlmPath }
-$LlmManifest   = Join-Path $OllamaModels (("manifests/" + $LlmPath + "/" + $LlmTag) -replace "/", "\")
 $script:Problems = @()
 
 function Step($t)  { Write-Host ""; Write-Host "== $t" -ForegroundColor Cyan }
@@ -67,7 +43,7 @@ function Ask($q) {
 }
 
 # ---------------------------------------------------------------- 1. Voraussetzungen
-Step "1/8 Voraussetzungen"
+Step "1/7 Voraussetzungen"
 $sysPython = $null
 foreach ($cand in @(@("py", "-3.12"), @("py", "-3.11"), @("python"))) {
     try {
@@ -88,7 +64,7 @@ $free = [math]::Round((Get-PSDrive -Name ($Root.Substring(0,1))).Free / 1GB, 1)
 if ($free -lt 15) { Warn "Nur $free GB frei, empfohlen sind mindestens 15 GB." } else { Ok "$free GB frei" }
 
 # ---------------------------------------------------------------- 2. venv
-Step "2/8 Python-Umgebung (.venv)"
+Step "2/7 Python-Umgebung (.venv)"
 if (Test-Path $Py) { Ok ".venv vorhanden" }
 elseif ($Check) { Missing ".venv" }
 else {
@@ -99,7 +75,7 @@ else {
 }
 
 # ---------------------------------------------------------------- 3. Pakete
-Step "3/8 Python-Pakete (feste Versionen, von pypi.org)"
+Step "3/7 Python-Pakete (feste Versionen, von pypi.org)"
 if (Test-Path $Py) {
     & $Py -c "import faster_whisper, piper, sherpa_onnx, sentencepiece, sounddevice, openwakeword, sqlcipher3, keyring" 2>$null
     if ($LASTEXITCODE -eq 0) { Ok "alle Pakete importierbar" }
@@ -117,7 +93,7 @@ if (Test-Path $Py) {
 }
 
 # ---------------------------------------------------------------- 4. Modelle
-Step "4/8 Modelle: Whisper, Stimme, Sprecher, Wake Words (geprueft per SHA-256)"
+Step "4/7 Modelle: Whisper, Stimme, Sprecher, Wake Words (geprueft per SHA-256)"
 if (Test-Path $Py) {
     if ($Check) { & $Py scripts\fetch_models.py --check; if ($LASTEXITCODE -ne 0) { Missing "Modelle (fetch_models.py ausfuehren)" } }
     else {
@@ -126,63 +102,21 @@ if (Test-Path $Py) {
     }
 }
 
-# ---------------------------------------------------------------- 5. Ollama
-Step "5/8 Ollama (lokales LLM, nur 127.0.0.1)"
-if (Test-Path $OllamaExe) { Ok "Ollama vorhanden ($OllamaExe)" }
-elseif ($Check) { Missing "Ollama" }
-else {
-    $zip = Join-Path $Root "tools\ollama.zip"
-    New-Item -ItemType Directory -Force -Path (Join-Path $Root "tools") | Out-Null
-    Info "lade Ollama $OllamaVersion (1,4 GB) ..."
-    & curl.exe -L --fail -sS -o $zip $OllamaUrl
-    if ($LASTEXITCODE -ne 0) { throw "Ollama-Download fehlgeschlagen" }
-    if ((Get-Item $zip).Length -ne $OllamaSize) { Remove-Item $zip; throw "Ollama-Groesse stimmt nicht" }
-    $h = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
-    if ($h -ne $OllamaSha256) { Remove-Item $zip; throw "Ollama-Pruefsumme stimmt nicht (Datei verworfen)" }
-    Expand-Archive -Path $zip -DestinationPath (Join-Path $Root "tools\ollama") -Force
-    Remove-Item $zip
-    Ok "Ollama entpackt, Pruefsumme stimmt"
-}
-
-if ($SkipLlm) { Info "LLM uebersprungen (-SkipLlm)" }
-elseif (Test-Path $LlmManifest) { Ok "LLM $LlmModel vorhanden" }
-elseif ($Check) { Missing "LLM $LlmModel" }
-elseif (Test-Path $OllamaExe) {
-    Info "lade $LlmModel (mehrere GB, aus der Ollama-Bibliothek) ..."
-    $env:OLLAMA_HOST = "127.0.0.1:11434"; $env:OLLAMA_MODELS = $OllamaModels
-    $started = $null
-    $alive = $false
-    try { Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 2 | Out-Null; $alive = $true } catch { }
-    if (-not $alive) {
-        $started = Start-Process -FilePath $OllamaExe -ArgumentList "serve" -WindowStyle Hidden -PassThru
-        for ($i = 0; $i -lt 60 -and -not $alive; $i++) {
-            Start-Sleep -Milliseconds 500
-            try { Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 2 | Out-Null; $alive = $true } catch { }
-        }
-    }
-    if (-not $alive) { throw "Ollama startet nicht" }
-    try { & $OllamaExe pull $LlmModel; if ($LASTEXITCODE -ne 0) { throw "ollama pull fehlgeschlagen" } }
-    finally { if ($started) { Stop-Process -Id $started.Id -Force -ErrorAction SilentlyContinue } }
-    Ok "LLM geladen"
-    if ($Llm -and (Test-Path $Py)) { & $Py -m kushim.cli llm set $LlmModel }
-}
-
-# ---------------------------------------------------------------- 6. Icon
-Step "6/8 Logo und Icon"
+# ---------------------------------------------------------------- 5. Icon
+Step "5/7 Logo und Icon"
 $ico = Join-Path $Root "assets\kushim.ico"
 if (Test-Path $ico) { Ok "Icon vorhanden" }
 elseif ($Check) { Missing "assets\kushim.ico" }
 elseif (Test-Path $Py) { & $Py scripts\make_icon.py; Ok "Icon erzeugt" }
 
-# ---------------------------------------------------------------- 7. Verknuepfungen
-Step "7/8 Desktop-Verknuepfungen"
+# ---------------------------------------------------------------- 6. Verknuepfungen
+Step "6/7 Desktop-Verknuepfungen"
 if ($SkipShortcuts) { Info "uebersprungen (-SkipShortcuts)" }
 elseif ($Check) { Info "(im Check-Modus nicht angelegt)" }
 elseif (Test-Path $Py) {
     $desk = [Environment]::GetFolderPath("Desktop")
     $ws = New-Object -ComObject WScript.Shell
     $defs = @(
-        @{ Name = "kushim.lnk";         Args = "-m kushim.cli start"; Desc = "kushim starten (lokale Dienste, nur 127.0.0.1)"; Icon = $ico },
         @{ Name = "kushim App.lnk";     Args = "-m kushim.cli app";   Desc = "kushim App öffnen (Oberfläche, startet Sprache und API selbst)"; Icon = $ico; Target = (Join-Path (Split-Path $Py) "pythonw.exe") },
         @{ Name = "kushim sprechen.lnk"; Args = "-m kushim.cli talk";  Desc = "kushim sprechen (Wake Word)";                       Icon = $ico },
         @{ Name = "kushim NOTAUS.lnk";   Args = "-m kushim.cli kill";  Desc = "kushim NOTAUS";                                     Icon = "$env:SystemRoot\System32\shell32.dll,131" }
@@ -200,8 +134,8 @@ if ($SkipPath) { Info "Befehl 'kushim' im PATH uebersprungen (-SkipPath)" }
 elseif ($Check) { & (Join-Path $Root "scripts\add-path.ps1") -Check }
 else { & (Join-Path $Root "scripts\add-path.ps1"); Ok "Befehl 'kushim' (neues Terminal oeffnen)" }
 
-# ---------------------------------------------------------------- 8. Vault und Stimme
-Step "8/8 Vault und deine Stimme (nur du)"
+# ---------------------------------------------------------------- 7. Vault und Stimme
+Step "7/7 Vault und deine Stimme (nur du)"
 if (Test-Path $Py) {
     & $Py -m kushim.cli memory info *> $null
     if ($LASTEXITCODE -eq 0) { Ok "Vault vorhanden" }

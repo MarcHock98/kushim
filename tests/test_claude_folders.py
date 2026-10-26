@@ -150,7 +150,7 @@ def test_claude_folders_roundtrip_keeps_the_rest_and_ignores_junk(tmp_path):
     assert c.claude_folders == ()
     c.set_claude_folders(["kushim|C:/Users/x/kushim", "web|C:/Users/x/Mein Projekt"])
     again = Config.load(f)
-    assert again.claude_folders == ("kushim|C:/Users/x/kushim", "web|C:/Users/x/Mein Projekt") and again.llm_model == "qwen2.5:7b"
+    assert again.claude_folders == ("kushim|C:/Users/x/kushim", "web|C:/Users/x/Mein Projekt")
     assert not list(tmp_path.glob("*.tmp")) and f.read_text(encoding="utf-8").count("[claude]") == 1
     for bad in (["ohne-trenner"], ["a|b\nc|d"], [5]):
         with pytest.raises(ValueError):

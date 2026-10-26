@@ -12,7 +12,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable
 
-from ..llm.ollama import DEFAULT_MODEL
 from ..safety import killswitch
 from ..setup import state as setup_state
 from ..setup import status as setup_status
@@ -28,12 +27,11 @@ def _step(payload: dict[str, Any]) -> str:
 
 def register_setup(core: ApiCore, root: Path, vault_state: Callable[[], str],
                    list_devices: Callable[[], dict[str, list[str]]] | None = None,
-                   llm_model: str = DEFAULT_MODEL,
                    audit: Callable[[str, str], None] | None = None) -> None:
     """Hängt `setup.*`, `audio.devices` und `safety.*` an den Kern."""
 
     def overview() -> dict[str, Any]:
-        steps = setup_status.compute(root, vault_state, llm_model)
+        steps = setup_status.compute(root, vault_state)
         return {"steps": [{"step": s.step, "title": s.title, "status": s.status, "detail": s.detail} for s in steps],
                 "first_start": setup_status.first_start(steps),
                 "restricted": setup_status.restricted_notes(steps),

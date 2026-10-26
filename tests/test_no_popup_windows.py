@@ -34,7 +34,7 @@ def test_every_direct_subprocess_call_in_src_hides_its_window():
 
 
 def test_the_callers_that_take_subprocess_as_a_default_also_pass_the_flags(monkeypatch, tmp_path):
-    """taskkill (Launcher): echter Aufruf mit abgefangenem subprocess.run (nvidia-smi und claude auth: Test darunter)."""
+    """taskkill (`procflags.kill_tree`): echter Aufruf mit abgefangenem subprocess.run (nvidia-smi und claude auth: Test darunter)."""
     monkeypatch.setattr(procflags.os, "name", "nt")
     seen = []
 
@@ -43,10 +43,7 @@ def test_the_callers_that_take_subprocess_as_a_default_also_pass_the_flags(monke
         return subprocess.CompletedProcess(a, 0, stdout="", stderr="")
     monkeypatch.setattr(subprocess, "run", spy)
 
-    from kushim import launcher
-    import kushim.launcher as lm
-    monkeypatch.setattr(lm.os, "name", "nt")
-    launcher.kill_tree(1234)
+    procflags.kill_tree(1234)
     assert seen and all(f == 0x08000000 for f in seen), seen
 
 

@@ -4,7 +4,7 @@ from kushim.doctor import FILES, run_checks
 def test_missing_files_are_reported(tmp_path):
     checks = run_checks(tmp_path)
     by = {c.name: c for c in checks}
-    assert not by["Whisper-Modell"].ok and not by["Ollama"].ok
+    assert not by["Whisper-Modell"].ok and not by["Piper-Stimme"].ok and "Ollama" not in by
     assert by["Notaus nicht aktiv"].ok
 
 

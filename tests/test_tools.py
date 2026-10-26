@@ -131,7 +131,7 @@ def test_config_roundtrip_keeps_other_sections_and_is_atomic(tmp_path):
     assert c.tools_enabled == ()
     c.set_tools_enabled(["web.search", "demo.local", "web.search"])
     again = Config.load(f)
-    assert again.tools_enabled == ("demo.local", "web.search") and again.memory_location == "local:x" and again.llm_model == "qwen2.5:7b"
+    assert again.tools_enabled == ("demo.local", "web.search") and again.memory_location == "local:x"
     c.set_tools_enabled([])
     assert Config.load(f).tools_enabled == () and not list(tmp_path.glob("*.tmp"))
     assert f.read_text(encoding="utf-8").count("[tools]") == 1
