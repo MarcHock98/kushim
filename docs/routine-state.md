@@ -12,9 +12,14 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
   mehr in kushim, ALLOWLIST ohne `net/web.py`, neuer Test sperrt es. 750 Tests grün, Review freigegeben.
 - 2026-10-26 Loop-Durchlauf 3: **A3 fertig** (Branch `routine/a3-timers-notes`, gemerged, nicht gepusht): `timers.py` entfernt.
   733 Tests grün, Review freigegeben (reines Löschen).
-- Nächster Schritt: A4 (alte Claude-Steuerung entfernen, `base.py` und `folders.py` bleiben). Hängt nicht an B0.
+- 2026-10-26 Loop-Durchlauf 4: **A4 fertig** (Branch `routine/a4-claude-control`, gemerged, nicht gepusht): alte Claude-Steuerung
+  entfernt, `base.py`/`folders.py` bleiben. 578 Tests grün, Review freigegeben (zwei Sicherheitstests strenger gefasst).
+- Nächster Schritt: A5 (Werkzeug-Verwaltung und Gates entfernen). Achtung: berührt `safety/gate.py`, `privacy.py` (EgressGate)
+  und `safety/approvals.py`. Die Roadmap verlangt das Entfernen; `safety/rules.py`, Notaus und `test_no_egress.py` bleiben.
+  Vorher prüfen, was davon die UI (`tools.*`, `safety.*`) und `doctor`/`setup` nutzen.
 - Blockiert: Phase B ab B1 wartet auf B0 (Entscheidung des Nutzers).
-- Bereit zum Push durch den Nutzer: master, routine/a1-voice-commands, routine/a2-web-research, routine/a3-timers-notes
+- Bereit zum Push durch den Nutzer: master, routine/a1-voice-commands, routine/a2-web-research, routine/a3-timers-notes,
+  routine/a4-claude-control
 
 - Letzter Durchlauf: 2026-10-04: Claude entwickelt Projekt (Teile 1 und 2: Ordner-Freigabe, Worktree, Rückfragen, Übersichten, Diff-Prüfung), am echten Aufruf im Wegwerf-Repo geprüft; Abbruch-Befehl; Claude-Recherche mit Wikipedia-Ersatz. Loop gestoppt (Wunsch des Nutzers), alles lokal gemerged, nicht gepusht. 693 Tests grün
 - Seit 2026-10-03 zusätzlich gemerged (alle lokal, nicht gepusht): Notaus beendet auch llama-server, `voice threshold`, Wake Word + Befehl in einem Zug, Gesprächsmodus ohne Wake Word, Unterbrechen (Barge-in) mit echten Pegeln, `voice level`, `kushim gpu`/[gpu], `kushim help`, `kushim`-Befehl im PATH, qwen3.5:9b (think aus), Designer-Skill, Pläne `docs/ui-llm-plan.md`, `docs/tools-plan.md`, `kushim setup`, `kushim tools`, API `setup.*`/`audio.devices`/`safety.*`/`tools.*`

@@ -48,7 +48,6 @@ Gedächtnis und Schlüssel
 Prüfen und Hilfe
   kushim claude [check|enable|disable]  Claude CLI und Anmeldung prüfen; Modus C ein/aus
   kushim claude folders|add|remove  Ordner für Claude freigeben (Entwicklung nur dort, immer eigener Worktree)
-  kushim claude start [auftrag]     Claude arbeitet am Projekt (Vorschau, Freigabe); status|stop|result|answer
   kushim tools                 Werkzeuge anzeigen; enable|disable <name> schaltet ein/aus (alle standardmäßig aus)
   kushim doctor                Prüft, ob alles installiert und eingerichtet ist
   kushim setup                 Stand der Einrichtung: Systemcheck, Stimme, Wake Words, Notaus
@@ -66,31 +65,9 @@ def _gpu_plan(cfg: Config):
     return gpus, gpu.make_plan(gpus, cfg.gpu_whisper, cfg.gpu_llm)
 
 
-class SimpleState:
-    status = ""
-
-
-def open_viewer(root) -> None:
-    """Öffnet ein eigenes Terminalfenster mit der Live-Ansicht (Windows). Nur Anzeige; kein Einfluss auf den Lauf."""
-    import subprocess
-    import sys
-    if sys.platform == "win32":
-        subprocess.Popen([sys.executable, "-m", "kushim.cli", "claude", "watch"], cwd=str(root),
-                         creationflags=subprocess.CREATE_NEW_CONSOLE)
-
-
 def _claude_dev(args, cfg: Config, root) -> int:
-    """`kushim claude folders|add|remove|start|status|stop|result|answer`: Claude entwickelt in freigegebenen Ordnern (docs/claude-cli-plan.md)."""
-    import time as _time
-    from .claude_cli import base as claude_base
+    """`kushim claude folders|add|remove`: sichere Arbeitsordner für Claude verwalten."""
     from .claude_cli import folders as cfolders
-    from .claude_cli import report as creport
-    from .claude_cli.control import Control
-    from .claude_cli.session import ClaudeSessions, SessionError
-    from .privacy import EgressGate
-    from .safety import killswitch
-    from .safety.gate import Decision
-    from .tools.registry import ToolRegistry, default_tools
     action = args.sub
     vault = cfolders.vault_path(cfg.memory_location)
     known = cfolders.parse(cfg.claude_folders)
@@ -124,102 +101,6 @@ def _claude_dev(args, cfg: Config, root) -> int:
         cfg.set_claude_folders([f.entry() for f in known if f.name != args.name])
         print(f"Freigabe für «{args.name}» entzogen.")
         return 0
-
-    if action == "branches":
-        sessions = ClaudeSessions(root, None, vault=vault)
-        n = 0
-        for f in known:
-            for w, dirty, ahead in sessions.branches(f):
-                n += 1
-                print(f"{f.name}  {w.path.name}  Branch {w.branch}  ungesichert: {dirty}  Commits: {ahead}")
-        print("Keine Claude-Branches." if not n else "Weitermachen: per Sprache \"Mach bei Nummer eins weiter\" (kushim talk).")
-        return 0
-    if action == "watch":
-        from .claude_cli.watch import run_watch
-        try:
-            return run_watch(root, state=lambda: (ClaudeSessions(root, None).state() or SimpleState).status)
-        except KeyboardInterrupt:
-            return 0
-    exe = claude_base.find_claude()
-    cache = claude_base.AuthCache(exe)
-    sessions = ClaudeSessions(root, exe, vault=vault)
-    sessions.viewer = lambda: open_viewer(root)
-    if action == "status":
-        st = sessions.state()
-        if st is None:
-            print("Kein Claude-Lauf.")
-            return 0
-        names = {"running": "läuft", "waiting": "wartet auf deine Antwort oder ist fertig", "failed": "gescheitert", "stopped": "gestoppt"}
-        print(f"Claude-Lauf {st.id}: {names.get(st.status, st.status)} (Ordner {st.folder}, Zug {st.turn}, {st.seconds / 60:.1f} min, {st.cost_usd:.2f} USD)")
-        if st.error:
-            print(f"Hinweis: {st.error}")
-        return 0
-    if action == "stop":
-        print("Stopp ausgelöst." if sessions.stop() else "Es läuft kein Claude-Lauf.")
-        return 0
-    if action == "result":
-        got = sessions.result()
-        if got is None:
-            print("Kein Claude-Lauf.")
-            return 0
-        print(creport.written(got[2]))
-        return 0
-
-    reg = ToolRegistry(default_tools(cfg, cache), cfg.tools_enabled)
-    why = next((t.available() for t in reg.tools.values() if t.name == "claude.code"), "")
-    if not reg.is_active("claude.code"):
-        print("Das Werkzeug claude.code ist " + (f"nicht verfügbar: {why}" if why else "aus. Einschalten: kushim tools enable claude.code"))
-        return 1
-    ctl = Control(reg, sessions, EgressGate(cfg.claude_enabled, confirm=lambda dest, payload: True), cache.get, lambda: cfolders.parse(cfg.claude_folders))
-    if action == "start":
-        prop = ctl.propose_start(" ".join(args.auftrag), args.folder, speaker_verified=True)       # am Terminal sitzt der Nutzer selbst
-    else:
-        prop = ctl.propose_answer(" ".join(args.text), args.allow, speaker_verified=True)
-    if prop.decision is not Decision.ASK:
-        print(prop.reason or "Nicht erlaubt.")
-        return 1
-    print(prop.preview)
-    if input("Senden und starten? (j/N): ").strip().lower() not in ("j", "ja", "y", "yes"):
-        ctl.deny(prop)
-        print("Nichts gesendet.")
-        return 1
-    if not ctl.approve(prop):
-        print("Freigabe ungültig oder abgelaufen.")
-        return 1
-    try:
-        ctl.execute(prop)
-    except SessionError as e:
-        print(f"Nicht gestartet: {e}")
-        return 1
-    print("Claude arbeitet. Strg+C oder `kushim claude stop` bricht ab, der Branch bleibt erhalten.")
-    last = _time.monotonic()
-    try:
-        while True:
-            st = sessions.state()
-            if st is None or st.status != "running":
-                break
-            if killswitch.is_triggered(root):
-                sessions.stop()
-                print("Notaus: Claude wird beendet.")
-            if _time.monotonic() - last > 30:
-                print(f"... läuft seit {(_time.monotonic() - last) / 60:.1f} min weiter (Zug {st.turn})", flush=True)
-                last = _time.monotonic()
-            _time.sleep(0.5)
-    except KeyboardInterrupt:
-        sessions.stop()
-        sessions.join(15)
-        print("Abgebrochen: Claude wurde gestoppt, der Branch bleibt erhalten.")
-        return 130
-    sessions.join(15)
-    got = sessions.result()
-    if got is not None:
-        st, _rv, ov = got
-        if st.status == "failed" and st.error:
-            print(f"Hinweis: {st.error}")
-        print(creport.written(ov))
-        if ov.question or ov.permission_questions:
-            print("Antworten: kushim claude answer <Text>" + (" [--allow MUSTER]" if st.offers else ""))
-    return 0
 
 
 def _vault_state(cfg: Config) -> str:
@@ -373,17 +254,6 @@ def _main(argv: list[str] | None = None) -> int:
     ca.add_argument("name")
     ca.add_argument("path")
     cl.add_parser("remove", help="Die Freigabe eines Ordners sofort entziehen").add_argument("name")
-    cs = cl.add_parser("start", help="Claude arbeitet an einem freigegebenen Ordner (Vorschau, Freigabe, eigener Worktree)")
-    cs.add_argument("--folder", help="Name des Ordners (bei nur einem Ordner nicht nötig)")
-    cs.add_argument("auftrag", nargs="*", help="Auftrag; ohne Angabe: nächster offener Roadmap-Punkt")
-    cl.add_parser("status", help="Stand des Claude-Laufs")
-    cl.add_parser("branches", help="Vorhandene Claude-Branches (Worktrees) der freigegebenen Ordner")
-    cl.add_parser("watch", help="Live-Ansicht: zeigt, was Claude gerade tut (nur Anzeige, Schließen stoppt nichts)")
-    cl.add_parser("stop", help="Laufenden Claude-Lauf stoppen (der Branch bleibt)")
-    cl.add_parser("result", help="Übersicht: was Claude getan hat, Fakten aus Git, nächste Schritte")
-    cn = cl.add_parser("answer", help="Auf eine Rückfrage von Claude antworten (nächster Zug)")
-    cn.add_argument("text", nargs="+")
-    cn.add_argument("--allow", action="append", default=[], help="Von kushim angebotenes Muster für diese Sitzung erlauben")
     sub.add_parser("setup", help="Stand der Einrichtung (Systemcheck, Stimme, Wake Words, Notaus) anzeigen")
     bh = sub.add_parser("behavior", help="Verhaltens-Check des lokalen Modells (Manipulation, Schmeichelei, Abhängigkeit, Regeln); startet Ollama kurz")
     bh.add_argument("--model", help="anderes installiertes Modell prüfen")
@@ -516,7 +386,7 @@ def _main(argv: list[str] | None = None) -> int:
             print(f"Noch nicht installiert. Laden (einmalig, Netzwerk nur zu registry.ollama.ai): "
                   f"install.ps1 -Llm {cfg.llm_model}")
         return 0
-    if args.cmd == "claude" and getattr(args, "sub", None) in ("folders", "add", "remove", "start", "status", "stop", "result", "answer", "watch", "branches"):
+    if args.cmd == "claude" and getattr(args, "sub", None) in ("folders", "add", "remove"):
         return _claude_dev(args, cfg, root)
     if args.cmd == "claude":
         from .claude_cli import base as claude_base
@@ -815,13 +685,8 @@ def _main(argv: list[str] | None = None) -> int:
                     register_tasks(core, tasks)
                     from .api.folders_api import register_folders
                     from .claude_cli import folders as cfolders
-                    from .claude_cli.session import ClaudeSessions
-
-                    def busy(name):                       # ein Lauf aus einem anderen Prozess (`kushim claude start`) zählt auch
-                        st = ClaudeSessions(root, None).state()
-                        return st is not None and st.folder == name and st.status == "running"
                     register_folders(core, Config.load, lambda raw: cfolders.validate_path(raw, cfolders.vault_path(cfg.memory_location)),
-                                     busy=busy, audit=store.audit if store else None)
+                                     audit=store.audit if store else None)
                     if store is not None:
                         register_memory(core, store)
                         register_feedback(core, transcript, store)

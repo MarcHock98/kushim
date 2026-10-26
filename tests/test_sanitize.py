@@ -1,50 +1,8 @@
-"""Leaf-Helfer für fremden Text: Prüfer gegen private Daten (`claude_cli/guard.py`) und Bereinigung (`sanitize.py`)."""
+"""Bereinigung fremden Textes (`sanitize.py`): Markup, Steuerzeichen, eingeschleuste Anweisungen."""
 import pytest
 
 from kushim import sanitize
-from kushim.claude_cli import guard
 from kushim.sanitize import clean_text
-from kushim.safety.rules import Harm
-
-# --- Prüfer --------------------------------------------------------------------------------------
-
-HARMLESS = ["Eiffelturm Höhe", "Wie hoch ist der Mount Everest?", "Geschichte Roms 476 nach Christus", "Python 3.12 Neuerungen",
-            "Einwohnerzahl Hamburg 2024", "Unterschied Wal und Fisch", "Wer war Kushim"]
-PRIVATE = {
-    "maria.muster@example.org Adresse": "E-Mail",
-    "Konto DE89 3704 0044 0532 0130 00": "IBAN",
-    "Zahlung mit 4111 1111 1111 1111": "Kartennummer",
-    "ruf an +49 170 1234567": "Telefonnummer",
-    "sk-abc123def456ghi789jkl012mno345": "schlüsselähnlich",
-    r"C:\Users\Marc\Desktop\steuer.pdf": "Pfad",
-    "mein Passwort ist geheim": "Passwörter",
-    "Adresse von Max Mustermann": "Person",
-    "wo wohnt Erika Mustermann": "Person",
-}
-
-
-@pytest.mark.parametrize("q", HARMLESS)
-def test_guard_lets_harmless_queries_through(q):
-    assert guard.reasons(q) == [] and guard.query_harms(q) == set()
-
-
-@pytest.mark.parametrize("q,what", list(PRIVATE.items()))
-def test_guard_blocks_private_data(q, what):
-    assert guard.reasons(q), q
-    assert guard.query_harms(q)
-
-
-def test_guard_distinguishes_third_party_from_privacy():
-    assert guard.query_harms("Adresse von Max Mustermann") == {Harm.THIRD_PARTY}
-    assert guard.query_harms("mein Passwort") == {Harm.PRIVACY}
-
-
-def test_guard_validate_normalizes_and_limits():
-    assert guard.validate("  Eiffel \n\t turm «Höhe» ") == 'Eiffel turm "Höhe"'
-    for bad in ("", "   ", "x" * 201):
-        with pytest.raises(ValueError):
-            guard.validate(bad)
-
 
 # --- Bereinigung und Einschleusen ----------------------------------------------------------------
 
