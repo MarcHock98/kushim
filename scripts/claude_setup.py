@@ -5,6 +5,7 @@ Aufruf:
     py scripts\\claude_setup.py --project PFAD  # zusätzlich ein Projekt mit Graphify verbinden
     py scripts\\claude_setup.py --dry-run       # nur anzeigen, nichts ändern
     py scripts\\claude_setup.py --statusline    # zusätzlich die Statuszeile (scripts/statusline.py) eintragen
+    py scripts\\claude_setup.py --test-hook     # zusätzlich den Hook, der lange Testausgaben kürzt (scripts/trim_test_output.py)
 
 Was es tut (wiederholbar, ändert nur eigene, markierte Teile, legt vorher Sicherungen an):
 1. Installiert Graphify (PyPI-Paket `graphifyy`, feste Version) für den Benutzer und meldet den Skill in Claude Code an.
@@ -93,6 +94,21 @@ def merge_statusline(data: dict, command: str) -> tuple[dict, str]:
     return out, "Statuszeile: Modell, Kontext-Füllstand, Abo-Grenzen."
 
 
+TEST_HOOK_SCRIPT = Path(__file__).resolve().with_name("trim_test_output.py")
+
+
+def merge_test_hook(data: dict, command: str) -> dict:
+    """Trägt den PreToolUse-Hook für Bash ein, der lange Testausgaben kürzt. Ersetzt nur den eigenen Eintrag."""
+    out = dict(data)
+    hooks = dict(out.get("hooks") or {})
+    groups = [g for g in (hooks.get("PreToolUse") or []) if isinstance(g, dict)
+              and not any("trim_test_output.py" in str(h.get("command", "")) for h in g.get("hooks") or [] if isinstance(h, dict))]
+    groups.append({"matcher": "Bash", "hooks": [{"type": "command", "command": command}]})
+    hooks["PreToolUse"] = groups
+    out["hooks"] = hooks
+    return out
+
+
 def merge_rules(text: str) -> str:
     """Ersetzt den eigenen Block zwischen den Markierungen oder hängt ihn an. Fremder Text bleibt unberührt."""
     if BEGIN in text and END in text:
@@ -156,7 +172,7 @@ def install_graphify(dry: bool) -> None:
         print("  Hinweis: `graphify` liegt nicht im PATH. Den Scripts-Ordner von `py -m site --user-base` zum PATH hinzufügen.")
 
 
-def setup_global(dry: bool, statusline: bool = False) -> None:
+def setup_global(dry: bool, statusline: bool = False, test_hook: bool = False) -> None:
     base = claude_dir()
     print(f"== Einstellungen ({base})")
     sp = base / "settings.json"
@@ -164,6 +180,9 @@ def setup_global(dry: bool, statusline: bool = False) -> None:
     if statusline:
         data, note = merge_statusline(data, statusline_command())
         print(f"  {note}")
+    if test_hook:
+        data = merge_test_hook(data, statusline_command(script=TEST_HOOK_SCRIPT))
+        print("  Hook: lange Testausgaben (pytest, npm test, vitest, cargo test) werden auf Fehler und Ergebnis gekürzt.")
     write_json(sp, data, dry)
     print("== Token-Regeln")
     cp = base / "CLAUDE.md"
@@ -193,10 +212,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--skip-install", action="store_true", help="Graphify nicht installieren (schon vorhanden)")
     ap.add_argument("--dry-run", action="store_true", help="nur anzeigen, nichts ändern")
     ap.add_argument("--statusline", action="store_true", help="Statuszeile (Modell, Kontext, Abo-Grenzen) eintragen")
+    ap.add_argument("--test-hook", action="store_true", help="Hook eintragen, der lange Testausgaben kürzt")
     a = ap.parse_args(argv)
     if not a.skip_install:
         install_graphify(a.dry_run)
-    setup_global(a.dry_run, statusline=a.statusline)
+    setup_global(a.dry_run, statusline=a.statusline, test_hook=a.test_hook)
     if a.project:
         setup_project(a.project, a.dry_run)
     print("Fertig. Claude Code neu starten, damit die Einstellungen greifen.")
