@@ -23,8 +23,11 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
 - 2026-10-26 Loop-Durchlauf 6: **A7 fertig** (Branch `routine/a7-rest`, gemerged, nicht gepusht): `learning/` entfernt, README
   und Hilfe auf Claude Code umgestellt, `net/loopback.py` bewusst behalten (für B3). 500 Tests grün, Review freigegeben.
   Phase A ist bis auf A5 erledigt.
-- Nächster freier Schritt: Z4 (Statuszeile) als Teil von `scripts/claude_setup.py`, nur als Datei/Option, die der Nutzer selbst
-  ausführt; globale Einstellungen schreibt die Routine nie selbst.
+- 2026-10-26 Loop-Durchlauf 7: **Z4 fertig** (Branch `routine/z4-statusline`, gemerged, nicht gepusht): `scripts/statusline.py` und
+  `claude_setup.py --statusline`. Feldnamen aus der eingebauten Beschreibung der installierten Claude-Code-Version gelesen (lokal,
+  keine Web-Recherche). 509 Tests grün, Review freigegeben. Nicht live geprüft: Anzeige in Claude Code (Nutzer führt das Skript aus).
+- Nächster freier Schritt: Z5 (Hook, der lange Testausgaben kürzt), ebenfalls nur als Option in `claude_setup.py`.
+  Globale Einstellungen schreibt die Routine nie selbst.
 - Blockiert: A5 (Gates entfernen, Frage offen), Phase B ab B1 (B0).
 - Bereit zum Push durch den Nutzer: master, routine/a1-voice-commands, routine/a2-web-research, routine/a3-timers-notes,
   routine/a4-claude-control, routine/a6-local-llm, routine/a7-rest

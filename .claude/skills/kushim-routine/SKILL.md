@@ -112,6 +112,11 @@ Am Ende jedes Durchlaufs eine kurze Rückschau: Was hat gehakt? Was wurde wieder
 
 - **Heredoc und `\n` (dritter Fall):** Auch `'\\n'` in einem `<<'PY'`-Python-Skript wurde zu einem echten Zeilenumbruch im
   geschriebenen Test (Syntaxfehler). Zeichenketten mit Backslashes nie per Heredoc-Skript schreiben: Edit-Werkzeug nehmen.
+- **Wissen über Claude Code ohne Netz:** Die installierte `claude.exe` enthält die eingebauten Beschreibungen (z. B. das
+  JSON der Statuszeile). Mit Python und `mmap` nach einem Feldnamen suchen und den Text drumherum lesen (`grep -a` auf der
+  300-MB-Datei ist zu langsam und zerhackt die Zeilen). Version (`claude --version`) mit notieren.
+- **Ausgaben für andere Programme unter Windows:** Python schreibt in Pipes cp1252. Wer UTF-8 erwartet (Claude Code), bekommt
+  Bytes über `sys.stdout.buffer.write(text.encode("utf-8"))`; mit `PYTHONIOENCODING=cp1252` im Test prüfen.
 - **Löschschritte (Phase A):** Vor dem Löschen alle Importe suchen, auch in `api/` und in Testdateien, die nur teilweise
   betroffen sind (dann nur die betroffenen Tests entfernen). API-Typen, die wegfallen, zeigt die UI als „nicht verfügbar“
   (`unknown_type` zählt nicht für die Trennung); trotzdem in `ui/src` nachsehen, wer sie ruft, und Ersatz in die Roadmap schreiben.
