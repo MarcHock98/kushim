@@ -16,8 +16,9 @@ Oberste Regel: Schäden jeder Art sind verboten. **Sprachdaten verlassen nie den
    (keine Telemetrie, Fehlerberichte, Auto-Updates); Web-Werkzeuge (`WebSearch`, `WebFetch`) gesperrt, solange der Nutzer nichts
    anderes entscheidet.
 3. Downloads (Modelle, Pakete) nur bei der Installation, aus offiziellen Quellen, mit Prüfsumme.
-4. **Offen (B0):** Ob Claude Code mit Anthropics Modellen (dann geht der Befehlstext und was Claude liest an Anthropic) oder
-   komplett lokal mit einem Ollama-Modell läuft, entscheidet der Nutzer.
+4. **Entschieden (2026-10-26):** Claude Code mit Anthropics Modellen ist die einzige KI. Kein lokales Modell (kein Ollama o. ä.).
+   Alles andere in kushim ist nur Weitergabe (Stimme → Text → Claude Code → Text → Stimme). Einzige Verbindung nach außen ist
+   die von Claude Code selbst zu Anthropic (Befehlstext und was Claude für die Aufgabe liest).
 
 Arbeitsweise: immer nur einen Schritt, danach Tests (`pytest`), Sicherheitsprüfung (`kushim-safety-review`), Commit. Schritte mit
 **(Nutzer)** kann nur der Nutzer erledigen (Mikrofon, echte Stimme, Entscheidung).
@@ -47,6 +48,7 @@ den kushim-Channel (lokaler MCP-Server, stdio). kushim (Python) spricht mit dem 
 
 - [ ] B0 **Entscheidung (Nutzer):** Channel-Weg (Research Preview, Start mit `--dangerously-load-development-channels`) statt
       eigener `claude -p`-Steuerung? Und: lokaler HTTP-Port nur auf 127.0.0.1 mit Token zwischen kushim und Channel erlaubt?
+      (Claude Code als einzige KI ist entschieden, siehe Datenschutz-Regel 4)
 - [ ] B1 Prototyp ohne Sprache: Channel-Server `channel/` (Bun oder Node, offizielles `@modelcontextprotocol/sdk`, Versionen fest),
       `claude/channel`-Fähigkeit, nimmt Text per `POST 127.0.0.1` an (Token-Prüfung) und schiebt ihn in die Sitzung; Test mit `curl`
 - [ ] B2 Antwort-Werkzeug `sprich` (kurzer deutscher Text, ohne Markdown, höchstens 600 Zeichen), gibt den Text an kushim;
