@@ -65,9 +65,11 @@ Abbrechen (`tasks.py`), Vault (`memory/`, für das Stimmprofil), `config.py`, `c
       `kushim start|llm|behavior`, `learning/behavior.py`, Verknüpfung `kushim.lnk`. `kushim talk` antwortet bis B4 mit
       „Ich bin noch nicht mit Claude verbunden.“; `kill_tree` liegt jetzt in `procflags.py`. Auf dem PC bleiben
       `tools/ollama`, `models/ollama` und die alte Desktop-Verknüpfung `kushim.lnk` liegen (Löschen macht der Nutzer)
-- [ ] A7 Rest prüfen: `learning/`, `setup/`, `api/setup_api.py` entfernen oder behalten (Setup-Status bleibt nützlich für die UI);
-      README „Was es heute kann“ kürzen; `kushim help` zeigt nur noch vorhandene Befehle. Ergänzt 2026-10-26: `net/loopback.py`
-      hat seit A6 keine Nutzer mehr: entfernen und aus der ALLOWLIST streichen (strenger); README ohne Ollama/Qwen
+- [x] A7 Rest prüfen: `learning/`, `setup/`, `api/setup_api.py` entfernen oder behalten (Setup-Status bleibt nützlich für die UI);
+      README „Was es heute kann“ kürzen; `kushim help` zeigt nur noch vorhandene Befehle (2026-10-26, 500 grün). Entfernt:
+      `learning/` (Stil-Bandit ohne Nutzer). Behalten: `setup/`, `api/setup_api.py` (UI) und **`net/loopback.py`**: hat seit A6
+      keine Nutzer, ist aber genau der 127.0.0.1-Client, den B3 braucht (sonst später neue ALLOWLIST-Freigabe nötig).
+      Neuer Test: `kushim help` nennt nur vorhandene Befehle. README auf Claude Code umgeschrieben
 
 ## Phase B: Brücke zu Claude Code (Channel), Grundlage: [docs/research/jarvis-projekte.md](docs/research/jarvis-projekte.md)
 Aufbau: `claude` läuft interaktiv (das ist die Oberfläche: Verlauf, `/model`, `/usage`, Freigabe-Dialog). Claude Code startet

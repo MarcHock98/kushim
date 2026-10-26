@@ -27,7 +27,7 @@ Stimme
   kushim voice reset           Stimmprofil löschen
 
 Oberfläche und Grafikkarte
-  kushim gpu                   Grafikkarten zeigen und wie Whisper und das Sprachmodell verteilt werden
+  kushim gpu                   Grafikkarten zeigen und welche Whisper nutzt
   kushim app                   Die Oberfläche öffnen (startet Sprache und API selbst; --no-voice nur Oberfläche)
   kushim serve                 Backend-API für die Oberfläche starten (nur 127.0.0.1, Port/Token in run/api.json)
 
@@ -41,14 +41,14 @@ Gedächtnis und Schlüssel
 
 Prüfen und Hilfe
   kushim claude [check|enable|disable]  Claude CLI und Anmeldung prüfen; Modus C ein/aus
-  kushim claude folders|add|remove  Ordner für Claude freigeben (Entwicklung nur dort, immer eigener Worktree)
+  kushim claude folders|add|remove  Sichere Arbeitsordner für Claude verwalten
   kushim tools                 Werkzeuge anzeigen; enable|disable <name> schaltet ein/aus (alle standardmäßig aus)
   kushim doctor                Prüft, ob alles installiert und eingerichtet ist
   kushim setup                 Stand der Einrichtung: Systemcheck, Stimme, Wake Words, Notaus
   kushim help                  Diese Übersicht
   kushim <befehl> --help       Optionen eines Befehls
 
-Einstellungen: config.toml (Vault, LLM, Grafikkarten), wakewords.toml (Wake Words, Zeiten). Anleitung: README.md
+Einstellungen: config.toml (Vault, Grafikkarte, Claude-Ordner), wakewords.toml (Wake Words, Zeiten). Anleitung: README.md
 """
 
 
