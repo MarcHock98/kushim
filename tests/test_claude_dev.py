@@ -9,7 +9,7 @@ import pytest
 from kushim.claude_cli import dev, folders, report, review
 from kushim.claude_cli.folders import Folder, parse, parse_entry, resolve, validate_path, vault_path
 from kushim.claude_cli.review import GitError, Review, find_worktree, is_protected, run_git
-from kushim.web.sanitize import Untrusted
+from kushim.sanitize import Untrusted
 
 EXE = Path("C:/fake/claude.exe")
 

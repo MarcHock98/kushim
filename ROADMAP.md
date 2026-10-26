@@ -47,7 +47,10 @@ Abbrechen (`tasks.py`), Vault (`memory/`, für das Stimmprofil), `config.py`, `c
       `commands.py`, `wake_commands.py` samt Tests; `talk.py`/`cli.py` ohne sie lauffähig. Tests grün (2026-10-26, 884 grün).
       Mit entfernt: `api/approvals_api.py` und `api/dashboard_api.py` (hingen nur an den Sprachbefehlen). Die UI zeigt
       Freigabe-Leiste und Übersicht bis Phase C/E als „nicht verfügbar“; der Haken `Pipeline.commands` bleibt für B4/D2
-- [ ] A2 Web und Recherche entfernen: `web/`, `research.py`, `net/web.py` samt Tests und ALLOWLIST-Einträgen in `test_no_egress.py`
+- [x] A2 Web und Recherche entfernen: `web/`, `research.py`, `net/web.py` samt Tests und ALLOWLIST-Einträgen in `test_no_egress.py`
+      (2026-10-26, 750 grün). Mit entfernt: `claude_cli/ask.py`, `kushim search`/`research`. Behalten und verschoben:
+      `sanitize.py` (Paketwurzel, für C1/C2) und `claude_cli/guard.py` (geht mit A4). Die Werkzeug-Einträge `web.search`
+      und `claude.research` in `tools/registry.py` fallen erst mit A5
 - [ ] A3 Timer und Notizen entfernen: `timers.py` samt Tests und CLI-Befehlen
 - [ ] A4 Alte Claude-Steuerung entfernen: `claude_cli/` bis auf `base.py` (CLI finden, Anmeldung prüfen, saubere Umgebung) und
       `folders.py` (sichere Arbeitsordner), samt `api/claude_api.py` und Tests

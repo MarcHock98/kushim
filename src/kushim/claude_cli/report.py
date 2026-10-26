@@ -10,7 +10,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from ..web.sanitize import Untrusted, clean_text
+from ..sanitize import Untrusted, clean_text
 from .review import Review
 
 _HEAD = re.compile(r"^#{1,3}\s*(Zusammenfassung|R(?:ü|ue)ckfrage|N(?:ä|ae)chste Schritte)\s*:?\s*$", re.IGNORECASE | re.MULTILINE)

@@ -21,7 +21,7 @@ from kushim.privacy import EgressGate
 from kushim.safety.gate import ActionRequest, Decision
 from kushim.tasks import TaskRegistry
 from kushim.tools.registry import CLAUDE_CODE, ToolRegistry, claude_code_tool, default_tools
-from kushim.web.sanitize import Untrusted
+from kushim.sanitize import Untrusted
 
 EXE = Path("C:/fake/claude.exe")
 ABO = Auth(True, "claude.ai")
