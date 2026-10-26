@@ -109,6 +109,10 @@ Am Ende jedes Durchlaufs eine kurze Rückschau: Was hat gehakt? Was wurde wieder
 - **Unter `pythonw` (Desktop-Verknüpfung) öffnet jedes Konsolenprogramm ein Fenster:** Jeder `subprocess`-Aufruf in `src` braucht `**hidden()` aus `procflags.py` (ein Test prüft das statisch). Abfragen der UI (Polling) dürfen nie teure Dinge wie mehrere `git`-Befehle bei jeder Runde auslösen: nur bei Änderung holen. Live prüfen, indem man neue Prozesse zählt (`Get-CimInstance Win32_Process` in einer Schleife).
 - **Neue Teile gegen den echten Start prüfen, nicht nur gegen die Attrappe:** Die UI lief mit dem gefälschten Backend grün und scheiterte beim ersten echten Start (Trennung bei `unknown_type`, Layout, Fenster). Nach größeren UI-Änderungen die App bauen, über `kushim app` starten und einen Screenshot per `PrintWindow` ansehen.
 
+- **Löschschritte (Phase A):** Vor dem Löschen alle Importe suchen, auch in `api/` und in Testdateien, die nur teilweise
+  betroffen sind (dann nur die betroffenen Tests entfernen). API-Typen, die wegfallen, zeigt die UI als „nicht verfügbar“
+  (`unknown_type` zählt nicht für die Trennung); trotzdem in `ui/src` nachsehen, wer sie ruft, und Ersatz in die Roadmap schreiben.
+
 ## Takt und Ende
 - Im `/loop`-Modus: weitere Durchläufe über `ScheduleWakeup`. Arbeit offen und frei: 270 s bis wenige Minuten. Nur auf Antwort gewartet: 1200-1800 s. Alles blockiert: 3600 s.
 - **Ziel erreicht**, wenn alle Roadmap-Punkte abgehakt sind (und keine neuen sinnvollen offen), alle Pakete gemerged, Tests grün, Review sauber: Abschlussbericht im Terminal, dann `ScheduleWakeup` mit `stop: true`.

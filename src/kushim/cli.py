@@ -92,50 +92,6 @@ def _show_wiki(out, use_llm: bool, cfg: Config, root) -> int:
     return 0
 
 
-def _voice_tools(cfg: Config, root):
-    """Sprachbefehle für Werkzeuge (docs/tools-plan.md): geprüfte Bausteine, Schalter immer frisch aus config.toml."""
-    from .claude_cli import ask as claude_ask
-    from .claude_cli import base as claude_base
-    from .claude_cli import folders as cfolders
-    from .claude_cli.control import Control
-    from .claude_cli.session import ClaudeSessions
-    from .config import LiveConfig
-    from .llm.ollama import OllamaClient
-    from .net import web as netweb
-    from .privacy import EgressGate
-    from .research import Research
-    from .tasks import TaskRegistry
-    from .tools.registry import ToolRegistry, default_tools
-    from .safety.gate import ActionGate
-    from .timers import TimerStore
-    from .memory import open_store
-    from .tools.registry import NOTES, TIMER, ToolGate
-    from .voice.note_commands import DELETE_SPEC, NoteCommands, notes_reviewer
-    from .voice.timer_commands import TimerCommands
-    from .voice.tool_commands import ToolCommands
-    from .web import search as websearch
-    from .web.answer import answer_from_sources
-    live = LiveConfig()
-    exe = claude_base.find_claude()
-    cache = claude_base.AuthCache(exe)
-    tasks = TaskRegistry()
-    reg = ToolRegistry(default_tools(live, cache), live.tools_enabled)
-    egress = EgressGate(live.claude_enabled, confirm=lambda dest, payload: True)       # die Freigabe der Vorschau passiert vorher per "ja"
-    sessions = ClaudeSessions(root, exe, vault=cfolders.vault_path(live.memory_location), tasks=tasks)
-    wiki = websearch.make_search(reg, netweb.fetch_text)
-    research = Research(reg, lambda q, c: claude_ask.ask(q, exe, root / "run" / "claude-research", cancelled=c), wiki, cache.get, egress, tasks=tasks)
-    folders = lambda: cfolders.parse(live.claude_folders)
-    control = Control(reg, sessions, egress, cache.get, folders, tasks=tasks)
-    chat = OllamaClient(live.llm_model).chat
-    tc = ToolCommands(live, reg, research, control, sessions, lambda wiki: str(answer_from_sources(chat, wiki)), folders)
-    tc.timers = TimerCommands(live, reg, ToolGate(ActionGate([TIMER.spec]), reg), TimerStore(root))
-    note_gate = ToolGate(ActionGate([NOTES.spec, DELETE_SPEC], reviewer=notes_reviewer), reg)
-    tc.notes = NoteCommands(live, reg, note_gate, lambda: open_store(live.get()))
-    sessions.viewer = lambda: open_viewer(root)                                       # Claude läuft sichtbar in einem eigenen Fenster
-    tc.before = lambda: setattr(egress, "enabled", live.claude_enabled)               # Modus C ausschalten wirkt sofort, auch hier
-    return tc, tasks
-
-
 class SimpleState:
     status = ""
 
@@ -890,7 +846,6 @@ def _main(argv: list[str] | None = None) -> int:
         from .voice.bargein import BargeIn
         from .voice.embedder import SherpaEmbedder
         from .voice.talk import TalkLoop, build_live
-        from .voice.wake_commands import WakeWordCommands
         from .voice.wakebuild import build_detector
         if is_triggered(root):
             print("Notaus ist aktiv. Erst bewusst aufheben: kushim resume")
@@ -918,18 +873,15 @@ def _main(argv: list[str] | None = None) -> int:
         launcher = Launcher(root, cuda_devices=plan.llm_visible)
         try:
             launcher.start_ollama()
-            tool_cmds, tasks = _voice_tools(cfg, root)
-            from .voice.commands import CommandChain
+            from .tasks import TaskRegistry
+            tasks = TaskRegistry()
             pipeline, kill, mic, ack = build_live(root, audio.find_device(args.out, "output"),
                                                   audio.find_device(args.mic, "input"),
-                                                  verifier=verifier, commands=CommandChain([WakeWordCommands(root), tool_cmds, tool_cmds.timers, tool_cmds.notes]),
-                                                  tasks=tasks, clone=cfg.voice_clone, clone_ref=cfg.voice_clone_ref,
+                                                  verifier=verifier, tasks=tasks, clone=cfg.voice_clone, clone_ref=cfg.voice_clone_ref,
                                                   on_note=lambda s: print(f"[Hinweis] {s}"),
                                                   wake_names=[w.name for w in wcfg.enabled()],
                                                   llm_model=cfg.llm_model, whisper_device=plan.whisper_device,
                                                   whisper_index=plan.whisper_index)
-            tool_cmds.say = pipeline.say_text
-            kill.actions.append(tool_cmds.sessions.stop)          # Notaus beendet auch einen laufenden Claude-Lauf
             det = build_detector(wcfg, root)
             wait_ms = int(wcfg.settings.listen_seconds * 1000)
             first_ms = int(wcfg.settings.command_wait_seconds * 1000)
@@ -953,33 +905,29 @@ def _main(argv: list[str] | None = None) -> int:
                 if r.outcome == "rejected_speaker":
                     publisher.alarm()
             pipeline.dialog._on_change = lambda s: publisher.phase(s.value)
-            if args.ui:                                   # die API muss im selben Prozess laufen: nur hier liegen die wartenden Freigaben
-                from .api.approvals_api import register_approvals
-                from .api.claude_api import register_claude
-                from .api.dashboard_api import register_dashboard
+            if args.ui:                                   # die API muss im selben Prozess laufen: nur hier liegen Aufgaben und Verlauf
                 from .api.feedback_api import register_feedback
                 from .api.memory_api import register_memory
                 from .api.safety_view import register_safety_view
                 from .api.tasks_api import register_tasks
                 from .api.transcript_api import register_transcript
+                from .config import LiveConfig
 
                 def extra(core, store):
-                    register_approvals(core, tool_cmds)
                     register_tasks(core, tasks)
-                    register_claude(core, tool_cmds.control)
                     from .api.folders_api import register_folders
                     from .claude_cli import folders as cfolders
+                    from .claude_cli.session import ClaudeSessions
 
-                    def busy(name):
-                        st = tool_cmds.sessions.state()
+                    def busy(name):                       # ein Lauf aus einem anderen Prozess (`kushim claude start`) zählt auch
+                        st = ClaudeSessions(root, None).state()
                         return st is not None and st.folder == name and st.status == "running"
                     register_folders(core, Config.load, lambda raw: cfolders.validate_path(raw, cfolders.vault_path(cfg.memory_location)),
                                      busy=busy, audit=store.audit if store else None)
-                    register_dashboard(core, tool_cmds, tool_cmds.timers.store, tasks)
                     if store is not None:
                         register_memory(core, store)
                         register_feedback(core, transcript, store)
-                    register_safety_view(core, tool_cmds.cfg, root, registry=tool_cmds.registry, store=store)
+                    register_safety_view(core, LiveConfig(), root, store=store)
                     register_transcript(core, transcript)
                 api = _api_start(cfg, root, extra)
             loop = TalkLoop(mic, pipeline, kill, wake=lambda f: det.process(f) is not None, ack=ack,
@@ -989,8 +937,7 @@ def _main(argv: list[str] | None = None) -> int:
                             first_collector=lambda: utter(first_ms),
                             follow_collector=(lambda: utter(follow_ms)) if follow_ms > 0 else None,
                             barge=barge, preroll_frames=round(st.preroll_seconds / 0.08),
-                            announce=lambda: tool_cmds.announcement() or tool_cmds.timers.announcement(), say=pipeline.say_text,
-                            on_note=lambda s: print(f"[Hinweis] {s}"))
+                            say=pipeline.say_text, on_note=lambda s: print(f"[Hinweis] {s}"))
             print("Wake Words: " + ", ".join(w.name for w in wcfg.enabled())
                   + ". Notaus: 'Notaus' sagen oder die Verknüpfung. Strg+C beendet.")
             if follow_ms > 0:
@@ -1002,9 +949,6 @@ def _main(argv: list[str] | None = None) -> int:
             reason = loop.run()
             publisher.clear()
             print("Ende:", reason)
-            if reason == "shutdown":                                  # "beende dich": Claude-Lauf stoppen, Dienste beendet das finally
-                tool_cmds.sessions.stop()
-                tool_cmds.sessions.join(15)
         except KeyboardInterrupt:
             pass
         finally:
