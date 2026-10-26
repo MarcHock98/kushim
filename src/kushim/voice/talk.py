@@ -1,7 +1,7 @@
 """`kushim talk`: Wake Word -> Quittung -> Aufnahme -> Pipeline, mit Notaus in jeder Runde.
 
 Vor dem Wake Word sieht nur der lokale Wake-Word-Detektor das Mikrofonsignal: keine Spracherkennung,
-kein LLM, keine Speicherung. Wird nur das Wake Word gesagt, antwortet kushim mit einer kurzen Quittung
+keine Weitergabe, keine Speicherung. Wird nur das Wake Word gesagt, antwortet kushim mit einer kurzen Quittung
 und wartet auf den Befehl. Die Schleife ist reine Logik (testbar); `build_live` setzt die echten
 Komponenten zusammen.
 """
@@ -10,12 +10,17 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
-from ..llm.ollama import DEFAULT_MODEL
 from ..safety.killswitch import KillSwitch
 from .audio import UtteranceCollector
 from .pipeline import Pipeline, Result
 
 ACK_TEXT = "Ja?"
+NOT_CONNECTED = "Ich bin noch nicht mit Claude verbunden."
+
+
+def not_connected(messages: Any, **_: Any) -> Iterable[str]:
+    """Platzhalter für die Antwort, bis die Brücke zu Claude Code steht (Roadmap v2 B4): kein lokales Modell mehr."""
+    yield NOT_CONNECTED
 
 
 class TalkLoop:
@@ -220,10 +225,9 @@ class TalkLoop:
 
 def build_live(root: Path, out_device: int | None, in_device: int | None = None,
                verifier: Any = None, commands: Any = None, wake_names: Iterable[str] = (),
-               llm_model: str = DEFAULT_MODEL, whisper_device: str = "cuda", whisper_index: int = 0, tasks: Any = None,
+               whisper_device: str = "cuda", whisper_index: int = 0, tasks: Any = None,
                clone: bool = False, clone_ref: str = "", on_note: Callable[[str], None] = lambda s: None):
-    """Echte Komponenten. Ollama muss laufen (kushim start oder Launcher)."""
-    from ..llm.ollama import OllamaClient
+    """Echte Komponenten. Antworten kommen bis Roadmap v2 B4 (Brücke zu Claude Code) nur als fester Hinweis."""
     from . import audio
     from .dialog import Dialog
     from .stt import SpeechToText
@@ -238,7 +242,6 @@ def build_live(root: Path, out_device: int | None, in_device: int | None = None,
         stt = SpeechToText.from_local(str(root / "models" / "whisper-large-v3-turbo"), device="cpu",
                                       compute_type="int8")
     engine = PiperEngine.from_local(str(root / "models" / "piper" / "de_DE-thorsten-high.onnx"))
-    llm = OllamaClient(llm_model)
     dialog = Dialog(audio.stop_playback)
     kill = KillSwitch(root, [audio.stop_playback])
     if clone:                                         # eigene Stimme (lokal, ohne Netz), Piper als Ersatz
@@ -247,10 +250,6 @@ def build_live(root: Path, out_device: int | None, in_device: int | None = None,
     speaker = Speaker(engine, lambda wav: audio.play_wav(wav, out_device), lambda: kill.fired)
     ack_wav = engine.synthesize(ACK_TEXT)
     mic = audio.Mic(in_device)
-    pipeline = Pipeline(stt, llm.chat_stream, speaker, dialog, kill, verifier, commands=commands,
+    pipeline = Pipeline(stt, not_connected, speaker, dialog, kill, verifier, commands=commands,
                         wake_names=tuple(wake_names), tasks=tasks)
-    try:
-        llm.warm_up()                 # kein Kaltstart bei der ersten Frage
-    except Exception:                 # noqa: BLE001 (nur Beschleunigung; Fehler zeigt sich bei der ersten Antwort)
-        pass
     return pipeline, kill, mic, lambda: audio.play_wav(ack_wav, out_device)

@@ -12,7 +12,6 @@ from .memory.migrate import backup, migrate
 HELP = """kushim: persönlicher, lokaler Assistent. Alles läuft auf diesem Rechner.
 
 Täglich
-  kushim start                 Lokale Dienste starten (Ollama, nur 127.0.0.1); Strg+C beendet
   kushim talk                  Sprechen per Wake Word
                                [--mic NAME] [--out NAME] [--wake-words "hey kushim,kushim"]
   kushim kill                  NOTAUS: stoppt alle kushim-Dienste
@@ -27,15 +26,10 @@ Stimme
   kushim voice level           Mikrofonpegel messen, Schwellen vorschlagen [--apply] [--mic NAME]
   kushim voice reset           Stimmprofil löschen
 
-Sprachmodell und Grafikkarten
-  kushim behavior              Verhaltens-Check: Fragen gegen Manipulation, Schmeichelei, Abhängigkeit an das lokale Modell (nur lokal)
+Oberfläche und Grafikkarte
   kushim gpu                   Grafikkarten zeigen und wie Whisper und das Sprachmodell verteilt werden
   kushim app                   Die Oberfläche öffnen (startet Sprache und API selbst; --no-voice nur Oberfläche)
   kushim serve                 Backend-API für die Oberfläche starten (nur 127.0.0.1, Port/Token in run/api.json)
-  kushim llm                   Aktuelles Modell, vorheriges und installierte Modelle zeigen
-  kushim llm set <name>        Modell wechseln (z. B. qwen3.5:9b); laden mit install.ps1 -Llm <name>
-  kushim llm test [name]       Modell kurz ausprobieren und die Antwortzeit messen
-  kushim llm back              Zurück zum vorherigen Modell
 
 Gedächtnis und Schlüssel
   kushim memory init           Vault anlegen (erzeugt auch den Schlüssel)
@@ -62,7 +56,7 @@ def _gpu_plan(cfg: Config):
     """Karten lesen und gemäß [gpu] in config.toml verteilen. Gibt (Karten, Plan) zurück; falsche Einstellung: ValueError."""
     from . import gpu
     gpus = gpu.list_gpus()
-    return gpus, gpu.make_plan(gpus, cfg.gpu_whisper, cfg.gpu_llm)
+    return gpus, gpu.make_plan(gpus, cfg.gpu_whisper)
 
 
 def _claude_dev(args, cfg: Config, root) -> int:
@@ -129,7 +123,7 @@ def _api_start(cfg: Config, root, extra=None):
     token = new_token()
     core = ApiCore(token)
     register_voice(core, root)
-    register_setup(core, root, lambda: _vault_state(cfg), llm_model=cfg.llm_model,
+    register_setup(core, root, lambda: _vault_state(cfg),
                    audit=store.audit if store else None)
     from .api.safety_view import register_safety_view
     from .config import LiveConfig
@@ -199,7 +193,6 @@ def _main(argv: list[str] | None = None) -> int:
     ki = key.add_parser("import")
     ki.add_argument("vault_id")
     ki.add_argument("hexkey")
-    sub.add_parser("start", help="Lokale Dienste (Ollama, nur 127.0.0.1) starten; Strg+C beendet")
     sub.add_parser("kill", help="Notaus: stoppt laufende kushim-Dienste")
     sub.add_parser("resume", help="Notaus aufheben (nur bewusst durch den Nutzer)")
     t = sub.add_parser("talk", help="Sprechen per Wake Word (nur das Wake Word wird dauerhaft ausgewertet)")
@@ -230,16 +223,6 @@ def _main(argv: list[str] | None = None) -> int:
     rec.add_argument("--mic", help="Namensteil des Mikrofons, sonst Systemstandard")
     rec.add_argument("--redo", action="store_true", help="Schon vorhandene Aufnahmen neu sprechen")
     rec.add_argument("--auto", action="store_true", help="Ende eines Absatzes automatisch per Stille statt per Enter")
-    ll = sub.add_parser("llm", help="Lokales Sprachmodell anzeigen oder wechseln (Ollama-Modellname)").add_subparsers(dest="sub")
-    ls = ll.add_parser("set", help="z. B. kushim llm set qwen3.5:9b")
-    ls.add_argument("model")
-    lt = ll.add_parser("test", help="Modell mit einer kurzen Frage ausprobieren und die Zeit messen (startet Ollama kurz)")
-    lt.add_argument("model", nargs="?", help="Standard: das aktive Modell")
-    ll.add_parser("back", help="Zurück zum vorherigen Modell")
-    lp = ll.add_parser("pull", help="Modell aus der Ollama-Bibliothek laden (Vorschau und Bestätigung; Ollama muss laufen)")
-    lp.add_argument("model", help="z. B. qwen3.5:9b (nur offizielle Bibliothek, mit Tag)")
-    lr = ll.add_parser("remove", help="Installiertes Modell entfernen (nie das aktive, vorherige oder letzte; mit Bestätigung)")
-    lr.add_argument("model")
     sub.add_parser("doctor", help="Prüft, ob alles installiert und eingerichtet ist")
     sub.add_parser("help", help="Übersicht aller Befehle mit Beispielen")
     tl = sub.add_parser("tools", help="Werkzeuge anzeigen, ein- und ausschalten (alle standardmäßig aus)").add_subparsers(dest="sub")
@@ -255,9 +238,6 @@ def _main(argv: list[str] | None = None) -> int:
     ca.add_argument("path")
     cl.add_parser("remove", help="Die Freigabe eines Ordners sofort entziehen").add_argument("name")
     sub.add_parser("setup", help="Stand der Einrichtung (Systemcheck, Stimme, Wake Words, Notaus) anzeigen")
-    bh = sub.add_parser("behavior", help="Verhaltens-Check des lokalen Modells (Manipulation, Schmeichelei, Abhängigkeit, Regeln); startet Ollama kurz")
-    bh.add_argument("--model", help="anderes installiertes Modell prüfen")
-    bh.add_argument("--repeats", type=int, default=2, help="jede Frage so oft stellen (Standard 2); bestanden nur, wenn alle Antworten bestehen")
     ap = sub.add_parser("app", help="Die Oberfläche öffnen: startet Sprache und API im Hintergrund und beendet sie beim Schließen des Fensters")
     ap.add_argument("--no-voice", action="store_true", help="nur API und Fenster, ohne Sprachdienst")
     sub.add_parser("serve", help="Backend-API für die Oberfläche (WebSocket nur auf 127.0.0.1); Strg+C beendet")
@@ -266,29 +246,6 @@ def _main(argv: list[str] | None = None) -> int:
     if args.cmd == "help":
         print(HELP)
         return 0
-    if args.cmd == "behavior":
-        from .launcher import Launcher
-        from .learning import behavior
-        from .llm import manage
-        from .llm.ollama import OllamaClient
-        from .voice.pipeline import SYSTEM_PROMPT
-        cfg = Config.load()
-        target = args.model or cfg.llm_model
-        root = __import__("pathlib").Path(__file__).resolve().parents[2]
-        if not manage.is_installed(root, target):
-            print(f"{target} ist nicht installiert: install.ps1 -Llm {target}")
-            return 1
-        _, plan = _gpu_plan(cfg)
-        launcher = Launcher(root, cuda_devices=plan.llm_visible)
-        try:
-            launcher.start_ollama()
-            client = OllamaClient(target)
-            results = behavior.run(lambda msgs: client.chat(msgs, temperature=0.3), SYSTEM_PROMPT, repeats=max(1, min(args.repeats, 5)))
-        finally:
-            launcher.stop()
-        print(f"Modell: {target}")
-        print(behavior.report(results))
-        return 0 if all(r.ok for r in results) else 1
     if args.cmd == "app":
         from . import appstart
         return appstart.run(__import__("pathlib").Path(__file__).resolve().parents[2], voice=not args.no_voice)
@@ -314,77 +271,6 @@ def _main(argv: list[str] | None = None) -> int:
         else:
             killswitch.clear(root)
             print("Notaus aufgehoben.")
-        return 0
-    if args.cmd == "llm":
-        from .llm import manage
-        from .llm.ollama import manifest_rel
-        sub_llm = getattr(args, "sub", None)
-        if sub_llm == "set":
-            try:
-                old = cfg.llm_model
-                cfg.set_llm_model(args.model)
-                if cfg.llm_model != old:
-                    manage.save_previous(root, old)          # für `kushim llm back`
-            except ValueError as e:
-                print(e)
-                return 2
-            print(f"LLM gesetzt: {cfg.llm_model} (gilt ab dem nächsten Start). Zurück: kushim llm back")
-        elif sub_llm in ("pull", "remove"):
-            from .llm.ops import ModelOps, OpsError
-            from .safety.gate import Decision
-            ops = ModelOps(cfg, root)
-            prop = (ops.propose_pull if sub_llm == "pull" else ops.propose_remove)(args.model, speaker_verified=True)     # am Terminal sitzt der Nutzer
-            if prop.decision is not Decision.ASK:
-                print(prop.reason or "Nicht erlaubt.")
-                return 1
-            print(prop.preview)
-            if input("Ausführen? (j/N): ").strip().lower() not in ("j", "ja", "y", "yes"):
-                ops.deny(prop)
-                print("Nicht ausgeführt.")
-                return 1
-            if not ops.approve(prop):
-                print("Freigabe abgelaufen, bitte neu starten.")
-                return 1
-            try:
-                print(ops.execute(prop))
-            except OpsError as e:
-                print(f"Nicht ausgeführt: {e}")
-                return 1
-        elif sub_llm == "back":
-            res = manage.rollback(cfg, root, run_probe=False)
-            if not res.switched:
-                print("Kein vorheriges Modell gemerkt." if res.reason == "nothing_to_roll_back" else f"Nicht umgeschaltet ({res.reason}).")
-                return 1
-            print(f"LLM zurückgesetzt auf {res.model} (vorher {res.previous}). Gilt ab dem nächsten Start.")
-        elif sub_llm == "test":
-            from .launcher import Launcher
-            target = args.model or cfg.llm_model
-            if not manage.is_installed(root, target):
-                print(f"{target} ist nicht installiert: install.ps1 -Llm {target}")
-                return 1
-            _, plan = _gpu_plan(cfg)
-            launcher = Launcher(root, cuda_devices=plan.llm_visible)
-            try:
-                launcher.start_ollama()
-                res = manage.probe(target)
-            finally:
-                launcher.stop()
-            if res.ok:
-                print(f"{target}: ok. Erster Token nach {res.first_token_s:g} s, Antwort nach {res.total_s:g} s ({res.text!r}).")
-            else:
-                print(f"{target}: Probe fehlgeschlagen ({res.error}).")
-            return 0 if res.ok else 1
-        else:
-            print(f"LLM: {cfg.llm_model}")
-            prev = manage.load_previous(root)
-            if prev:
-                print(f"Vorher: {prev} (zurück mit: kushim llm back)")
-            names = [m.name for m in manage.installed(root)]
-            if names:
-                print("Installiert: " + ", ".join(names))
-        if not (root / manifest_rel(cfg.llm_model)).exists():
-            print(f"Noch nicht installiert. Laden (einmalig, Netzwerk nur zu registry.ollama.ai): "
-                  f"install.ps1 -Llm {cfg.llm_model}")
         return 0
     if args.cmd == "claude" and getattr(args, "sub", None) in ("folders", "add", "remove"):
         return _claude_dev(args, cfg, root)
@@ -453,7 +339,7 @@ def _main(argv: list[str] | None = None) -> int:
         return 0
     if args.cmd == "setup":
         from .setup import status as setup_status
-        steps = setup_status.compute(root, lambda: _vault_state(cfg), cfg.llm_model)
+        steps = setup_status.compute(root, lambda: _vault_state(cfg))
         marks = {"done": "[ok]      ", "skipped": "[übersprungen] ", "open": "[offen]   "}
         for s in steps:
             print(f"{marks[s.status]}{s.title}: {s.detail}")
@@ -464,7 +350,7 @@ def _main(argv: list[str] | None = None) -> int:
         return 0
     if args.cmd == "doctor":
         from .doctor import run_checks
-        results = run_checks(root, lambda: _vault_state(cfg), cfg.llm_model)
+        results = run_checks(root, lambda: _vault_state(cfg))
         for c in results:
             print(("[ok]    " if c.ok else "[FEHLT] ") + c.name + ("" if c.ok else f"  -> {c.hint}"))
         return 0 if all(c.ok for c in results) else 1
@@ -607,7 +493,6 @@ def _main(argv: list[str] | None = None) -> int:
                         pass
         return 0
     if args.cmd == "talk":
-        from .launcher import Launcher
         from .safety.killswitch import is_triggered
         from .voice import audio, voiceprint, wakeconfig
         from .voice.audio import UtteranceCollector
@@ -638,9 +523,7 @@ def _main(argv: list[str] | None = None) -> int:
             print(f"[gpu] in config.toml: {e}")
             return 2
         api = None
-        launcher = Launcher(root, cuda_devices=plan.llm_visible)
         try:
-            launcher.start_ollama()
             from .tasks import TaskRegistry
             tasks = TaskRegistry()
             pipeline, kill, mic, ack = build_live(root, audio.find_device(args.out, "output"),
@@ -648,7 +531,7 @@ def _main(argv: list[str] | None = None) -> int:
                                                   verifier=verifier, tasks=tasks, clone=cfg.voice_clone, clone_ref=cfg.voice_clone_ref,
                                                   on_note=lambda s: print(f"[Hinweis] {s}"),
                                                   wake_names=[w.name for w in wcfg.enabled()],
-                                                  llm_model=cfg.llm_model, whisper_device=plan.whisper_device,
+                                                  whisper_device=plan.whisper_device,
                                                   whisper_index=plan.whisper_index)
             det = build_detector(wcfg, root)
             wait_ms = int(wcfg.settings.listen_seconds * 1000)
@@ -717,31 +600,6 @@ def _main(argv: list[str] | None = None) -> int:
         finally:
             if api is not None:
                 _api_stop(*api)
-            launcher.stop()
-        return 0
-    if args.cmd == "start":
-        import time
-        from .launcher import Launcher
-        from .safety.killswitch import KillSwitch, is_triggered
-        if is_triggered(root):
-            print("Notaus ist aktiv. Erst bewusst aufheben: kushim resume")
-            return 1
-        try:
-            _, plan = _gpu_plan(cfg)
-        except ValueError as e:
-            print(f"[gpu] in config.toml: {e}")
-            return 2
-        launcher = Launcher(root, cuda_devices=plan.llm_visible)
-        kill = KillSwitch(root, [launcher.stop])
-        try:
-            print("Ollama:", launcher.start_ollama(), "(nur 127.0.0.1). Strg+C zum Beenden.")
-            while not kill.poll():
-                time.sleep(0.5)
-            print("NOTAUS: Dienste beendet.")
-        except KeyboardInterrupt:
-            pass
-        finally:
-            launcher.stop()
         return 0
     if args.cmd == "memory":
         if args.sub == "init":

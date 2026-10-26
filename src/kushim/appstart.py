@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
-from .launcher import kill_tree
+from .procflags import kill_tree
 from .safety import killswitch
 from .voice import statefile
 
@@ -100,7 +100,7 @@ def run(root: Path, voice: bool = True, popen: Callable[..., Any] = subprocess.P
 
 
 def _stop(proc: Any, root: Path | None = None) -> None:
-    """Beendet nur den selbst gestarteten Dienst (samt Kindern, z. B. Ollama) und räumt dessen `run/api.json` weg
+    """Beendet nur den selbst gestarteten Dienst (samt Kindern) und räumt dessen `run/api.json` weg
     (ein hart beendeter Dienst kann das nicht mehr selbst)."""
     if proc is None:
         return

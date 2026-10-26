@@ -1,16 +1,13 @@
-"""Grafikkarten erkennen und sinnvoll verteilen (NVIDIA/CUDA).
+"""Grafikkarten erkennen und für die Spracherkennung (Whisper) wählen (NVIDIA/CUDA).
 
-Zwei Verbraucher teilen sich den Grafikspeicher: die Spracherkennung (Whisper) und das Sprachmodell (Ollama).
-Ist nur eine Karte da, bleibt alles wie bisher. Bei mehreren Karten bekommt Whisper EINE Karte für sich, und das
-Sprachmodell nutzt alle übrigen. So konkurrieren beide nicht um denselben Speicher, und größere Modelle passen eher.
+Ein lokales Sprachmodell gibt es nicht mehr (Roadmap v2 A6): Whisper ist der einzige Verbraucher. Bei mehreren Karten
+nimmt "auto" die mit dem meisten Speicher.
 
 Einstellung in config.toml:
   [gpu]
   whisper = "auto"    # "auto", "cpu" oder die Nummer der Karte (siehe `kushim gpu`)
-  llm     = "auto"    # "auto", "all" (alle Karten, Ollama entscheidet) oder Nummern wie "0,1"
 
-Karten werden über die UUID an Ollama übergeben (CUDA_VISIBLE_DEVICES), das ist eindeutig. Nummern in dieser Datei
-und in `kushim gpu` sind die Nummern von `nvidia-smi` (PCI-Reihenfolge).
+Nummern in dieser Datei und in `kushim gpu` sind die Nummern von `nvidia-smi` (PCI-Reihenfolge).
 """
 from __future__ import annotations
 
@@ -38,7 +35,6 @@ class Gpu:
 class Plan:
     whisper_device: str                      # "cuda" oder "cpu"
     whisper_index: int = 0                   # Nummer der Karte (nvidia-smi), nur bei "cuda"
-    llm_visible: str | None = None           # CUDA_VISIBLE_DEVICES für Ollama (UUIDs); None = Ollama entscheidet
     notes: tuple[str, ...] = field(default_factory=tuple)
 
 
@@ -88,9 +84,9 @@ def _by_index(gpus: list[Gpu], text: str, what: str) -> list[Gpu]:
     return chosen
 
 
-def make_plan(gpus: list[Gpu], whisper: str = "auto", llm: str = "auto") -> Plan:
-    """Verteilt Whisper und das Sprachmodell auf die vorhandenen Karten. Wirft ValueError bei falschen Nummern."""
-    whisper, llm = whisper.strip().lower(), llm.strip().lower()
+def make_plan(gpus: list[Gpu], whisper: str = "auto") -> Plan:
+    """Wählt die Karte für Whisper. Wirft ValueError bei falschen Nummern."""
+    whisper = whisper.strip().lower()
     notes: list[str] = []
 
     # --- Whisper
@@ -104,30 +100,16 @@ def make_plan(gpus: list[Gpu], whisper: str = "auto", llm: str = "auto") -> Plan
         elif len(gpus) == 1:
             w_dev, w_idx = "cuda", gpus[0].index
         else:
-            # kleinste Karte, die Whisper noch trägt; die größeren bleiben dem Sprachmodell
-            fits = [g for g in gpus if g.total_mb >= MIN_WHISPER_MB]
-            pick = min(fits, key=lambda g: (g.total_mb, g.index)) if fits else max(gpus, key=lambda g: g.total_mb)
+            pick = max(gpus, key=lambda g: (g.total_mb, -g.index))          # die größte Karte
             w_dev, w_idx = "cuda", pick.index
-            notes.append(f"Whisper auf Karte {pick.index} ({pick.name}), das Sprachmodell auf den übrigen.")
+            notes.append(f"Whisper auf Karte {pick.index} ({pick.name}).")
     else:
         chosen = _by_index(gpus, whisper, "whisper")
         if len(chosen) > 1:
             raise ValueError("whisper: nur eine Karte angeben")
         w_dev, w_idx = "cuda", chosen[0].index
 
-    # --- Sprachmodell
-    llm_visible: str | None = None
-    if llm == "auto":
-        if len(gpus) >= 2 and w_dev == "cuda":          # alle Karten außer der von Whisper
-            llm_visible = ",".join(g.uuid for g in gpus if g.index != w_idx)
-    elif llm == "all":
-        llm_visible = None
-    else:
-        chosen = _by_index(gpus, llm, "llm")
-        llm_visible = ",".join(g.uuid for g in chosen)
-        if w_dev == "cuda" and any(g.index == w_idx for g in chosen):
-            notes.append("Whisper und das Sprachmodell teilen sich eine Karte (Einstellung); der Speicher kann knapp werden.")
-    return Plan(w_dev, w_idx, llm_visible, tuple(notes))
+    return Plan(w_dev, w_idx, tuple(notes))
 
 
 def describe(gpus: list[Gpu], plan: Plan) -> str:
@@ -139,12 +121,8 @@ def describe(gpus: list[Gpu], plan: Plan) -> str:
             use = []
             if plan.whisper_device == "cuda" and g.index == plan.whisper_index:
                 use.append("Whisper")
-            if plan.llm_visible is None or g.uuid in plan.llm_visible.split(","):
-                use.append("Sprachmodell")
             lines.append(f"  {g.index}: {g.name}, {g.total_mb} MB gesamt, {g.free_mb} MB frei"
                          + (f"  -> {', '.join(use)}" if use else "  -> unbenutzt"))
     lines.append(f"Whisper: {'Karte ' + str(plan.whisper_index) if plan.whisper_device == 'cuda' else 'Prozessor'}")
-    lines.append("Sprachmodell: " + ("Ollama entscheidet (alle sichtbaren Karten)" if plan.llm_visible is None
-                                      else "nur die oben markierten Karten"))
     lines += [f"Hinweis: {n}" for n in plan.notes]
     return "\n".join(lines)

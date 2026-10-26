@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Callable
 
 from ..doctor import Check, run_checks
-from ..llm.ollama import DEFAULT_MODEL
 from ..safety import killswitch
 from . import state as state_file
 
@@ -57,10 +56,10 @@ def _facts(root: Path, vault_state: Callable[[], str], checks: list[Check]) -> d
     }
 
 
-def compute(root: Path, vault_state: Callable[[], str], llm_model: str = DEFAULT_MODEL,
+def compute(root: Path, vault_state: Callable[[], str],
             checks: list[Check] | None = None) -> list[StepStatus]:
     """Status je Schritt. Tatsache "erledigt" gewinnt; sonst zählt die gemerkte Entscheidung; sonst offen."""
-    checks = checks if checks is not None else run_checks(root, None, llm_model)
+    checks = checks if checks is not None else run_checks(root, None)
     remembered = state_file.load(root)
     facts = _facts(root, vault_state, checks)
     out = []

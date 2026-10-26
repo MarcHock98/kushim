@@ -59,7 +59,7 @@ def test_cli_kill_and_resume(tmp_path, monkeypatch):
     ks.clear(project)
     try:
         assert cli.main(["kill"]) == 0 and ks.is_triggered(project)
-        assert cli.main(["start"]) == 1          # startet nicht bei aktivem Notaus
+        assert cli.main(["talk"]) == 1           # startet nicht bei aktivem Notaus
         assert cli.main(["resume"]) == 0 and not ks.is_triggered(project)
     finally:
         ks.clear(project)

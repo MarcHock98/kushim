@@ -60,10 +60,14 @@ Abbrechen (`tasks.py`), Vault (`memory/`, für das Stimmprofil), `config.py`, `c
       Claude-Bereich bis Phase B/E als „nicht verfügbar“ (Ordner-Verwaltung `claude.folder_*` geht weiter)
 - [ ] A5 Werkzeug-Verwaltung und Gates entfernen: `tools/`, `privacy.py`, `safety/gate.py`, `safety/approvals.py`, `api/tools_api.py`,
       `api/tasks_api.py`; `safety/rules.py` bleibt (Grundsätze)
-- [ ] A6 Lokales Sprachmodell entfernen: `llm/`, `launcher.py` (Ollama), `api/llm_api.py`, `[llm]` in der Konfiguration, Ollama aus
-      `install.ps1`, `fetch_models.py`, `doctor.py`; `gpu.py` nur noch für Whisper
+- [x] A6 Lokales Sprachmodell entfernen: `llm/`, `launcher.py` (Ollama), `api/llm_api.py`, `[llm]` in der Konfiguration, Ollama aus
+      `install.ps1`, `fetch_models.py`, `doctor.py`; `gpu.py` nur noch für Whisper (2026-10-26, 506 grün). Mit entfernt:
+      `kushim start|llm|behavior`, `learning/behavior.py`, Verknüpfung `kushim.lnk`. `kushim talk` antwortet bis B4 mit
+      „Ich bin noch nicht mit Claude verbunden.“; `kill_tree` liegt jetzt in `procflags.py`. Auf dem PC bleiben
+      `tools/ollama`, `models/ollama` und die alte Desktop-Verknüpfung `kushim.lnk` liegen (Löschen macht der Nutzer)
 - [ ] A7 Rest prüfen: `learning/`, `setup/`, `api/setup_api.py` entfernen oder behalten (Setup-Status bleibt nützlich für die UI);
-      README „Was es heute kann“ kürzen; `kushim help` zeigt nur noch vorhandene Befehle
+      README „Was es heute kann“ kürzen; `kushim help` zeigt nur noch vorhandene Befehle. Ergänzt 2026-10-26: `net/loopback.py`
+      hat seit A6 keine Nutzer mehr: entfernen und aus der ALLOWLIST streichen (strenger); README ohne Ollama/Qwen
 
 ## Phase B: Brücke zu Claude Code (Channel), Grundlage: [docs/research/jarvis-projekte.md](docs/research/jarvis-projekte.md)
 Aufbau: `claude` läuft interaktiv (das ist die Oberfläche: Verlauf, `/model`, `/usage`, Freigabe-Dialog). Claude Code startet
