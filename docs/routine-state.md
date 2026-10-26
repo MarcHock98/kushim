@@ -26,8 +26,10 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
 - 2026-10-26 Loop-Durchlauf 7: **Z4 fertig** (Branch `routine/z4-statusline`, gemerged, nicht gepusht): `scripts/statusline.py` und
   `claude_setup.py --statusline`. Feldnamen aus der eingebauten Beschreibung der installierten Claude-Code-Version gelesen (lokal,
   keine Web-Recherche). 509 Tests grün, Review freigegeben. Nicht live geprüft: Anzeige in Claude Code (Nutzer führt das Skript aus).
-- Nächster freier Schritt: Z5 (Hook, der lange Testausgaben kürzt), ebenfalls nur als Option in `claude_setup.py`.
-  Globale Einstellungen schreibt die Routine nie selbst.
+- 2026-10-26 Loop-Durchlauf 8: **Z5 fertig** (Branch `routine/z5-test-hook`, gemerged, nicht gepusht): Hook kürzt lange
+  Testausgaben, `claude_setup.py --test-hook`. 536 Tests grün, Review freigegeben. Nicht live geprüft: Wirkung in Claude Code.
+- **Alles Weitere ist blockiert durch den Nutzer:** A5 (Gates entfernen, Frage oben), B0 (Channel-Weg und Port), Z3 (Setup-Skript
+  auf dem PC ausführen, jetzt mit `--statusline --test-hook`). Loop wartet mit langem Takt auf Antworten.
 - Blockiert: A5 (Gates entfernen, Frage offen), Phase B ab B1 (B0).
 - Bereit zum Push durch den Nutzer: master, routine/a1-voice-commands, routine/a2-web-research, routine/a3-timers-notes,
   routine/a4-claude-control, routine/a6-local-llm, routine/a7-rest

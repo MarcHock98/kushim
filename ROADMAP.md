@@ -30,7 +30,9 @@ Arbeitsweise: immer nur einen Schritt, danach Tests (`pytest`), Sicherheitsprüf
 - [x] Z4 Statuszeile mit Kontext-Füllstand, Kosten und Modell (global): `scripts/statusline.py`, einrichten mit
       `py scripts\claude_setup.py --statusline` (2026-10-26, 509 grün). Kosten liefert Claude Code 2.1.310 nicht; gezeigt werden
       stattdessen die Abo-Grenzen (5h/7d), Kosten nur, falls das Feld kommt. Live in Claude Code ansehen: **(Nutzer)**
-- [ ] Z5 Hook, der lange Testausgaben auf Fehlschläge kürzt (global)
+- [x] Z5 Hook, der lange Testausgaben auf Fehlschläge kürzt (global): `scripts/trim_test_output.py`, einrichten mit
+      `py scripts\claude_setup.py --test-hook` (2026-10-26, 536 grün, echter Lauf in Git Bash). Setzt nie eine Freigabe, nur
+      den umgeschriebenen Befehl. Live in Claude Code ansehen: **(Nutzer)**
 
 > **Stand nach dem Abgleich mit GitHub (2026-10-26):** Auf `master` kamen 35 Commits aus der alten Roadmap dazu, die beim
 > Aufräumen berücksichtigt werden müssen: eine fertige **Tauri-Oberfläche** (`ui/`: Avatar, NOTAUS, Freigabe-Leiste,
