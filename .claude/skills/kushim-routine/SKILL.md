@@ -89,6 +89,7 @@ Am Ende jedes Durchlaufs eine kurze Rückschau: Was hat gehakt? Was wurde wieder
 ## Gelernte Fallstricke (Arbeitsweise)
 - **Shell:** Mehrere Heredocs mit Anführungszeichen/Apostrophen in einem Bash-Befehl führen zu Parserfehlern ("unexpected EOF"); der Befehl läuft dann gar nicht. Dateien mit dem Schreib-Werkzeug anlegen, Änderungen mit dem Edit-Werkzeug machen, Python-Skripte einzeln ausführen.
 - **Zeilenenden:** Quelldateien sind CRLF. Skripte, die Dateien umschreiben, müssen CRLF erkennen und wieder herstellen.
+  Auch `sed -i` (Git Bash) schreibt LF zurück: danach mit `file` prüfen und CRLF wiederherstellen, oder gleich Python/Edit nehmen.
 - **Live prüfen, nicht nur Unit-Tests:** Echte Kette mit Piper-Stimme/Fake-Lautsprecher (Whisper, LLM, Piper) fand mehrere Fehler, die Tests nicht sahen (Hänger in `prefetch`, Schwellen über dem echten Sprechpegel). Messwerte aus den eigenen Aufnahmen des Nutzers (`voice-data/`, nur Pegelzahlen) statt zu raten.
 - **Messen vor Umbauen:** Latenz erst pro Stufe messen (STT, Embedding, LLM, TTS), dann ändern.
 - **Hängende Hintergrundläufe:** Skripte mit `faulthandler.dump_traceback_later(…, exit=True)` und Logdatei starten; danach die eigenen Ollama-Reste (`tools/ollama`) beenden.

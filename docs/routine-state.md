@@ -8,9 +8,11 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
 - 2026-10-26 Loop-Durchlauf 1: **A1 fertig** (Branch `routine/a1-voice-commands`, nach master gemerged, nicht gepusht): alte
   Sprachbefehle samt `approvals_api`/`dashboard_api` entfernt, `kushim talk` läuft ohne sie. 884 Tests grün, Review freigegeben.
   Nicht live geprüft: `kushim talk` mit Mikrofon (nur Nutzer).
-- Nächster Schritt: A2 (Web und Recherche entfernen). Phase A ist reines Löschen und hängt nicht an B0.
+- 2026-10-26 Loop-Durchlauf 2: **A2 fertig** (Branch `routine/a2-web-research`, gemerged, nicht gepusht): kein Internet-Modul
+  mehr in kushim, ALLOWLIST ohne `net/web.py`, neuer Test sperrt es. 750 Tests grün, Review freigegeben.
+- Nächster Schritt: A3 (Timer und Notizen entfernen). Phase A ist reines Löschen und hängt nicht an B0.
 - Blockiert: Phase B ab B1 wartet auf B0 (Entscheidung des Nutzers).
-- Bereit zum Push durch den Nutzer: master, routine/a1-voice-commands
+- Bereit zum Push durch den Nutzer: master, routine/a1-voice-commands, routine/a2-web-research
 
 - Letzter Durchlauf: 2026-10-04: Claude entwickelt Projekt (Teile 1 und 2: Ordner-Freigabe, Worktree, Rückfragen, Übersichten, Diff-Prüfung), am echten Aufruf im Wegwerf-Repo geprüft; Abbruch-Befehl; Claude-Recherche mit Wikipedia-Ersatz. Loop gestoppt (Wunsch des Nutzers), alles lokal gemerged, nicht gepusht. 693 Tests grün
 - Seit 2026-10-03 zusätzlich gemerged (alle lokal, nicht gepusht): Notaus beendet auch llama-server, `voice threshold`, Wake Word + Befehl in einem Zug, Gesprächsmodus ohne Wake Word, Unterbrechen (Barge-in) mit echten Pegeln, `voice level`, `kushim gpu`/[gpu], `kushim help`, `kushim`-Befehl im PATH, qwen3.5:9b (think aus), Designer-Skill, Pläne `docs/ui-llm-plan.md`, `docs/tools-plan.md`, `kushim setup`, `kushim tools`, API `setup.*`/`audio.devices`/`safety.*`/`tools.*`
