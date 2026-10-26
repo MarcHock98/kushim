@@ -53,6 +53,10 @@ class ApprovalQueue:
         self._items[item.id] = item
         return Decision.ASK, item
 
+    def remaining(self, item: Approval) -> float:
+        """Sekunden bis zum Ablauf (für die Anzeige), nie negativ."""
+        return max(0.0, item.expires_at - self._clock())
+
     def pending(self) -> list[Approval]:
         self._expire()
         return [i for i in self._items.values() if i.status is Status.PENDING]

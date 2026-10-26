@@ -8,12 +8,17 @@ from .vault import parse_location, resolve_local
 __all__ = ["open_store", "Fact", "MemoryStore"]
 
 
-def open_store(config: Config | None = None, create: bool = False) -> MemoryStore:
+def open_store(config: Config | None = None, create: bool = False, shared: bool = False) -> MemoryStore:
+    """`shared`: für mehrere Threads (API des Sprachprozesses), jeder Aufruf läuft unter einer Sperre."""
     config = config or Config.load()
     scheme, rest = parse_location(config.memory_location)
     if scheme == "local":
         from .local import LocalStore
-        return LocalStore(resolve_local(rest), create=create)
+        store = LocalStore(resolve_local(rest), create=create, multithread=shared)
+        if shared:
+            from .shared import SharedStore
+            return SharedStore(store)  # type: ignore[return-value]
+        return store
     if scheme == "remote":
         raise NotImplementedError("Remote-Backend (NAS-Dienst) folgt; Ort ist bereits konfigurierbar.")
     raise ValueError(f"Unbekannter Speicherort: {config.memory_location}")

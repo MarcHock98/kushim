@@ -20,6 +20,8 @@ import subprocess
 from dataclasses import dataclass, field
 from typing import Callable
 
+from .procflags import hidden
+
 MIN_WHISPER_MB = 4096        # Whisper large-v3-turbo (float16) braucht etwa 3 GB plus Reserve
 
 
@@ -68,7 +70,7 @@ def list_gpus(run: Callable[..., subprocess.CompletedProcess] = subprocess.run) 
         return []
     try:
         out = run([exe, "--query-gpu=index,name,memory.total,memory.free,uuid", "--format=csv,noheader,nounits"],
-                  capture_output=True, text=True, timeout=10, check=False)
+                  capture_output=True, text=True, timeout=10, check=False, **hidden())
     except (OSError, subprocess.SubprocessError):
         return []
     return parse_gpus(out.stdout) if out.returncode == 0 else []

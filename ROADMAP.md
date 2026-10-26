@@ -30,6 +30,13 @@ Arbeitsweise: immer nur einen Schritt, danach Tests (`pytest`), Sicherheitsprüf
 - [ ] Z4 Statuszeile mit Kontext-Füllstand, Kosten und Modell (global)
 - [ ] Z5 Hook, der lange Testausgaben auf Fehlschläge kürzt (global)
 
+> **Stand nach dem Abgleich mit GitHub (2026-10-26):** Auf `master` kamen 35 Commits aus der alten Roadmap dazu, die beim
+> Aufräumen berücksichtigt werden müssen: eine fertige **Tauri-Oberfläche** (`ui/`: Avatar, NOTAUS, Freigabe-Leiste,
+> Live-Transkript, Gedächtnis, Sicherheitsstatus, Dashboard, Claude-Bereich mit Ordnern und Diff-Ansicht), der lokale
+> **WebSocket-Server** (`net/server.py`, nur 127.0.0.1, vom Nutzer freigegeben), `kushim app`, Feedback-Log und
+> `kushim behavior`. Vor jedem A-Schritt prüfen, welche UI-Teile und API-Typen daran hängen; die UI ist die Basis für
+> Phase E (wiederverwenden statt neu bauen).
+
 ## Phase A: Aufräumen (nur löschen, nichts Neues)
 Bleibt: Wake Word (`voice/trigger.py`, `wakeconfig.py`, `wakebuild.py`), Sprecherprüfung (`speaker.py`, `verify.py`, `embedder.py`,
 `profile.py`, `enrollment.py`, `voiceprint.py`, `recorder.py`, `levels.py`), Audio (`audio.py`, `bargein.py`, `dialog.py`),
@@ -88,7 +95,8 @@ Claude Code zeigt beides schon selbst (`/model`, `/usage`, Statuszeile). Hier nu
 - [ ] D3 Modell per Stimme wechseln („nimm Sonnet“): prüfen, ob ein Channel `/model` auslösen darf; sonst nur Hinweis
 
 ## Phase E: Eigene Oberfläche (optional, erst nach B–D entscheiden)
-- [ ] E1 **Entscheidung (Nutzer):** Reicht Claude Code als Oberfläche plus Statuszeile, oder eigenes Fenster?
+- [ ] E1 **Entscheidung (Nutzer):** Reicht Claude Code als Oberfläche plus Statuszeile, oder die vorhandene Tauri-UI (`ui/`)
+      weiterverwenden und auf den Channel umstellen (Empfehlung: weiterverwenden)?
 - [ ] E2 Falls ja: kleines Fenster (Tauri, Design aus `.claude/skills/kushim-ui-design/`) mit Avatar, letztem Befehl,
       Freigabe-Leiste (Klick parallel zur Stimme), Notaus-Knopf, Verbrauch
 - [ ] E3 Setup-Assistent: Mikrofon, Stimme einschreiben, Wake Words, Claude-Anmeldung prüfen

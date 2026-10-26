@@ -28,6 +28,12 @@ Kurzfassung für die nächste Sitzung. Plan und Schritte: [ROADMAP.md](../ROADMA
 
 Tests: 932 grün, 1 Fehlschlag nur in der Cloud-Umgebung (`test_audio`, PortAudio fehlt dort), 3 übersprungen.
 
+## Abgleich mit GitHub (nach der Übergabe)
+`origin/master` hatte 35 neue Commits (Tauri-UI in `ui/`, WebSocket-Server `net/server.py`, `kushim app`, Feedback,
+Verhaltens-Check). Sie sind in diesen Branch gemerged; Konflikte: `ROADMAP.md` (neue Roadmap behalten, deren Stand liegt
+jetzt vollständig in `docs/ROADMAP-v1.md`) und `.gitignore` (beides vereint). Tests danach: 1103 grün; 2 Fehlschläge nur
+in der Cloud-Umgebung (PortAudio und Schlüsselbund fehlen), beide auch auf `origin/master` allein.
+
 ## Für den Nutzer zu tun
 1. **GitHub neu verbinden**, damit gepusht werden kann: https://claude.ai/connect-github (Claude-GitHub-App für
    `MarcHock98/kushim` freigeben). Bis dahin liegen alle Commits nur lokal in der Cloud-Sitzung.

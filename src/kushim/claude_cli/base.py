@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Mapping
 
+from ..procflags import hidden
+
 SUBSCRIPTION = "claude.ai"                    # Anmeldung mit dem Abo; alles andere kann nach API-Verbrauch abrechnen
 
 
@@ -41,7 +43,7 @@ def auth_status(exe: Path, run: Callable[..., subprocess.CompletedProcess] = sub
     """`claude auth status --json`: nur `loggedIn` und `authMethod` werden gelesen."""
     try:
         r = run([str(exe), "auth", "status", "--json"], capture_output=True, text=True, timeout=20, check=False,
-                env=clean_env())
+                env=clean_env(), **hidden())
     except (OSError, subprocess.SubprocessError):
         return Auth(False, error="not_runnable")
     try:

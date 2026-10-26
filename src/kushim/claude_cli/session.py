@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Callable, Iterable
 
 from ..launcher import kill_tree
+from ..procflags import hidden
 from ..tasks import TaskRegistry
 from . import dev, folders, report, review
 from .base import clean_env
@@ -279,7 +280,7 @@ class ClaudeSessions:
                 live_file.parent.mkdir(parents=True, exist_ok=True)
                 live = live_file.open("w", encoding="utf-8", errors="replace")           # Ereignisse für die Live-Ansicht (nur lesend angezeigt)
                 proc = self._popen(argv, cwd=str(cwd), env=clean_env(), stdin=subprocess.DEVNULL, stdout=live,
-                                   stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace")
+                                   stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace", **hidden())
                 st.proc_pid = proc.pid
                 save_state(self.root, st)
                 deadline = t0 + self.timeout_min * 60
@@ -359,6 +360,13 @@ class ClaudeSessions:
         self._finish(st, t0, status="waiting")
 
     # --- Ergebnis
+    def diff(self, path: str) -> tuple[str, bool] | None:
+        """Diff einer geänderten Datei des aktuellen Laufs (nur lesend); None ohne Lauf oder Worktree, GitError bei fremdem Pfad."""
+        st = self.state()
+        if st is None or not st.worktree_path or not self.worktree_ok(st):
+            return None
+        return review.diff_file(Path(st.worktree_path), st.base_sha, path, self._git)
+
     def result(self) -> tuple[State, review.Review, report.Overview] | None:
         st = self.state()
         if st is None:

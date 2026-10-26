@@ -71,6 +71,9 @@ Netz nachlädt. Tests: Vitest + Testing Library (Komponenten), optional Playwrig
 Pakete nur aus der offiziellen npm-/crates.io-Quelle, Versionen festgenagelt, Lockfile eingecheckt, jedes neue Paket
 begründen (Lizenz, Größe, Netzzugriff). Toolchain-Installation nur nach Freigabe des Nutzers (Roadmap Z. 90).
 
+## Responsive (verbindlich)
+Stufen: unter 800 px Leiste unten, 800 bis 1099 px Seitenleiste 72 px (Beschriftung unter dem Symbol), ab 1100 px Seitenleiste 200 px (Beschriftung daneben); Start ab 1000 px zweispaltig. Keine Festbreiten: Karten und Listen mit `repeat(auto-fit, minmax(min(100%, 340px), 1fr))`, Inhalt höchstens 1200 px. Größen aus dem sichtbaren Bereich messen (`useBoxSize`), nicht aus festen Pixeln. `[hidden]` muss gewinnen (`display: none !important`), sonst nehmen versteckte Ansichten Platz. Zentrieren mit `justify-content: safe center`, sonst schneidet ein kleines Fenster den Inhalt oben ab. Symbole als SVG, nie Emoji. Prüfen mit Screenshots (`PrintWindow`) bei 360, 800 und 1440 px.
+
 ## Nie tun
 - Farben oder Abstände hart codieren; Verläufe, Neon-Glühen oder Partikel zur Dekoration.
 - Zustand nur über Farbe zeigen; Texte unter 12 px; Kontrast unter 4,5:1 für Text.

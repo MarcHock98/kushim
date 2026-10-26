@@ -7,11 +7,13 @@ Pfade außer dem Namen des Ordners; Claudes Text steht nur als Anzeigetext (`Unt
 """
 from __future__ import annotations
 
+import threading
 import time
 from typing import Any, Callable
 
 from ..safety.gate import Decision
 from ..claude_cli.control import Control, Proposal
+from ..claude_cli.review import GitError, is_protected
 from ..claude_cli.session import SessionError, State
 from .protocol import ApiCore, ApiError
 
@@ -28,14 +30,18 @@ def _state(st: State | None) -> dict[str, Any]:
 
 def register_claude(core: ApiCore, control: Control, clock: Callable[[], float] = time.monotonic) -> None:
     pending: dict[str, Proposal] = {}
+    lock = threading.Lock()                                            # die Handler laufen in Executor-Threads
 
     def propose(p: Proposal) -> dict[str, Any]:
         if p.decision is not Decision.ASK or p.approval is None:
             return {"allowed": False, "reason": p.reason}
-        pending[p.approval_id] = p
-        for old in list(pending)[:-MAX_PENDING]:                       # nie unbegrenzt viele offene Vorschläge
-            control.deny(pending.pop(old))
-        return {"allowed": True, "proposal": p.approval_id, "kind": p.kind, "preview": p.preview}
+        with lock:
+            pending[p.approval_id] = p
+            dropped = [pending.pop(old) for old in list(pending)[:-MAX_PENDING]]     # nie unbegrenzt viele offene Vorschläge
+        for old in dropped:
+            control.deny(old)
+        return {"allowed": True, "proposal": p.approval_id, "kind": p.kind, "preview": p.preview,
+                "expires_in": round(control.queue.remaining(p.approval), 1)}
 
     def folders(_: dict[str, Any]) -> dict[str, Any]:
         return {"folders": [f.name for f in control.folders()]}
@@ -60,9 +66,11 @@ def register_claude(core: ApiCore, control: Control, clock: Callable[[], float] 
 
     def _take(payload: dict[str, Any]) -> Proposal:
         pid = payload.get("proposal")
-        if not isinstance(pid, str) or pid not in pending:
+        with lock:
+            got = pending.pop(pid, None) if isinstance(pid, str) else None     # jede ID gilt genau einmal, auch bei zwei gleichzeitigen Aufrufen
+        if got is None:
             raise ApiError("unknown_proposal")
-        return pending.pop(pid)                                          # jede ID gilt genau einmal
+        return got
 
     def approve(payload: dict[str, Any]) -> dict[str, Any]:
         if payload.get("confirm") is not True:
@@ -78,6 +86,19 @@ def register_claude(core: ApiCore, control: Control, clock: Callable[[], float] 
     def deny(payload: dict[str, Any]) -> dict[str, Any]:
         return {"denied": control.deny(_take(payload))}
 
+    def diff(payload: dict[str, Any]) -> dict[str, Any]:
+        path = payload.get("path")
+        if not isinstance(path, str) or not path or len(path) > 400:
+            raise ApiError("bad_request")
+        try:
+            got = control.sessions.diff(path)
+        except GitError:
+            raise ApiError("not_changed")                              # nur Dateien, die zu den Änderungen gehören
+        if got is None:
+            raise ApiError("no_session")
+        text, truncated = got
+        return {"path": path, "diff": text, "truncated": truncated, "protected": is_protected(path)}
+
     def review(_: dict[str, Any]) -> dict[str, Any]:
         res = control.sessions.result()
         if res is None:
@@ -91,5 +112,6 @@ def register_claude(core: ApiCore, control: Control, clock: Callable[[], float] 
                          "denied": list(ov.denied), "structured": ov.structured}}}
 
     for name, fn in (("claude.folders", folders), ("claude.status", status), ("claude.stop", stop), ("claude.start", start),
-                     ("claude.answer", answer), ("claude.approve", approve), ("claude.deny", deny), ("claude.review", review)):
+                     ("claude.answer", answer), ("claude.approve", approve), ("claude.deny", deny), ("claude.review", review),
+                     ("claude.diff", diff)):
         core.register(name, fn)
