@@ -78,8 +78,9 @@ def test_permission_bypass_flags_appear_only_inside_the_forbidden_flags_lists():
                 assert id(node) in allowed, f"{f.relative_to(SRC).as_posix()}: Rechteumgehung außerhalb der Verbotsliste: {node.value[:60]}"
 
 
-def test_claude_runs_can_only_be_started_through_the_approval_flow():
-    """`ClaudeSessions.start/answer` (startet die Claude CLI im Projekt) wird nur von claude_cli/control.py aufgerufen, also nach Vorschau und Freigabe."""
+def test_no_code_starts_claude_runs_on_its_own():
+    """Die alte Steuerung (`ClaudeSessions.start/answer`, Roadmap v2 A4) ist entfernt: kushim startet keine Claude-Läufe selbst."""
+    assert not (SRC / "claude_cli" / "session.py").exists() and not (SRC / "claude_cli" / "control.py").exists()
     callers = {}
     for f in SRC.rglob("*.py"):
         rel = f.relative_to(SRC).as_posix()
@@ -89,7 +90,7 @@ def test_claude_runs_can_only_be_started_through_the_approval_flow():
                 name = owner.attr if isinstance(owner, ast.Attribute) else getattr(owner, "id", "")
                 if name == "sessions":
                     callers.setdefault(rel, set()).add(node.func.attr)
-    assert set(callers) == {"claude_cli/control.py"}, callers
+    assert callers == {}, callers
 
 
 # --- net/server.py: nur Loopback, nur Standardbibliothek (Freigabe 2026-10-04) ---------------------------------------
