@@ -102,7 +102,7 @@ class Pipeline:
         speaker.should_stop = lambda: previous_stop() or self._interrupted.is_set()
         self.stt, self.chat, self.speaker, self.dialog, self.kill = stt, chat, speaker, dialog, kill
         self.verifier = verifier
-        self.commands = commands          # z. B. WakeWordCommands (Sprachbefehle ohne LLM)
+        self.commands = commands          # Sprachbefehle ohne LLM (`handle(text, verified, strong)`), optional
         self.history: list[dict[str, str]] = []
         self.history_limit = history_limit
 
