@@ -1,8 +1,9 @@
 # kushim Roadmap v2: lokaler Jarvis vor Claude Code
 
 Ziel (Nutzerwunsch 2026-10-26): Per Sprachbefehl Claude Code nutzen. kushim hört lokal zu (Wake Word, Sprecherprüfung, Whisper),
-gibt den Befehl an eine fortlaufende Claude-Code-Sitzung (`claude -p`, Anmeldung des Nutzers, kein API-Schlüssel), liest die
-Antwort lokal vor (Piper) und zeigt alles in einer eigenen Oberfläche: Verlauf, Modellwahl, Verbrauch, Freigaben, Notaus.
+gibt den Befehl über einen lokalen Channel in die laufende Claude-Code-Sitzung (Anmeldung des Nutzers, kein API-Schlüssel),
+liest die Antwort lokal vor (Piper) und nimmt Freigaben per Stimme entgegen. Oberfläche ist zunächst Claude Code selbst
+(Verlauf, Modell, Verbrauch); ein eigenes Fenster ist optional (Phase E).
 
 Oberste Regel: Schäden jeder Art sind verboten. **Sprachdaten verlassen nie den PC.** An Anthropic geht nur der erkannte Befehlstext
 (das ist der Zweck). Die alte Roadmap liegt in [docs/ROADMAP-v1.md](docs/ROADMAP-v1.md).
@@ -29,53 +30,48 @@ Abbrechen (`tasks.py`), Vault (`memory/`, für das Stimmprofil), `config.py`, `c
 - [ ] A7 Rest prüfen: `learning/`, `setup/`, `api/setup_api.py` entfernen oder behalten (Setup-Status bleibt nützlich für die UI);
       README „Was es heute kann“ kürzen; `kushim help` zeigt nur noch vorhandene Befehle
 
-## Phase B: Sprache → Claude Code (im Terminal nutzbar)
-- [ ] B1 `claude_code/runner.py`: ein Zug = `claude -p <text> --output-format stream-json --verbose [--resume <id>] [--model <m>]`
-      im freigegebenen Arbeitsordner, saubere Umgebung (`clean_env`), `--setting-sources user`; liest Ereignisse (Text, Werkzeug,
-      Ergebnis, Sitzungs-ID, Kosten, Tokens, abgelehnte Berechtigungen). Tests mit gefälschtem Prozess
-- [ ] B2 Abbrechen und Notaus beenden den Claude-Prozess samt Kindprozessen (`tasks.py`, `killswitch.py`); Zeitgrenze je Zug
-- [ ] B3 Sitzung fortsetzen: Sitzungs-ID in `run/claude-voice.json`; „neue Sitzung“ per Sprache und CLI
-- [ ] B4 Vorlesefreundlich: `--append-system-prompt` (Deutsch, kurz, kein Markdown/Code in der gesprochenen Antwort); Text vor der
-      TTS bereinigen (Codeblöcke, Links, Tabellen raus, Hinweis „Details in der Oberfläche“)
-- [ ] B5 In die Pipeline hängen: `Pipeline.chat` wird der Claude-Code-Runner; kurze Quittung „Ich frag Claude.“ bei langen Zügen
-- [ ] B6 `kushim talk` startet ohne Ollama; `kushim doctor` prüft Claude CLI und Anmeldung (Abo)
-- [ ] B7 Live-Test **(Nutzer)**: Wake Word → Frage → Claude antwortet → wird vorgelesen; Abbrechen und Notaus während eines Zugs
+## Phase B: Brücke zu Claude Code (Channel), Grundlage: [docs/research/jarvis-projekte.md](docs/research/jarvis-projekte.md)
+Aufbau: `claude` läuft interaktiv (das ist die Oberfläche: Verlauf, `/model`, `/usage`, Freigabe-Dialog). Claude Code startet
+den kushim-Channel (lokaler MCP-Server, stdio). kushim (Python) spricht mit dem Channel nur über 127.0.0.1 mit Token.
 
-## Phase C: Berechtigungen per Stimme
-- [ ] C1 Abgelehnte Berechtigungen aus dem Ergebnis lesen (`permission_denials`) und in kurze, sprechbare Beschreibungen übersetzen
-      („Claude möchte den Befehl npm test ausführen“, „Claude möchte die Datei app.py ändern“)
-- [ ] C2 Erlaubnis-Regel genau zuschneiden: Bash nur der genaue Befehl, Datei nur der genaue Pfad im Arbeitsordner, Web nur die Domain;
-      nie `bypassPermissions`, nie Platzhalter für ganze Werkzeuge; Liste gefährlicher Befehle, die nie per Stimme freigebbar sind
-- [ ] C3 Rückfrage per Stimme: „Erlauben?“ → „ja“ nur mit stark verifizierter Stimme, „nein“/Stille = abgelehnt, Ablaufzeit;
-      danach Sitzung mit `--allowedTools <Regel>` fortsetzen („Erlaubnis erteilt, mach weiter“)
-- [ ] C4 Gültigkeit: „einmal“ (nur dieser Zug) oder „für diese Sitzung“; nie dauerhaft in Claude-Einstellungen schreiben
-- [ ] C5 Alle Freigaben lokal protokollieren (was, wann, Sprecher-Score), ohne Audio
+- [ ] B0 **Entscheidung (Nutzer):** Channel-Weg (Research Preview, Start mit `--dangerously-load-development-channels`) statt
+      eigener `claude -p`-Steuerung? Und: lokaler HTTP-Port nur auf 127.0.0.1 mit Token zwischen kushim und Channel erlaubt?
+- [ ] B1 Prototyp ohne Sprache: Channel-Server `channel/` (Bun oder Node, offizielles `@modelcontextprotocol/sdk`, Versionen fest),
+      `claude/channel`-Fähigkeit, nimmt Text per `POST 127.0.0.1` an (Token-Prüfung) und schiebt ihn in die Sitzung; Test mit `curl`
+- [ ] B2 Antwort-Werkzeug `sprich` (kurzer deutscher Text, ohne Markdown, höchstens 600 Zeichen), gibt den Text an kushim;
+      `instructions` sagen Claude, wann es `sprich` nutzt (Zusammenfassung am Ende eines Zugs)
+- [ ] B3 kushim-Seite `bridge/` (Python, nur Loopback): Text senden, Ereignisse empfangen (Antwort, Freigabe-Anfrage, Status);
+      `tests/test_no_egress.py` erlaubt nur 127.0.0.1; Tests mit gefälschtem Channel
+- [ ] B4 In die Pipeline hängen: `Pipeline.chat` schickt den Befehl über die Brücke, spricht die `sprich`-Antwort mit Piper;
+      kurze Quittung „Ich geb's an Claude.“; Mikrofon während der eigenen Ausgabe stumm
+- [ ] B5 Startskript `kushim start`: startet `claude` mit dem Channel im gewählten Arbeitsordner und `kushim talk` dazu;
+      `kushim doctor` prüft Claude-Version (mindestens 2.1.234), Anmeldung, Bun/Node
+- [ ] B6 Abbrechen („abbrechen“) schickt Escape/Abbruch an die Sitzung, Notaus beendet kushim und schaltet den Channel stumm
+- [ ] B7 Live-Test **(Nutzer)**: Wake Word → Befehl → Claude arbeitet im Terminal sichtbar → Antwort wird vorgelesen
+
+## Phase C: Freigaben per Stimme (offizielle Freigabe-Weiterleitung)
+- [ ] C1 Channel meldet `claude/channel/permission` an und reicht `permission_request` (request_id, tool_name, description,
+      input_preview) an kushim weiter; Inhalte gelten als nicht vertrauenswürdig (nur vorlesen, nie ausführen)
+- [ ] C2 Sprechbare Beschreibung: „Claude möchte den Befehl npm test ausführen. Erlauben?“, „… die Datei app.py ändern …“
+- [ ] C3 Antwort per Stimme: „ja“ nur mit **stark** verifizierter Stimme, „nein“/Stille/Zeitablauf = nichts senden (Terminal-Dialog
+      bleibt offen); Ergebnis als `allow`/`deny` mit der request_id zurück
+- [ ] C4 Sperrliste: gefährliche Aktionen (Löschen, `git push --force`, Daten senden, Einstellungen ändern) nie per Stimme
+      freigebbar, nur im Terminal (Idee aus voice-mod)
+- [ ] C5 Protokoll jeder Freigabe lokal (was, wann, Sprecher-Score, Ergebnis), ohne Audio
 - [ ] C6 Live-Test **(Nutzer)**: Claude will einen Befehl ausführen → per Stimme erlauben → Claude macht weiter
 
-## Phase D: Modell und Verbrauch (Backend)
-- [ ] D1 Modellwahl: `[claude] model` in der Konfiguration, `kushim claude model <opus|sonnet|haiku>`, per Stimme
-      („nimm Sonnet“), gilt ab dem nächsten Zug
-- [ ] D2 Verbrauch je Zug und Sitzung aus `result` (Kosten, Ein-/Ausgabe-Tokens, Cache, Dauer) lokal mitschreiben
-- [ ] D3 Rate-Limit-Stand aus den Ereignissen der CLI lesen (falls geliefert) und anzeigen; sonst klar „nicht verfügbar“
-- [ ] D4 `kushim claude usage`: Übersicht heute/Sitzung im Terminal
+## Phase D: Modell und Verbrauch
+Claude Code zeigt beides schon selbst (`/model`, `/usage`, Statuszeile). Hier nur die Sprach-Seite:
+- [ ] D1 Statuszeile von Claude Code (`statusLine` in den Benutzer-Einstellungen) zeigt Modell, Kosten der Sitzung und kushim-Zustand
+      (hört / denkt / spricht / gesperrt); Einstellung nur mit Ja des Nutzers schreiben
+- [ ] D2 Sprachbefehle „welches Modell?“, „wie viel Verbrauch?“ werden lokal aus den Statusdaten beantwortet
+- [ ] D3 Modell per Stimme wechseln („nimm Sonnet“): prüfen, ob ein Channel `/model` auslösen darf; sonst nur Hinweis
 
-## Phase E: Schnittstelle für die Oberfläche
-- [ ] E1 **Entscheidung (Nutzer):** lokaler WebSocket nur auf 127.0.0.1 mit Token freigeben? (ohne Ja keine UI)
-- [ ] E2 Transport in `net/` (nur Loopback, Token, Default-Deny-Dispatch aus `api/protocol.py`); `test_no_egress.py` angepasst
-- [ ] E3 Ereignisse an die UI: Zustand (hört/denkt/spricht), Transkript, Claude-Text live, Werkzeug-Aufrufe, Freigabe-Anfragen,
-      Verbrauch, Modell, Notaus
-- [ ] E4 Befehle von der UI: Text senden, Abbrechen, Freigabe erteilen/ablehnen, Modell wählen, neue Sitzung, Notaus/Fortsetzen
-
-## Phase F: Oberfläche (Tauri, Design aus `.claude/skills/kushim-ui-design/`)
-- [ ] F1 Tauri-Grundgerüst (Toolchain nur aus offiziellen Quellen), Verbindung zum Backend, Statusanzeige
-- [ ] F2 Avatar mit Zuständen (hört/denkt/spricht/gesperrt)
-- [ ] F3 Gesprächsverlauf: eigene Befehle, Claude-Antworten mit Markdown/Code, Werkzeug-Aufrufe aufklappbar
-- [ ] F4 Freigabe-Leiste: Anfrage anzeigen, Erlauben/Ablehnen per Klick, parallel zur Stimme
-- [ ] F5 Modellwahl (Opus/Sonnet/Haiku) in der Kopfzeile
-- [ ] F6 Verbrauch: Kosten/Tokens je Zug, Sitzung, heute; Rate-Limit-Stand
-- [ ] F7 Notaus-Knopf, Arbeitsordner-Auswahl, Texteingabe als Ersatz zur Stimme
-- [ ] F8 Setup-Assistent: Mikrofon, Stimme einschreiben, Wake Words, Claude-Anmeldung prüfen
-- [ ] F9 Live-Test **(Nutzer)** der ganzen App
+## Phase E: Eigene Oberfläche (optional, erst nach B–D entscheiden)
+- [ ] E1 **Entscheidung (Nutzer):** Reicht Claude Code als Oberfläche plus Statuszeile, oder eigenes Fenster?
+- [ ] E2 Falls ja: kleines Fenster (Tauri, Design aus `.claude/skills/kushim-ui-design/`) mit Avatar, letztem Befehl,
+      Freigabe-Leiste (Klick parallel zur Stimme), Notaus-Knopf, Verbrauch
+- [ ] E3 Setup-Assistent: Mikrofon, Stimme einschreiben, Wake Words, Claude-Anmeldung prüfen
 
 ## Später / offen
 - [ ] Sprecher-Prüfung mit einer zweiten echten Person prüfen **(Nutzer)**
