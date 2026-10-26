@@ -2,6 +2,8 @@
 
 Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
 
+**Stand 2026-10-26: Neuausrichtung, siehe [UEBERGABE.md](UEBERGABE.md) und die neue [ROADMAP.md](../ROADMAP.md). Die Einträge unten beziehen sich auf die alte Roadmap ([ROADMAP-v1.md](ROADMAP-v1.md)). Slack wird nicht mehr verwendet.**
+
 - Letzter Durchlauf: 2026-10-04: Claude entwickelt Projekt (Teile 1 und 2: Ordner-Freigabe, Worktree, Rückfragen, Übersichten, Diff-Prüfung), am echten Aufruf im Wegwerf-Repo geprüft; Abbruch-Befehl; Claude-Recherche mit Wikipedia-Ersatz. Loop gestoppt (Wunsch des Nutzers), alles lokal gemerged, nicht gepusht. 693 Tests grün
 - Seit 2026-10-03 zusätzlich gemerged (alle lokal, nicht gepusht): Notaus beendet auch llama-server, `voice threshold`, Wake Word + Befehl in einem Zug, Gesprächsmodus ohne Wake Word, Unterbrechen (Barge-in) mit echten Pegeln, `voice level`, `kushim gpu`/[gpu], `kushim help`, `kushim`-Befehl im PATH, qwen3.5:9b (think aus), Designer-Skill, Pläne `docs/ui-llm-plan.md`, `docs/tools-plan.md`, `kushim setup`, `kushim tools`, API `setup.*`/`audio.devices`/`safety.*`/`tools.*`
 - Aktueller Branch: master (routine/p2-setup-backend, routine/p3-web-plan, fluent-talk, direct-command-fix u. a. gemerged; routine/p1-wake, p1-stt, p1-speaker, p1-dialog, p1-tts, p2-api-core, p2-approvals, p4-bandit, p2-loopback, p1-llm, p1-whisper-model, p1-ollama-setup, branding, p1-piper, p2b-launcher, p2b-icon, p2b-killswitch, p1-pipeline, p1-audio, p1-talk, p1-streaming, p1-wake-only, p1-speaker-model, voice-record, readme-installer gemerged, Branches bleiben)
@@ -17,6 +19,7 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
 - Nutzer-ID / Kanal-ID: nicht verwendet. Verbundenes Slack-Konto hat andere Mail (Arbeits-Workspace) als die Git-/Claude-Mail, Empfänger unsicher, daher nichts gesendet
 
 ## Offene Fragen an den Nutzer
+- 2026-10-26: B0 Channel-Weg und lokaler Port (127.0.0.1, Token) freigeben? Siehe ROADMAP Phase B
 - 2026-10-04: Websuche nur Wikipedia (de)? Allgemeine Websuche später (z. B. eigener SearXNG auf dem NAS) oder gar nicht? Claude als Rechercheur (Konto/Schlüssel/Monatslimit)? Siehe `docs/tools-plan.md`
 - 2026-10-04: Backend-Transport (WebSocket 127.0.0.1) braucht Importe außerhalb des festgelegten Satzes von `net/loopback.py`; Lockerung des Tests nur mit ausdrücklicher Zustimmung (die Freigabe vom 2026-10-03 galt dem Loopback-Client)
 

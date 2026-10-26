@@ -12,6 +12,7 @@ run/
 voice-data/
 wakewords.toml
 .claude/worktrees/
+graphify-out/
 
 # UI
 ui/node_modules/
