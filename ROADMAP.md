@@ -43,8 +43,10 @@ Bleibt: Wake Word (`voice/trigger.py`, `wakeconfig.py`, `wakebuild.py`), Spreche
 Whisper (`stt.py`), TTS (`tts.py`, `clone.py`), Gesprächsschleife (`talk.py`, `pipeline.py`), Notaus (`safety/killswitch.py`),
 Abbrechen (`tasks.py`), Vault (`memory/`, für das Stimmprofil), `config.py`, `cli.py`, `doctor.py`, `tests/test_no_egress.py`.
 
-- [ ] A1 Sprachbefehle für alte Werkzeuge entfernen: `voice/tool_commands.py`, `timer_commands.py`, `note_commands.py`,
-      `commands.py`, `wake_commands.py` samt Tests; `talk.py`/`cli.py` ohne sie lauffähig. Tests grün
+- [x] A1 Sprachbefehle für alte Werkzeuge entfernen: `voice/tool_commands.py`, `timer_commands.py`, `note_commands.py`,
+      `commands.py`, `wake_commands.py` samt Tests; `talk.py`/`cli.py` ohne sie lauffähig. Tests grün (2026-10-26, 884 grün).
+      Mit entfernt: `api/approvals_api.py` und `api/dashboard_api.py` (hingen nur an den Sprachbefehlen). Die UI zeigt
+      Freigabe-Leiste und Übersicht bis Phase C/E als „nicht verfügbar“; der Haken `Pipeline.commands` bleibt für B4/D2
 - [ ] A2 Web und Recherche entfernen: `web/`, `research.py`, `net/web.py` samt Tests und ALLOWLIST-Einträgen in `test_no_egress.py`
 - [ ] A3 Timer und Notizen entfernen: `timers.py` samt Tests und CLI-Befehlen
 - [ ] A4 Alte Claude-Steuerung entfernen: `claude_cli/` bis auf `base.py` (CLI finden, Anmeldung prüfen, saubere Umgebung) und
@@ -77,6 +79,8 @@ den kushim-Channel (lokaler MCP-Server, stdio). kushim (Python) spricht mit dem 
 - [ ] B7 Live-Test **(Nutzer)**: Wake Word → Befehl → Claude arbeitet im Terminal sichtbar → Antwort wird vorgelesen
 
 ## Phase C: Freigaben per Stimme (offizielle Freigabe-Weiterleitung)
+- [ ] C0 Freigabe-Leiste der UI (`approvals.get`/`approvals.decide`, gleiche Regeln: exakter Text, Hash, `confirm`) neu an die
+      Channel-Freigaben hängen (ergänzt 2026-10-26: der alte Unterbau fiel mit A1 weg)
 - [ ] C1 Channel meldet `claude/channel/permission` an und reicht `permission_request` (request_id, tool_name, description,
       input_preview) an kushim weiter; Inhalte gelten als nicht vertrauenswürdig (nur vorlesen, nie ausführen)
 - [ ] C2 Sprechbare Beschreibung: „Claude möchte den Befehl npm test ausführen. Erlauben?“, „… die Datei app.py ändern …“
