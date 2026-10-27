@@ -116,8 +116,10 @@ den kushim-Channel (lokaler MCP-Server, stdio). kushim (Python) spricht mit dem 
 ## Phase C: Freigaben per Stimme (offizielle Freigabe-Weiterleitung)
 - [ ] C0 Freigabe-Leiste der UI (`approvals.get`/`approvals.decide`, gleiche Regeln: exakter Text, Hash, `confirm`) neu an die
       Channel-Freigaben hängen (ergänzt 2026-10-26: der alte Unterbau fiel mit A1 weg)
-- [ ] C1 Channel meldet `claude/channel/permission` an und reicht `permission_request` (request_id, tool_name, description,
+- [x] C1 Channel meldet `claude/channel/permission` an und reicht `permission_request` (request_id, tool_name, description,
       input_preview) an kushim weiter; Inhalte gelten als nicht vertrauenswürdig (nur vorlesen, nie ausführen)
+      (2026-10-27, 561 grün): Anfragen kommen über `GET /reply` (`permissions`), Antwort `POST /permission`; kushim
+      beantwortet noch nichts selbst, Notaus lehnt alles Offene ab
 - [ ] C2 Sprechbare Beschreibung: „Claude möchte den Befehl npm test ausführen. Erlauben?“, „… die Datei app.py ändern …“
 - [ ] C3 Antwort per Stimme: „ja“ nur mit **stark** verifizierter Stimme, „nein“/Stille/Zeitablauf = nichts senden (Terminal-Dialog
       bleibt offen); Ergebnis als `allow`/`deny` mit der request_id zurück

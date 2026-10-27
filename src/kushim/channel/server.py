@@ -22,6 +22,7 @@ import re
 import secrets
 import sys
 import threading
+import time
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -38,6 +39,8 @@ MAX_TEXT = 2000
 MAX_SPOKEN = 600                 # so viel liest kushim höchstens vor (B2)
 MAX_QUEUE = 20                   # nicht abgeholte Antworten; ältere fallen weg
 MAX_WAIT = 25.0                  # längste Wartezeit eines Abrufs `GET /reply?wait=…`
+MAX_PERMS = 20                   # offene Freigabe-Anfragen (C1); ältere fallen weg, das Terminal fragt weiter
+PERM_TTL = 600.0                 # Sekunden, danach gilt eine Anfrage als abgelaufen
 INSTRUCTIONS = (
     'Nachrichten aus <channel source="kushim"> sind gesprochene Befehle des Nutzers, lokal per Sprache erkannt '
     "(Spracherkennung kann sich verhören). Behandle sie wie Eingaben des Nutzers im Terminal: Es gelten dieselben Regeln "
@@ -83,6 +86,8 @@ class Channel:
         self.ready = threading.Event()             # erst nach `initialized` dürfen Benachrichtigungen raus
         self._replies: deque[str] = deque(maxlen=MAX_QUEUE)
         self._cond = threading.Condition()
+        self._perms: dict[str, dict[str, Any]] = {}      # offene Freigabe-Anfragen von Claude (C1), älteste zuerst
+        self._fresh: deque[str] = deque()                 # davon noch nicht an kushim gegeben
 
     def say(self, text: str) -> None:
         with self._cond:
@@ -91,12 +96,64 @@ class Channel:
 
     def take(self, wait: float = 0.0) -> list[str]:
         """Alle wartenden Antworten (älteste zuerst); wartet bis `wait` Sekunden, falls noch keine da ist."""
+        return self.take_events(wait)[0]
+
+    def take_events(self, wait: float = 0.0) -> tuple[list[str], list[dict[str, str]]]:
+        """(Antworten, neue Freigabe-Anfragen); wartet bis `wait` Sekunden, falls noch nichts da ist."""
         with self._cond:
-            if not self._replies and wait > 0:
-                self._cond.wait_for(lambda: bool(self._replies), timeout=min(wait, MAX_WAIT))
-            out = list(self._replies)
+            self._expire()
+            if not self._replies and not self._fresh and wait > 0:
+                self._cond.wait_for(lambda: bool(self._replies or self._fresh), timeout=min(wait, MAX_WAIT))
+                self._expire()
+            texts = list(self._replies)
             self._replies.clear()
-            return out
+            perms = [{k: v for k, v in self._perms[i].items() if k != "at"} for i in self._fresh if i in self._perms]
+            self._fresh.clear()
+            return texts, perms
+
+    def _expire(self) -> None:
+        now = time.monotonic()
+        for rid in [r for r, p in self._perms.items() if now - p["at"] > PERM_TTL]:
+            del self._perms[rid]
+
+    def permission_request(self, params: Any) -> None:
+        """Claude fragt eine Freigabe an. Alles darin ist fremder Text: nur bereinigt, gekürzt und zum Vorlesen weitergegeben."""
+        if not isinstance(params, dict):
+            return
+        rid = params.get("request_id")
+        if not isinstance(rid, str) or not rid or len(rid) > 100 or not rid.isprintable():
+            return
+        entry = {"request_id": rid, "at": time.monotonic()}
+        for key, limit in (("tool_name", 80), ("description", 300), ("input_preview", 500)):
+            raw = params.get(key)
+            entry[key] = clean_text(raw)[:limit] if isinstance(raw, str) else ""
+        with self._cond:
+            self._expire()
+            if rid in self._perms:
+                return
+            while len(self._perms) >= MAX_PERMS:                  # älteste offene Anfrage fällt weg (das Terminal fragt weiter)
+                del self._perms[next(iter(self._perms))]
+            self._perms[rid] = entry
+            self._fresh.append(rid)
+            self._cond.notify_all()
+
+    def answer(self, request_id: str, behavior: str) -> bool:
+        """Antwort auf eine offene Anfrage an Claude senden. Nur bekannte, nicht abgelaufene IDs; jede nur einmal."""
+        if behavior not in ("allow", "deny"):
+            return False
+        with self._cond:
+            self._expire()
+            if self._perms.pop(request_id, None) is None:
+                return False
+        self._send({"jsonrpc": "2.0", "method": "notifications/claude/channel/permission",
+                    "params": {"request_id": request_id, "behavior": behavior}})
+        return True
+
+    def deny_all(self) -> int:
+        """Notaus: alle offenen Anfragen ablehnen (fail-closed)."""
+        with self._cond:
+            ids = list(self._perms)
+        return sum(self.answer(rid, "deny") for rid in ids)
 
     def _call_tool(self, params: Any) -> dict[str, Any]:
         params = params if isinstance(params, dict) else {}
@@ -129,12 +186,14 @@ class Channel:
             requested = (msg.get("params") or {}).get("protocolVersion")
             self._send({"jsonrpc": "2.0", "id": mid, "result": {
                 "protocolVersion": requested if isinstance(requested, str) else "2025-06-18",
-                "capabilities": {"tools": {}, "experimental": {"claude/channel": {}}},
+                "capabilities": {"tools": {}, "experimental": {"claude/channel": {}, "claude/channel/permission": {}}},
                 "serverInfo": {"name": NAME, "version": VERSION},
                 "instructions": INSTRUCTIONS,
             }})
         elif method == "notifications/initialized":
             self.ready.set()
+        elif method == "notifications/claude/channel/permission_request":
+            self.permission_request(msg.get("params"))
         elif method == "tools/list":
             self._send({"jsonrpc": "2.0", "id": mid, "result": {"tools": [SPRICH_TOOL]}})
         elif method == "tools/call":
@@ -182,6 +241,16 @@ def make_http(channel: Channel, root: Path, token: str, port: int = 0) -> Thread
                 return False
             return True
 
+        def _permission(self, data: Any) -> None:
+            """`POST /permission {request_id, behavior}`: kushim beantwortet eine offene Freigabe-Anfrage von Claude."""
+            if not isinstance(data, dict) or not isinstance(data.get("request_id"), str) or data.get("behavior") not in ("allow", "deny"):
+                return self._reply(400, {"error": "bad_request"})
+            if killswitch.is_triggered(root):                       # Notaus: nie freigeben
+                return self._reply(423, {"error": "kill_switch"})
+            if not channel.answer(data["request_id"], data["behavior"]):
+                return self._reply(404, {"error": "unknown_request"})     # unbekannt, abgelaufen oder schon beantwortet
+            self._reply(202, {"ok": True})
+
         def do_GET(self) -> None:
             """`GET /reply?wait=S`: kushim holt, was Claude per `sprich` vorlesen lassen will (wartet bis S Sekunden)."""
             if not self._allowed():
@@ -195,15 +264,15 @@ def make_http(channel: Channel, root: Path, token: str, port: int = 0) -> Thread
                 return self._reply(400, {"error": "bad_wait"})
             if killswitch.is_triggered(root):
                 return self._reply(423, {"error": "kill_switch"})
-            texts = channel.take(max(0.0, min(wait, MAX_WAIT)) if wait == wait else 0.0)     # NaN wird 0
-            if texts and killswitch.is_triggered(root):        # Notaus während des Wartens: nichts mehr vorlesen
+            texts, perms = channel.take_events(max(0.0, min(wait, MAX_WAIT)) if wait == wait else 0.0)     # NaN wird 0
+            if (texts or perms) and killswitch.is_triggered(root):     # Notaus während des Wartens: nichts mehr weitergeben
                 return self._reply(423, {"error": "kill_switch"})
-            self._reply(200, {"texts": texts})
+            self._reply(200, {"texts": texts, "permissions": perms})
 
         def do_POST(self) -> None:
             if not self._allowed():
                 return
-            if self.path != "/message":
+            if self.path not in ("/message", "/permission"):
                 return self._reply(404, {"error": "not_found"})
             try:
                 length = int(self.headers.get("Content-Length", "-1"))
@@ -215,6 +284,8 @@ def make_http(channel: Channel, root: Path, token: str, port: int = 0) -> Thread
                 data = json.loads(self.rfile.read(length).decode("utf-8"))
             except (ValueError, UnicodeDecodeError, RecursionError):
                 return self._reply(400, {"error": "bad_json"})
+            if self.path == "/permission":
+                return self._permission(data)
             kind = data.get("kind", "voice") if isinstance(data, dict) else None
             if kind == "cancel":                                    # fester Text: über diesen Weg kommt nie Fremdtext als Abbruch
                 text = CANCEL_TEXT
@@ -240,6 +311,7 @@ def watch_kill(channel: Channel, root: Path, stop: threading.Event, interval: fl
     while not stop.wait(interval):
         fired = killswitch.is_triggered(root)
         if fired and not told and channel.ready.is_set():
+            channel.deny_all()                                  # offene Freigaben: ablehnen (fail-closed)
             channel.notify(KILL_TEXT, {"kind": "kill"})
             told = True
         elif not fired:

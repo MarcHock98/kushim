@@ -101,6 +101,25 @@ def test_fetch_treats_replies_as_data_and_limits_them(tmp_path):
         assert br.Bridge(tmp_path, request=lambda *a, **k: junk).fetch() == ("error", [])
 
 
+def test_permission_requests_are_kept_and_answered_through_the_real_channel(channel):
+    c, out, root = channel
+    b = br.Bridge(root)
+    c.handle({"jsonrpc": "2.0", "method": "notifications/claude/channel/permission_request",
+              "params": {"request_id": "r7", "tool_name": "Bash", "description": "npm test ausführen", "input_preview": "npm test"}})
+    assert b.fetch() == ("ok", []) and list(b.permissions) == [br.Permission("r7", "Bash", "npm test ausführen", "npm test")]
+    assert b.answer("r7", "maybe") == "error"
+    assert b.answer("r7", "deny") == "ok" and list(b.permissions) == []
+    assert json.loads(out.getvalue().splitlines()[-1])["params"] == {"request_id": "r7", "behavior": "deny"}
+    assert b.answer("r7", "allow") == "unknown"                                 # schon beantwortet
+
+
+def test_permission_parse_rejects_junk():
+    for raw in (None, [], {"request_id": 5}, {"request_id": ""}, {"request_id": "a\nb"}):
+        assert br.Permission.parse(raw) is None
+    p = br.Permission.parse({"request_id": "x", "tool_name": 5, "description": "d" * 999})
+    assert p.tool_name == "" and len(p.description) == 300
+
+
 def test_loopback_http_error_carries_the_status():
     e = loopback.HttpError(423)
     assert isinstance(e, ConnectionError) and e.status == 423 and br.Bridge._status(e) == "kill"
