@@ -4,13 +4,17 @@ from pathlib import Path
 
 SRC = Path(__file__).resolve().parents[1] / "src" / "kushim"
 FORBIDDEN = {"requests", "httpx", "urllib3", "aiohttp", "socket", "ftplib", "smtplib", "imaplib",
-             "http.client", "urllib.request", "anthropic", "openai", "websockets", "paramiko"}
+             "http.client", "urllib.request", "anthropic", "openai", "websockets", "paramiko",
+             # ergänzt 2026-10-27 (strenger): auch Server-Bausteine der Standardbibliothek nur in freigegebenen Modulen
+             "http.server", "socketserver", "asyncio", "ssl", "xmlrpc", "telnetlib", "poplib", "nntplib"}
 # Zentrale, geprüfte Stellen. Neue Einträge nur mit ausdrücklicher Nutzerfreigabe.
 # net/loopback.py: vom Nutzer am 2026-10-03 freigegeben, nur Loopback (127.0.0.1/::1).
 # net/web.py (Websuche, Freigabe 2026-10-04) ist mit Roadmap v2 A2 am 2026-10-26 entfernt: kushim selbst geht nie ins Internet.
 # net/server.py: vom Nutzer am 2026-10-04 freigegeben ("Transport freigeben"): WebSocket-Server nur auf 127.0.0.1,
 #   nur Standardbibliothek (asyncio), siehe die Tests unten.
-ALLOWLIST: set[str] = {"net/loopback.py", "net/server.py"}
+# channel/server.py: vom Nutzer am 2026-10-27 freigegeben (B0: "lokaler Port nur auf 127.0.0.1 mit Token"): HTTP-Eingang
+#   des Channels für Claude Code, nur 127.0.0.1, Token-Pflicht, nur Standardbibliothek, siehe die Tests unten.
+ALLOWLIST: set[str] = {"net/loopback.py", "net/server.py", "channel/server.py"}
 
 
 def imports(path: Path):
@@ -35,7 +39,29 @@ def test_no_network_imports_outside_allowlist():
 
 
 def test_allowlist_is_exactly_the_approved_modules():
-    assert ALLOWLIST == {"net/loopback.py", "net/server.py"}
+    assert ALLOWLIST == {"net/loopback.py", "net/server.py", "channel/server.py"}
+
+
+# --- channel/server.py: nur 127.0.0.1, nur Standardbibliothek (Freigabe B0, 2026-10-27) ------------------------------
+
+CHANNEL = SRC / "channel" / "server.py"
+
+
+def test_channel_server_has_only_stdlib_imports():
+    mods = set(imports(CHANNEL))
+    assert mods <= {"__future__", "hmac", "json", "os", "secrets", "sys", "threading", "http.server", "pathlib", "typing",
+                    "safety", "..safety"}, mods
+
+
+def test_channel_server_binds_only_to_the_fixed_loopback_address():
+    import importlib
+    import inspect
+    srv = importlib.import_module("kushim.channel.server")
+    assert srv.BIND_HOST == "127.0.0.1"
+    assert "host" not in inspect.signature(srv.make_http).parameters
+    src = CHANNEL.read_text(encoding="utf-8")
+    assert "0.0.0.0" not in src and '"::"' not in src and src.count("ThreadingHTTPServer((") == 1
+    assert "ThreadingHTTPServer((BIND_HOST," in src
 
 
 def test_loopback_module_has_no_other_network_imports():
@@ -102,7 +128,7 @@ def test_server_module_has_only_stdlib_imports_and_no_network_packages():
     mods = set(imports(SERVER))
     assert mods <= {"__future__", "asyncio", "base64", "hashlib", "json", "struct", "threading", "typing",
                     "..api.protocol", "api.protocol"} | {m for m in mods if m.startswith("..")}, mods
-    assert not {m for m in mods if m.split(".")[0] in FORBIDDEN}
+    assert not {m for m in mods if m.split(".")[0] in FORBIDDEN - {"asyncio"}}       # asyncio ist hier freigegeben
 
 
 def test_server_binds_only_to_the_fixed_loopback_address():
