@@ -118,6 +118,7 @@ elseif (Test-Path $Py) {
     $ws = New-Object -ComObject WScript.Shell
     $defs = @(
         @{ Name = "kushim App.lnk";     Args = "-m kushim.cli app";   Desc = "kushim App öffnen (Oberfläche, startet Sprache und API selbst)"; Icon = $ico; Target = (Join-Path (Split-Path $Py) "pythonw.exe") },
+        @{ Name = "kushim start.lnk";    Args = "-m kushim.cli start"; Desc = "Claude Code mit kushim-Channel öffnen und per Stimme sprechen"; Icon = $ico },
         @{ Name = "kushim sprechen.lnk"; Args = "-m kushim.cli talk";  Desc = "kushim sprechen (Wake Word)";                       Icon = $ico },
         @{ Name = "kushim NOTAUS.lnk";   Args = "-m kushim.cli kill";  Desc = "kushim NOTAUS";                                     Icon = "$env:SystemRoot\System32\shell32.dll,131" }
     )

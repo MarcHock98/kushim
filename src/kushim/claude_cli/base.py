@@ -39,6 +39,20 @@ def find_claude(which: Callable[[str], str | None] = shutil.which) -> Path | Non
     return p if p.stem.lower() == "claude" and p.is_file() else None
 
 
+MIN_VERSION = (2, 1, 234)                     # ab hier: Freigaben nur an registrierte Channels (Roadmap v2 Phase B/C)
+_VERSION = re.compile(r"^\s*(\d+)\.(\d+)\.(\d+)")
+
+
+def version(exe: Path, run: Callable[..., subprocess.CompletedProcess] = subprocess.run) -> tuple[int, int, int] | None:
+    """`claude --version` (z. B. "2.1.310 (Claude Code)") als Zahlentripel, sonst None."""
+    try:
+        r = run([str(exe), "--version"], capture_output=True, text=True, timeout=20, check=False, env=clean_env(), **hidden())
+    except (OSError, subprocess.SubprocessError):
+        return None
+    m = _VERSION.match(r.stdout or "")
+    return (int(m[1]), int(m[2]), int(m[3])) if m else None
+
+
 def auth_status(exe: Path, run: Callable[..., subprocess.CompletedProcess] = subprocess.run) -> Auth:
     """`claude auth status --json`: nur `loggedIn` und `authMethod` werden gelesen."""
     try:
