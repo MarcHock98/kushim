@@ -64,6 +64,13 @@ def test_channel_server_binds_only_to_the_fixed_loopback_address():
     assert "ThreadingHTTPServer((BIND_HOST," in src
 
 
+def test_only_the_bridge_uses_the_loopback_client():
+    users = [f.relative_to(SRC).as_posix() for f in SRC.rglob("*.py")
+             if f.name != "loopback.py" and "loopback" in f.read_text(encoding="utf-8").replace("ALLOWLIST", "")
+             and ("import loopback" in f.read_text(encoding="utf-8") or "net.loopback" in f.read_text(encoding="utf-8"))]
+    assert users == ["channel/bridge.py"], users
+
+
 def test_loopback_module_has_no_other_network_imports():
     mods = set(imports(SRC / "net" / "loopback.py"))
     assert mods <= {"__future__", "http.client", "json", "typing", "urllib.parse"}
