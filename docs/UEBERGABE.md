@@ -1,43 +1,51 @@
-# Übergabe 2026-10-27: Phase A aufgeräumt, Token-Werkzeuge fertig
+# Übergabe 2026-10-27 (Abend): Sprach-Brücke zu Claude Code läuft, Freigaben angefangen
 
-Kurzfassung für die nächste Sitzung. Plan und Schritte: [ROADMAP.md](../ROADMAP.md). Zustand der Routine:
-[routine-state.md](routine-state.md). Vorige Übergabe (Neuausrichtung, 2026-10-26) steht in der Git-Historie dieser Datei.
+Kurzfassung für die nächste Sitzung. Plan: [ROADMAP.md](../ROADMAP.md). Zustand der Routine: [routine-state.md](routine-state.md).
+Frühere Übergaben stehen in der Git-Historie dieser Datei.
 
-## Richtung (unverändert)
-kushim ist die lokale Sprach-Vorderseite für **Claude Code**: Wake Word, Sprecherprüfung, Whisper, Piper bleiben lokal;
-Claude Code ist die einzige KI. kushim selbst geht nie ins Internet (nur 127.0.0.1), Audio verlässt nie den PC.
+## Stand in einem Satz
+`kushim start` öffnet Claude Code mit dem kushim-Channel im Fenster „kushim-Claude“, kushim hört per Wake Word zu, gibt
+Befehle an Claude und liest Claudes Antwort vor. **Live vom Nutzer bestätigt (B7).** Tests: 561 grün.
 
-## Was in dieser Sitzung entstand (Loop `/kushim-routine`, je ein Branch, lokal gemerged)
+## Was heute dazukam (je ein Branch, lokal nach master gemerged, nicht gepusht)
 | Schritt | Ergebnis |
 |---|---|
-| A1 | alte Sprachbefehle (Werkzeuge, Timer, Notizen, Wake Words) und `approvals_api`/`dashboard_api` entfernt |
-| A2 | Websuche, Recherche, `net/web.py`, `claude_cli/ask.py` entfernt; ALLOWLIST ohne `net/web.py`, Test sperrt Internet-Module; `sanitize.py` behalten (für C1/C2) |
-| A3 | `timers.py` entfernt (Daten des Nutzers unangetastet) |
-| A4 | alte Claude-Steuerung (`claude -p`-Läufe) entfernt; `base.py`, `folders.py` bleiben; Test: kushim startet keine Claude-Läufe |
-| A6 | Ollama/lokales Modell entfernt (`llm/`, Launcher, `kushim start/llm/behavior`, Installer-Teil); `talk` antwortet bis B4 „Ich bin noch nicht mit Claude verbunden.“ |
-| A7 | `learning/` entfernt, README und `kushim help` auf Claude Code umgestellt; `net/loopback.py` **bewusst behalten** (braucht B3) |
-| Z4 | Statuszeile `scripts/statusline.py` (Modell, Kontext, Abo-Grenzen 5h/7d) |
-| Z5 | Hook `scripts/trim_test_output.py` kürzt lange Testausgaben, setzt nie eine Freigabe |
+| A5 | alte Gates (`ActionGate`, `EgressGate`, Werkzeug-Verwaltung) entfernt, vom Nutzer freigegeben; `tests/test_rules.py` sichert `safety/rules.py` |
+| B0 | Nutzer-Entscheidung: Channel-Weg und Port nur 127.0.0.1 mit Token |
+| B1 | `src/kushim/channel/server.py`: MCP über stdio + HTTP nur 127.0.0.1 mit Token (Python-stdlib statt npm-SDK); Safety-Audit freigegeben, 5 Funde behoben |
+| B2 | Werkzeug `sprich`; kushim holt Antworten per `GET /reply` ab (kein zweiter Port) |
+| B3 | `channel/bridge.py` (kushim-Seite, nur über `net/loopback.py`) |
+| B4 | `voice/claude_chat.py`: „Ich geb's an Claude.“, Antwort vorlesen, Abruf alle 2 s, nach 3 min spätere Ansage |
+| B5 | `kushim start`, `channel/launch.py`, `doctor` prüft Claude-Version und Anmeldung, Verknüpfung „kushim start“ im Installer |
+| B5+ | Fenster bleibt sichtbar (`cmd /k`, Titel „kushim-Claude“); **Fenster zu = alles aus**, kushim aus = Claude-Sitzung aus; `kushim claude show` holt die Sitzung zurück |
+| B6 | „abbrechen“ schickt `kind=cancel` an Claude, Notaus meldet `kind=kill` und lehnt offene Freigaben ab (sofort unterbrechen kann nur Esc) |
+| B7 | **Live-Test bestanden** (Nutzer: „Ja er antwortet“) |
+| C1 | Channel nimmt Freigabe-Anfragen von Claude an (`permission_request`), reicht sie über `GET /reply` weiter, `POST /permission` beantwortet; kushim beantwortet noch nichts selbst |
 
-Tests: **536 grün** (Windows, lokal). Sicherheits-Review je Schritt: freigegeben, Sicherheitstests nur strenger gefasst.
+Netzwerk-Test strenger: `http.server`, `socketserver`, `asyncio`, `ssl` u. a. nur in ALLOWLIST-Modulen; ALLOWLIST =
+`net/loopback.py`, `net/server.py`, `channel/server.py` (B0); Loopback-Client nur von der Brücke benutzt.
 
-## Für den Nutzer zu tun
-1. **A5 entscheiden:** `ActionGate`, `EgressGate`, `approvals.py`, `tools/`, `tools_api`/`tasks_api` wie in der Roadmap entfernen
-   (Empfehlung) oder Gates behalten? `safety/rules.py`, Notaus und `test_no_egress.py` bleiben in jedem Fall.
-2. **B0 entscheiden:** Channel-Weg (`--dangerously-load-development-channels`, Research Preview) und lokaler Port nur auf
-   127.0.0.1 mit Token. Davon hängt die ganze Phase B ab.
-3. **Z3 + Z4 + Z5 einrichten** (auf dem PC, ändert `~/.claude`, legt vorher Sicherungen an), danach Claude Code neu starten:
-   `py scripts\claude_setup.py --project . --statusline --test-hook` (vorher mit `--dry-run` ansehen).
-4. **Live prüfen:** `kushim talk` mit Mikrofon (antwortet jetzt nur mit dem festen Hinweis), Statuszeile und Hook in Claude Code.
-5. **Aufräumen (optional):** `tools\ollama`, `models\ollama` (mehrere GB) und die Desktop-Verknüpfung `kushim.lnk` werden nicht
-   mehr gebraucht.
+## Wichtige Erkenntnisse (Claude Code 2.1.311, aus der installierten `claude.exe` gelesen, ohne Netz)
+- Channel: `experimental: {"claude/channel": {}}`, Nachrichten `notifications/claude/channel {content, meta}`; Freigaben:
+  `claude/channel/permission`, `…/permission_request {request_id, tool_name, description, input_preview}`, Antwort
+  `…/permission {request_id, behavior: allow|deny}`. Einen Unterbrechen-Befehl gibt es nicht.
+- Start: `claude --session-id <uuid> --name kushim --strict-mcp-config --mcp-config run/kushim-mcp.json
+  --dangerously-load-development-channels server:kushim` (Bestätigungsdialog beim Start).
+- Claude Code führt Sitzungen über einen **Hintergrund-Dienst** aus: Fenster zu heißt nicht Sitzung zu.
+  `claude stop`/`attach` brauchen die **kurze Job-ID** (erste 8 Zeichen der Sitzungs-ID, siehe `claude agents --json`).
 
-## Nächster Schritt für Claude
-Nach A5: A5 umsetzen. Nach B0: B1 (Channel-Prototyp `channel/`, Text per `POST 127.0.0.1` mit Token, Test mit `curl`),
-dann B2–B4 (Antwort-Werkzeug `sprich`, Brücke `bridge/` über `net/loopback.py`, in `Pipeline.chat` statt `not_connected`).
-Die UI zeigt Freigabe-Leiste, Übersicht und Claude-Bereich bis C0/E als „nicht verfügbar“ (C0 in der Roadmap ergänzt).
+## Aufgeräumt am Ende
+Alle kushim-Prozesse gestoppt (Zuhören, Claude-Sitzung `060815a8` per `claude stop`, Channel, Attach-Fenster).
+Der Hintergrund-Dienst von Claude Code läuft weiter (trägt andere Sitzungen des Nutzers). `run/channel.json` entfernt.
 
-## Hinweise
-- Wissen über Claude Code ohne Netz: Beschreibungen stecken in der installierten `claude.exe` (2.1.310), mit Python/`mmap` lesen.
-- Windows: Ausgaben für Claude Code als UTF-8-Bytes schreiben; Tests mit Git Bash, nicht der WSL-`bash` aus System32.
-- Schreib-Skripte per Heredoc verschlucken Backslashes (dreimal passiert): Edit-Werkzeug nehmen.
+## Nächste Schritte
+1. **C2** sprechbare Beschreibung („Claude möchte den Befehl npm test ausführen. Erlauben?“) aus `bridge.permissions`.
+2. **C3** Antwort per Stimme: „ja“ nur bei stark verifizierter Stimme, sonst nichts senden (Terminal-Dialog bleibt).
+3. **C4** Sperrliste: Löschen, `git push --force`, Daten senden, Einstellungen nie per Stimme (auch im Channel prüfen).
+4. **C0** Freigabe-Leiste der UI an Channel-Freigaben; danach **Phase E** (UI auf Claude Code umstellen).
+
+## Für den Nutzer
+- Neu starten mit `kushim start` (der Code von heute wirkt erst nach Neustart). Fenster schließen beendet alles.
+- **Z3** noch offen: `py scripts\claude_setup.py --project . --statusline --test-hook` (vorher `--dry-run`).
+- Papierkorb leeren, wenn die Ollama-Ordner (~16 GB) endgültig weg sollen.
+- Pushen: `master` ist lokal voraus (der Nutzer pusht selbst).

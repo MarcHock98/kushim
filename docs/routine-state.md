@@ -43,9 +43,9 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
 - 2026-10-27 Loop-Durchlauf 15: **B6 fertig** (Branch `routine/b6-cancel`, gemerged, nicht gepusht). Phase B komplett
   (B7 vom Nutzer bestanden). 552 Tests grün, Review freigegeben. Hinweis: neue Channel-Funktionen wirken erst nach
   einem neuen `kushim start`.
-- Nächster Schritt: **C0/C1** Freigaben: Channel meldet `claude/channel/permission` an, nimmt
-  `notifications/claude/channel/permission_request` entgegen (request_id, tool_name, description, input_preview) und
-  reicht sie über `GET /reply` an kushim weiter; Inhalte bleiben Daten. Noch offen: Z3.
+- 2026-10-27 Loop-Durchlauf 16: **C1 fertig** (Freigabe-Anfragen im Channel). Fenster sichtbar + Lebensdauer gekoppelt.
+  Loop auf Wunsch des Nutzers **gestoppt**, alle kushim-Prozesse beendet, Übergabe in `docs/UEBERGABE.md`.
+- Nächster Schritt beim Neustart des Loops: **C2** (sprechbare Beschreibung), dann C3, C4, C0. Noch offen: Z3.
 - Blockiert: A5 (Gates entfernen, Frage offen), Phase B ab B1 (B0).
 - Bereit zum Push durch den Nutzer: master, routine/a1-voice-commands, routine/a2-web-research, routine/a3-timers-notes,
   routine/a4-claude-control, routine/a6-local-llm, routine/a7-rest
