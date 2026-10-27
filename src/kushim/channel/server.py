@@ -44,8 +44,13 @@ INSTRUCTIONS = (
     "und Freigaben. Erscheint ein Befehl unklar oder unvollständig, frag nach statt zu raten. "
     "Der Nutzer hört deine Antwort nur über das Werkzeug `sprich`, nicht über das Terminal: Rufe `sprich` am Ende jedes Zuges, "
     "der mit einer kushim-Nachricht begann, genau einmal auf, mit einer kurzen deutschen Zusammenfassung für die Ohren "
-    "(ohne Markdown, ohne Code, ohne Pfade und Listen, höchstens drei Sätze). Bei einer Rückfrage stell sie in `sprich`."
+    "(ohne Markdown, ohne Code, ohne Pfade und Listen, höchstens drei Sätze). Bei einer Rückfrage stell sie in `sprich`. "
+    'Eine Nachricht mit kind="cancel" heißt: Der Nutzer hat per Stimme abgebrochen. Den laufenden Auftrag nicht fortsetzen, '
+    'nichts Neues beginnen, kurz per `sprich` bestätigen. Eine Nachricht mit kind="kill" ist der NOTAUS: sofort aufhören, keine '
+    "Werkzeuge mehr benutzen, nichts mehr vorlesen lassen und auf den Nutzer im Terminal warten."
 )
+CANCEL_TEXT = "Abbruch per Stimme: den laufenden Auftrag nicht fortsetzen und nichts Neues beginnen."
+KILL_TEXT = "NOTAUS vom Nutzer: sofort aufhören, keine Werkzeuge mehr benutzen, auf den Nutzer im Terminal warten."
 SPRICH_TOOL = {
     "name": "sprich",
     "description": ("Liest dem Nutzer einen kurzen deutschen Text über kushim vor (lokale Stimme). Nur Fließtext, kein Markdown, "
@@ -210,17 +215,35 @@ def make_http(channel: Channel, root: Path, token: str, port: int = 0) -> Thread
                 data = json.loads(self.rfile.read(length).decode("utf-8"))
             except (ValueError, UnicodeDecodeError, RecursionError):
                 return self._reply(400, {"error": "bad_json"})
-            text = clean_text(data.get("text", "")) if isinstance(data, dict) and isinstance(data.get("text"), str) else ""
+            kind = data.get("kind", "voice") if isinstance(data, dict) else None
+            if kind == "cancel":                                    # fester Text: über diesen Weg kommt nie Fremdtext als Abbruch
+                text = CANCEL_TEXT
+            elif kind == "voice":
+                text = clean_text(data.get("text", "")) if isinstance(data.get("text"), str) else ""
+            else:
+                return self._reply(400, {"error": "bad_kind"})
             if not text:
                 return self._reply(400, {"error": "empty"})
             if killswitch.is_triggered(root):
                 return self._reply(423, {"error": "kill_switch"})
             if not channel.ready.is_set():
                 return self._reply(503, {"error": "not_ready"})
-            channel.notify(text, {"kind": "voice"})
+            channel.notify(text, {"kind": kind})
             self._reply(202, {"ok": True})
 
     return ThreadingHTTPServer((BIND_HOST, port), Handler)
+
+
+def watch_kill(channel: Channel, root: Path, stop: threading.Event, interval: float = 1.0) -> None:
+    """Meldet den Notaus einmal an Claude (kind="kill"), sobald er ausgelöst wird; nach dem Aufheben wieder scharf."""
+    told = False
+    while not stop.wait(interval):
+        fired = killswitch.is_triggered(root)
+        if fired and not told and channel.ready.is_set():
+            channel.notify(KILL_TEXT, {"kind": "kill"})
+            told = True
+        elif not fired:
+            told = False
 
 
 def write_info(root: Path, port: int, token: str) -> Path:
@@ -244,10 +267,13 @@ def main(root: Path | None = None) -> int:
     httpd = make_http(channel, root, token)
     info = write_info(root, httpd.server_address[1], token)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    stop = threading.Event()
+    threading.Thread(target=watch_kill, args=(channel, root, stop), daemon=True).start()
     channel.log(f"[kushim-channel] bereit auf {BIND_HOST}:{httpd.server_address[1]} (Token in {info.name})")
     try:
         channel.serve_stdio(sys.stdin)                         # endet, wenn Claude Code den Kanal schließt
     finally:
+        stop.set()
         httpd.shutdown()
         try:
             if json.loads(info.read_text(encoding="utf-8")).get("pid") == os.getpid():

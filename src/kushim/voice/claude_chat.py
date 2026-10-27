@@ -39,7 +39,7 @@ class ClaudeChat:
             return
         yield ACK
         deadline = self.clock() + self.patience
-        with self.tasks.running("Claude arbeitet") as token:
+        with self.tasks.running("Claude arbeitet", cancel=self.bridge.cancel) as token:     # "abbrechen" sagt es auch Claude
             while not token.cancelled():
                 left = deadline - self.clock()
                 if left <= 0:

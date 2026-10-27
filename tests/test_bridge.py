@@ -54,6 +54,8 @@ def test_send_and_fetch_through_the_real_channel(channel):
     assert b.available() and b.send("Mach die Tests\ngrün") == "ok"
     note = json.loads(out.getvalue().splitlines()[-1])
     assert note["params"]["content"] == "Mach die Tests grün"
+    assert b.cancel() == "ok"
+    assert json.loads(out.getvalue().splitlines()[-1])["params"] == {"content": ch.CANCEL_TEXT, "meta": {"kind": "cancel"}}
     c.say("Alles grün.")
     assert b.fetch() == ("ok", ["Alles grün."]) and b.fetch(0.1) == ("ok", [])
     threading.Timer(0.2, lambda: c.say("Später.")).start()
