@@ -84,8 +84,12 @@ den kushim-Channel (lokaler MCP-Server, stdio). kushim (Python) spricht mit dem 
 - [x] B0 **Entscheidung (Nutzer, 2026-10-27: ja, beides):** Channel-Weg (Research Preview, Start mit `--dangerously-load-development-channels`) statt
       eigener `claude -p`-Steuerung? Und: lokaler HTTP-Port nur auf 127.0.0.1 mit Token zwischen kushim und Channel erlaubt?
       (Claude Code als einzige KI ist entschieden, siehe Datenschutz-Regel 4)
-- [ ] B1 Prototyp ohne Sprache: Channel-Server `channel/` (Bun oder Node, offizielles `@modelcontextprotocol/sdk`, Versionen fest),
+- [x] B1 Prototyp ohne Sprache: Channel-Server `channel/` (Bun oder Node, offizielles `@modelcontextprotocol/sdk`, Versionen fest),
       `claude/channel`-Fähigkeit, nimmt Text per `POST 127.0.0.1` an (Token-Prüfung) und schiebt ihn in die Sitzung; Test mit `curl`
+      (2026-10-27, 509 grün, `curl` 401/202 geprüft). **Abweichung mit Grund:** `src/kushim/channel/server.py` in Python-Standardbibliothek
+      statt Bun/Node + SDK: MCP über stdio ist zeilenweises JSON-RPC, so gibt es keinen npm-Download und die Netzwerk-Tests greifen.
+      Start: `python -m kushim.channel`; Port/Token in `run/channel.json`. Safety-Audit freigegeben, 5 Funde behoben.
+      Mit echter Claude-Code-Sitzung noch nicht geprüft (braucht B5 und den Nutzer am Terminal)
 - [ ] B2 Antwort-Werkzeug `sprich` (kurzer deutscher Text, ohne Markdown, höchstens 600 Zeichen), gibt den Text an kushim;
       `instructions` sagen Claude, wann es `sprich` nutzt (Zusammenfassung am Ende eines Zugs)
 - [ ] B3 kushim-Seite `bridge/` (Python, nur Loopback): Text senden, Ereignisse empfangen (Antwort, Freigabe-Anfrage, Status);

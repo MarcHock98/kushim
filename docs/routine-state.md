@@ -29,8 +29,12 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
 - 2026-10-26 Loop-Durchlauf 8: **Z5 fertig** (Branch `routine/z5-test-hook`, gemerged, nicht gepusht): Hook kürzt lange
   Testausgaben, `claude_setup.py --test-hook`. 536 Tests grün, Review freigegeben. Nicht live geprüft: Wirkung in Claude Code.
 - 2026-10-27 Loop-Durchlauf 9: **A5 fertig** nach Freigabe (Branch `routine/a5-gates`, gemerged). Phase A komplett.
-- Nächster Schritt: **B1** Channel-Prototyp (`channel/`, Bun oder Node, `@modelcontextprotocol/sdk` fest gepinnt, Paket vor
-  Installation prüfen), Test mit `curl`. Noch offen für den Nutzer: Z3 (Setup-Skript mit `--statusline --test-hook`).
+- 2026-10-27 Loop-Durchlauf 10: **B1 fertig** (Branch `routine/b1-channel`, gemerged, nicht gepusht): Channel-Server in Python
+  (stdlib), ALLOWLIST + `channel/server.py` (B0), Egress-Test um Server-Bausteine verschärft. Safety-Auditor: freigegeben, 5 Funde
+  (u. a. `KUSHIM_ROOT` entfernt, Token-Datei 0600) behoben. 509 Tests grün.
+- Nächster Schritt: **B2** Antwort-Werkzeug `sprich` (Text an kushim zurück; braucht einen Rückweg vom Channel zu kushim, z. B.
+  eine Warteschlange, die kushim per `GET` mit Token abholt, oder kushim lauscht selbst auf 127.0.0.1: vorher entscheiden,
+  welches weniger neue Angriffsfläche hat). Noch offen für den Nutzer: Z3 (Setup-Skript mit `--statusline --test-hook`).
 - Blockiert: A5 (Gates entfernen, Frage offen), Phase B ab B1 (B0).
 - Bereit zum Push durch den Nutzer: master, routine/a1-voice-commands, routine/a2-web-research, routine/a3-timers-notes,
   routine/a4-claude-control, routine/a6-local-llm, routine/a7-rest
