@@ -40,9 +40,12 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
   ersetzt den Platzhalter; Quittung, Abruf alle 2 s, verspätete Antworten als Ansage. 537 Tests grün, Review freigegeben.
 - 2026-10-27 Loop-Durchlauf 14: **B5 fertig** (Branch `routine/b5-start`, gemerged, nicht gepusht): `kushim start`,
   `channel/launch.py`, `doctor` prüft Claude (findet 2.1.311, angemeldet). 550 Tests grün, Review freigegeben.
-- **B7 bereit für den Nutzer:** `kushim claude add <name> <pfad>` (falls noch kein Ordner), dann `kushim start`, im
-  Claude-Fenster den Channel-Hinweis bestätigen, Wake Word + Befehl sagen. Nächster eigener Schritt: **B6** (Abbrechen
-  schickt Abbruch an die Sitzung, Notaus schaltet den Channel stumm). Noch offen: Z3.
+- 2026-10-27 Loop-Durchlauf 15: **B6 fertig** (Branch `routine/b6-cancel`, gemerged, nicht gepusht). Phase B komplett
+  (B7 vom Nutzer bestanden). 552 Tests grün, Review freigegeben. Hinweis: neue Channel-Funktionen wirken erst nach
+  einem neuen `kushim start`.
+- Nächster Schritt: **C0/C1** Freigaben: Channel meldet `claude/channel/permission` an, nimmt
+  `notifications/claude/channel/permission_request` entgegen (request_id, tool_name, description, input_preview) und
+  reicht sie über `GET /reply` an kushim weiter; Inhalte bleiben Daten. Noch offen: Z3.
 - Blockiert: A5 (Gates entfernen, Frage offen), Phase B ab B1 (B0).
 - Bereit zum Push durch den Nutzer: master, routine/a1-voice-commands, routine/a2-web-research, routine/a3-timers-notes,
   routine/a4-claude-control, routine/a6-local-llm, routine/a7-rest
