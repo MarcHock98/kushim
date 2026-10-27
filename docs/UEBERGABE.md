@@ -1,53 +1,43 @@
-# Übergabe 2026-10-26: Neuausrichtung kushim
+# Übergabe 2026-10-27: Phase A aufgeräumt, Token-Werkzeuge fertig
 
-Kurzfassung für die nächste Sitzung. Plan und Schritte: [ROADMAP.md](../ROADMAP.md). Alte Roadmap: [ROADMAP-v1.md](ROADMAP-v1.md).
+Kurzfassung für die nächste Sitzung. Plan und Schritte: [ROADMAP.md](../ROADMAP.md). Zustand der Routine:
+[routine-state.md](routine-state.md). Vorige Übergabe (Neuausrichtung, 2026-10-26) steht in der Git-Historie dieser Datei.
 
-## Neue Richtung (Entscheidungen des Nutzers)
-- **Ziel:** lokaler „Jarvis“ als Sprach-Vorderseite für **Claude Code**. Claude Code ist die **einzige KI**; kein lokales
-  Modell (kein Ollama o. ä.). kushim reicht nur weiter: Stimme → Text → Claude Code → Text → Stimme.
-- **Bleibt:** Wake Word, Sprecherprüfung, Whisper (lokal), Piper-TTS, Notaus, Vault (Stimmprofil).
-- **Fliegt raus (Phase A, noch nicht gemacht):** Ollama/LLM, Web/Recherche, Timer/Notizen, alte Claude-Steuerung, Tools/Gates.
-- **Freigaben per Stimme:** Wenn Claude Code eine Berechtigung braucht, liest kushim sie vor; „ja“ nur bei sicher
-  erkannter Stimme; gefährliche Aktionen nur im Terminal.
-- **Oberfläche:** zunächst Claude Code selbst (Verlauf, `/model`, `/usage`); eigenes Fenster optional (Phase E).
-- **Datenschutz:** Alle Server, die kushim mitbringt, laufen nur auf 127.0.0.1 und senden nichts nach außen. Skills,
-  Agents und MCP-Server im Projekt nutzen kein Web, kein Slack, keine Konnektoren. Einzige Verbindung nach außen:
-  Claude Code selbst zu Anthropic. Telemetrie von Claude Code aus (`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`).
-- **Token sparen über alle Projekte:** Graphify plus globale Regeln über `scripts/claude_setup.py`.
+## Richtung (unverändert)
+kushim ist die lokale Sprach-Vorderseite für **Claude Code**: Wake Word, Sprecherprüfung, Whisper, Piper bleiben lokal;
+Claude Code ist die einzige KI. kushim selbst geht nie ins Internet (nur 127.0.0.1), Audio verlässt nie den PC.
 
-## Was in dieser Sitzung entstand
-| Datei | Inhalt |
+## Was in dieser Sitzung entstand (Loop `/kushim-routine`, je ein Branch, lokal gemerged)
+| Schritt | Ergebnis |
 |---|---|
-| `ROADMAP.md` | Roadmap v2: Datenschutz-Regeln, Querschnitt Token (Z1–Z5), Phasen A–E in kleinen Schritten |
-| `docs/research/jarvis-projekte.md` | Vergleich fertiger Projekte; Fund: **Claude Code Channels** mit Freigabe-Weiterleitung |
-| `docs/research/tokens-sparen.md` | Offizielle Spar-Tipps, Graphify geprüft (Quellcode, Offline-Test) |
-| `scripts/claude_setup.py` + Tests | Graphify (fest 0.9.96) + globale Einstellungen + Token-Regeln, `--project`, `--dry-run` |
-| `.claude/settings.json` | Projekt: Telemetrie aus, Konnektoren gesperrt, keine automatischen Projekt-MCP-Server |
-| `.claude/skills/kushim-routine/SKILL.md` | ohne Slack und Web-Recherche; Fragen lokal im State |
-| `tests/test_no_egress_config.py` | prüft Skills, Agents, `.mcp.json`, Einstellungen auf Datenabfluss |
+| A1 | alte Sprachbefehle (Werkzeuge, Timer, Notizen, Wake Words) und `approvals_api`/`dashboard_api` entfernt |
+| A2 | Websuche, Recherche, `net/web.py`, `claude_cli/ask.py` entfernt; ALLOWLIST ohne `net/web.py`, Test sperrt Internet-Module; `sanitize.py` behalten (für C1/C2) |
+| A3 | `timers.py` entfernt (Daten des Nutzers unangetastet) |
+| A4 | alte Claude-Steuerung (`claude -p`-Läufe) entfernt; `base.py`, `folders.py` bleiben; Test: kushim startet keine Claude-Läufe |
+| A6 | Ollama/lokales Modell entfernt (`llm/`, Launcher, `kushim start/llm/behavior`, Installer-Teil); `talk` antwortet bis B4 „Ich bin noch nicht mit Claude verbunden.“ |
+| A7 | `learning/` entfernt, README und `kushim help` auf Claude Code umgestellt; `net/loopback.py` **bewusst behalten** (braucht B3) |
+| Z4 | Statuszeile `scripts/statusline.py` (Modell, Kontext, Abo-Grenzen 5h/7d) |
+| Z5 | Hook `scripts/trim_test_output.py` kürzt lange Testausgaben, setzt nie eine Freigabe |
 
-Tests: 932 grün, 1 Fehlschlag nur in der Cloud-Umgebung (`test_audio`, PortAudio fehlt dort), 3 übersprungen.
-
-## Abgleich mit GitHub (nach der Übergabe)
-`origin/master` hatte 35 neue Commits (Tauri-UI in `ui/`, WebSocket-Server `net/server.py`, `kushim app`, Feedback,
-Verhaltens-Check). Sie sind in diesen Branch gemerged; Konflikte: `ROADMAP.md` (neue Roadmap behalten, deren Stand liegt
-jetzt vollständig in `docs/ROADMAP-v1.md`) und `.gitignore` (beides vereint). Tests danach: 1103 grün; 2 Fehlschläge nur
-in der Cloud-Umgebung (PortAudio und Schlüsselbund fehlen), beide auch auf `origin/master` allein.
+Tests: **536 grün** (Windows, lokal). Sicherheits-Review je Schritt: freigegeben, Sicherheitstests nur strenger gefasst.
 
 ## Für den Nutzer zu tun
-1. **GitHub neu verbinden**, damit gepusht werden kann: https://claude.ai/connect-github (Claude-GitHub-App für
-   `MarcHock98/kushim` freigeben). Bis dahin liegen alle Commits nur lokal in der Cloud-Sitzung.
-2. **B0 entscheiden:** Channel-Weg (Start mit `--dangerously-load-development-channels`, Research Preview) und lokaler
-   Port nur 127.0.0.1 mit Token zwischen kushim und Channel.
-3. **Z3:** auf dem PC `py scripts\claude_setup.py --project .` ausführen (vorher `--dry-run` zum Ansehen), danach
-   Claude Code neu starten.
+1. **A5 entscheiden:** `ActionGate`, `EgressGate`, `approvals.py`, `tools/`, `tools_api`/`tasks_api` wie in der Roadmap entfernen
+   (Empfehlung) oder Gates behalten? `safety/rules.py`, Notaus und `test_no_egress.py` bleiben in jedem Fall.
+2. **B0 entscheiden:** Channel-Weg (`--dangerously-load-development-channels`, Research Preview) und lokaler Port nur auf
+   127.0.0.1 mit Token. Davon hängt die ganze Phase B ab.
+3. **Z3 + Z4 + Z5 einrichten** (auf dem PC, ändert `~/.claude`, legt vorher Sicherungen an), danach Claude Code neu starten:
+   `py scripts\claude_setup.py --project . --statusline --test-hook` (vorher mit `--dry-run` ansehen).
+4. **Live prüfen:** `kushim talk` mit Mikrofon (antwortet jetzt nur mit dem festen Hinweis), Statuszeile und Hook in Claude Code.
+5. **Aufräumen (optional):** `tools\ollama`, `models\ollama` (mehrere GB) und die Desktop-Verknüpfung `kushim.lnk` werden nicht
+   mehr gebraucht.
 
 ## Nächster Schritt für Claude
-Nach B0: Phase A1 (alte Sprachbefehle für Werkzeuge entfernen), dann A2–A7, dann B1 (Channel-Prototyp mit `curl` testen).
+Nach A5: A5 umsetzen. Nach B0: B1 (Channel-Prototyp `channel/`, Text per `POST 127.0.0.1` mit Token, Test mit `curl`),
+dann B2–B4 (Antwort-Werkzeug `sprich`, Brücke `bridge/` über `net/loopback.py`, in `Pipeline.chat` statt `not_connected`).
+Die UI zeigt Freigabe-Leiste, Übersicht und Claude-Bereich bis C0/E als „nicht verfügbar“ (C0 in der Roadmap ergänzt).
 
-## Offene Punkte / Hinweise
-- Eigene Channels laufen nur in einer interaktiven Sitzung, nicht mit `claude -p`; Freigabe-Weiterleitung erst ab
-  Claude Code v2.1.234.
-- Graphify: nie API-Schlüssel fremder Anbieter setzen (Graphify würde sie automatisch nutzen); `graph.html` nicht öffnen
-  (lädt Code von unpkg.com), das Skript löscht die Datei.
-- Hooks im Cloud-Container einzurichten wurde blockiert; die Projekt-Verbindung mit Graphify macht das Skript auf dem PC.
+## Hinweise
+- Wissen über Claude Code ohne Netz: Beschreibungen stecken in der installierten `claude.exe` (2.1.310), mit Python/`mmap` lesen.
+- Windows: Ausgaben für Claude Code als UTF-8-Bytes schreiben; Tests mit Git Bash, nicht der WSL-`bash` aus System32.
+- Schreib-Skripte per Heredoc verschlucken Backslashes (dreimal passiert): Edit-Werkzeug nehmen.
