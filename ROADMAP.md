@@ -97,8 +97,11 @@ den kushim-Channel (lokaler MCP-Server, stdio). kushim (Python) spricht mit dem 
 - [x] B3 kushim-Seite `bridge/` (Python, nur Loopback): Text senden, Ereignisse empfangen (Antwort, Freigabe-Anfrage, Status);
       `tests/test_no_egress.py` erlaubt nur 127.0.0.1; Tests mit gefälschtem Channel (2026-10-27, 531 grün): `channel/bridge.py`,
       Tests gegen den echten Channel-Server im selben Prozess. Freigabe-Anfragen folgen mit C1 über denselben Abholweg
-- [ ] B4 In die Pipeline hängen: `Pipeline.chat` schickt den Befehl über die Brücke, spricht die `sprich`-Antwort mit Piper;
-      kurze Quittung „Ich geb's an Claude.“; Mikrofon während der eigenen Ausgabe stumm
+- [x] B4 In die Pipeline hängen: `Pipeline.chat` schickt den Befehl über die Brücke, spricht die `sprich`-Antwort mit Piper;
+      kurze Quittung „Ich geb's an Claude.“; Mikrofon während der eigenen Ausgabe stumm (2026-10-27, 537 grün):
+      `voice/claude_chat.py`, Abruf alle 2 s (Abbrechen/Notaus greifen schnell), nach 3 min Hinweis und spätere Ansage.
+      Mikrofon: bleibt wie bisher über Barge-in geregelt (`barge_in = false` in `wakewords.toml` hört während der Ausgabe
+      gar nicht zu); echte Echo-Unterdrückung steht unter „Später“. Live nicht geprüft (braucht B5 und den Nutzer)
 - [ ] B5 Startskript `kushim start`: startet `claude` mit dem Channel im gewählten Arbeitsordner und `kushim talk` dazu;
       `kushim doctor` prüft Claude-Version (mindestens 2.1.234), Anmeldung, Bun/Node
 - [ ] B6 Abbrechen („abbrechen“) schickt Escape/Abbruch an die Sitzung, Notaus beendet kushim und schaltet den Channel stumm
