@@ -32,9 +32,11 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
 - 2026-10-27 Loop-Durchlauf 10: **B1 fertig** (Branch `routine/b1-channel`, gemerged, nicht gepusht): Channel-Server in Python
   (stdlib), ALLOWLIST + `channel/server.py` (B0), Egress-Test um Server-Bausteine verschärft. Safety-Auditor: freigegeben, 5 Funde
   (u. a. `KUSHIM_ROOT` entfernt, Token-Datei 0600) behoben. 509 Tests grün.
-- Nächster Schritt: **B2** Antwort-Werkzeug `sprich` (Text an kushim zurück; braucht einen Rückweg vom Channel zu kushim, z. B.
-  eine Warteschlange, die kushim per `GET` mit Token abholt, oder kushim lauscht selbst auf 127.0.0.1: vorher entscheiden,
-  welches weniger neue Angriffsfläche hat). Noch offen für den Nutzer: Z3 (Setup-Skript mit `--statusline --test-hook`).
+- 2026-10-27 Loop-Durchlauf 11: **B2 fertig** (Branch `routine/b2-sprich`, gemerged, nicht gepusht): Werkzeug `sprich`,
+  Abholweg `GET /reply` mit Token am selben Port (kushim bleibt Client). 513 Tests grün, Review freigegeben.
+- Nächster Schritt: **B3** `bridge/` in kushim: Text senden (`POST /message`), Antworten abholen (`GET /reply`), beides
+  über `net/loopback.py` (nur 127.0.0.1); liest `run/channel.json`. Prüfen: reicht der feste Import-Satz von `loopback.py`?
+  Noch offen für den Nutzer: Z3 (Setup-Skript mit `--statusline --test-hook`).
 - Blockiert: A5 (Gates entfernen, Frage offen), Phase B ab B1 (B0).
 - Bereit zum Push durch den Nutzer: master, routine/a1-voice-commands, routine/a2-web-research, routine/a3-timers-notes,
   routine/a4-claude-control, routine/a6-local-llm, routine/a7-rest

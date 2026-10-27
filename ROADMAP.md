@@ -90,8 +90,10 @@ den kushim-Channel (lokaler MCP-Server, stdio). kushim (Python) spricht mit dem 
       statt Bun/Node + SDK: MCP über stdio ist zeilenweises JSON-RPC, so gibt es keinen npm-Download und die Netzwerk-Tests greifen.
       Start: `python -m kushim.channel`; Port/Token in `run/channel.json`. Safety-Audit freigegeben, 5 Funde behoben.
       Mit echter Claude-Code-Sitzung noch nicht geprüft (braucht B5 und den Nutzer am Terminal)
-- [ ] B2 Antwort-Werkzeug `sprich` (kurzer deutscher Text, ohne Markdown, höchstens 600 Zeichen), gibt den Text an kushim;
-      `instructions` sagen Claude, wann es `sprich` nutzt (Zusammenfassung am Ende eines Zugs)
+- [x] B2 Antwort-Werkzeug `sprich` (kurzer deutscher Text, ohne Markdown, höchstens 600 Zeichen), gibt den Text an kushim;
+      `instructions` sagen Claude, wann es `sprich` nutzt (Zusammenfassung am Ende eines Zugs) (2026-10-27, 513 grün). Rückweg:
+      kushim holt per `GET /reply?wait=…` (Token, gleicher Port) ab, statt selbst zu lauschen: kein zweiter Port, keine neue
+      ALLOWLIST-Stelle. Für B3 heißt das: `bridge/` sendet `POST /message` und fragt `GET /reply` über `net/loopback.py`
 - [ ] B3 kushim-Seite `bridge/` (Python, nur Loopback): Text senden, Ereignisse empfangen (Antwort, Freigabe-Anfrage, Status);
       `tests/test_no_egress.py` erlaubt nur 127.0.0.1; Tests mit gefälschtem Channel
 - [ ] B4 In die Pipeline hängen: `Pipeline.chat` schickt den Befehl über die Brücke, spricht die `sprich`-Antwort mit Piper;
