@@ -42,6 +42,7 @@ Gedächtnis und Schlüssel
 
 Prüfen und Hilfe
   kushim claude [check|enable|disable]  Claude CLI und Anmeldung prüfen; Modus C ein/aus
+  kushim claude show           Die laufende Claude-Sitzung von kushim wieder in einem Fenster zeigen
   kushim claude folders|add|remove  Sichere Arbeitsordner für Claude verwalten
   kushim doctor                Prüft, ob alles installiert und eingerichtet ist
   kushim setup                 Stand der Einrichtung: Systemcheck, Stimme, Wake Words, Notaus
@@ -137,11 +138,30 @@ def _start(args, cfg: Config, root) -> int:
     except ValueError as e:
         print(f"Ordner «{chosen.name}» ist nicht (mehr) zulässig: {e}")
         return 2
-    launch.launch(exe, folder, root)
-    print(f"Claude Code startet in einem eigenen Fenster im Ordner «{chosen.name}».")
+    import _thread
+    import threading
+    from .procflags import kill_tree
+    window = launch.launch(exe, folder, root)
+    print(f"Claude Code startet im Fenster \"kushim-Claude\" im Ordner «{chosen.name}».")
     print("Dort einmal den Hinweis zum Entwicklungs-Channel bestätigen; danach hört kushim zu.")
+    print("Schließt du das Claude-Fenster, beendet sich alles (Claude, Channel, Zuhören).")
+    done = threading.Event()
+
+    def watch_window():                               # Fenster zu: ganzen Ablauf beenden
+        window.wait()
+        if not done.is_set():
+            print("\nClaude-Fenster geschlossen: kushim beendet sich.")
+            _thread.interrupt_main()
+    threading.Thread(target=watch_window, daemon=True).start()
     talk = ["talk"] + (["--mic", args.mic] if args.mic else []) + (["--out", args.out] if args.out else []) + (["--ui"] if args.ui else [])
-    return _main(talk)
+    try:
+        return _main(talk)
+    finally:                                          # kushim endet (Strg+C, "beende dich", Notaus): Claude-Sitzung mit beenden
+        done.set()
+        launch.stop(exe, root)
+        if window.poll() is None:
+            kill_tree(window.pid)
+        print("Claude-Sitzung beendet (der Verlauf bleibt in Claude Code erhalten).")
 
 
 def _vault_state(cfg: Config) -> str:
@@ -279,6 +299,7 @@ def _main(argv: list[str] | None = None) -> int:
     sub.add_parser("help", help="Übersicht aller Befehle mit Beispielen")
     cl = sub.add_parser("claude", help="Claude CLI prüfen, Modus C ein-/ausschalten").add_subparsers(dest="sub")
     cl.add_parser("check", help="Zeigt CLI, Anmeldung und Schalter")
+    cl.add_parser("show", help="Die laufende kushim-Sitzung von Claude Code wieder in einem Fenster zeigen")
     cl.add_parser("enable", help="Modus C einschalten (mit Rückfrage)")
     cl.add_parser("disable", help="Modus C sofort ausschalten")
     cl.add_parser("folders", help="Für Claude freigegebene Ordner anzeigen")
@@ -326,6 +347,17 @@ def _main(argv: list[str] | None = None) -> int:
     if args.cmd == "claude":
         from .claude_cli import base as claude_base
         action = getattr(args, "sub", None) or "check"
+        if action == "show":
+            from .channel import launch
+            exe = claude_base.find_claude()
+            if exe is None:
+                print("Claude Code nicht gefunden.")
+                return 1
+            if launch.show(exe, root) is None:
+                print("Keine kushim-Sitzung bekannt. Starten mit: kushim start")
+                return 1
+            print("Fenster \"kushim-Claude\" geöffnet.")
+            return 0
         if action == "enable":
             print("Modus C: Fragen, die du an Claude richtest, gehen an Anthropic (über deine angemeldete Claude CLI; kushim speichert keine Zugangsdaten).")
             if input("Einschalten? (j/N): ").strip().lower() not in ("j", "ja", "y", "yes"):
