@@ -107,7 +107,8 @@ den kushim-Channel (lokaler MCP-Server, stdio). kushim (Python) spricht mit dem 
       der Channel ist Python). `channel/launch.py`, `--strict-mcp-config` (nur der kushim-Server), Telemetrie aus, eigenes Fenster;
       Verknüpfung „kushim start“ im Installer. Echter Start mit Bestätigungsdialog nicht geprüft: das ist B7 **(Nutzer)**
 - [ ] B6 Abbrechen („abbrechen“) schickt Escape/Abbruch an die Sitzung, Notaus beendet kushim und schaltet den Channel stumm
-- [ ] B7 Live-Test **(Nutzer)**: Wake Word → Befehl → Claude arbeitet im Terminal sichtbar → Antwort wird vorgelesen
+- [x] B7 Live-Test **(Nutzer)**: Wake Word → Befehl → Claude arbeitet im Terminal sichtbar → Antwort wird vorgelesen
+      (2026-10-27: vom Nutzer mit `kushim start` bestätigt, „Ja er antwortet“)
 
 ## Phase C: Freigaben per Stimme (offizielle Freigabe-Weiterleitung)
 - [ ] C0 Freigabe-Leiste der UI (`approvals.get`/`approvals.decide`, gleiche Regeln: exakter Text, Hash, `confirm`) neu an die
