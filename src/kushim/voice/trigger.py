@@ -1,8 +1,8 @@
 """Auslöser für die Sprachaufnahme: ausschließlich Wake Words (openWakeWord, ONNX, lokal).
 
 Vor dem Wake Word läuft das Mikrofonsignal nur durch dieses kleine lokale Erkennungsmodell: keine
-Spracherkennung, kein LLM, keine Speicherung. Ein Auslöser startet nur das Zuhören. Er ist keine
-Autorisierung: Sprecherverifikation und ActionGate gelten danach unverändert.
+Spracherkennung, keine Weitergabe, keine Speicherung. Ein Auslöser startet nur das Zuhören. Er ist keine
+Autorisierung: die Sprecherverifikation gilt danach unverändert.
 """
 from __future__ import annotations
 

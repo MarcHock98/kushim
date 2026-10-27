@@ -4,7 +4,6 @@ from kushim.config import Config
 from kushim.memory import open_store
 from kushim.memory.local import LocalStore
 from kushim.memory.migrate import backup, migrate
-from kushim.privacy import EgressDenied, EgressGate
 
 KEY = "ab" * 32
 
@@ -57,15 +56,3 @@ def test_backup_rotation(tmp_path):
         backup(cfg)
         time.sleep(1.1)
     assert len(list((tmp_path / "nas").glob("vault-*"))) == 2
-
-
-def test_egress_gate(tmp_path):
-    send = lambda p: "ok"
-    assert_denied = lambda g, **kw: pytest.raises(EgressDenied)
-    with pytest.raises(EgressDenied):
-        EgressGate(False, lambda d, p: True).send("claude", "x", True, send)  # Modus A
-    with pytest.raises(EgressDenied):
-        EgressGate(True, lambda d, p: True).send("claude", "x", False, send)  # nicht vom Nutzer
-    with pytest.raises(EgressDenied):
-        EgressGate(True, lambda d, p: False).send("claude", "x", True, send)  # abgelehnt
-    assert EgressGate(True, lambda d, p: True).send("claude", "x", True, send) == "ok"

@@ -30,7 +30,7 @@ def backup_age_days(target: str, now: float) -> float | None:
     return round((now - max(snaps)) / 86400, 2) if snaps else None
 
 
-def register_safety_view(core: ApiCore, live: Any, root: Path, registry: Any = None,
+def register_safety_view(core: ApiCore, live: Any, root: Path,
                          store: MemoryStore | None = None, money_limit: float = 0.0,
                          clock: Callable[[], float] = time.time) -> None:
     def overview(_: dict[str, Any]) -> dict[str, Any]:
@@ -47,13 +47,10 @@ def register_safety_view(core: ApiCore, live: Any, root: Path, registry: Any = N
                 audit = [{"ts": t, "event": e, "detail": d[:DETAIL_CHARS]} for t, e, d in store.audit_tail(AUDIT_LIMIT)]
             except Exception:                             # noqa: BLE001 (Anzeige darf nie stören)
                 audit = []
-        tools = None
-        if registry is not None:
-            tools = [name for name in registry.tools if registry.is_active(name)]
         return {
             "mode": "C" if cfg.claude_enabled else "A",
             "kill": killswitch.is_triggered(root),
-            "tools_active": tools,
+            "tools_active": [],                       # kushim hat keine eigenen Werkzeuge mehr (Roadmap v2 A5)
             "vault": {"where": "local" if scheme == "local" else "remote", "exists": exists, "open": store is not None},
             "backup": {"configured": bool(cfg.backup_target), "age_days": backup_age_days(cfg.backup_target, now)},
             "money_limit_eur": money_limit,

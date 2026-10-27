@@ -2,12 +2,10 @@
 from __future__ import annotations
 
 import os
-import re
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
-TOOL_NAME = re.compile(r"[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)?")      # z. B. "web.search"
 
 
 class LiveConfig:
@@ -55,8 +53,6 @@ class Config:
     backup_keep: int = 10
     claude_enabled: bool = False
     gpu_whisper: str = "auto"      # "auto", "cpu" oder Kartennummer (kushim gpu)
-    tools_enabled: tuple[str, ...] = ()   # nur diese Werkzeuge sind aktiv (Standard: keines); ändert nur der Nutzer
-    voice_direct: bool = True             # [tools] direct: gesprochener Befehl gilt als Freigabe für Recherche/Claude-Start (kein zweites "ja"); false = immer Vorschau und "ja"
     voice_clone: bool = False             # [voice] clone: eigene Stimme (Chatterbox, lokal) statt Piper; nur der Nutzer schaltet das ein
     voice_clone_ref: str = ""             # [voice] clone_ref: bestimmte Referenzaufnahme (sonst automatisch aus voice-data/clone)
     claude_folders: tuple[str, ...] = ()  # freigegebene Ordner für Claude als "name|pfad"; ändert nur der Nutzer (UI/CLI)
@@ -70,8 +66,6 @@ class Config:
         data = tomllib.loads(path.read_text(encoding="utf-8"))
         mem, bak, priv = data.get("memory", {}), data.get("backup", {}), data.get("privacy", {})
         gpu = data.get("gpu", {})
-        raw_tools = data.get("tools", {}).get("enabled", [])
-        tools = tuple(t for t in raw_tools if isinstance(t, str) and TOOL_NAME.fullmatch(t)) if isinstance(raw_tools, list) else ()
         raw_folders = data.get("claude", {}).get("folders", [])
         folders = tuple(f for f in raw_folders if isinstance(f, str) and "|" in f) if isinstance(raw_folders, list) else ()
         return cls(
@@ -80,10 +74,8 @@ class Config:
             backup_keep=int(bak.get("keep", 10)),
             claude_enabled=bool(priv.get("claude_enabled", False)),
             gpu_whisper=str(gpu.get("whisper", "auto")),
-            tools_enabled=tools,
             voice_clone=bool(data.get("voice", {}).get("clone", False)),
             voice_clone_ref=str(data.get("voice", {}).get("clone_ref", "")),
-            voice_direct=bool(data.get("tools", {}).get("direct", True)),
             claude_folders=folders,
             path=path,
         )
@@ -143,35 +135,6 @@ class Config:
         tmp.write_text("\n".join(lines) + "\n", encoding="utf-8")
         os.replace(tmp, path)
         self.claude_enabled = on
-
-    def set_tools_enabled(self, names: list[str]) -> None:
-        """Schreibt nur `enabled` im Abschnitt [tools]; übrige Datei bleibt erhalten. Ungültige Namen: ValueError."""
-        clean = sorted({n for n in names})
-        for n in clean:
-            if not isinstance(n, str) or not TOOL_NAME.fullmatch(n):
-                raise ValueError(f"Ungültiger Werkzeugname: {n!r}")
-        path = self.path or config_path()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        line = "enabled = [" + ", ".join(f'"{n}"' for n in clean) + "]"
-        lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
-        in_tools, done = False, False
-        for i, l in enumerate(lines):
-            s = l.strip()
-            if s.startswith("["):
-                in_tools = s == "[tools]"
-            elif in_tools and s.startswith("enabled"):
-                lines[i] = line
-                done = True
-        if not done:
-            heads = [l.strip() for l in lines]
-            if "[tools]" in heads:
-                lines.insert(heads.index("[tools]") + 1, line)
-            else:
-                lines += ([""] if lines else []) + ["[tools]", line]
-        tmp = path.with_suffix(".toml.tmp")
-        tmp.write_text("\n".join(lines) + "\n", encoding="utf-8")
-        os.replace(tmp, path)                     # atomar
-        self.tools_enabled = tuple(clean)
 
     def set_memory_location(self, location: str) -> None:
         """Schreibt nur die Zeile `location` um; übrige Datei bleibt erhalten."""

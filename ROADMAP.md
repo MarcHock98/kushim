@@ -62,8 +62,10 @@ Abbrechen (`tasks.py`), Vault (`memory/`, für das Stimmprofil), `config.py`, `c
       `folders.py` (sichere Arbeitsordner), samt `api/claude_api.py` und Tests (2026-10-26, 578 grün). `kushim claude` kann
       noch check/enable/disable/folders/add/remove; Ordner-Tests jetzt in `tests/test_claude_folders.py`. Die UI zeigt den
       Claude-Bereich bis Phase B/E als „nicht verfügbar“ (Ordner-Verwaltung `claude.folder_*` geht weiter)
-- [ ] A5 Werkzeug-Verwaltung und Gates entfernen: `tools/`, `privacy.py`, `safety/gate.py`, `safety/approvals.py`, `api/tools_api.py`,
-      `api/tasks_api.py`; `safety/rules.py` bleibt (Grundsätze)
+- [x] A5 Werkzeug-Verwaltung und Gates entfernen: `tools/`, `privacy.py`, `safety/gate.py`, `safety/approvals.py`, `api/tools_api.py`,
+      `api/tasks_api.py`; `safety/rules.py` bleibt (Grundsätze). Vom Nutzer freigegeben am 2026-10-27, erledigt (495 grün):
+      dazu `kushim tools`, `[tools]` in der Konfiguration; neuer Test `tests/test_rules.py` sperrt die Rückkehr der Gates.
+      Skills/Agents auf „kushim führt selbst nichts aus, Netz nur ALLOWLIST/127.0.0.1“ umgestellt, `kushim-add-tool` veraltet
 - [x] A6 Lokales Sprachmodell entfernen: `llm/`, `launcher.py` (Ollama), `api/llm_api.py`, `[llm]` in der Konfiguration, Ollama aus
       `install.ps1`, `fetch_models.py`, `doctor.py`; `gpu.py` nur noch für Whisper (2026-10-26, 506 grün). Mit entfernt:
       `kushim start|llm|behavior`, `learning/behavior.py`, Verknüpfung `kushim.lnk`. `kushim talk` antwortet bis B4 mit
@@ -79,7 +81,7 @@ Abbrechen (`tasks.py`), Vault (`memory/`, für das Stimmprofil), `config.py`, `c
 Aufbau: `claude` läuft interaktiv (das ist die Oberfläche: Verlauf, `/model`, `/usage`, Freigabe-Dialog). Claude Code startet
 den kushim-Channel (lokaler MCP-Server, stdio). kushim (Python) spricht mit dem Channel nur über 127.0.0.1 mit Token.
 
-- [ ] B0 **Entscheidung (Nutzer):** Channel-Weg (Research Preview, Start mit `--dangerously-load-development-channels`) statt
+- [x] B0 **Entscheidung (Nutzer, 2026-10-27: ja, beides):** Channel-Weg (Research Preview, Start mit `--dangerously-load-development-channels`) statt
       eigener `claude -p`-Steuerung? Und: lokaler HTTP-Port nur auf 127.0.0.1 mit Token zwischen kushim und Channel erlaubt?
       (Claude Code als einzige KI ist entschieden, siehe Datenschutz-Regel 4)
 - [ ] B1 Prototyp ohne Sprache: Channel-Server `channel/` (Bun oder Node, offizielles `@modelcontextprotocol/sdk`, Versionen fest),

@@ -19,4 +19,4 @@ Vorgaben:
 - Gedächtnis-Ansicht (durchsuchbar, editierbar, löschbar), Sicherheitsstatus (Modus A/C, Sprecher verifiziert, Audit-Log, Vault-Ort, letztes Backup), Notaus-Knopf immer sichtbar.
 - Look: dunkel, Cyan/Orange-Akzente, Glas-Effekt; Overlay-Modus (transparent, Hotkey) und Vollbild-Dashboard.
 - Keine externen CDNs oder Tracker zur Laufzeit; alles lokal gebündelt.
-- Die UI darf keine Aktion selbst ausführen, sondern nur Anfragen ans Backend senden, das sie durch `ActionGate` prüft.
+- Die UI darf keine Aktion selbst ausführen, sondern nur Anfragen ans Backend senden, das selbst nichts mit Wirkung ausführt (Freigaben laufen über Claude Code).

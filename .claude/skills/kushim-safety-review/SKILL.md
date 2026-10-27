@@ -1,14 +1,14 @@
 ---
 name: kushim-safety-review
-description: Use after any change in kushim, before committing. Reviews the diff for safety-gate bypasses, data egress, harm risks and weakened rules; runs the tests.
+description: Use after any change in kushim, before committing. Reviews the diff for new acting code, data egress, harm risks and weakened rules; runs the tests.
 ---
 
 # kushim Sicherheits-Review
 
 Prüfe den aktuellen Diff gegen diese Checkliste und melde Verstöße mit Datei:Zeile.
 
-1. **Gate-Umgehung:** Läuft jede Aktion mit Wirkung durch `ActionGate.check`? Neue Aktionen ohne `ActionSpec`?
-2. **Egress:** Neue Netzwerk-Importe oder -Aufrufe außerhalb von `EgressGate`? Standard bleibt Modus A (`claude_enabled = false`).
+1. **Keine eigenen Aktionen:** kushim führt selbst keine Aktionen mit Wirkung aus (seit Roadmap v2 A5); alles mit Wirkung macht Claude Code mit seinen Freigaben (Phase C). Neuer ausführender Code in kushim ist ein Fund und braucht das Ja des Nutzers.
+2. **Egress:** Netzwerkcode nur in den Modulen der `ALLOWLIST` (`tests/test_no_egress.py`) und nur zu 127.0.0.1; kushim selbst geht nie ins Internet.
 3. **Abgeschwächte Regeln:** Änderungen an `safety/rules.py`, Default-Deny, Fail-Closed, Geldlimit (Standard 0), Notaus? Nur mit ausdrücklicher Nutzerfreigabe.
 4. **Prompt Injection:** Fließen Inhalte aus Web/Mail/Dateien in Anweisungen oder Tool-Parameter?
 5. **Geheimnisse:** Schlüssel, Tokens, Vault-Daten in Code, Logs, Tests oder Commit? `.gitignore` greift?

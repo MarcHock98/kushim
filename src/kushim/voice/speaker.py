@@ -2,7 +2,7 @@
 
 Fail-closed: ohne Profil, bei ungültigem Embedding oder Unsicherheit wird abgelehnt.
 Die Verifikation ist nur eine Hürde vor der Befehlsverarbeitung, keine Autorisierung;
-der ActionGate gilt danach unverändert. Das Embedding-Modell wird von außen geliefert.
+Freigaben bestätigt später Claude Code (Roadmap v2 Phase C). Das Embedding-Modell wird von außen geliefert.
 Persistenz des Profils gehört in den verschlüsselten Vault (noch nicht angebunden).
 """
 from __future__ import annotations

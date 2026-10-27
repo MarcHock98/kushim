@@ -1,19 +1,13 @@
-"""Sichere Arbeitsordner für Claude (`claude_cli/folders.py`), ihre Konfiguration und der Werkzeug-Eintrag `claude.code`."""
+"""Sichere Arbeitsordner für Claude (`claude_cli/folders.py`) und ihre Konfiguration."""
 import os
 import subprocess
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
 from kushim.claude_cli import folders
-from kushim.claude_cli.base import Auth
 from kushim.claude_cli.folders import Folder, parse, parse_entry, resolve, validate_path, vault_path
 from kushim.config import Config
-from kushim.tools.registry import CLAUDE_CODE, ToolRegistry, claude_code_tool, default_tools
-
-ABO = Auth(True, "claude.ai")
-
 
 @pytest.fixture(autouse=True)
 def neutral_environment(monkeypatch):
@@ -125,23 +119,6 @@ def test_resolving_spoken_names_never_guesses():
 
 
 # --- Registry und Konfiguration ------------------------------------------------------------------
-
-def test_claude_code_tool_availability_matrix():
-    assert "Modus C" in claude_code_tool(None).available() and CLAUDE_CODE.sends_data_out and CLAUDE_CODE.spec.external_effect
-    cfg = SimpleNamespace(claude_enabled=False, claude_folders=())
-    cache = SimpleNamespace(get=lambda: ABO)
-    assert "Modus C" in claude_code_tool(cfg, cache).available()
-    cfg.claude_enabled = True
-    assert "Kein Ordner" in claude_code_tool(cfg, cache).available()
-    cfg.claude_folders = ("kaputt", "Gross|C:/x")
-    assert "Kein Ordner" in claude_code_tool(cfg, cache).available()                 # nur gültige Einträge zählen
-    cfg.claude_folders = ("kushim|C:/x",)
-    assert claude_code_tool(cfg, cache).available() == ""
-    assert "nicht gefunden" in claude_code_tool(cfg, SimpleNamespace(get=lambda: Auth(False, error="not_installed"))).available()
-    assert "angemeldet" in claude_code_tool(cfg, SimpleNamespace(get=lambda: Auth(False))).available()
-    assert [t.name for t in default_tools(cfg, cache)] == ["web.search", "claude.research", "claude.code", "timer.local", "notes.local"]
-    assert not ToolRegistry(default_tools()).is_active("claude.code")                # Standard: aus
-
 
 def test_claude_folders_roundtrip_keeps_the_rest_and_ignores_junk(tmp_path):
     f = tmp_path / "config.toml"

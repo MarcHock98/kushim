@@ -3,7 +3,7 @@
 Reihenfolge ist sicherheitsrelevant:
   1. Notaus-Wortlaut wird VOR allem anderen geprüft (ohne Sprecherprüfung, ohne LLM).
   2. Ist ein Sprecherprofil eingeschrieben, wird bei Nichtübereinstimmung nichts beantwortet.
-  3. Das LLM liefert nur Text. Aktionen gibt es hier nicht, sie liefen über den ActionGate.
+  3. Die Antwort ist nur Text. Aktionen gibt es in kushim nicht; Freigaben macht Claude Code (Roadmap v2 Phase C).
 Alle Komponenten werden injiziert (testbar ohne Audio/Modelle).
 """
 from __future__ import annotations

@@ -13,5 +13,5 @@ Vorgaben:
 - Latenz-Ziel unter 1,5 s: Streaming STT, LLM-Tokens, satzweises TTS, Voice Activity Detection, Barge-in.
 - Nur die verifizierte Stimme gilt als Befehl. Bei Zweifel: ablehnen. Riskante Aktionen zusätzlich mit zweitem Faktor (Hotkey/PIN), da Stimmklone Verifikation täuschen können.
 - Audio-Rohdaten nicht dauerhaft speichern, nur auf ausdrücklichen Wunsch.
-- Aktionen laufen immer über `ActionGate`; Gedächtnis nur über `MemoryStore`.
+- kushim führt keine Aktionen aus (Antworten und Freigaben kommen von Claude Code); Gedächtnis nur über `MemoryStore`.
 - Tests für jeden Baustein (mit Audio-Fixtures), Ergebnisse ehrlich berichten.
