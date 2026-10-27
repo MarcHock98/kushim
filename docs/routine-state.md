@@ -34,9 +34,10 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
   (u. a. `KUSHIM_ROOT` entfernt, Token-Datei 0600) behoben. 509 Tests grün.
 - 2026-10-27 Loop-Durchlauf 11: **B2 fertig** (Branch `routine/b2-sprich`, gemerged, nicht gepusht): Werkzeug `sprich`,
   Abholweg `GET /reply` mit Token am selben Port (kushim bleibt Client). 513 Tests grün, Review freigegeben.
-- Nächster Schritt: **B3** `bridge/` in kushim: Text senden (`POST /message`), Antworten abholen (`GET /reply`), beides
-  über `net/loopback.py` (nur 127.0.0.1); liest `run/channel.json`. Prüfen: reicht der feste Import-Satz von `loopback.py`?
-  Noch offen für den Nutzer: Z3 (Setup-Skript mit `--statusline --test-hook`).
+- 2026-10-27 Loop-Durchlauf 12: **B3 fertig** (Branch `routine/b3-bridge`, gemerged, nicht gepusht): `channel/bridge.py`,
+  `loopback.py` mit Headern und `HttpError`; Egress-Test bindet den Loopback-Client an die Brücke. 531 Tests grün.
+- Nächster Schritt: **B4** Brücke in die Pipeline: Befehl senden, Quittung „Ich geb's an Claude.“, `sprich`-Antwort
+  abholen und vorlesen; ohne Channel ehrlicher Hinweis statt Fehler. Noch offen für den Nutzer: Z3.
 - Blockiert: A5 (Gates entfernen, Frage offen), Phase B ab B1 (B0).
 - Bereit zum Push durch den Nutzer: master, routine/a1-voice-commands, routine/a2-web-research, routine/a3-timers-notes,
   routine/a4-claude-control, routine/a6-local-llm, routine/a7-rest

@@ -94,8 +94,9 @@ den kushim-Channel (lokaler MCP-Server, stdio). kushim (Python) spricht mit dem 
       `instructions` sagen Claude, wann es `sprich` nutzt (Zusammenfassung am Ende eines Zugs) (2026-10-27, 513 grün). Rückweg:
       kushim holt per `GET /reply?wait=…` (Token, gleicher Port) ab, statt selbst zu lauschen: kein zweiter Port, keine neue
       ALLOWLIST-Stelle. Für B3 heißt das: `bridge/` sendet `POST /message` und fragt `GET /reply` über `net/loopback.py`
-- [ ] B3 kushim-Seite `bridge/` (Python, nur Loopback): Text senden, Ereignisse empfangen (Antwort, Freigabe-Anfrage, Status);
-      `tests/test_no_egress.py` erlaubt nur 127.0.0.1; Tests mit gefälschtem Channel
+- [x] B3 kushim-Seite `bridge/` (Python, nur Loopback): Text senden, Ereignisse empfangen (Antwort, Freigabe-Anfrage, Status);
+      `tests/test_no_egress.py` erlaubt nur 127.0.0.1; Tests mit gefälschtem Channel (2026-10-27, 531 grün): `channel/bridge.py`,
+      Tests gegen den echten Channel-Server im selben Prozess. Freigabe-Anfragen folgen mit C1 über denselben Abholweg
 - [ ] B4 In die Pipeline hängen: `Pipeline.chat` schickt den Befehl über die Brücke, spricht die `sprich`-Antwort mit Piper;
       kurze Quittung „Ich geb's an Claude.“; Mikrofon während der eigenen Ausgabe stumm
 - [ ] B5 Startskript `kushim start`: startet `claude` mit dem Channel im gewählten Arbeitsordner und `kushim talk` dazu;
