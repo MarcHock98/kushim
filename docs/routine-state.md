@@ -75,6 +75,7 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
 - 2026-10-04: Gelegentlich genau 1 roter Test im Gesamtlauf (2 von ca. 12 Läufen, Name nicht erfasst, in 9 Wiederholungen nicht reproduzierbar). Verdacht: Zeit-/Thread-Test, wenn die Maschine gerade belastet ist (laufen gleichzeitig `kushim serve`, `tauri dev`, vite). Nächster Lauf: bei einem Fehlschlag sofort den Namen sichern (`pytest -q 2>&1 | grep FAILED`), nicht blind wiederholen.
 
 ## Entscheidungen des Nutzers
+- 2026-10-27: **B7 bestanden**: `kushim start` live getestet, Claude antwortet per Stimme (Phase B bis auf B6 fertig)
 - 2026-10-27: **A5 ja** (Gates, Werkzeug-Verwaltung entfernen; rules.py, Notaus, test_no_egress bleiben). Umgesetzt
 - 2026-10-27: **B0 ja**: Channel-Weg (`--dangerously-load-development-channels`, Research Preview) und lokaler Port nur
   auf 127.0.0.1 mit Token zwischen kushim und Channel
