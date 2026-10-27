@@ -117,6 +117,9 @@ Am Ende jedes Durchlaufs eine kurze Rückschau: Was hat gehakt? Was wurde wieder
   300-MB-Datei ist zu langsam und zerhackt die Zeilen). Version (`claude --version`) mit notieren.
 - **Ausgaben für andere Programme unter Windows:** Python schreibt in Pipes cp1252. Wer UTF-8 erwartet (Claude Code), bekommt
   Bytes über `sys.stdout.buffer.write(text.encode("utf-8"))`; mit `PYTHONIOENCODING=cp1252` im Test prüfen.
+- **Claude-Code-Sitzungen laufen im Hintergrund-Dienst weiter**, auch wenn ihr Fenster zu ist. Prozesse mit
+  `Get-CimInstance Win32_Process` prüfen; stoppen mit `claude stop <kurze Job-ID>` (erste 8 Zeichen, `claude agents --json`),
+  nie den Dienst selbst oder die Desktop-App (`WindowsApps`) beenden: sie tragen andere Sitzungen des Nutzers.
 - **Löschschritte (Phase A):** Vor dem Löschen alle Importe suchen, auch in `api/` und in Testdateien, die nur teilweise
   betroffen sind (dann nur die betroffenen Tests entfernen). API-Typen, die wegfallen, zeigt die UI als „nicht verfügbar“
   (`unknown_type` zählt nicht für die Trennung); trotzdem in `ui/src` nachsehen, wer sie ruft, und Ersatz in die Roadmap schreiben.

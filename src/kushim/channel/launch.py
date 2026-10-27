@@ -54,6 +54,12 @@ def read_session(root: Path) -> str | None:
     return sid if _UUID.match(sid) else None
 
 
+def job_id(session_id: str) -> str:
+    """Kurze Job-ID, unter der `claude stop`/`attach` eine Hintergrund-Sitzung kennen (erste 8 Zeichen der Sitzungs-ID;
+    so in `claude agents --json` von Claude Code 2.1.311 zu sehen). Die volle ID findet `claude stop` nicht."""
+    return session_id.split("-")[0]
+
+
 def claude_argv(exe: Path, config: Path, session_id: str) -> list[str]:
     return [str(exe), "--session-id", session_id, "--name", SESSION_NAME, "--strict-mcp-config", "--mcp-config", str(config),
             "--dangerously-load-development-channels", f"server:{SERVER_NAME}"]
@@ -88,7 +94,7 @@ def show(exe: Path, root: Path, popen: Callable[..., Any] = subprocess.Popen) ->
     if sid is None:
         return None
     flags = CREATE_NEW_CONSOLE if os.name == "nt" else 0
-    return popen(visible([str(exe), "attach", sid]), env=claude_env(), creationflags=flags)
+    return popen(visible([str(exe), "attach", job_id(sid)]), env=claude_env(), creationflags=flags)
 
 
 def stop(exe: Path, root: Path, run: Callable[..., Any] = subprocess.run) -> bool:
@@ -97,7 +103,7 @@ def stop(exe: Path, root: Path, run: Callable[..., Any] = subprocess.run) -> boo
     if sid is None:
         return False
     try:
-        run([str(exe), "stop", sid], capture_output=True, text=True, timeout=20, check=False, env=claude_env(), **hidden())
+        run([str(exe), "stop", job_id(sid)], capture_output=True, text=True, timeout=20, check=False, env=claude_env(), **hidden())
     except (OSError, subprocess.SubprocessError):
         pass
     (root / SESSION_FILE).unlink(missing_ok=True)

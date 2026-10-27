@@ -58,9 +58,9 @@ def test_stop_and_show_use_the_stored_session_id(tmp_path, monkeypatch):
     (tmp_path / "run" / "claude-session.txt").write_text(sid, encoding="utf-8")
     shown, ran = {}, {}
     launch.show(EXE, tmp_path, popen=lambda argv, **kw: shown.update(argv=argv, **kw))
-    assert shown["argv"][-3:] == [str(EXE), "attach", sid] and shown["creationflags"] == launch.CREATE_NEW_CONSOLE
+    assert shown["argv"][-3:] == [str(EXE), "attach", "060815a8"] and shown["creationflags"] == launch.CREATE_NEW_CONSOLE
     assert launch.stop(EXE, tmp_path, run=lambda argv, **kw: ran.update(argv=argv, **kw)) is True
-    assert ran["argv"] == [str(EXE), "stop", sid] and ran["creationflags"] == 0x08000000      # stoppen ohne Fenster
+    assert ran["argv"] == [str(EXE), "stop", "060815a8"] and ran["creationflags"] == 0x08000000      # stoppen ohne Fenster
     assert launch.read_session(tmp_path) is None
 
 
