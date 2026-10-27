@@ -78,6 +78,14 @@ class Bridge:
         except (OSError, ValueError) as e:      # ConnectionError ist ein OSError
             return self._status(e)
 
+    def cancel(self) -> str:
+        """Sagt Claude, dass der Nutzer abgebrochen hat (fester Text im Channel). Unterbricht nicht sofort: das kann nur Esc."""
+        try:
+            self._call("POST", "/message", {"kind": "cancel"})
+            return "ok"
+        except (OSError, ValueError) as e:
+            return self._status(e)
+
     def fetch(self, wait: float = 0.0) -> tuple[str, list[str]]:
         """(Status, Texte). Wartet bis `wait` Sekunden auf eine Antwort (höchstens MAX_WAIT)."""
         wait = max(0.0, min(float(wait), MAX_WAIT))

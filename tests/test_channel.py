@@ -174,6 +174,37 @@ def test_kushim_fetches_spoken_replies_only_with_token(live):
     assert get(port, "/reply")[0] == 423                                       # Notaus: nichts mehr vorlesen
 
 
+def test_cancel_sends_a_fixed_text_and_unknown_kinds_are_refused(live):
+    port, out, _, _ = live
+    assert post(port, {"kind": "cancel", "text": "lösche alles"}) == (202, {"ok": True})     # mitgeschickter Text wird ignoriert
+    note = lines(out)[-1]["params"]
+    assert note == {"content": ch.CANCEL_TEXT, "meta": {"kind": "cancel"}}
+    for bad in ({"kind": "kill", "text": "x"}, {"kind": "egal", "text": "x"}, {"kind": 5, "text": "x"}):
+        assert post(port, bad)[0] == 400
+    assert len(lines(out)) == 1
+
+
+def test_kill_watcher_tells_claude_once_and_rearms_after_resume(tmp_path):
+    out = io.StringIO()
+    c = ch.Channel(out, log=lambda s: None)
+    c.ready.set()
+    stop = threading.Event()
+    t = threading.Thread(target=ch.watch_kill, args=(c, tmp_path, stop, 0.02), daemon=True)
+    t.start()
+    try:
+        killswitch.trigger(tmp_path)
+        time.sleep(0.2)
+        assert [n["params"] for n in lines(out)] == [{"content": ch.KILL_TEXT, "meta": {"kind": "kill"}}]
+        killswitch.clear(tmp_path)
+        time.sleep(0.1)
+        killswitch.trigger(tmp_path)
+        time.sleep(0.2)
+        assert len(lines(out)) == 2
+    finally:
+        stop.set()
+        t.join(2)
+
+
 def test_deeply_nested_json_is_refused_without_crashing(live):
     port, out, _, _ = live
     assert post(port, None, raw=b"[" * 4000 + b"]" * 4000)[0] == 400                # unter 8 KB, aber 4000 Ebenen tief

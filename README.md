@@ -143,7 +143,7 @@ Kopiere `config.example.toml` nach `config.toml` (oder `%APPDATA%\kushim\config.
 
 **Arbeitsordner für Claude:** `kushim claude add <name> <pfad>` gibt einen Git-Ordner frei (Home, Laufwerk, System, AppData und der Vault gehen nie), `kushim claude folders` zeigt sie, `kushim claude remove <name>` entzieht die Freigabe. `kushim claude check` prüft, ob die Claude CLI da und angemeldet ist. Die Brücke, über die kushim Befehle an Claude Code gibt, folgt (Roadmap Phase B).
 
-**Abbrechen:** Sag "abbrechen" (auch "brich das ab", "vergiss es"), und kushim beendet die laufende Sprachausgabe. Das geht ohne Sprecher-Prüfung (Abbrechen ist sicher). Im Terminal bricht Strg+C ab. Das ist **nicht der Notaus**: Abbrechen sperrt nichts, der Notaus hält alles an und sperrt bis `kushim resume`.
+**Abbrechen:** Sag "abbrechen" (auch "brich das ab", "vergiss es"), und kushim beendet die laufende Sprachausgabe, wartet nicht mehr auf Claude und schickt Claude eine Abbruch-Nachricht (Auftrag nicht fortsetzen). Claude liest sie bei nächster Gelegenheit; sofort unterbrechen kann nur **Esc im Claude-Fenster**. Beim **Notaus** gibt kushim nichts mehr weiter und meldet Claude einmal "NOTAUS: sofort aufhören". Das geht ohne Sprecher-Prüfung (Abbrechen ist sicher). Im Terminal bricht Strg+C ab. Das ist **nicht der Notaus**: Abbrechen sperrt nichts, der Notaus hält alles an und sperrt bis `kushim resume`.
 
 **Grafikkarten:** `kushim gpu` zeigt die erkannten NVIDIA-Karten und welche Whisper nutzt (bei mehreren: die größte). Anpassen unter `[gpu]` in `config.toml` (`whisper = "auto" | "cpu" | "1"`).
 

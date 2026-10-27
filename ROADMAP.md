@@ -106,7 +106,10 @@ den kushim-Channel (lokaler MCP-Server, stdio). kushim (Python) spricht mit dem 
       `kushim doctor` prüft Claude-Version (mindestens 2.1.234), Anmeldung, Bun/Node (2026-10-27, 550 grün; Bun/Node entfällt,
       der Channel ist Python). `channel/launch.py`, `--strict-mcp-config` (nur der kushim-Server), Telemetrie aus, eigenes Fenster;
       Verknüpfung „kushim start“ im Installer. Echter Start mit Bestätigungsdialog nicht geprüft: das ist B7 **(Nutzer)**
-- [ ] B6 Abbrechen („abbrechen“) schickt Escape/Abbruch an die Sitzung, Notaus beendet kushim und schaltet den Channel stumm
+- [x] B6 Abbrechen („abbrechen“) schickt Escape/Abbruch an die Sitzung, Notaus beendet kushim und schaltet den Channel stumm
+      (2026-10-27, 552 grün). Ein Channel kann einen laufenden Zug nicht unterbrechen (Claude Code kennt nur Nachricht und
+      Freigabe): „abbrechen“ schickt `kind="cancel"` (fester Text), der Notaus meldet Claude einmal `kind="kill"` und sperrt
+      alles Weitere. Sofort unterbrechen bleibt Esc im Claude-Fenster (README). Live nicht geprüft **(Nutzer)**
 - [x] B7 Live-Test **(Nutzer)**: Wake Word → Befehl → Claude arbeitet im Terminal sichtbar → Antwort wird vorgelesen
       (2026-10-27: vom Nutzer mit `kushim start` bestätigt, „Ja er antwortet“)
 

@@ -19,6 +19,10 @@ class FakeBridge:
     def available(self):
         return self._available
 
+    def cancel(self):
+        self.cancels = getattr(self, "cancels", 0) + 1
+        return "ok"
+
     def send(self, text):
         self.sent.append(text)
         return self._send
@@ -59,6 +63,7 @@ def test_waiting_is_a_cancellable_task_and_cancel_stops_quietly():
     assert next(gen) == cc.ACK
     b.fetch = lambda wait=0.0: (tasks.cancel_all(), ("ok", []))[1]                   # Nutzer sagt "abbrechen" während des Wartens
     assert list(gen) == [] and tasks.active() == []
+    assert b.cancels == 1                                                           # Claude bekommt die Abbruch-Nachricht
 
 
 def test_long_work_ends_the_turn_with_a_note_and_the_reply_comes_later():
