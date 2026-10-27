@@ -63,3 +63,4 @@ Format: Datum, Datei, Grund (ein Satz).
 - 2026-10-26, `.claude/skills/kushim-routine/SKILL.md`: Fallstrick "sed -i schreibt LF" ergänzt (trat bei A2 auf).
 - 2026-10-26, `.claude/skills/kushim-routine/SKILL.md`: Fallstrick "Heredoc und \n (dritter Fall)" ergänzt (Syntaxfehler in test_gpu.py bei A6).
 - 2026-10-26, `.claude/skills/kushim-routine/SKILL.md`: Fallstricke "Wissen über Claude Code ohne Netz (claude.exe lesen)" und "UTF-8 für andere Programme unter Windows" ergänzt (aus Z4).
+- 2026-10-27, `.claude/skills/kushim-safety-review/SKILL.md`, `kushim-routine/SKILL.md`, `agents/*.md`: Gate-Regeln durch "kushim führt nichts aus, Netz nur ALLOWLIST/127.0.0.1" ersetzt (A5, vom Nutzer freigegeben); `kushim-add-tool` als veraltet markiert.

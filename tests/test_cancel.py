@@ -1,4 +1,3 @@
-import json
 import subprocess
 import threading
 import time
@@ -9,10 +8,6 @@ import numpy as np
 import pytest
 
 from kushim import cli
-from kushim.api.protocol import ApiCore, new_token
-from kushim.api.tasks_api import register_tasks
-from kushim.safety.approvals import ApprovalQueue
-from kushim.safety.gate import ActionGate, ActionRequest, ActionSpec, Decision, Risk
 from kushim.safety.killswitch import KillSwitch
 from kushim.tasks import TaskRegistry, is_cancel_phrase
 from kushim.voice.audio import FRAME, UtteranceCollector
@@ -60,19 +55,7 @@ def test_cancel_all_sets_the_flag_calls_the_cancel_functions_and_survives_a_brok
     assert t.cancel_all() == []                                      # nichts mehr laufend
 
 
-def test_cancel_all_denies_pending_approvals_but_leaves_decided_ones():
-    gate = ActionGate([ActionSpec("web.search", Risk.READ, external_effect=True)], reviewer=lambda s, r: set())
-    q = ApprovalQueue(gate)
-    _, pending = q.submit(ActionRequest("web.search", "Vorschau A", speaker_verified=True, user_initiated=True))
-    _, approved = q.submit(ActionRequest("web.search", "Vorschau B", speaker_verified=True, user_initiated=True))
-    assert q.approve(approved.id, approved.digest)
-    t = TaskRegistry()
-    t.add_queue(q)
-    assert t.pending_approvals() == 1
-    names = t.cancel_all()
-    assert names == ["Freigabe für web.search"] and t.pending_approvals() == 0
-    assert q.take(pending.id) is None                                # abgelehnt: nicht mehr ausführbar
-    assert q.take(approved.id) is not None                           # schon freigegeben und noch nicht gestartet: bleibt gültig
+
 
 
 # --- Pipeline ------------------------------------------------------------------------------------
@@ -258,20 +241,6 @@ def test_speech_to_text_never_runs_two_transcriptions_at_once():
 
 
 # --- API und CLI ---------------------------------------------------------------------------------
-
-def test_tasks_api_lists_and_cancels_with_a_token_only():
-    token, tasks = new_token(), TaskRegistry()
-    core = ApiCore(token)
-    register_tasks(core, tasks)
-
-    def call(type_, **kw):
-        return json.loads(core.handle(json.dumps({"token": token, "type": type_, **kw})))
-    assert json.loads(core.handle(json.dumps({"type": "tasks.cancel"}))) == {"ok": False, "error": "unauthorized"}
-    with tasks.running("Recherche über Claude") as tok:
-        assert call("tasks.list") == {"ok": True, "tasks": ["Recherche über Claude"], "pending_approvals": 0}
-        assert call("tasks.cancel") == {"ok": True, "cancelled": ["Recherche über Claude"]} and tok.cancelled()
-    assert call("tasks.cancel") == {"ok": True, "cancelled": []}
-
 
 def test_ctrl_c_cancels_a_cli_command_quietly(tmp_path, monkeypatch, capsys):
     from kushim.config import Config

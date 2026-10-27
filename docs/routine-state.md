@@ -28,8 +28,9 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
   keine Web-Recherche). 509 Tests grün, Review freigegeben. Nicht live geprüft: Anzeige in Claude Code (Nutzer führt das Skript aus).
 - 2026-10-26 Loop-Durchlauf 8: **Z5 fertig** (Branch `routine/z5-test-hook`, gemerged, nicht gepusht): Hook kürzt lange
   Testausgaben, `claude_setup.py --test-hook`. 536 Tests grün, Review freigegeben. Nicht live geprüft: Wirkung in Claude Code.
-- **Alles Weitere ist blockiert durch den Nutzer:** A5 (Gates entfernen, Frage oben), B0 (Channel-Weg und Port), Z3 (Setup-Skript
-  auf dem PC ausführen, jetzt mit `--statusline --test-hook`). Loop wartet mit langem Takt auf Antworten.
+- 2026-10-27 Loop-Durchlauf 9: **A5 fertig** nach Freigabe (Branch `routine/a5-gates`, gemerged). Phase A komplett.
+- Nächster Schritt: **B1** Channel-Prototyp (`channel/`, Bun oder Node, `@modelcontextprotocol/sdk` fest gepinnt, Paket vor
+  Installation prüfen), Test mit `curl`. Noch offen für den Nutzer: Z3 (Setup-Skript mit `--statusline --test-hook`).
 - Blockiert: A5 (Gates entfernen, Frage offen), Phase B ab B1 (B0).
 - Bereit zum Push durch den Nutzer: master, routine/a1-voice-commands, routine/a2-web-research, routine/a3-timers-notes,
   routine/a4-claude-control, routine/a6-local-llm, routine/a7-rest
@@ -49,14 +50,8 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
 - Nutzer-ID / Kanal-ID: nicht verwendet. Verbundenes Slack-Konto hat andere Mail (Arbeits-Workspace) als die Git-/Claude-Mail, Empfänger unsicher, daher nichts gesendet
 
 ## Offene Fragen an den Nutzer
-- 2026-10-26: **A5 freigeben?** Entfernt `safety/gate.py` (ActionGate), `privacy.py` (EgressGate), `safety/approvals.py`, `tools/`
-  und `api/tools_api.py`/`tasks_api.py`. Das sind Sicherheitsteile, deshalb nur mit deinem Ja. Optionen: (a) wie in der Roadmap
-  entfernen, `safety/rules.py`, Notaus, `test_no_egress.py` bleiben (Empfehlung: ihr Zweck, Werkzeuge von kushim selbst
-  abzusichern, fällt weg; Freigaben macht künftig Claude Code mit Phase C); (b) Gates behalten, nur `tools/` entfernen.
-  Bis zur Antwort: A6 und A7 zuerst.
-- 2026-10-26: B0 Channel-Weg und lokaler Port (127.0.0.1, Token) freigeben? Siehe ROADMAP Phase B
-- 2026-10-04: Websuche nur Wikipedia (de)? Allgemeine Websuche später (z. B. eigener SearXNG auf dem NAS) oder gar nicht? Claude als Rechercheur (Konto/Schlüssel/Monatslimit)? Siehe `docs/tools-plan.md`
-- 2026-10-04: Backend-Transport (WebSocket 127.0.0.1) braucht Importe außerhalb des festgelegten Satzes von `net/loopback.py`; Lockerung des Tests nur mit ausdrücklicher Zustimmung (die Freigabe vom 2026-10-03 galt dem Loopback-Client)
+- Keine offenen Fragen. (2026-10-27: die Fragen vom 2026-10-04 zu Websuche und WebSocket-Transport sind überholt:
+  Websuche entfernt (A2), Transport freigegeben und gemerged.)
 
 ## Blockiert
 - Live-Mikrofon-Test: nur der Nutzer kann ihn ausführen
@@ -68,6 +63,11 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
 - 2026-10-04: Gelegentlich genau 1 roter Test im Gesamtlauf (2 von ca. 12 Läufen, Name nicht erfasst, in 9 Wiederholungen nicht reproduzierbar). Verdacht: Zeit-/Thread-Test, wenn die Maschine gerade belastet ist (laufen gleichzeitig `kushim serve`, `tauri dev`, vite). Nächster Lauf: bei einem Fehlschlag sofort den Namen sichern (`pytest -q 2>&1 | grep FAILED`), nicht blind wiederholen.
 
 ## Entscheidungen des Nutzers
+- 2026-10-27: **A5 ja** (Gates, Werkzeug-Verwaltung entfernen; rules.py, Notaus, test_no_egress bleiben). Umgesetzt
+- 2026-10-27: **B0 ja**: Channel-Weg (`--dangerously-load-development-channels`, Research Preview) und lokaler Port nur
+  auf 127.0.0.1 mit Token zwischen kushim und Channel
+- 2026-10-27: Punkt 4 der Übergabe: `tools/ollama`, `models/ollama` in den Papierkorb (Nutzer leert ihn selbst); keine
+  kushim-Verknüpfungen auf dem Desktop gefunden; `kushim talk` startete bis zum Wake Word (Sprechen testet der Nutzer)
 - 2026-10-04: **Claude primär für Recherche (bessere Websuche), Wikipedia als Ersatz**; Claude über die Claude CLI des angemeldeten Nutzers (kein API-Schlüssel); soll in angegebenen, in der UI einstellbaren Ordnern arbeiten, per Sprache gesteuert werden (starten, Rückfragen, Übersichten, nächste Schritte); Plan `docs/claude-cli-plan.md`
 - 2026-10-04: **Abbrechen per Sprache** ("abbrechen" beendet den laufenden Befehl) zusätzlich zum Notaus; umgesetzt
 - 2026-10-04: Stimmklon mit **Chatterbox** freigegeben, beim Klonen dürfen keine Daten nach außen gehen

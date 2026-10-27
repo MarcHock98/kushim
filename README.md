@@ -245,7 +245,7 @@ Es nimmt 10 Absätze mit 24 kHz auf. Du startest und beendest jeden Absatz selbs
 | Baustein | Stand |
 |---|---|
 | Verschlüsselter Vault (SQLCipher), Migration und Backups | fertig |
-| Notaus, Audit; `EgressGate`/`ActionGate` (Entfernen offen, Roadmap A5) | fertig |
+| Notaus, Audit, Grundregeln (`safety/rules.py`) | fertig |
 | Statische Prüfung gegen Netzwerkcode außerhalb der Allowlist | fertig |
 | Stimme: Wake Word, Sprecherverifikation, Whisper, Piper, Satz-Streaming, Barge-in | fertig, im Live-Test |
 | Start-Verknüpfungen, `doctor`, Installationsskript | fertig |
@@ -263,7 +263,7 @@ Gedächtnis-Befehle: `kushim memory init|info|backup|migrate`. Tests brauchen ke
 
 ### Skills, Agents und Routine (Claude Code)
 
-- Skills in `.claude/skills/`: `kushim-add-tool`, `kushim-safety-review`, `kushim-next-phase`, `kushim-routine`
+- Skills in `.claude/skills/`: `kushim-safety-review`, `kushim-ui-design`, `kushim-next-phase`, `kushim-routine`
 - Agents in `.claude/agents/`: `safety-auditor`, `voice-pipeline-dev`, `ui-builder`
 - Autonome Entwicklungsroutine: `/loop /kushim-routine` (siehe [docs/LOOPS.md](docs/LOOPS.md)). Sie arbeitet auf eigenen Branches, fragt bei Unklarheiten nach und pflegt die Roadmap. Gepusht wird nur von dir.
 

@@ -1,7 +1,10 @@
 ---
 name: kushim-add-tool
-description: Use when adding a new capability/tool to kushim (mail, calendar, web, PC control, smart home, music, Claude call). Enforces ActionGate registration, risk level, tests and no egress bypass.
+description: OBSOLETE since roadmap v2 A5 (kushim has no own tools). Was used when adding a new capability/tool to kushim (mail, calendar, web, PC control, smart home, music, Claude call). Enforces ActionGate registration, risk level, tests and no egress bypass.
 ---
+
+> **Veraltet seit 2026-10-26 (Roadmap v2 A5):** kushim hat keine eigenen Werkzeuge und keinen ActionGate mehr. Neue Fähigkeiten
+> kommen über Claude Code. Diesen Skill nicht benutzen; er bleibt nur als Nachschlagewerk.
 
 # Neues kushim-Tool hinzufügen
 

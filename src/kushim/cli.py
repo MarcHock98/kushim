@@ -42,7 +42,6 @@ Gedächtnis und Schlüssel
 Prüfen und Hilfe
   kushim claude [check|enable|disable]  Claude CLI und Anmeldung prüfen; Modus C ein/aus
   kushim claude folders|add|remove  Sichere Arbeitsordner für Claude verwalten
-  kushim tools                 Werkzeuge anzeigen; enable|disable <name> schaltet ein/aus (alle standardmäßig aus)
   kushim doctor                Prüft, ob alles installiert und eingerichtet ist
   kushim setup                 Stand der Einrichtung: Systemcheck, Stimme, Wake Words, Notaus
   kushim help                  Diese Übersicht
@@ -225,9 +224,6 @@ def _main(argv: list[str] | None = None) -> int:
     rec.add_argument("--auto", action="store_true", help="Ende eines Absatzes automatisch per Stille statt per Enter")
     sub.add_parser("doctor", help="Prüft, ob alles installiert und eingerichtet ist")
     sub.add_parser("help", help="Übersicht aller Befehle mit Beispielen")
-    tl = sub.add_parser("tools", help="Werkzeuge anzeigen, ein- und ausschalten (alle standardmäßig aus)").add_subparsers(dest="sub")
-    tl.add_parser("enable", help="Werkzeug einschalten (mit Rückfrage)").add_argument("name")
-    tl.add_parser("disable", help="Werkzeug sofort ausschalten").add_argument("name")
     cl = sub.add_parser("claude", help="Claude CLI prüfen, Modus C ein-/ausschalten").add_subparsers(dest="sub")
     cl.add_parser("check", help="Zeigt CLI, Anmeldung und Schalter")
     cl.add_parser("enable", help="Modus C einschalten (mit Rückfrage)")
@@ -295,47 +291,6 @@ def _main(argv: list[str] | None = None) -> int:
             auth = claude_base.auth_status(exe)
             print("Angemeldet: " + (f"ja ({'Abo' if auth.subscription else 'Konto: ' + auth.method})" if auth.logged_in else "nein (claude auth login)"))
         print(f"Modus C: {'an' if cfg.claude_enabled else 'aus (kushim claude enable)'}")
-        return 0
-    if args.cmd == "tools":
-        from .claude_cli import base as claude_base
-        from .tools.registry import ToolNotAllowed, ToolRegistry, default_tools
-        reg = ToolRegistry(default_tools(cfg, claude_base.AuthCache(claude_base.find_claude())), cfg.tools_enabled)
-        sub_cmd = getattr(args, "sub", None)
-        if sub_cmd is None:
-            for t in reg.tools.values():
-                why = t.available()
-                state = "AN " if reg.is_active(t.name) else ("an, aber nicht verfügbar" if reg.is_enabled(t.name) else "aus")
-                print(f"[{state}] {t.name}: {t.title}" + ("  (sendet Daten nach außen)" if t.sends_data_out else ""))
-                print(f"        {t.description}")
-                if why:
-                    print(f"        Nicht verfügbar: {why}")
-            print("Einschalten: kushim tools enable <name>   Ausschalten: kushim tools disable <name>")
-            return 0
-        try:
-            tool = reg.info(args.name)
-            if sub_cmd == "enable":
-                if tool.available().startswith("Modus C ist aus") and args.name.startswith("claude."):
-                    print("Modus C ist aus. Claude wird nur über deine angemeldete Claude CLI genutzt (nur Abo-Kontingent, nie API-Credits), "
-                          "und nur nach Vorschau und deinem Ja.")
-                    if input("Modus C jetzt einschalten? (j/N): ").strip().lower() in ("j", "ja", "y", "yes"):
-                        cfg.set_claude_enabled(True)
-                        cfg = Config.load()
-                        reg = ToolRegistry(default_tools(cfg, claude_base.AuthCache(claude_base.find_claude())), cfg.tools_enabled)
-                        tool = reg.info(args.name)
-                if tool.available():
-                    print(f"Nicht verfügbar: {tool.available()}")
-                    return 1
-                print(f"{tool.title}: {tool.description}")
-                print("Dabei verlassen Daten den PC (nur nach Vorschau und Freigabe)." if tool.sends_data_out
-                      else "Dabei verlassen keine Daten den PC.")
-                if input("Einschalten? (j/N): ").strip().lower() not in ("j", "ja", "y", "yes"):
-                    print("Nicht eingeschaltet.")
-                    return 1
-            reg.set_enabled(args.name, sub_cmd == "enable", confirmed=True, persist=cfg.set_tools_enabled)
-        except ToolNotAllowed as e:
-            print(f"Nicht möglich ({e.code}).")
-            return 2
-        print(f"{args.name}: {'eingeschaltet' if sub_cmd == 'enable' else 'ausgeschaltet'}.")
         return 0
     if args.cmd == "setup":
         from .setup import status as setup_status
@@ -560,12 +515,10 @@ def _main(argv: list[str] | None = None) -> int:
                 from .api.feedback_api import register_feedback
                 from .api.memory_api import register_memory
                 from .api.safety_view import register_safety_view
-                from .api.tasks_api import register_tasks
                 from .api.transcript_api import register_transcript
                 from .config import LiveConfig
 
                 def extra(core, store):
-                    register_tasks(core, tasks)
                     from .api.folders_api import register_folders
                     from .claude_cli import folders as cfolders
                     register_folders(core, Config.load, lambda raw: cfolders.validate_path(raw, cfolders.vault_path(cfg.memory_location)),

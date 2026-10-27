@@ -10,15 +10,6 @@ from kushim.safety import killswitch
 TOKEN = new_token()
 
 
-class Reg:
-    def __init__(self, active):
-        self.tools = {n: object() for n in ("a", "b", "c")}
-        self._active = active
-
-    def is_active(self, n):
-        return n in self._active
-
-
 def cfg(**kw):
     base = dict(claude_enabled=False, memory_location="local:" , backup_target="")
     base.update(kw)
@@ -39,13 +30,13 @@ def test_default_mode_a_no_kill_money_limit_zero(tmp_path):
     r = call(make(tmp_path))
     assert r["mode"] == "A" and r["kill"] is False and r["money_limit_eur"] == 0.0
     assert r["vault"] == {"where": "local", "exists": False, "open": False}
-    assert r["tools_active"] is None and r["audit"] == [] and r["backup"] == {"configured": False, "age_days": None}
+    assert r["tools_active"] == [] and r["audit"] == [] and r["backup"] == {"configured": False, "age_days": None}
 
 
 def test_mode_c_and_kill_and_active_tools(tmp_path):
     killswitch.trigger(tmp_path)
-    r = call(make(tmp_path, cfg(claude_enabled=True, memory_location="remote:nas"), registry=Reg({"a", "c"})))
-    assert r["mode"] == "C" and r["kill"] is True and r["tools_active"] == ["a", "c"]
+    r = call(make(tmp_path, cfg(claude_enabled=True, memory_location="remote:nas")))
+    assert r["mode"] == "C" and r["kill"] is True and r["tools_active"] == []
     assert r["vault"]["where"] == "remote"
 
 
