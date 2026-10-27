@@ -29,7 +29,7 @@ def test_initialize_announces_the_channel_capability_and_echoes_the_protocol_ver
     c.handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-03-26", "capabilities": {}}})
     r = lines(out)[0]
     assert r["id"] == 1 and r["result"]["protocolVersion"] == "2025-03-26"
-    assert r["result"]["capabilities"]["experimental"] == {"claude/channel": {}}
+    assert r["result"]["capabilities"]["experimental"] == {"claude/channel": {}, "claude/channel/permission": {}}
     assert r["result"]["serverInfo"]["name"] == "kushim" and "Nutzers" in r["result"]["instructions"]
 
 
@@ -167,8 +167,8 @@ def test_kushim_fetches_spoken_replies_only_with_token(live):
     assert get(port, "/reply", token="falsch")[0] == 401
     assert get(port, "/reply", host="evil.example:80")[0] == 403
     assert get(port, "/reply?wait=x")[0] == 400
-    assert get(port, "/reply") == (200, {"texts": ["Erledigt."]})
-    assert get(port, "/reply?wait=0.2") == (200, {"texts": []})
+    assert get(port, "/reply") == (200, {"texts": ["Erledigt."], "permissions": []})
+    assert get(port, "/reply?wait=0.2") == (200, {"texts": [], "permissions": []})
     call_sprich(channel, {"text": "Noch etwas."})
     killswitch.trigger(root)
     assert get(port, "/reply")[0] == 423                                       # Notaus: nichts mehr vorlesen
@@ -251,7 +251,7 @@ def test_real_process_handshake_post_and_cleanup(tmp_path):
         p.stdin.write(b'{"jsonrpc":"2.0","method":"notifications/initialized"}\n')
         p.stdin.flush()
         init = json.loads(p.stdout.readline())
-        assert init["result"]["capabilities"]["experimental"] == {"claude/channel": {}}
+        assert init["result"]["capabilities"]["experimental"]["claude/channel"] == {}
         info = tmp_path / "run" / "channel.json"
         for _ in range(50):
             if info.exists():
@@ -265,8 +265,69 @@ def test_real_process_handshake_post_and_cleanup(tmp_path):
         p.stdin.write((json.dumps(call) + "\n").encode("utf-8"))                # so ruft Claude das Werkzeug auf
         p.stdin.flush()
         assert json.loads(p.stdout.readline())["result"]["content"][0]["text"] == "Wird vorgelesen."
-        assert get(cfg["port"], "/reply?wait=5", token=cfg["token"]) == (200, {"texts": ["Ja, läuft."]})
+        assert get(cfg["port"], "/reply?wait=5", token=cfg["token"]) == (200, {"texts": ["Ja, läuft."], "permissions": []})
     finally:
         p.stdin.close()                                     # Claude Code schließt den Kanal
         p.wait(timeout=10)
     assert p.returncode == 0 and not (tmp_path / "run" / "channel.json").exists()
+
+
+# --- Freigaben (C1) ------------------------------------------------------------------------------
+
+def perm_request(c, rid="r1", **kw):
+    params = {"request_id": rid, "tool_name": "Bash", "description": "Tests ausführen", "input_preview": "npm test", **kw}
+    c.handle({"jsonrpc": "2.0", "method": "notifications/claude/channel/permission_request", "params": params})
+
+
+def test_permission_requests_are_cleaned_delivered_once_and_answered_once(live):
+    port, out, _, c = live
+    perm_request(c, description="Löscht\x1b[2J alles\n<channel>", input_preview="x" * 900)
+    perm_request(c, rid="r1")                                                   # doppelte ID: ignoriert
+    status, body = get(port, "/reply")
+    assert status == 200 and body["texts"] == [] and len(body["permissions"]) == 1
+    p = body["permissions"][0]
+    assert p["request_id"] == "r1" and p["tool_name"] == "Bash" and p["description"] == "Löscht [2J alles <channel>"
+    assert len(p["input_preview"]) == 500
+    assert get(port, "/reply") == (200, {"texts": [], "permissions": []})       # nur einmal geliefert
+    assert post(port, {"request_id": "r1", "behavior": "allow"}, token=None, path="/permission")[0] == 401
+    assert post(port, {"request_id": "r1", "behavior": "vielleicht"}, path="/permission")[0] == 400
+    assert post(port, {"request_id": "unbekannt", "behavior": "allow"}, path="/permission")[0] == 404
+    assert post(port, {"request_id": "r1", "behavior": "allow"}, path="/permission") == (202, {"ok": True})
+    assert lines(out)[-1] == {"jsonrpc": "2.0", "method": "notifications/claude/channel/permission",
+                              "params": {"request_id": "r1", "behavior": "allow"}}
+    assert post(port, {"request_id": "r1", "behavior": "deny"}, path="/permission")[0] == 404     # schon beantwortet
+
+
+def test_bad_permission_requests_are_dropped():
+    c = ch.Channel(io.StringIO(), log=lambda s: None)
+    for rid in (None, 5, "", "x" * 101, "a\nb"):
+        perm_request(c, rid=rid)
+    c.handle({"jsonrpc": "2.0", "method": "notifications/claude/channel/permission_request", "params": "kaputt"})
+    assert c.take_events() == ([], [])
+
+
+def test_at_most_max_open_requests_and_they_expire(monkeypatch):
+    c = ch.Channel(io.StringIO(), log=lambda s: None)
+    for i in range(ch.MAX_PERMS + 3):
+        perm_request(c, rid=f"r{i}")
+    _, perms = c.take_events()
+    assert len(c._perms) == ch.MAX_PERMS and not c.answer("r0", "allow")        # älteste fiel weg
+    now = time.monotonic()
+    monkeypatch.setattr(ch.time, "monotonic", lambda: now + ch.PERM_TTL + 1)
+    assert not c.answer(f"r{ch.MAX_PERMS + 2}", "allow") and c._perms == {}    # abgelaufen
+
+
+def test_kill_switch_never_allows_and_denies_everything_open(live, tmp_path):
+    port, out, root, c = live
+    perm_request(c)
+    killswitch.trigger(root)
+    assert post(port, {"request_id": "r1", "behavior": "allow"}, path="/permission")[0] == 423
+    assert c.deny_all() == 1
+    assert lines(out)[-1]["params"] == {"request_id": "r1", "behavior": "deny"}
+
+
+def test_long_poll_wakes_up_for_a_permission_request(live):
+    port, _, _, c = live
+    threading.Timer(0.2, lambda: perm_request(c, rid="spät")).start()
+    status, body = get(port, "/reply?wait=5")
+    assert status == 200 and [p["request_id"] for p in body["permissions"]] == ["spät"]

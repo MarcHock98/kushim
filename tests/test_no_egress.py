@@ -50,7 +50,7 @@ CHANNEL = SRC / "channel" / "server.py"
 def test_channel_server_has_only_stdlib_imports():
     mods = set(imports(CHANNEL))
     assert mods <= {"__future__", "hmac", "json", "os", "re", "secrets", "sys", "threading", "collections", "http.server",
-                    "pathlib", "typing", "urllib.parse", "safety", "..safety"}, mods
+                    "pathlib", "time", "typing", "urllib.parse", "safety", "..safety"}, mods
 
 
 def test_channel_server_binds_only_to_the_fixed_loopback_address():
