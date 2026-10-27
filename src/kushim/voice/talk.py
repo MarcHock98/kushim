@@ -15,12 +15,6 @@ from .audio import UtteranceCollector
 from .pipeline import Pipeline, Result
 
 ACK_TEXT = "Ja?"
-NOT_CONNECTED = "Ich bin noch nicht mit Claude verbunden."
-
-
-def not_connected(messages: Any, **_: Any) -> Iterable[str]:
-    """Platzhalter für die Antwort, bis die Brücke zu Claude Code steht (Roadmap v2 B4): kein lokales Modell mehr."""
-    yield NOT_CONNECTED
 
 
 class TalkLoop:
@@ -227,8 +221,12 @@ def build_live(root: Path, out_device: int | None, in_device: int | None = None,
                verifier: Any = None, commands: Any = None, wake_names: Iterable[str] = (),
                whisper_device: str = "cuda", whisper_index: int = 0, tasks: Any = None,
                clone: bool = False, clone_ref: str = "", on_note: Callable[[str], None] = lambda s: None):
-    """Echte Komponenten. Antworten kommen bis Roadmap v2 B4 (Brücke zu Claude Code) nur als fester Hinweis."""
+    """Echte Komponenten. Antworten kommen von Claude Code über den kushim-Channel (Roadmap v2 B4); `pipeline.chat` ist ein
+    `ClaudeChat` mit `announcement()` für verspätete Antworten."""
+    from ..channel.bridge import Bridge
+    from ..tasks import TaskRegistry
     from . import audio
+    from .claude_chat import ClaudeChat
     from .dialog import Dialog
     from .stt import SpeechToText
     from .tts import PiperEngine, Speaker
@@ -250,6 +248,7 @@ def build_live(root: Path, out_device: int | None, in_device: int | None = None,
     speaker = Speaker(engine, lambda wav: audio.play_wav(wav, out_device), lambda: kill.fired)
     ack_wav = engine.synthesize(ACK_TEXT)
     mic = audio.Mic(in_device)
-    pipeline = Pipeline(stt, not_connected, speaker, dialog, kill, verifier, commands=commands,
+    tasks = tasks if tasks is not None else TaskRegistry()
+    pipeline = Pipeline(stt, ClaudeChat(Bridge(root), tasks), speaker, dialog, kill, verifier, commands=commands,
                         wake_names=tuple(wake_names), tasks=tasks)
     return pipeline, kill, mic, lambda: audio.play_wav(ack_wav, out_device)

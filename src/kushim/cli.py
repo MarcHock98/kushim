@@ -536,6 +536,7 @@ def _main(argv: list[str] | None = None) -> int:
                             first_collector=lambda: utter(first_ms),
                             follow_collector=(lambda: utter(follow_ms)) if follow_ms > 0 else None,
                             barge=barge, preroll_frames=round(st.preroll_seconds / 0.08),
+                            announce=pipeline.chat.announcement,          # verspätete Antworten von Claude
                             say=pipeline.say_text, on_note=lambda s: print(f"[Hinweis] {s}"))
             print("Wake Words: " + ", ".join(w.name for w in wcfg.enabled())
                   + ". Notaus: 'Notaus' sagen oder die Verknüpfung. Strg+C beendet.")
