@@ -102,8 +102,10 @@ den kushim-Channel (lokaler MCP-Server, stdio). kushim (Python) spricht mit dem 
       `voice/claude_chat.py`, Abruf alle 2 s (Abbrechen/Notaus greifen schnell), nach 3 min Hinweis und spätere Ansage.
       Mikrofon: bleibt wie bisher über Barge-in geregelt (`barge_in = false` in `wakewords.toml` hört während der Ausgabe
       gar nicht zu); echte Echo-Unterdrückung steht unter „Später“. Live nicht geprüft (braucht B5 und den Nutzer)
-- [ ] B5 Startskript `kushim start`: startet `claude` mit dem Channel im gewählten Arbeitsordner und `kushim talk` dazu;
-      `kushim doctor` prüft Claude-Version (mindestens 2.1.234), Anmeldung, Bun/Node
+- [x] B5 Startskript `kushim start`: startet `claude` mit dem Channel im gewählten Arbeitsordner und `kushim talk` dazu;
+      `kushim doctor` prüft Claude-Version (mindestens 2.1.234), Anmeldung, Bun/Node (2026-10-27, 550 grün; Bun/Node entfällt,
+      der Channel ist Python). `channel/launch.py`, `--strict-mcp-config` (nur der kushim-Server), Telemetrie aus, eigenes Fenster;
+      Verknüpfung „kushim start“ im Installer. Echter Start mit Bestätigungsdialog nicht geprüft: das ist B7 **(Nutzer)**
 - [ ] B6 Abbrechen („abbrechen“) schickt Escape/Abbruch an die Sitzung, Notaus beendet kushim und schaltet den Channel stumm
 - [ ] B7 Live-Test **(Nutzer)**: Wake Word → Befehl → Claude arbeitet im Terminal sichtbar → Antwort wird vorgelesen
 

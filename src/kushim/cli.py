@@ -12,7 +12,8 @@ from .memory.migrate import backup, migrate
 HELP = """kushim: persönlicher, lokaler Assistent. Alles läuft auf diesem Rechner.
 
 Täglich
-  kushim talk                  Sprechen per Wake Word
+  kushim start [ordner]        Claude Code mit kushim-Channel im freigegebenen Ordner öffnen und per Wake Word sprechen
+  kushim talk                  Sprechen per Wake Word (Claude Code mit Channel muss schon laufen)
                                [--mic NAME] [--out NAME] [--wake-words "hey kushim,kushim"]
   kushim kill                  NOTAUS: stoppt alle kushim-Dienste
   kushim resume                Notaus bewusst aufheben
@@ -94,6 +95,53 @@ def _claude_dev(args, cfg: Config, root) -> int:
         cfg.set_claude_folders([f.entry() for f in known if f.name != args.name])
         print(f"Freigabe für «{args.name}» entzogen.")
         return 0
+
+
+def _start(args, cfg: Config, root) -> int:
+    """`kushim start [ordner]`: Claude Code mit dem kushim-Channel im freigegebenen Ordner (eigenes Fenster), dann `kushim talk`."""
+    from .channel import launch
+    from .claude_cli import base as claude_base
+    from .claude_cli import folders as cfolders
+    from .safety.killswitch import is_triggered
+    if is_triggered(root):
+        print("Notaus ist aktiv. Erst bewusst aufheben: kushim resume")
+        return 1
+    exe = claude_base.find_claude()
+    if exe is None:
+        print("Claude Code nicht gefunden. Installieren und anmelden, dann erneut: kushim start")
+        return 1
+    ver = claude_base.version(exe)
+    if ver is None or ver < claude_base.MIN_VERSION:
+        need = ".".join(map(str, claude_base.MIN_VERSION))
+        print(f"Claude Code {'.'.join(map(str, ver)) if ver else '?'} ist zu alt oder nicht lesbar; nötig ist mindestens {need}.")
+        return 1
+    if not claude_base.auth_status(exe).logged_in:
+        print("In Claude Code nicht angemeldet: claude auth login")
+        return 1
+    known = cfolders.parse(cfg.claude_folders)
+    if not known:
+        print("Kein Arbeitsordner freigegeben. Erst: kushim claude add <name> <pfad>")
+        return 1
+    if args.folder:
+        chosen = next((f for f in known if f.name == args.folder), None)
+        if chosen is None:
+            print("Diesen Ordner gibt es nicht. Freigegeben: " + ", ".join(f.name for f in known))
+            return 2
+    elif len(known) == 1:
+        chosen = known[0]
+    else:
+        print("Welcher Ordner? kushim start <name>  (freigegeben: " + ", ".join(f.name for f in known) + ")")
+        return 2
+    try:
+        folder = cfolders.validate_path(str(chosen.path), cfolders.vault_path(cfg.memory_location))
+    except ValueError as e:
+        print(f"Ordner «{chosen.name}» ist nicht (mehr) zulässig: {e}")
+        return 2
+    launch.launch(exe, folder, root)
+    print(f"Claude Code startet in einem eigenen Fenster im Ordner «{chosen.name}».")
+    print("Dort einmal den Hinweis zum Entwicklungs-Channel bestätigen; danach hört kushim zu.")
+    talk = ["talk"] + (["--mic", args.mic] if args.mic else []) + (["--out", args.out] if args.out else []) + (["--ui"] if args.ui else [])
+    return _main(talk)
 
 
 def _vault_state(cfg: Config) -> str:
@@ -194,6 +242,11 @@ def _main(argv: list[str] | None = None) -> int:
     ki.add_argument("hexkey")
     sub.add_parser("kill", help="Notaus: stoppt laufende kushim-Dienste")
     sub.add_parser("resume", help="Notaus aufheben (nur bewusst durch den Nutzer)")
+    st = sub.add_parser("start", help="Claude Code mit dem kushim-Channel im freigegebenen Ordner starten, dann Sprechen per Wake Word")
+    st.add_argument("folder", nargs="?", help="Name eines freigegebenen Ordners (kushim claude folders)")
+    st.add_argument("--mic", help="Namensteil des Mikrofons, sonst Systemstandard")
+    st.add_argument("--out", help="Namensteil des Ausgabegeräts, sonst Systemstandard")
+    st.add_argument("--ui", action="store_true", help="Backend-API für die Oberfläche mitstarten (127.0.0.1)")
     t = sub.add_parser("talk", help="Sprechen per Wake Word (nur das Wake Word wird dauerhaft ausgewertet)")
     t.add_argument("--mic", help="Namensteil des Mikrofons, sonst Systemstandard")
     t.add_argument("--out", help="Namensteil des Ausgabegeräts, sonst Systemstandard")
@@ -304,8 +357,11 @@ def _main(argv: list[str] | None = None) -> int:
             print("Offene Schritte erscheinen beim Start in der Oberfläche (sobald es sie gibt). Überspringen ändert keine Sicherheitsregel.")
         return 0
     if args.cmd == "doctor":
-        from .doctor import run_checks
+        from .claude_cli import base as claude_base
+        from .doctor import claude_checks, run_checks
         results = run_checks(root, lambda: _vault_state(cfg))
+        results += claude_checks(claude_base.find_claude, claude_base.version,
+                                 lambda exe: claude_base.auth_status(exe).logged_in, claude_base.MIN_VERSION)
         for c in results:
             print(("[ok]    " if c.ok else "[FEHLT] ") + c.name + ("" if c.ok else f"  -> {c.hint}"))
         return 0 if all(c.ok for c in results) else 1
@@ -447,6 +503,8 @@ def _main(argv: list[str] | None = None) -> int:
                     except KeyboardInterrupt:
                         pass
         return 0
+    if args.cmd == "start":
+        return _start(args, cfg, root)
     if args.cmd == "talk":
         from .safety.killswitch import is_triggered
         from .voice import audio, voiceprint, wakeconfig

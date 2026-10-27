@@ -4,7 +4,7 @@ from __future__ import annotations
 import importlib.util
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 
 @dataclass
@@ -43,4 +43,19 @@ def run_checks(root: Path, vault_state: Callable[[], str] | None = None) -> list
         state = vault_state()
         checks.append(Check("Vault vorhanden", state != "kein-vault", "kushim memory init"))
         checks.append(Check("Stimmprofil eingeschrieben", state == "ok", "kushim voice enroll"))
+    return checks
+
+
+def claude_checks(find: Callable[[], Any], version: Callable[[Any], tuple[int, int, int] | None],
+                  logged_in: Callable[[Any], bool], minimum: tuple[int, int, int]) -> list[Check]:
+    """Claude Code für `kushim start`: vorhanden, neu genug (Channels mit Freigabe-Weiterleitung), angemeldet. Nur lokale Aufrufe."""
+    exe = find()
+    if exe is None:
+        return [Check("Claude Code installiert", False, "Claude Code installieren und `claude auth login`")]
+    ver = version(exe)
+    need = ".".join(map(str, minimum))
+    checks = [Check("Claude Code installiert", True),
+              Check(f"Claude Code mindestens {need}" + (f" (ist {'.'.join(map(str, ver))})" if ver else ""),
+                    ver is not None and ver >= minimum, "Claude Code aktualisieren: claude update")]
+    checks.append(Check("In Claude Code angemeldet", logged_in(exe), "claude auth login"))
     return checks
