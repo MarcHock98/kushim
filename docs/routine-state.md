@@ -36,8 +36,11 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
   Abholweg `GET /reply` mit Token am selben Port (kushim bleibt Client). 513 Tests grün, Review freigegeben.
 - 2026-10-27 Loop-Durchlauf 12: **B3 fertig** (Branch `routine/b3-bridge`, gemerged, nicht gepusht): `channel/bridge.py`,
   `loopback.py` mit Headern und `HttpError`; Egress-Test bindet den Loopback-Client an die Brücke. 531 Tests grün.
-- Nächster Schritt: **B4** Brücke in die Pipeline: Befehl senden, Quittung „Ich geb's an Claude.“, `sprich`-Antwort
-  abholen und vorlesen; ohne Channel ehrlicher Hinweis statt Fehler. Noch offen für den Nutzer: Z3.
+- 2026-10-27 Loop-Durchlauf 13: **B4 fertig** (Branch `routine/b4-pipeline`, gemerged, nicht gepusht): `voice/claude_chat.py`
+  ersetzt den Platzhalter; Quittung, Abruf alle 2 s, verspätete Antworten als Ansage. 537 Tests grün, Review freigegeben.
+- Nächster Schritt: **B5** `kushim start`: Claude Code mit Channel (`--dangerously-load-development-channels server:kushim`,
+  MCP-Konfiguration für `python -m kushim.channel`, Telemetrie aus) im gewählten Ordner plus `kushim talk`; `doctor` prüft
+  Claude-Version (>= 2.1.234) und Anmeldung. Echter Aufruf von `claude` nur im Wegwerf-Ordner testen. Noch offen: Z3.
 - Blockiert: A5 (Gates entfernen, Frage offen), Phase B ab B1 (B0).
 - Bereit zum Push durch den Nutzer: master, routine/a1-voice-commands, routine/a2-web-research, routine/a3-timers-notes,
   routine/a4-claude-control, routine/a6-local-llm, routine/a7-rest
