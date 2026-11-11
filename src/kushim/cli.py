@@ -26,6 +26,7 @@ Stimme
   kushim voice record          Absätze für den Stimmklon aufnehmen [--redo] [--auto] [--mic NAME]
   kushim voice level           Mikrofonpegel messen, Schwellen vorschlagen [--apply] [--mic NAME]
   kushim voice reset           Stimmprofil löschen
+  kushim voice check on|off    Sprecher-Prüfung ein/aus (Standard: aus; ohne sie keine Freigaben per Stimme)
 
 Oberfläche und Grafikkarte
   kushim gpu                   Grafikkarten zeigen und welche Whisper nutzt
@@ -342,6 +343,7 @@ def _main(argv: list[str] | None = None) -> int:
     th = vo.add_parser("threshold", help="Schwelle der Sprecherprüfung setzen (0,5 bis 0,9; niedriger = lockerer)")
     th.add_argument("value", type=float)
     vo.add_parser("reset")
+    vo.add_parser("check", help="Sprecher-Prüfung ein- oder ausschalten (Standard: aus)").add_argument("state", choices=["on", "off"])
     ct = vo.add_parser("clone-test", help="Hörvergleich: derselbe Satz mit Piper und mit deiner geklonten Stimme (alles lokal, ohne Netz)")
     ct.add_argument("text", nargs="*", help="Satz (Standard: ein Beispielsatz)")
     ct.add_argument("--out", help="Namensteil des Ausgabegeräts, sonst Systemstandard")
@@ -520,9 +522,16 @@ def _main(argv: list[str] | None = None) -> int:
             else:
                 print("Übernehmen mit: kushim voice level --apply")
             return 0
+        if args.sub == "check":
+            cfg.set_speaker_check(args.state == "on")
+            print("Sprecher-Prüfung an: kushim reagiert nur auf deine eingeschriebene Stimme." if args.state == "on" else
+                  "Sprecher-Prüfung aus: kushim reagiert auf jede Stimme; Freigaben per Stimme sind gesperrt.")
+            print("Gilt ab dem nächsten Start von kushim.")
+            return 0
         model = root / "models" / "speaker" / "wespeaker_en_voxceleb_CAM++_LM.onnx"
         with _vault(cfg) as store:
             if args.sub == "status":
+                print(f"Sprecher-Prüfung: {'an' if cfg.voice_speaker_check else 'aus'}")
                 vp = voiceprint.load(store)
                 if vp is None:
                     print("Stimmprofil: keines")
@@ -619,14 +628,20 @@ def _main(argv: list[str] | None = None) -> int:
         except ValueError as e:
             print(f"Wake-Word-Konfiguration: {e}")
             return 2
-        with _vault(cfg) as store:
-            profile = voiceprint.load(store)
-        if profile is None:
-            print("Kein Stimmprofil. kushim hört nur auf deine Stimme: erst `kushim voice enroll`.")
-            return 1
-        embed = SherpaEmbedder.from_local(str(root / "models" / "speaker" / "wespeaker_en_voxceleb_CAM++_LM.onnx"))
-        from .voice.verify import AudioVerifier
-        verifier = AudioVerifier(profile, embed)
+        verifier = None
+        if cfg.voice_speaker_check:
+            with _vault(cfg) as store:
+                profile = voiceprint.load(store)
+            if profile is None:
+                print("Sprecher-Prüfung ist an, aber es gibt kein Stimmprofil: erst `kushim voice enroll` "
+                      "(oder ausschalten: `kushim voice check off`).")
+                return 1
+            embed = SherpaEmbedder.from_local(str(root / "models" / "speaker" / "wespeaker_en_voxceleb_CAM++_LM.onnx"))
+            from .voice.verify import AudioVerifier
+            verifier = AudioVerifier(profile, embed)
+        else:
+            print("Sprecher-Prüfung ist aus: kushim reagiert auf jede Stimme. Freigaben per Stimme sind dann gesperrt "
+                  "(nur Terminal oder Oberfläche). Einschalten: kushim voice check on")
         try:
             _, plan = _gpu_plan(cfg)
         except ValueError as e:
@@ -638,7 +653,7 @@ def _main(argv: list[str] | None = None) -> int:
             from .voice.talklog import TalkLog
             tasks = TaskRegistry()
             talklog = TalkLog(root / "run" / "talk.log")       # Gesprächsprotokoll zur Fehlersuche (lokal, ohne Audio)
-            talklog.write("start", folder=bool(args.claude_folder), voice_profile=True)
+            talklog.write("start", folder=bool(args.claude_folder), speaker_check=verifier is not None)
 
             def note(s: str) -> None:
                 print(f"[Hinweis] {s}")
