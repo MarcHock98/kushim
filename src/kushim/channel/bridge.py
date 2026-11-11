@@ -7,6 +7,7 @@ Claudes Text: nur zum Vorlesen, nie als Anweisung (sie werden bereinigt und begr
 from __future__ import annotations
 
 import json
+import threading
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
@@ -71,6 +72,12 @@ class Bridge:
     def __init__(self, root: Path, request: Callable[..., Any] = loopback.request_json):
         self.root, self.request = root, request
         self.permissions: deque[Permission] = deque(maxlen=MAX_PERMS)    # abgeholte, noch nicht beantwortete Freigabe-Anfragen
+        self._perm_lock = threading.Lock()      # Sprach-Thread hängt an, API-Threads lesen und entfernen
+
+    def pending(self) -> list[Permission]:
+        """Kopie der offenen Freigabe-Anfragen (thread-sicher)."""
+        with self._perm_lock:
+            return list(self.permissions)
 
     def available(self) -> bool:
         return read_info(self.root) is not None
@@ -123,7 +130,8 @@ class Bridge:
         for p in perms[:MAX_PERMS] if isinstance(perms, list) else []:
             perm = Permission.parse(p)
             if perm is not None:
-                self.permissions.append(perm)
+                with self._perm_lock:
+                    self.permissions.append(perm)
         clean = [clean_text(t)[:MAX_SPOKEN] for t in texts[:MAX_QUEUE] if isinstance(t, str)]
         return "ok", [t for t in clean if t]
 
@@ -137,6 +145,7 @@ class Bridge:
             code = getattr(e, "status", None)
             return "unknown" if code == 404 else self._status(e)
         finally:
-            for p in [p for p in self.permissions if p.request_id == request_id]:
-                self.permissions.remove(p)
+            with self._perm_lock:
+                for p in [p for p in self.permissions if p.request_id == request_id]:
+                    self.permissions.remove(p)
         return "ok"

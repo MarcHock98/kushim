@@ -36,8 +36,8 @@ def sanitize(entry: dict[str, Any]) -> dict[str, Any]:
 class ApprovalLog:
     """Aufrufbar als `on_decision`. `opener()` liefert einen Vault (je Eintrag geöffnet und geschlossen: thread-sicher)."""
 
-    def __init__(self, opener: Callable[[], Any]):
-        self.opener = opener
+    def __init__(self, opener: Callable[[], Any], on_fail: Callable[[], None] = lambda: None):
+        self.opener, self.on_fail = opener, on_fail     # on_fail: Hinweis, damit ein Verlust nicht still bleibt
         self.failures = 0
 
     def __call__(self, entry: dict[str, Any]) -> None:
@@ -50,6 +50,10 @@ class ApprovalLog:
                 store.close()
         except Exception:                           # noqa: BLE001 (nie die Antwort verhindern)
             self.failures += 1
+            try:
+                self.on_fail()
+            except Exception:                       # noqa: BLE001
+                pass
 
 
 def recent(store: Any, limit: int = 20) -> list[dict[str, Any]]:

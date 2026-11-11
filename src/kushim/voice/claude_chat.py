@@ -42,7 +42,7 @@ class ClaudeChat:
 
     def permission_notes(self) -> list[str]:
         """Ansagen für neue, noch offene Freigabe-Anfragen; jede nur einmal. Gefragt wird höchstens bei der neuesten."""
-        new = [p for p in list(self.bridge.permissions) if p.request_id not in self._announced]
+        new = [p for p in self.bridge.pending() if p.request_id not in self._announced]
         self._announced.extend(p.request_id for p in new)
         del self._announced[:-MAX_ANNOUNCED]
         notes = [speakable.announce(p) for p in new[:-1]]

@@ -8,7 +8,8 @@ export class MockSocket implements Socket {
   onerror: Socket["onerror"] = null;
   kill = false;
   voice: { active: boolean; state: string; level: number } = { active: false, state: "idle", level: 0 };
-  pending: { kind: string; preview: string; digest: string; expires_in: number; sends_data_out: boolean } | null = null;
+  pending: { request_id: string; tool_name: string; description: string; input_preview: string; digest: string; summary: string;
+    truncated?: boolean }[] = [];
   entries: { id: number; heard: string; reply: string; outcome: string }[] = [];
   folders: string[] = [];
   session: unknown = null;
@@ -114,10 +115,13 @@ export class MockSocket implements Socket {
     }
     else if (msg.type === "approvals.get") reply = { ok: true, pending: this.pending };
     else if (msg.type === "approvals.decide") {
-      const m = msg as { digest?: string };
-      if (!this.pending) reply = { ok: false, error: "none" };
-      else if (m.digest !== this.pending.digest) reply = { ok: false, error: "stale" };
-      else { this.pending = null; this.voice = { ...this.voice, state: "idle" }; reply = { ok: true, result: "started" }; }
+      const m = msg as { request_id?: string; digest?: string; approve?: boolean; confirm?: boolean };
+      const p = this.pending.find((x) => x.request_id === m.request_id);
+      if (this.kill) reply = { ok: false, error: "kill" };
+      else if (!p) reply = { ok: false, error: "none" };
+      else if (m.digest !== p.digest) reply = { ok: false, error: "stale" };
+      else if (m.approve && m.confirm !== true) reply = { ok: false, error: "confirm_required" };
+      else { this.pending = this.pending.filter((x) => x !== p); reply = { ok: true, result: m.approve ? "allow" : "deny" }; }
     }
     else if (msg.type === "safety.kill") { this.kill = true; reply = { ok: true, kill: true }; }
     else if (msg.type === "safety.resume") reply = { ok: true, kill: (this.kill = false) };

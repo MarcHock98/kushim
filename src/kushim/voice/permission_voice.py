@@ -121,13 +121,13 @@ class PermissionVoice:
     def _log(self, perm: Permission, result: str, verified: bool | None = None, strong: bool | None = None,
              score: float | None = None, reason: str | None = None) -> None:
         """Ein Eintrag fürs Freigabe-Protokoll (C5): was, Ergebnis, Sprecher-Prüfung. Nie Audio, nie der Rohtext."""
-        entry: dict[str, Any] = {"request_id": perm.request_id, "tool": perm.tool_name, "what": speakable.describe(perm),
-                                 "result": result, "source": "voice"}
-        if verified is not None:
-            entry.update(verified=verified, strong=strong, score=None if score is None else round(float(score), 3))
-        if reason is not None:
-            entry["reason"] = reason
         try:
+            entry: dict[str, Any] = {"request_id": perm.request_id, "tool": perm.tool_name, "what": speakable.describe(perm),
+                                     "result": result, "source": "voice"}
+            if verified is not None:
+                entry.update(verified=verified, strong=strong, score=None if score is None else round(float(score), 3))
+            if reason is not None:
+                entry["reason"] = reason
             self.on_decision(entry)
         except Exception:                           # noqa: BLE001 (Protokoll darf nie die Antwort verhindern)
             pass

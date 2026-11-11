@@ -114,7 +114,8 @@ den kushim-Channel (lokaler MCP-Server, stdio). kushim (Python) spricht mit dem 
       (2026-10-27: vom Nutzer mit `kushim start` bestätigt, „Ja er antwortet“)
 
 ## Phase C: Freigaben per Stimme (offizielle Freigabe-Weiterleitung)
-- [ ] C0 Freigabe-Leiste der UI (`approvals.get`/`approvals.decide`, gleiche Regeln: exakter Text, Hash, `confirm`) neu an die
+- [x] C0 (2026-11-11, Python 778 und UI 61 grün, Safety-Audit freigegeben; echtes Tauri-Fenster nicht geprüft; gekürzte
+      Vorschau: in der UI nur Ablehnen; Knöpfe nach jedem Wechsel 700 ms gesperrt; Entscheidungen im Protokoll C5) Freigabe-Leiste der UI (`approvals.get`/`approvals.decide`, gleiche Regeln: exakter Text, Hash, `confirm`) neu an die
       Channel-Freigaben hängen (ergänzt 2026-10-26: der alte Unterbau fiel mit A1 weg)
 - [x] C1 Channel meldet `claude/channel/permission` an und reicht `permission_request` (request_id, tool_name, description,
       input_preview) an kushim weiter; Inhalte gelten als nicht vertrauenswürdig (nur vorlesen, nie ausführen)
@@ -140,7 +141,12 @@ den kushim-Channel (lokaler MCP-Server, stdio). kushim (Python) spricht mit dem 
       **Restrisiko (bewusst):** Tests und Prüfwerkzeuge führen Code des Repos aus (`conftest.py`, `package.json`-Skripte).
       Hat Claude solche Dateien ohne Terminal-Dialog geändert (Modus „acceptEdits“), führt ein „ja“ diesen Code aus. Darum
       Freigaben per Stimme nur im Standard-Modus von Claude Code benutzen.
-- [ ] C5 Protokoll jeder Freigabe lokal (was, wann, Sprecher-Score, Ergebnis), ohne Audio
+- [x] C5 Protokoll jeder Freigabe lokal (was, wann, Sprecher-Score, Ergebnis), ohne Audio (2026-11-11): `channel/approval_log.py`
+      im verschlüsselten Vault (Audit), Stimme und Oberfläche, `kushim claude approvals` zeigt es. Die Kurzbeschreibung kann
+      Teile eines Befehls enthalten (z. B. ein Token im Klartext); sie liegt nur verschlüsselt im Vault.
+- [ ] C7 **(Entscheidung Nutzer)** Token-Dateien (`run/channel.json`, `run/api.json`) aus dem Projektordner verlegen
+      (Safety-Audit 2026-11-11, B5): Arbeitet Claude im kushim-Repo selbst, könnte es die Token lesen und sich über Channel
+      oder API selbst Freigaben geben. Bis dahin warnt `kushim start`.
 - [ ] C6 Live-Test **(Nutzer)**: Claude will einen Befehl ausführen → per Stimme erlauben → Claude macht weiter
 
 ## Phase D: Modell und Verbrauch
