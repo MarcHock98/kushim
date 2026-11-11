@@ -57,6 +57,13 @@ def is_shutdown_phrase(text: str) -> bool:
 CANCEL_REPLY = "Okay, abgebrochen."
 NOTHING_REPLY = "Es läuft nichts, das ich abbrechen könnte."
 MATCH = 0.8      # Ähnlichkeit, ab der ein erkanntes Wort als Wake Word zählt ("Kuschim" statt "kushim")
+# Kurze Wörter, die Whisper anders schreibt; bei drei Buchstaben reicht die Ähnlichkeit nicht ("Hej" statt "hey", Live-Test 2026-11-11)
+_SPELLINGS = {"hej": "hey", "hei": "hey", "hay": "hey", "he": "hey", "hai": "hi", "hy": "hi", "halo": "hallo"}
+
+
+def _same_word(heard: str, wake: str) -> bool:
+    heard = _SPELLINGS.get(heard, heard)
+    return heard == wake or difflib.SequenceMatcher(None, heard, wake).ratio() >= MATCH
 
 
 def strip_wake_words(text: str, names: Sequence[str]) -> str:
@@ -71,9 +78,7 @@ def strip_wake_words(text: str, names: Sequence[str]) -> str:
         toks = list(_TOKEN.finditer(text))
         cut = None
         for ph in phrases:
-            if len(toks) >= len(ph) and all(
-                    difflib.SequenceMatcher(None, toks[i].group().lower(), w).ratio() >= MATCH
-                    for i, w in enumerate(ph)):
+            if len(toks) >= len(ph) and all(_same_word(toks[i].group().lower(), w) for i, w in enumerate(ph)):
                 cut = toks[len(ph) - 1].end()
                 break
         if cut is None:
@@ -185,8 +190,16 @@ class Pipeline:
         messages = [{"role": "system", "content": SYSTEM_PROMPT}, *self.history[-self.history_limit:]]
         sentences: list[str] = []
 
+        def split_whole(stream):
+            for item in stream:
+                yield from split_sentences(item)
+
+        # Ein Token-Strom (LLM) wird zu Sätzen gesammelt; ganze Meldungen (Claude über den Channel) sofort zerlegen, sonst
+        # wartet der letzte Satz auf das nächste Stück und die Quittung kommt erst mit Claudes Antwort (Live-Test 2026-11-11).
+        chunker = split_whole if getattr(self.chat, "yields_messages", False) else chunk_stream
+
         def sentence_source():
-            for s in chunk_stream(self.chat(messages)):
+            for s in chunker(self.chat(messages)):
                 sentences.append(s)
                 yield s
 

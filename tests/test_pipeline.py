@@ -140,3 +140,31 @@ def test_kill_phrase_after_wake_word_still_kills(tmp_path):
     p, played, _, kill = build(tmp_path, "Hey Kushim, Notaus")
     p.wake_names = NAMES
     assert p.handle(PCM).outcome == "killed" and kill.fired
+
+
+def test_whisper_spellings_of_hey_still_count_as_wake_word():
+    from kushim.voice.pipeline import strip_wake_words
+    names = ["hey kushim", "kushim"]
+    assert strip_wake_words("Hej, kushim.", names) == ""                               # Live-Test 2026-11-11
+    assert strip_wake_words("Hei Kushim, lass die Tests laufen", names) == "lass die Tests laufen"
+    assert strip_wake_words("Hey, wie spät ist es?", names) == "Hey, wie spät ist es?"   # ohne kushim kein Wake Word
+
+
+def test_whole_messages_are_spoken_at_once_not_held_back_until_the_next_one(tmp_path):
+    import threading
+    gate = threading.Event()
+    played_at = []
+
+    class Chat:
+        yields_messages = True
+
+        def __call__(self, messages):
+            yield "Ich geb's an Claude."
+            self.heard_before_reply = gate.wait(2)         # Claude arbeitet noch: die Quittung muss jetzt schon laufen
+            yield "Fertig. Alles grün."
+    chat = Chat()
+    p, played, _, _ = build(tmp_path, "Lass die Tests laufen", chat=chat)
+    p.speaker.play = lambda wav: (played_at.append(wav), gate.set() if wav == "Ich geb's an Claude." else None)
+    r = p.handle(PCM)
+    assert chat.heard_before_reply is True                 # früher: Quittung erst nach Claudes Antwort (Live-Test 2026-11-11)
+    assert played_at == ["Ich geb's an Claude.", "Fertig.", "Alles grün."] and r.outcome == "spoken"

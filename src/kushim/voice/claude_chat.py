@@ -34,6 +34,8 @@ MAX_ANNOUNCED = 200             # gemerkte, schon angesagte Freigabe-Anfragen
 class ClaudeChat:
     """Aufrufbar wie ein ChatStream: `chat(messages)` liefert die zu sprechenden Texte."""
 
+    yields_messages = True          # jedes Stück ist eine ganze Meldung (nicht Token): die Pipeline spricht es sofort
+
     def __init__(self, bridge: Bridge, tasks: TaskRegistry, patience: float = PATIENCE,
                  clock: Callable[[], float] = time.monotonic, voice: "PermissionVoice | None" = None):
         self.bridge, self.tasks, self.patience, self.clock, self.voice = bridge, tasks, patience, clock, voice
