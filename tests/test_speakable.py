@@ -73,3 +73,15 @@ def test_field_reads_strings_numbers_and_ignores_missing_keys():
     preview = '{ "command": "ls", "timeout": 5000, "run_in_background": true }'
     assert sp.field(preview, "command") == "ls" and sp.field(preview, "timeout") == "5000"
     assert sp.field(preview, "nope") is None and sp.field("", "command") is None
+
+
+def test_complete_only_when_the_sentence_names_everything_that_matters():
+    assert sp.complete(perm("Bash", '{ "command": "npm test", "description": "Run" }'))
+    assert sp.complete(perm("Edit", '{ "file_path": "src/app.py", "old_string": "a" }'))
+    assert not sp.complete(perm("Bash", '{ "command": "' + "echo hallo " * 12 + '" }'))         # gekürzt vorgelesen
+    assert not sp.complete(perm("Bash", '{ "command": "rm -rf build && ech…'))                   # gekürzte Vorschau
+    assert not sp.complete(perm("Bash", '{ "command": "ls" }⋯ 2 fields elided: a, b ⋯'))
+    assert not sp.complete(perm("Bash", '{ "command": "ls", "x": "' + "y" * 480 + '" }'))       # am Längenlimit
+    assert not sp.complete(perm("Bash", "{ }"))
+    for tool in ("WebFetch", "WebSearch", "Agent", "Grep", "mcp__a__b", "TodoWrite", ""):
+        assert not sp.complete(perm(tool, '{ "url": "https://x.org", "query": "q", "pattern": "p" }'))

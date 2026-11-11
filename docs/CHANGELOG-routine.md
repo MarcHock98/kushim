@@ -66,3 +66,4 @@ Format: Datum, Datei, Grund (ein Satz).
 - 2026-10-27, `.claude/skills/kushim-safety-review/SKILL.md`, `kushim-routine/SKILL.md`, `agents/*.md`: Gate-Regeln durch "kushim führt nichts aus, Netz nur ALLOWLIST/127.0.0.1" ersetzt (A5, vom Nutzer freigegeben); `kushim-add-tool` als veraltet markiert.
 - 2026-10-27, `.claude/skills/kushim-routine/SKILL.md`: Fallstrick "Claude-Sitzungen im Hintergrund-Dienst, claude stop mit kurzer Job-ID" ergänzt.
 - 2026-11-11, `.claude/skills/kushim-routine/SKILL.md`: Fallstrick zu claude.exe lesen ergänzt (Ausgabe als Bytes, `python -I` ignoriert `PYTHONIOENCODING`; Funktionsrumpf über `function name(` finden).
+- 2026-11-11, `.claude/skills/kushim-routine/SKILL.md`: Prüfen um Pflicht-Audit für Freigabe-Logik und die Regel "Shell nur mit Erlaubt-Listen, Pfade erst lexikalisch" ergänzt (aus drei Audit-Runden zu C3/C4).

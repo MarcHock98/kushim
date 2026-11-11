@@ -141,7 +141,8 @@ def test_start_launches_claude_in_the_only_folder_then_talks(env, capsys):
     import kushim.procflags as pf
     env.mp.setattr(pf, "kill_tree", lambda pid: env.window.close())
     assert start(env) == 0
-    assert env.launched == [(EXE, env.proj.resolve())] and env.talked == [["talk"]]
+    assert env.launched == [(EXE, env.proj.resolve())]
+    assert env.talked == [["talk", "--claude-folder", str(env.proj.resolve())]]           # Arbeitsordner für Freigaben (C4)
     assert env.stopped == [EXE] and env.window.closed.is_set()                           # kushim endet: Claude und Fenster auch
     out = capsys.readouterr().out
     assert "Entwicklungs-Channel bestätigen" in out and "beendet sich alles" in out

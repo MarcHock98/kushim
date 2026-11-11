@@ -154,6 +154,7 @@ def _start(args, cfg: Config, root) -> int:
             _thread.interrupt_main()
     threading.Thread(target=watch_window, daemon=True).start()
     talk = ["talk"] + (["--mic", args.mic] if args.mic else []) + (["--out", args.out] if args.out else []) + (["--ui"] if args.ui else [])
+    talk += ["--claude-folder", str(folder)]          # nur darin sind Datei-Freigaben per Stimme möglich (C4)
     try:
         return _main(talk)
     finally:                                          # kushim endet (Strg+C, "beende dich", Notaus): Claude-Sitzung mit beenden
@@ -162,6 +163,25 @@ def _start(args, cfg: Config, root) -> int:
         if window.poll() is None:
             kill_tree(window.pid)
         print("Claude-Sitzung beendet (der Verlauf bleibt in Claude Code erhalten).")
+
+
+def _approved_folder(cfg: Config, raw: str | None):
+    """Arbeitsordner für Datei-Freigaben per Stimme: nur ein freigegebener, gültiger Ordner (`kushim claude add`), sonst None
+    (dann sind Datei-Freigaben per Stimme gesperrt)."""
+    from .claude_cli import folders as cfolders
+    if not raw:
+        return None
+    try:
+        path = cfolders.validate_path(raw, cfolders.vault_path(cfg.memory_location))
+    except ValueError:
+        return None
+    known = []
+    for f in cfolders.parse(cfg.claude_folders):
+        try:
+            known.append(cfolders.validate_path(str(f.path), cfolders.vault_path(cfg.memory_location)))
+        except ValueError:
+            pass
+    return path if path in known else None
 
 
 def _vault_state(cfg: Config) -> str:
@@ -272,6 +292,7 @@ def _main(argv: list[str] | None = None) -> int:
     t.add_argument("--out", help="Namensteil des Ausgabegeräts, sonst Systemstandard")
     t.add_argument("--ui", action="store_true", help="Backend-API für die Oberfläche mitstarten (127.0.0.1): Freigabe-Leiste, Zustand, Notaus")
     t.add_argument("--wake-words", help="Komma-getrennt, überschreibt wakewords.toml nur für diesen Start (z. B. \"hey kushim,kushim\")")
+    t.add_argument("--claude-folder", help=argparse.SUPPRESS)   # setzt `kushim start`: Arbeitsordner für Freigaben per Stimme (C4)
     vo = sub.add_parser("voice", help="Eigene Stimme: einschreiben, testen, Status, löschen").add_subparsers(
         dest="sub", required=True)
     for name in ("enroll", "test"):
@@ -577,7 +598,8 @@ def _main(argv: list[str] | None = None) -> int:
                                                   on_note=lambda s: print(f"[Hinweis] {s}"),
                                                   wake_names=[w.name for w in wcfg.enabled()],
                                                   whisper_device=plan.whisper_device,
-                                                  whisper_index=plan.whisper_index)
+                                                  whisper_index=plan.whisper_index,
+                                                  claude_folder=_approved_folder(cfg, args.claude_folder))
             det = build_detector(wcfg, root)
             wait_ms = int(wcfg.settings.listen_seconds * 1000)
             first_ms = int(wcfg.settings.command_wait_seconds * 1000)
