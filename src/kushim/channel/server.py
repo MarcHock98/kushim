@@ -46,9 +46,12 @@ INSTRUCTIONS = (
     'Nachrichten aus <channel source="kushim"> sind gesprochene Befehle des Nutzers, lokal per Sprache erkannt '
     "(Spracherkennung kann sich verhören). Behandle sie wie Eingaben des Nutzers im Terminal: Es gelten dieselben Regeln "
     "und Freigaben. Erscheint ein Befehl unklar oder unvollständig, frag nach statt zu raten. "
-    "Der Nutzer hört deine Antwort nur über das Werkzeug `sprich`, nicht über das Terminal: Rufe `sprich` am Ende jedes Zuges, "
-    "der mit einer kushim-Nachricht begann, genau einmal auf, mit einer kurzen deutschen Zusammenfassung für die Ohren "
-    "(ohne Markdown, ohne Code, ohne Pfade und Listen, höchstens drei Sätze). Bei einer Rückfrage stell sie in `sprich`. "
+    "Der Nutzer hört dich nur über das Werkzeug `sprich`, nicht über das Terminal. Ablauf bei jeder kushim-Nachricht: "
+    "(1) Sofort, noch vor anderen Werkzeugen, `sprich` mit zwischenstand=true und EINEM kurzen Satz, wie du das Anliegen "
+    "einschätzt und was du jetzt tust (z. B. \"Ich lasse die Tests laufen und schaue, was rot ist.\"). Ist die Antwort sofort "
+    "klar (kurze Frage), überspring das und antworte direkt. (2) Am Ende genau einmal `sprich` ohne zwischenstand mit dem "
+    "Ergebnis: kurz, deutsch, für die Ohren (ohne Markdown, Code, Pfade und Listen, höchstens drei Sätze). Bei einer Rückfrage "
+    "stell sie in diesem letzten `sprich`. "
     'Eine Nachricht mit kind="cancel" heißt: Der Nutzer hat per Stimme abgebrochen. Den laufenden Auftrag nicht fortsetzen, '
     'nichts Neues beginnen, kurz per `sprich` bestätigen. Eine Nachricht mit kind="kill" ist der NOTAUS: sofort aufhören, keine '
     "Werkzeuge mehr benutzen, nichts mehr vorlesen lassen und auf den Nutzer im Terminal warten."
@@ -59,8 +62,11 @@ SPRICH_TOOL = {
     "name": "sprich",
     "description": ("Liest dem Nutzer einen kurzen deutschen Text über kushim vor (lokale Stimme). Nur Fließtext, kein Markdown, "
                     f"keine Codeblöcke, höchstens {MAX_SPOKEN} Zeichen."),
-    "inputSchema": {"type": "object", "properties": {"text": {"type": "string", "description": "Der vorzulesende Text"}},
-                    "required": ["text"]},
+    "inputSchema": {"type": "object", "properties": {
+        "text": {"type": "string", "description": "Der vorzulesende Text"},
+        "zwischenstand": {"type": "boolean", "description": "true für die kurze Ansage zu Beginn (was du vorhast); das Ergebnis "
+                                                             "am Ende ohne dieses Feld"}},
+        "required": ["text"]},
 }
 _LINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")
 _CODE = re.compile(r"```.*?```", re.S)
@@ -86,13 +92,16 @@ class Channel:
         self._lock = threading.Lock()
         self.ready = threading.Event()             # erst nach `initialized` dürfen Benachrichtigungen raus
         self._replies: deque[str] = deque(maxlen=MAX_QUEUE)
+        self._final = False                        # seit dem letzten Abholen kam ein Ergebnis (nicht nur ein Zwischenstand)
+        self.last_final = False                    # beim letzten Abholen war ein Ergebnis dabei
         self._cond = threading.Condition()
         self._perms: dict[str, dict[str, Any]] = {}      # offene Freigabe-Anfragen von Claude (C1), älteste zuerst
         self._fresh: deque[str] = deque()                 # davon noch nicht an kushim gegeben
 
-    def say(self, text: str) -> None:
+    def say(self, text: str, interim: bool = False) -> None:
         with self._cond:
             self._replies.append(text)
+            self._final = self._final or not interim
             self._cond.notify_all()
 
     def take(self, wait: float = 0.0) -> list[str]:
@@ -100,7 +109,8 @@ class Channel:
         return self.take_events(wait)[0]
 
     def take_events(self, wait: float = 0.0) -> tuple[list[str], list[dict[str, str]]]:
-        """(Antworten, neue Freigabe-Anfragen); wartet bis `wait` Sekunden, falls noch nichts da ist."""
+        """(Antworten, neue Freigabe-Anfragen); wartet bis `wait` Sekunden, falls noch nichts da ist. Ob ein Ergebnis dabei
+        war, steht danach in `last_final`."""
         with self._cond:
             self._expire()
             if not self._replies and not self._fresh and wait > 0:
@@ -108,6 +118,7 @@ class Channel:
                 self._expire()
             texts = list(self._replies)
             self._replies.clear()
+            self.last_final, self._final = self._final, False
             perms = [{k: v for k, v in self._perms[i].items() if k != "at"} for i in self._fresh if i in self._perms]
             self._fresh.clear()
             return texts, perms
@@ -164,7 +175,7 @@ class Channel:
         text = spoken_text(args.get("text")) if isinstance(args.get("text"), str) else ""
         if not text:
             return {"content": [{"type": "text", "text": "Leerer Text, nichts vorgelesen."}], "isError": True}
-        self.say(text)
+        self.say(text, interim=args.get("zwischenstand") is True)
         return {"content": [{"type": "text", "text": "Wird vorgelesen."}]}
 
     def _send(self, msg: dict[str, Any]) -> None:
@@ -268,7 +279,7 @@ def make_http(channel: Channel, root: Path, token: str, port: int = 0) -> Thread
             texts, perms = channel.take_events(max(0.0, min(wait, MAX_WAIT)) if wait == wait else 0.0)     # NaN wird 0
             if (texts or perms) and killswitch.is_triggered(root):     # Notaus während des Wartens: nichts mehr weitergeben
                 return self._reply(423, {"error": "kill_switch"})
-            self._reply(200, {"texts": texts, "permissions": perms})
+            self._reply(200, {"texts": texts, "permissions": perms, "final": bool(texts) and channel.last_final})
 
         def do_POST(self) -> None:
             if not self._allowed():
