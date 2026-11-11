@@ -635,16 +635,29 @@ def _main(argv: list[str] | None = None) -> int:
         api = None
         try:
             from .tasks import TaskRegistry
+            from .voice.talklog import TalkLog
             tasks = TaskRegistry()
+            talklog = TalkLog(root / "run" / "talk.log")       # Gesprächsprotokoll zur Fehlersuche (lokal, ohne Audio)
+            talklog.write("start", folder=bool(args.claude_folder), voice_profile=True)
+
+            def note(s: str) -> None:
+                print(f"[Hinweis] {s}")
+                talklog.write("note", text=s)
             pipeline, kill, mic, ack = build_live(root, audio.find_device(args.out, "output"),
                                                   audio.find_device(args.mic, "input"),
                                                   verifier=verifier, tasks=tasks, clone=cfg.voice_clone, clone_ref=cfg.voice_clone_ref,
-                                                  on_note=lambda s: print(f"[Hinweis] {s}"),
+                                                  on_note=note,
                                                   wake_names=[w.name for w in wcfg.enabled()],
                                                   whisper_device=plan.whisper_device,
                                                   whisper_index=plan.whisper_index,
                                                   claude_folder=_approved_folder(cfg, args.claude_folder),
                                                   approval_log=_approval_log(cfg))
+            pipeline.handle = talklog.timed(pipeline.handle)    # jedes Ergebnis mit Dauer ins Protokoll
+            raw_ack = ack
+
+            def ack():
+                talklog.write("wake")                           # Wake Word erkannt, "Ja?" kommt
+                raw_ack()
             det = build_detector(wcfg, root)
             wait_ms = int(wcfg.settings.listen_seconds * 1000)
             first_ms = int(wcfg.settings.command_wait_seconds * 1000)
@@ -698,7 +711,7 @@ def _main(argv: list[str] | None = None) -> int:
                             follow_collector=(lambda: utter(follow_ms)) if follow_ms > 0 else None,
                             barge=barge, preroll_frames=round(st.preroll_seconds / 0.08),
                             announce=pipeline.chat.announcement,          # verspätete Antworten von Claude
-                            say=pipeline.say_text, on_note=lambda s: print(f"[Hinweis] {s}"))
+                            say=pipeline.say_text, on_note=note)
             print("Wake Words: " + ", ".join(w.name for w in wcfg.enabled())
                   + ". Notaus: 'Notaus' sagen oder die Verknüpfung. Strg+C beendet.")
             if follow_ms > 0:
@@ -707,11 +720,17 @@ def _main(argv: list[str] | None = None) -> int:
             if barge is not None:
                 print("Unterbrechen: einfach dazwischensprechen (Kopfhörer empfohlen; mit Lautsprechern kann kushim sich "
                       "selbst hören: barge_in_level erhöhen oder barge_in = false in wakewords.toml).")
+            talklog.write("ready", wake_words=", ".join(w.name for w in wcfg.enabled()),
+                          channel=pipeline.chat.bridge.available())
             reason = loop.run()
             publisher.clear()
             print("Ende:", reason)
+            talklog.write("end", reason=reason)
         except KeyboardInterrupt:
-            pass
+            talklog.write("end", reason="strg+c oder Fenster geschlossen")
+        except Exception as e:                            # noqa: BLE001 (protokollieren, dann wie bisher abbrechen)
+            talklog.write("error", where="talk", error=f"{type(e).__name__}: {e}")
+            raise
         finally:
             if api is not None:
                 _api_stop(*api)
