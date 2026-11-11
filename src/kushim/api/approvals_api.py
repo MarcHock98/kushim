@@ -32,13 +32,8 @@ def digest_of(p: Permission) -> str:
 
 
 def _snapshot(bridge: Bridge) -> list[Permission]:
-    """Kopie der offenen Anfragen; die Sprach-Schleife darf gleichzeitig anhängen oder entfernen."""
-    for _ in range(5):
-        try:
-            return list(bridge.permissions)
-        except RuntimeError:                       # deque während des Kopierens verändert: nochmal
-            continue
-    return []
+    """Kopie der offenen Anfragen; die Sprach-Schleife darf gleichzeitig anhängen oder entfernen (Sperre in der Brücke)."""
+    return bridge.pending()
 
 
 def truncated(p: Permission) -> bool:

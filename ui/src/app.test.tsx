@@ -152,8 +152,31 @@ describe("Freigabe-Leiste (Claude Code)", () => {
     await waitFor(() => screen.getAllByText(STATE_VIEW.idle.label));
     sock.current!.pending = [{ ...P }, ...extra];
     await waitFor(() => expect(screen.getByRole("alertdialog")).toBeInTheDocument(), { timeout: 3000 });
+    await armed();
     return sock.current!;
   }
+
+  async function armed() {                                                  // Knöpfe erst nach ARM_MS freigeschaltet
+    await waitFor(() => expect(screen.getByRole("button", { name: "Ablehnen" })).toBeEnabled(), { timeout: 2000 });
+  }
+
+  it("nach einem Wechsel der Anfrage sind die Knöpfe kurz gesperrt: ein Klick trifft nie die nachrückende", async () => {
+    const sock: { current?: MockSocket } = {};
+    render(<App load={loaderWith(sock)} />);
+    await waitFor(() => screen.getAllByText(STATE_VIEW.idle.label));
+    sock.current!.pending = [{ ...P }];
+    await waitFor(() => expect(screen.getByRole("alertdialog")).toBeInTheDocument(), { timeout: 3000 });
+    expect(screen.getByRole("button", { name: "Erlauben" })).toBeDisabled();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Erlauben" })); });
+    await act(async () => { fireEvent.keyDown(screen.getByRole("alertdialog"), { key: "Escape" }); });
+    expect(decides(sock.current!)).toHaveLength(0);
+    await armed();
+    sock.current!.pending = [{ ...P, request_id: "neu00", input_preview: "andere", digest: "f".repeat(64) }];   // erledigt, die nächste rückt nach
+    await waitFor(() => expect(screen.getByRole("alertdialog").textContent).toContain("Eingabe: andere"), { timeout: 3000 });
+    expect(screen.getByRole("button", { name: "Erlauben" })).toBeDisabled();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Erlauben" })); });
+    expect(decides(sock.current!)).toHaveLength(0);
+  });
 
   it("zeigt den exakten Text von Claude; Standardfokus liegt auf Ablehnen; kein 'Immer erlauben'", async () => {
     await asking();
@@ -185,6 +208,7 @@ describe("Freigabe-Leiste (Claude Code)", () => {
     await waitFor(() => expect(screen.getByRole("alertdialog")).toBeInTheDocument(), { timeout: 3000 });
     expect(screen.queryByRole("button", { name: "Erlauben" })).toBeNull();
     expect(screen.getByText(/Erlauben bitte im Terminal/)).toBeInTheDocument();
+    await armed();
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Ablehnen" })); });
     expect(decides(sock.current!)[0]).toMatchObject({ request_id: "abcde", approve: false });
   });

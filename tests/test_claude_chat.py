@@ -18,6 +18,9 @@ class FakeBridge:
         self.sent, self._send, self.replies, self._available, self.fetches = [], send, list(replies), available, []
         self.permissions = deque()
 
+    def pending(self):
+        return list(self.permissions)
+
     def available(self):
         return self._available
 

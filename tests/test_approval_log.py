@@ -93,3 +93,33 @@ def test_the_whole_voice_flow_is_protocolled(tmp_path):
     assert [r["result"] for r in rows] == ["asked", "weak", "allowed", "terminal_only", "asked", "timeout"]
     assert rows[1]["score"] == 0.71 and rows[2]["score"] == 0.9 and rows[3]["reason"] == "unvollständig"
     assert all(r["source"] == "voice" and r["what"].startswith("Claude möchte") for r in rows)
+
+
+def test_a_log_failure_gives_a_hint_instead_of_silence():
+    hints = []
+
+    def broken():
+        raise OSError("gesperrt")
+    log = al.ApprovalLog(broken, on_fail=lambda: hints.append(1))
+    log({"result": "allowed"})
+    log({"result": "asked"})
+    assert log.failures == 2 and hints == [1, 1]
+
+
+def test_a_broken_url_in_a_request_never_breaks_the_voice_round():
+    seen = []
+    v = pv.PermissionVoice(FakeBridge(), blocked=lambda p: None, on_decision=seen.append)
+    bad = Permission.parse({"request_id": "r1", "tool_name": "WebFetch", "description": "",
+                            "input_preview": '{ "url": "http://[kaputt" }'})
+    assert v.offer(bad).startswith("Claude möchte eine Webseite abrufen.")
+    assert seen and seen[0]["result"] == "terminal_only"
+
+
+def test_start_warns_when_the_token_folder_is_inside_claudes_work_folder(tmp_path):
+    from kushim import cli
+    kushim_root, other = tmp_path / "kushim", tmp_path / "proj"
+    (kushim_root / "run").mkdir(parents=True)
+    other.mkdir()
+    assert cli._token_dir_inside(kushim_root, kushim_root)          # Claude arbeitet im kushim-Repo selbst
+    assert cli._token_dir_inside(kushim_root, tmp_path)
+    assert not cli._token_dir_inside(kushim_root, other)

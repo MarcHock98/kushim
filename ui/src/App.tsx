@@ -174,14 +174,15 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
     else setToast("Die Bewertung konnte nicht gespeichert werden.");
   }, []);
 
-  const decide = useCallback(async (approve: boolean) => {
-    const p = pending[0];
-    if (!p) return;
+  const decide = useCallback(async (p: PermissionRequest, approve: boolean) => {
+    // Entschieden wird genau für die angezeigte Anfrage (nie für die, die gerade nachrückt).
+    if (!pending.some((o) => o.request_id === p.request_id && o.digest === p.digest)) return;
     setPending((old) => old.filter((o) => o.request_id !== p.request_id));   // nie doppelt absenden
     const r = await client.current?.call("approvals.decide", { request_id: p.request_id, approve, digest: p.digest, ...(approve ? { confirm: true } : {}) });
     if (r?.ok) setToast(approve ? "Erlaubt. Claude Code macht weiter." : "Abgelehnt. Claude Code führt es nicht aus.");
     else setToast(r && !r.ok && r.error === "stale" ? "Die Anfrage hat sich geändert. Bitte neu prüfen."
       : r && !r.ok && r.error === "kill" ? "Notaus ist aktiv. Nichts wurde entschieden."
+      : r && !r.ok && r.error === "terminal_only" ? "Der Text ist gekürzt. Erlauben bitte im Terminal."
       : "Nichts mehr zu entscheiden (erledigt oder Claude Code nicht erreichbar).");
     setTimeout(() => setToast(""), 5000);
   }, [pending]);
@@ -232,7 +233,7 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
       </nav>
       <main className="view" ref={viewRef}>
         {state === "halted" && <HaltedBanner onResume={() => void doResume()} />}
-        {pending.length > 0 && state === "asking" && <PermissionBar request={pending[0]} more={pending.length - 1} onDecide={(a) => void decide(a)} />}
+        {pending.length > 0 && state === "asking" && <PermissionBar request={pending[0]} more={pending.length - 1} onDecide={(p, a) => void decide(p, a)} />}
         <div className="toast" role="status" aria-live="polite">{toast}</div>
         <div className="content">
           <MemoryPanel client={client} connected={connected} active={view === "memory"} />

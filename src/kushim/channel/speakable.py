@@ -82,7 +82,10 @@ def describe(perm: Permission) -> str:
         sentence = (f"Claude möchte {what} {_file_name(path)} {_FILE_ACTIONS[key]}." if path
                     else f"Claude möchte eine Datei {_FILE_ACTIONS[key]}.")
     elif key == "webfetch":
-        host = urlsplit(field(preview, "url") or "").hostname
+        try:
+            host = urlsplit(field(preview, "url") or "").hostname
+        except ValueError:                          # z. B. „http://[kaputt“: fremder Text darf die Ansage nie abbrechen
+            host = None
         sentence = (f"Claude möchte die Webseite {_short(host, MAX_NAME)} abrufen." if host
                     else "Claude möchte eine Webseite abrufen.")
     elif key == "websearch":

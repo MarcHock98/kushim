@@ -58,8 +58,12 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
   Geheimnisse), Runde 3 freigegeben mit Auflage N1 (Ordner als Git-Pfad), behoben. 755 Tests grün.
   Restrisiko in der Roadmap: Tests führen Repo-Code aus; Freigaben per Stimme nur im Standard-Modus von Claude Code.
   Nicht geprüft: live mit Mikrofon (C6, Nutzer), ob „Ja, das erlaube ich“ in der Praxis als „stark“ erkannt wird.
-- Nächster Schritt: **C5** (Protokoll jeder Freigabe; `PermissionVoice.on_decision` ist schon da, schreibt bisher nur
-  einen Hinweis ins Terminal), dann C0, C6 (Nutzer). Noch offen: Z3 (Nutzer).
+- 2026-11-11 Loop-Durchlauf 19: **C5 und C0 parallel** (C5 selbst, C0 per Agent `ui-builder` im Worktree), beide gemerged,
+  nicht gepusht. Safety-Audit von C0+C5: freigegeben mit Auflagen, alle behoben (kaputte URL brach die Sprach-Runde ab,
+  Klick konnte nachrückende Anfrage treffen, Brücke nicht thread-sicher, stiller Protokoll-Verlust). Offen als Frage: C7
+  (Token-Dateien im Projektordner). Python 779, UI 61 grün. Hinweis: Der Auditor hat beim Lesen den Branch im Hauptrepo
+  gewechselt (nichts verloren); künftig ausdrücklich "kein git switch/checkout" in den Auftrag schreiben.
+- Nächster Schritt: C6 (Live-Test, Nutzer), C7 (Antwort des Nutzers), dann Phase D. Noch offen: Z3 (Nutzer).
 - Blockiert: A5 (Gates entfernen, Frage offen), Phase B ab B1 (B0).
 - Bereit zum Push durch den Nutzer: master, routine/a1-voice-commands, routine/a2-web-research, routine/a3-timers-notes,
   routine/a4-claude-control, routine/a6-local-llm, routine/a7-rest
@@ -79,8 +83,11 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
 - Nutzer-ID / Kanal-ID: nicht verwendet. Verbundenes Slack-Konto hat andere Mail (Arbeits-Workspace) als die Git-/Claude-Mail, Empfänger unsicher, daher nichts gesendet
 
 ## Offene Fragen an den Nutzer
-- Keine offenen Fragen. (2026-10-27: die Fragen vom 2026-10-04 zu Websuche und WebSocket-Transport sind überholt:
-  Websuche entfernt (A2), Transport freigegeben und gemerged.)
+- 2026-11-11 (C7): Token-Dateien `run/channel.json` und `run/api.json` liegen im kushim-Ordner. Arbeitet Claude im
+  kushim-Repo selbst, kann es sie lesen und sich über Channel/API selbst Freigaben geben (braucht dafür aber ein
+  erlaubtes Werkzeug, das 127.0.0.1 aufruft). Optionen: (a) **Empfehlung:** nach `%LOCALAPPDATA%\kushim\run` verlegen,
+  (b) so lassen und kushim nicht als Claude-Arbeitsordner nutzen, (c) so lassen (nur Warnung). Bis zur Antwort: Warnung
+  bei `kushim start`.
 
 ## Blockiert
 - Live-Mikrofon-Test: nur der Nutzer kann ihn ausführen

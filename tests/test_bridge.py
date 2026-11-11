@@ -124,3 +124,26 @@ def test_loopback_http_error_carries_the_status():
     e = loopback.HttpError(423)
     assert isinstance(e, ConnectionError) and e.status == 423 and br.Bridge._status(e) == "kill"
     assert br.Bridge._status(loopback.HttpError(500)) == "error"
+
+
+def test_pending_and_answer_are_safe_while_another_thread_appends(tmp_path):
+    import threading
+    from kushim.channel.bridge import Bridge, Permission
+    b = Bridge(tmp_path, request=lambda *a, **k: {})
+    stop = threading.Event()
+
+    def appender():
+        i = 0
+        while not stop.is_set():
+            with b._perm_lock:
+                b.permissions.append(Permission(f"r{i % 50}", "Bash", "", "{ }"))
+            i += 1
+    t = threading.Thread(target=appender)
+    t.start()
+    try:
+        for i in range(2000):
+            b.pending()
+            b.answer(f"r{i % 50}", "deny")          # kein Channel: Status egal, nur keine Ausnahme beim Entfernen
+    finally:
+        stop.set()
+        t.join()

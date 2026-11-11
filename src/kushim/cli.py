@@ -139,6 +139,9 @@ def _start(args, cfg: Config, root) -> int:
     except ValueError as e:
         print(f"Ordner «{chosen.name}» ist nicht (mehr) zulässig: {e}")
         return 2
+    if _token_dir_inside(root, folder):
+        print("Achtung: kushims Ordner run/ (Token für Channel und Oberfläche) liegt im Arbeitsordner von Claude. Claude "
+              "könnte die Token lesen. Freigaben in der Oberfläche und per Stimme dann nur mit Vorsicht benutzen.")
     import _thread
     import threading
     from .procflags import kill_tree
@@ -185,10 +188,20 @@ def _approved_folder(cfg: Config, raw: str | None):
     return path if path in known else None
 
 
+def _token_dir_inside(root, folder) -> bool:
+    """Liegt kushims `run/` (Token für Channel und API) in Claudes Arbeitsordner? (Safety-Audit 2026-11-11, B5)"""
+    try:
+        (root / "run").resolve().relative_to(folder.resolve())
+        return True
+    except (ValueError, OSError):
+        return False
+
+
 def _approval_log(cfg: Config):
     """Freigabe-Protokoll im Vault (C5); öffnet den Vault je Eintrag, damit es aus jedem Thread geht."""
     from .channel.approval_log import ApprovalLog
-    return ApprovalLog(lambda: open_store(cfg))
+    return ApprovalLog(lambda: open_store(cfg),
+                       on_fail=lambda: print("[Hinweis] Freigabe-Protokoll konnte nicht in den Vault geschrieben werden."))
 
 
 def _vault_state(cfg: Config) -> str:

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /** Freigabe-Anfrage von Claude Code (Channel). Alle Texte sind fremd: nur anzeigen, nie ausführen. */
 export interface PermissionRequest {
@@ -14,15 +14,26 @@ export interface PermissionRequest {
 interface Props {
   request: PermissionRequest;
   more: number;            // weitere offene Anfragen
-  onDecide: (approve: boolean) => void;
+  onDecide: (request: PermissionRequest, approve: boolean) => void;
 }
 
+/** So lange sind die Knöpfe nach jedem Wechsel der Anfrage gesperrt: Ein Klick, der der vorigen Anfrage galt, darf nie
+ *  die nachrückende treffen (Safety-Audit 2026-11-11, M2). */
+export const ARM_MS = 700;
+
 /** Freigabe-Leiste für Claudes Anfragen: exakter Text, zwei gleich große Knöpfe, Standardfokus auf Ablehnen, Esc lehnt ab.
- *  Kein "Immer erlauben", nichts vorausgefüllt. Entschieden wird nur per Klick. */
+ *  Kein "Immer erlauben", nichts vorausgefüllt. Entschieden wird nur per Klick, und nur für die angezeigte Anfrage. */
 export function PermissionBar({ request, more, onDecide }: Props) {
   const deny = useRef<HTMLButtonElement>(null);
-  useEffect(() => { deny.current?.focus(); }, [request.digest]);
-  const onKey = (e: React.KeyboardEvent) => { if (e.key === "Escape") onDecide(false); };
+  const [armed, setArmed] = useState(false);
+  useEffect(() => {
+    setArmed(false);
+    const t = setTimeout(() => setArmed(true), ARM_MS);
+    return () => clearTimeout(t);
+  }, [request.request_id, request.digest]);
+  useEffect(() => { if (armed) deny.current?.focus(); }, [armed]);
+  const decide = (approve: boolean) => { if (armed) onDecide(request, approve); };
+  const onKey = (e: React.KeyboardEvent) => { if (e.key === "Escape") decide(false); };
   const exact = [`Werkzeug: ${request.tool_name || "(unbekannt)"}`, request.description && `Beschreibung: ${request.description}`,
     request.input_preview && `Eingabe: ${request.input_preview}`].filter(Boolean).join("\n");
 
@@ -35,9 +46,9 @@ export function PermissionBar({ request, more, onDecide }: Props) {
       {more > 0 && <p className="ap-time">Noch {more} weitere Anfrage(n) offen.</p>}
       {request.truncated && <p className="ap-note">Der Text ist gekürzt. Erlauben bitte im Terminal, hier geht nur Ablehnen.</p>}
       <div className="ap-actions">
-        <button ref={deny} type="button" className="ap-btn" onClick={() => onDecide(false)}>Ablehnen</button>
+        <button ref={deny} type="button" className="ap-btn" disabled={!armed} onClick={() => decide(false)}>Ablehnen</button>
         {!request.truncated &&
-          <button type="button" className="ap-btn primary" onClick={() => onDecide(true)}>Erlauben</button>}
+          <button type="button" className="ap-btn primary" disabled={!armed} onClick={() => decide(true)}>Erlauben</button>}
       </div>
     </section>
   );
