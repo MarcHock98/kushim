@@ -19,6 +19,7 @@ TERMINAL = "Bitte im Terminal bestätigen."      # solange C3 (Antwort per Stimm
 MAX_COMMAND = 90                                # so viel vom Befehl wird vorgelesen, danach „und so weiter“
 MAX_NAME = 60                                   # Datei-, Werkzeug- und Seitennamen
 MAX_SENTENCE = 220
+PREVIEW_LIMIT = 500                             # so viel `input_preview` behält die Brücke; wer es erreicht, ist gekürzt
 
 _SYMBOLS = (("&&", " und dann "), ("||", " oder sonst "), ("|", " Pipe "), (";", ", dann "),
             (">", " nach "), ("<", " aus "))
@@ -54,9 +55,7 @@ def _short(text: str, limit: int) -> str:
 
 def _speak_command(cmd: str) -> str:
     """Shell-Zeichen werden Wörter (die Stimme verschluckt sie sonst), Anführungszeichen fallen weg."""
-    for sym, word in _SYMBOLS:
-        cmd = cmd.replace(sym, word)
-    return _short(cmd.translate(_DROP), MAX_COMMAND)
+    return _short(_speak_cmd_raw(cmd), MAX_COMMAND)
 
 
 def _file_name(path: str) -> str:
@@ -102,6 +101,30 @@ def describe(perm: Permission) -> str:
     else:
         sentence = "Claude möchte etwas tun, das eine Freigabe braucht."
     return clean_text(sentence)[:MAX_SENTENCE]
+
+
+def _speak_cmd_raw(cmd: str) -> str:
+    for sym, word in _SYMBOLS:
+        cmd = cmd.replace(sym, word)
+    return clean_text(cmd.translate(_DROP))
+
+
+def complete(perm: Permission) -> bool:
+    """Sagt die Ansage alles Wesentliche? Nein bei gekürzter Vorschau („…“, „⋯ elided ⋯“, am Längenlimit), gekürztem Befehl
+    oder Namen und bei Werkzeugen, deren Satz die Eingabe gar nicht nennt (MCP, Agenten, unbekannte). Nur dann darf eine
+    Antwort per Stimme überhaupt in Frage kommen (Auflage aus dem Review von C2)."""
+    preview = perm.input_preview
+    if "…" in preview or "⋯" in preview or "elided" in preview or len(preview) >= PREVIEW_LIMIT:
+        return False
+    key = perm.tool_name.strip().lower()
+    if key in _SHELLS:
+        cmd = field(preview, "command")
+        return bool(cmd) and 0 < len(_speak_cmd_raw(cmd)) <= MAX_COMMAND
+    if key in _FILE_ACTIONS:
+        path = field(preview, "notebook_path" if key == "notebookedit" else "file_path")
+        name = re.split(r"[\\/]", path.rstrip("\\/"))[-1] if path else ""
+        return 0 < len(clean_text(name.translate(_DROP))) <= MAX_NAME
+    return False
 
 
 def announce(perm: Permission, ask: bool = False) -> str:

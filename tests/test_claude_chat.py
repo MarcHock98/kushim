@@ -112,18 +112,30 @@ def perm(rid, cmd):
                                 "input_preview": '{ "command": "%s" }' % cmd})
 
 
-def test_permission_requests_are_announced_once_while_the_turn_keeps_waiting():
+def test_a_permission_request_ends_the_turn_so_the_loop_can_listen_and_the_reply_comes_later():
+    clock = Clock()
     b = FakeBridge()
-    replies = [("ok", []), ("ok", []), ("ok", ["Tests laufen durch."])]
+    replies = [("ok", []), ("ok", [])]
 
     def fetch(wait=0.0):
-        if len(replies) == 3:
+        if len(replies) == 1:
             b.permissions.append(perm("r1", "npm test"))                           # Claude fragt im Terminal nach
         return replies.pop(0)
     b.fetch = fetch
-    out = list(cc.ClaudeChat(b, TaskRegistry())(MSGS))
-    assert out == [cc.ACK, "Claude möchte den Befehl npm test ausführen. Bitte im Terminal bestätigen.",
-                   "Tests laufen durch."]
+    chat = cc.ClaudeChat(b, TaskRegistry(), clock=clock)
+    assert list(chat(MSGS)) == [cc.ACK, "Claude möchte den Befehl npm test ausführen. Bitte im Terminal bestätigen."]
+    b.fetch = lambda wait=0.0: ("ok", ["Tests laufen durch."])
+    assert chat.announcement() == "Tests laufen durch."                             # die Anfrage wird nicht wiederholt
+
+
+def test_with_voice_only_the_newest_request_gets_the_question():
+    class Voice:
+        def offer(self, p):
+            return "FRAGE " + p.request_id
+    b = FakeBridge()
+    b.permissions.extend([perm("r1", "ls"), perm("r2", "pwd")])
+    chat = cc.ClaudeChat(b, TaskRegistry(), voice=Voice())
+    assert chat.announcement() == "Claude möchte den Befehl ls ausführen. Bitte im Terminal bestätigen. FRAGE r2"
 
 
 def test_idle_announcement_reads_new_permission_requests_once():
