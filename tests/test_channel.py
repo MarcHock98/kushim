@@ -331,3 +331,32 @@ def test_long_poll_wakes_up_for_a_permission_request(live):
     threading.Timer(0.2, lambda: perm_request(c, rid="spät")).start()
     status, body = get(port, "/reply?wait=5")
     assert status == 200 and [p["request_id"] for p in body["permissions"]] == ["spät"]
+
+
+def test_a_second_channel_of_the_same_config_does_not_take_over(tmp_path, monkeypatch):
+    import os
+    import subprocess
+    import sys
+    run = tmp_path / "run"
+    run.mkdir()
+    other = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+    try:
+        (run / "channel.json").write_text(json.dumps({"port": 1234, "token": "t" * 32, "pid": other.pid}), encoding="utf-8")
+        assert ch.pid_alive(other.pid) and ch.other_owner(tmp_path) == other.pid          # Hintergrund-Sitzung: stumm bleiben
+    finally:
+        other.kill()
+        other.wait()
+    assert not ch.pid_alive(other.pid) and ch.other_owner(tmp_path) is None              # tot: übernehmen
+    (run / "channel.json").write_text(json.dumps({"pid": os.getpid()}), encoding="utf-8")
+    assert ch.other_owner(tmp_path) is None                                               # die eigene Datei
+    (run / "channel.json").write_text("kaputt", encoding="utf-8")
+    assert ch.other_owner(tmp_path) is None
+    assert not ch.pid_alive(True) and not ch.pid_alive(-5) and not ch.pid_alive("12")
+
+
+def test_start_removes_a_stale_channel_file(tmp_path):
+    from kushim.channel import launch
+    (tmp_path / "run").mkdir()
+    (tmp_path / "run" / "channel.json").write_text("{}", encoding="utf-8")
+    launch.launch(tmp_path / "claude.exe", tmp_path, tmp_path, popen=lambda *a, **k: "fenster")
+    assert not (tmp_path / "run" / "channel.json").exists()
