@@ -318,6 +318,41 @@ def watch_kill(channel: Channel, root: Path, stop: threading.Event, interval: fl
             told = False
 
 
+def pid_alive(pid: Any) -> bool:
+    """Läuft dieser Prozess noch? Unter Windows über OpenProcess (os.kill(pid, 0) würde dort den Prozess BEENDEN)."""
+    if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0:
+        return False
+    if os.name == "nt":
+        import ctypes
+        k32 = ctypes.windll.kernel32
+        handle = k32.OpenProcess(0x1000, False, pid)            # PROCESS_QUERY_LIMITED_INFORMATION
+        if not handle:
+            return False
+        try:
+            code = ctypes.c_ulong()
+            return bool(k32.GetExitCodeProcess(handle, ctypes.byref(code))) and code.value == 259   # STILL_ACTIVE
+        finally:
+            k32.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def other_owner(root: Path) -> int | None:
+    """PID eines anderen, noch laufenden kushim-Channels, dem `run/channel.json` gehört; sonst None.
+
+    Claude Code startet für Hintergrund-Sitzungen und Agenten derselben Sitzung weitere Channel-Server (gleiche MCP-
+    Konfiguration). Würden sie die Datei überschreiben, spräche kushim mit einem Channel ohne Zuhörer und Claudes
+    Antworten gingen verloren (Live-Test 2026-11-11). Darum gilt: Der erste Channel behält die Datei."""
+    try:
+        pid = json.loads((root / "run" / "channel.json").read_text(encoding="utf-8")).get("pid")
+    except (OSError, ValueError, AttributeError):
+        return None
+    return pid if pid != os.getpid() and pid_alive(pid) else None
+
+
 def write_info(root: Path, port: int, token: str) -> Path:
     info = root / "run" / "channel.json"
     info.parent.mkdir(parents=True, exist_ok=True)
@@ -335,6 +370,11 @@ def main(root: Path | None = None) -> int:
     sys.stdout.reconfigure(encoding="utf-8")                  # Claude Code liest UTF-8; Windows-Pipes wären cp1252
     sys.stdin.reconfigure(encoding="utf-8")
     channel = Channel(sys.stdout)
+    owner = other_owner(root)
+    if owner is not None:                                      # Hintergrund-Sitzung/Agent: nur MCP, kein HTTP, Datei bleibt
+        channel.log(f"[kushim-channel] ein anderer kushim-Channel (pid {owner}) ist aktiv; dieser bleibt stumm")
+        channel.serve_stdio(sys.stdin)
+        return 0
     token = secrets.token_urlsafe(32)
     httpd = make_http(channel, root, token)
     info = write_info(root, httpd.server_address[1], token)

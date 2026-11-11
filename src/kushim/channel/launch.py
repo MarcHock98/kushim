@@ -82,6 +82,7 @@ def launch(exe: Path, folder: Path, root: Path, popen: Callable[..., Any] = subp
     """Startet Claude Code mit dem Channel im Ordner `folder` in einem eigenen Fenster (bewusst sichtbar: das ist die Oberfläche).
     Gibt den Fensterprozess zurück; seine Sitzungs-ID steht danach in `run/claude-session.txt`."""
     config = write_mcp_config(root)
+    (root / "run" / "channel.json").unlink(missing_ok=True)   # alte Angabe weg: der Channel dieser Sitzung trägt sich als erster ein
     sid = str(uuid.uuid4())
     (root / SESSION_FILE).write_text(sid, encoding="utf-8")
     flags = CREATE_NEW_CONSOLE if os.name == "nt" else 0
