@@ -47,7 +47,10 @@ def test_strong_yes_allows_exactly_the_asked_request_once():
     assert v.handle(YES, verified=True, strong=True) == pv.ALLOWED
     assert b.answers == [("r1", "allow")] and not v.awaiting
     assert v.handle(YES, verified=True, strong=True) is None                         # nichts mehr offen: geht an Claude
-    assert log == [{"request_id": "r1", "tool": "Bash", "result": "allowed", "verified": True, "strong": True}]
+    what = "Claude möchte den Befehl npm test ausführen."
+    assert log == [{"request_id": "r1", "tool": "Bash", "what": what, "result": "asked", "source": "voice"},
+                   {"request_id": "r1", "tool": "Bash", "what": what, "result": "allowed", "source": "voice",
+                    "verified": True, "strong": True, "score": None}]
 
 
 def test_weak_or_unverified_yes_never_sends_anything():

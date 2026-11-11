@@ -156,6 +156,7 @@ class Pipeline:
         if not text:
             return Result("", "", "wake_only")      # nur das Wake Word: kein Befehl, nichts prüfen, nichts antworten
         verified = strong = False
+        score: float | None = None                       # Sprecher-Ähnlichkeit, nur fürs Protokoll (C5)
         if self.verifier is not None and self.verifier.enrolled:
             # Eine kurze Bestätigung ("ja") nach einer stark verifizierten Anfrage darf kürzer sein.
             short_ok = getattr(self.commands, "awaiting", False)
@@ -164,7 +165,7 @@ class Pipeline:
                 return Result(text, "", "rejected_speaker",
                               f"Ähnlichkeit {v.score:.2f} (Schwelle {float(self.verifier.profile.threshold):.2f}), "
                               f"{v.seconds:.1f} s, {v.windows} Fenster: {v.reason}")
-            verified, strong = True, v.strong
+            verified, strong, score = True, v.strong, v.score
         if " ".join(_TOKEN.findall(re.sub(r"['’`]", "", text.lower()))) in END_PHRASES:     # Gespräch beenden (nur verifizierte Stimme)
             if verified or self.verifier is None or not self.verifier.enrolled:
                 self.speaker.say([END_REPLY])
@@ -173,7 +174,7 @@ class Pipeline:
             self.speaker.say([SHUTDOWN_REPLY])
             return Result(text, SHUTDOWN_REPLY, "shutdown")
         if self.commands is not None:
-            answer = self.commands.handle(text, verified, strong)
+            answer = self.commands.handle(text, verified, strong, score=score)
             if answer is not None:                       # Befehl oder Bestätigung: kein LLM
                 self.speaker.say(split_sentences(answer) or [answer])      # satzweise: der erste Satz kommt früher
                 return Result(text, answer, "command")

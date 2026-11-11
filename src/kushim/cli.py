@@ -44,6 +44,7 @@ Prüfen und Hilfe
   kushim claude [check|enable|disable]  Claude CLI und Anmeldung prüfen; Modus C ein/aus
   kushim claude show           Die laufende Claude-Sitzung von kushim wieder in einem Fenster zeigen
   kushim claude folders|add|remove  Sichere Arbeitsordner für Claude verwalten
+  kushim claude approvals           Protokoll der Freigaben (Stimme, Oberfläche)
   kushim doctor                Prüft, ob alles installiert und eingerichtet ist
   kushim setup                 Stand der Einrichtung: Systemcheck, Stimme, Wake Words, Notaus
   kushim help                  Diese Übersicht
@@ -182,6 +183,12 @@ def _approved_folder(cfg: Config, raw: str | None):
         except ValueError:
             pass
     return path if path in known else None
+
+
+def _approval_log(cfg: Config):
+    """Freigabe-Protokoll im Vault (C5); öffnet den Vault je Eintrag, damit es aus jedem Thread geht."""
+    from .channel.approval_log import ApprovalLog
+    return ApprovalLog(lambda: open_store(cfg))
 
 
 def _vault_state(cfg: Config) -> str:
@@ -328,6 +335,8 @@ def _main(argv: list[str] | None = None) -> int:
     ca.add_argument("name")
     ca.add_argument("path")
     cl.add_parser("remove", help="Die Freigabe eines Ordners sofort entziehen").add_argument("name")
+    cl.add_parser("approvals", help="Protokoll der Freigaben (per Stimme und Oberfläche) anzeigen").add_argument(
+        "--limit", type=int, default=20)
     sub.add_parser("setup", help="Stand der Einrichtung (Systemcheck, Stimme, Wake Words, Notaus) anzeigen")
     ap = sub.add_parser("app", help="Die Oberfläche öffnen: startet Sprache und API im Hintergrund und beendet sie beim Schließen des Fensters")
     ap.add_argument("--no-voice", action="store_true", help="nur API und Fenster, ohne Sprachdienst")
@@ -365,6 +374,15 @@ def _main(argv: list[str] | None = None) -> int:
         return 0
     if args.cmd == "claude" and getattr(args, "sub", None) in ("folders", "add", "remove"):
         return _claude_dev(args, cfg, root)
+    if args.cmd == "claude" and getattr(args, "sub", None) == "approvals":
+        from .channel import approval_log
+        with _vault(cfg) as store:
+            rows = approval_log.recent(store, max(1, min(args.limit, 200)))
+        if not rows:
+            print("Noch keine Freigaben protokolliert.")
+        for row in rows:
+            print(approval_log.format_row(row))
+        return 0
     if args.cmd == "claude":
         from .claude_cli import base as claude_base
         action = getattr(args, "sub", None) or "check"
@@ -599,7 +617,8 @@ def _main(argv: list[str] | None = None) -> int:
                                                   wake_names=[w.name for w in wcfg.enabled()],
                                                   whisper_device=plan.whisper_device,
                                                   whisper_index=plan.whisper_index,
-                                                  claude_folder=_approved_folder(cfg, args.claude_folder))
+                                                  claude_folder=_approved_folder(cfg, args.claude_folder),
+                                                  approval_log=_approval_log(cfg))
             det = build_detector(wcfg, root)
             wait_ms = int(wcfg.settings.listen_seconds * 1000)
             first_ms = int(wcfg.settings.command_wait_seconds * 1000)
