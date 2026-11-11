@@ -57,6 +57,11 @@ Hinweis: Wurde dieser Skill in der laufenden Sitzung erst angelegt, ist er noch 
 
 ### 7. Prüfen
 - `kushim-safety-review` ausführen (bei größeren Änderungen zusätzlich Agent `safety-auditor`).
+- Alles, was kushim selbst entscheiden oder freigeben lässt (z. B. Freigaben per Stimme), IMMER mit `safety-auditor` prüfen
+  und erst nach "freigegeben" mergen; nach Korrekturen denselben Agenten erneut fragen (SendMessage), bis er freigibt.
+- **Shell-Regeln nie als Sperrliste:** Shell-Syntax hat zu viele Umwege (Schleifen, Quoting, `-Bc`, .NET, Optionen vor dem
+  Unterbefehl). Nur Erlaubt-Listen mit festem Zeichenvorrat. Pfade erst lexikalisch prüfen, `resolve()` nur für Pfade, die
+  schon im Ordner liegen (UNC `//host` löst sonst beim Prüfen einen SMB-Zugriff aus).
 - Ehrlich berichten: was getestet wurde, was nicht (z. B. Hardware/Mikrofon nicht testbar). Nicht "fertig" nennen, wenn etwas nur ungetestet ist.
 
 ### 8. Fragen an den Nutzer (lokal, nie über Dienste nach außen)

@@ -54,6 +54,8 @@ BLOCKED = [
     "pytest @args.txt", "python -m pytest @a", "git diff", "git show HEAD", "git log -p", "git log --patch",
     "git log -p -- src", "git diff --ext-d", "git diff --no-ind a b", "git diff --orderfile=x", "git log --stdin",
     "git show HEAD -- .env", "git diff -- ../x", "git diff -- -x", "git blame src/app.py", "git describe",
+    # Audit Runde 3 (N1): Ordner als Pfad zeigen alle Dateien darunter
+    "git diff -- .", "git diff --cached -- .", "git show HEAD -- src", "git diff -- src/app.py src", "git diff -- .gitignore",
 ]
 
 

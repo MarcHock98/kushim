@@ -124,12 +124,22 @@ den kushim-Channel (lokaler MCP-Server, stdio). kushim (Python) spricht mit dem 
       (2026-11-11, 573 grün): `channel/speakable.py` liest `input_preview` (Format aus Claude Code 2.1.321), `ClaudeChat`
       sagt jede Anfrage einmal an (in der Runde und im Leerlauf). Bis C3 endet die Ansage mit „Bitte im Terminal
       bestätigen.“ statt „Erlauben?“ (`announce(ask=True)` schaltet um). Nicht geprüft: Aussprache mit Piper (nur Nutzer).
-- [ ] C3 Antwort per Stimme: „ja“ nur mit **stark** verifizierter Stimme, „nein“/Stille/Zeitablauf = nichts senden (Terminal-Dialog
+- [x] C3 Antwort per Stimme: „ja“ nur mit **stark** verifizierter Stimme, „nein“/Stille/Zeitablauf = nichts senden (Terminal-Dialog
       bleibt offen); Ergebnis als `allow`/`deny` mit der request_id zurück. Ergänzt 2026-11-11 (Review C2): ein gekürzt
       vorgelesener Befehl („und so weiter“) oder eine gekürzte `input_preview` („elided“, „…“) ist nie per Stimme freigebbar
-- [ ] C4 Sperrliste: gefährliche Aktionen (Löschen, `git push --force`, Daten senden, Einstellungen ändern) nie per Stimme
-      freigebbar, nur im Terminal (Idee aus voice-mod). Prüft die Rohdaten, nicht den Ansagetext. Ergänzt 2026-11-11 (Review
-      C2): Dateien außerhalb des Arbeitsordners (vorgelesen wird nur der Dateiname) nie per Stimme
+      (2026-11-11): `voice/permission_voice.py`. Nur feste Sätze („Ja, das erlaube ich“), ein bloßes „ja“ ist zu kurz für
+      „stark“ (Nachfrage). Gilt nur für die zuletzt gestellte Frage, 60 s. kushim sendet nie „deny“ (nur der Notaus).
+      Nach einer Frage endet die Runde, damit zugehört wird; Claudes Antwort kommt später als Meldung. Mit der geklonten
+      eigenen Stimme als Ausgabe keine Freigaben per Stimme (Echo könnte die Sprecher-Prüfung bestehen).
+- [x] C4 ~~Sperrliste~~ **Erlaubt-Liste** (umgebaut nach dem Safety-Audit 2026-11-11: die Sperrliste war mit Schleifen,
+      `python -Bc`, .NET-Aufrufen u. a. umgehbar): `channel/voice_policy.py` prüft die Rohdaten. Per Stimme nur: ein einfacher
+      Befehl aus Tests/Prüfwerkzeugen (`npm test`, `npm run test|build|lint|typecheck|check`, `pytest`, `python -m pytest|…`),
+      lesendes Git mit Options-Liste (`show`/`diff` nur mit `--stat` oder Pfaden), `ls`/`dir`/`pwd`, Lesen von Dateien im
+      Arbeitsordner ohne Geheimnisse. Schreiben/Ändern, Web, MCP, Agenten nie per Stimme. Ohne Arbeitsordner (`kushim start`
+      gibt ihn an `talk`) gar nichts. Pfade werden ohne Netzzugriff geprüft. Drei Audit-Runden.
+      **Restrisiko (bewusst):** Tests und Prüfwerkzeuge führen Code des Repos aus (`conftest.py`, `package.json`-Skripte).
+      Hat Claude solche Dateien ohne Terminal-Dialog geändert (Modus „acceptEdits“), führt ein „ja“ diesen Code aus. Darum
+      Freigaben per Stimme nur im Standard-Modus von Claude Code benutzen.
 - [ ] C5 Protokoll jeder Freigabe lokal (was, wann, Sprecher-Score, Ergebnis), ohne Audio
 - [ ] C6 Live-Test **(Nutzer)**: Claude will einen Befehl ausführen → per Stimme erlauben → Claude macht weiter
 

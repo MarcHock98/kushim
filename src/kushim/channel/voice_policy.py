@@ -116,8 +116,10 @@ def shell_reason(cmd: str) -> str | None:
                 return "Pfad außerhalb des Arbeitsordners"
             elif after_sep:
                 paths.append(a)
-        if sub in _GIT_PATCH and not set(rest) & _SUMMARY and not paths:
-            return f"git {sub} zeigt Inhalte: nur mit --stat oder Pfaden"
+        if sub in _GIT_PATCH and not set(rest) & _SUMMARY:
+            # Inhalte nur für einzelne Dateien mit Endung („src/app.py“), nie für Ordner wie „.“ oder „src“ (Audit N1)
+            if not paths or not all(re.fullmatch(r"[A-Za-z0-9_-][A-Za-z0-9_.-]*\.[A-Za-z0-9]+", a.split("/")[-1]) for a in paths):
+                return f"git {sub} zeigt Inhalte: nur mit --stat oder einzelnen Dateien"
         return None
     if name in ("ls", "dir", "pwd") and all(_plain_path(a) for a in args if _is_path_arg(a)) \
             and all(a in ("-l", "-la", "-a", "-al", "-lh") for a in args if not _is_path_arg(a)):

@@ -51,7 +51,15 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
   gemerged; Entfernen entscheidet der Nutzer. **C2 fertig** (Branch `routine/c2-speakable`, gemerged, nicht gepusht):
   `channel/speakable.py`, Ansage je Anfrage einmal. 573 Tests grün, Review freigegeben (2 niedrige Funde als Auflagen
   in C3/C4 eingetragen). Claude Code ist inzwischen 2.1.321. Nicht geprüft: Aussprache mit Piper.
-- Nächster Schritt: **C3** (Antwort per Stimme), dann C4, C5, C0. Noch offen: Z3 (Nutzer).
+- 2026-11-11 Loop-Durchlauf 18: **C3 + C4 fertig** (Branch `routine/c3-voice-answer`, gemerged, nicht gepusht): Freigaben
+  per Stimme (`voice/permission_voice.py`) mit Erlaubt-Liste (`channel/voice_policy.py`). C3 und C4 zusammen gemerged, weil
+  C3 ohne C4 unsicher wäre. Safety-Auditor: Runde 1 nicht freigegeben (Sperrliste umgehbar, zu lockeres Ja, NTFS-Streams,
+  Echo der Klon-Stimme), Runde 2 nicht freigegeben (UNC-Pfad löste beim Prüfen SMB aus, `pytest @datei`, Git zeigte
+  Geheimnisse), Runde 3 freigegeben mit Auflage N1 (Ordner als Git-Pfad), behoben. 755 Tests grün.
+  Restrisiko in der Roadmap: Tests führen Repo-Code aus; Freigaben per Stimme nur im Standard-Modus von Claude Code.
+  Nicht geprüft: live mit Mikrofon (C6, Nutzer), ob „Ja, das erlaube ich“ in der Praxis als „stark“ erkannt wird.
+- Nächster Schritt: **C5** (Protokoll jeder Freigabe; `PermissionVoice.on_decision` ist schon da, schreibt bisher nur
+  einen Hinweis ins Terminal), dann C0, C6 (Nutzer). Noch offen: Z3 (Nutzer).
 - Blockiert: A5 (Gates entfernen, Frage offen), Phase B ab B1 (B0).
 - Bereit zum Push durch den Nutzer: master, routine/a1-voice-commands, routine/a2-web-research, routine/a3-timers-notes,
   routine/a4-claude-control, routine/a6-local-llm, routine/a7-rest
