@@ -168,7 +168,12 @@ def _start(args, cfg: Config, root) -> int:
     talk += ["--claude-folder", str(folder)]          # nur darin sind Datei-Freigaben per Stimme möglich (C4)
     ui_proc: list = []
     if with_ui:
-        threading.Thread(target=_open_ui_window, args=(root, done, ui_proc), daemon=True).start()
+        def ui_closed():
+            print()
+            print("kushim-Fenster geschlossen: kushim beendet sich.")
+            _thread.interrupt_main()
+        threading.Thread(target=_open_ui_window, args=(root, done, ui_proc), kwargs={"on_close": ui_closed},
+                         daemon=True).start()
     try:
         return _main(talk)
     finally:                                          # kushim endet (Strg+C, "beende dich", Notaus): Claude-Sitzung mit beenden
@@ -201,9 +206,10 @@ def _approved_folder(cfg: Config, raw: str | None):
     return path if path in known else None
 
 
-def _open_ui_window(root, done, procs: list, popen=None, wait=None) -> None:
+def _open_ui_window(root, done, procs: list, popen=None, wait=None, on_close=None) -> None:
     """Öffnet das App-Fenster, sobald die API von `kushim talk --ui` bereit ist (frisches run/api.json). Fehlt die gebaute
-    App oder wird die API nicht bereit, gibt es nur einen Hinweis; Sprache und Claude laufen weiter."""
+    App oder wird die API nicht bereit, gibt es nur einen Hinweis; Sprache und Claude laufen weiter. Schließt der Nutzer
+    das Fenster selbst, ruft `on_close()` auf: dann beendet sich ganz kushim (Wunsch des Nutzers 2026-11-11)."""
     import subprocess
     import time
     from . import appstart
@@ -216,8 +222,13 @@ def _open_ui_window(root, done, procs: list, popen=None, wait=None) -> None:
         if not done.is_set():
             print("Hinweis: Die Oberfläche konnte nicht verbinden (API nicht bereit). kushim läuft ohne Fenster.")
         return
-    if not done.is_set():
-        procs.append((popen or subprocess.Popen)([str(exe)], cwd=str(root)))
+    if done.is_set():
+        return
+    proc = (popen or subprocess.Popen)([str(exe)], cwd=str(root))
+    procs.append(proc)
+    proc.wait()
+    if not done.is_set() and on_close is not None:     # vom Nutzer geschlossen, nicht von kushim beim Beenden
+        on_close()
 
 
 def _inside_claude_session(env=None) -> bool:

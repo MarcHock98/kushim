@@ -209,9 +209,31 @@ def test_ui_window_opens_once_the_api_is_ready_and_not_after_the_end(tmp_path, c
     exe = appstart.ui_path(tmp_path)
     exe.parent.mkdir(parents=True)
     exe.write_bytes(b"")
-    cli._open_ui_window(tmp_path, done, procs, popen=lambda a, **k: opened.append(a) or "fenster",
-                        wait=lambda root, since, alive: True)
-    assert opened == [[str(exe)]] and procs == ["fenster"]
+    class Window:
+        def wait(self):
+            return 0
+    window, closed = Window(), []
+    cli._open_ui_window(tmp_path, done, procs, popen=lambda a, **k: opened.append(a) or window,
+                        wait=lambda root, since, alive: True, on_close=lambda: closed.append(1))
+    assert opened == [[str(exe)]] and procs == [window]
+    assert closed == [1]                                                                # Nutzer schließt das Fenster: alles endet
     done.set()
     cli._open_ui_window(tmp_path, done, procs, popen=lambda a, **k: opened.append(a), wait=lambda root, since, alive: False)
     assert len(opened) == 1 and "nicht verbinden" not in capsys.readouterr().out
+
+
+def test_closing_by_kushim_itself_does_not_trigger_the_shutdown_again(tmp_path):
+    import threading
+    from kushim import appstart
+    exe = appstart.ui_path(tmp_path)
+    exe.parent.mkdir(parents=True)
+    exe.write_bytes(b"")
+    done, closed = threading.Event(), []
+
+    class Window:
+        def wait(self):
+            done.set()                                                                  # kushim endet und schließt das Fenster
+            return 0
+    cli._open_ui_window(tmp_path, done, [], popen=lambda a, **k: Window(), wait=lambda root, since, alive: True,
+                        on_close=lambda: closed.append(1))
+    assert closed == []
