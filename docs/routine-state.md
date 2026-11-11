@@ -63,7 +63,7 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
   Klick konnte nachrückende Anfrage treffen, Brücke nicht thread-sicher, stiller Protokoll-Verlust). Offen als Frage: C7
   (Token-Dateien im Projektordner). Python 779, UI 61 grün. Hinweis: Der Auditor hat beim Lesen den Branch im Hauptrepo
   gewechselt (nichts verloren); künftig ausdrücklich "kein git switch/checkout" in den Auftrag schreiben.
-- Nächster Schritt: C6 (Live-Test, Nutzer), C7 (Antwort des Nutzers), dann Phase D. Noch offen: Z3 (Nutzer).
+- Nächster Schritt: C6 (Live-Test, Nutzer), dann Phase D. Noch offen: Z3 (Nutzer).
 - Blockiert: A5 (Gates entfernen, Frage offen), Phase B ab B1 (B0).
 - Bereit zum Push durch den Nutzer: master, routine/a1-voice-commands, routine/a2-web-research, routine/a3-timers-notes,
   routine/a4-claude-control, routine/a6-local-llm, routine/a7-rest
@@ -83,11 +83,7 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
 - Nutzer-ID / Kanal-ID: nicht verwendet. Verbundenes Slack-Konto hat andere Mail (Arbeits-Workspace) als die Git-/Claude-Mail, Empfänger unsicher, daher nichts gesendet
 
 ## Offene Fragen an den Nutzer
-- 2026-11-11 (C7): Token-Dateien `run/channel.json` und `run/api.json` liegen im kushim-Ordner. Arbeitet Claude im
-  kushim-Repo selbst, kann es sie lesen und sich über Channel/API selbst Freigaben geben (braucht dafür aber ein
-  erlaubtes Werkzeug, das 127.0.0.1 aufruft). Optionen: (a) **Empfehlung:** nach `%LOCALAPPDATA%\kushim\run` verlegen,
-  (b) so lassen und kushim nicht als Claude-Arbeitsordner nutzen, (c) so lassen (nur Warnung). Bis zur Antwort: Warnung
-  bei `kushim start`.
+- Keine offenen Fragen. (C7 am 2026-11-11 beantwortet, siehe Entscheidungen.)
 
 ## Blockiert
 - Live-Mikrofon-Test: nur der Nutzer kann ihn ausführen
@@ -99,6 +95,8 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
 - 2026-10-04: Gelegentlich genau 1 roter Test im Gesamtlauf (2 von ca. 12 Läufen, Name nicht erfasst, in 9 Wiederholungen nicht reproduzierbar). Verdacht: Zeit-/Thread-Test, wenn die Maschine gerade belastet ist (laufen gleichzeitig `kushim serve`, `tauri dev`, vite). Nächster Lauf: bei einem Fehlschlag sofort den Namen sichern (`pytest -q 2>&1 | grep FAILED`), nicht blind wiederholen.
 
 ## Entscheidungen des Nutzers
+- 2026-11-11: **C7 so lassen, nur Warnung**: Token-Dateien bleiben in `run/` im kushim-Ordner; `kushim start` warnt, wenn
+  sie in Claudes Arbeitsordner liegen. Restrisiko (Claude liest Token und gibt sich selbst Freigaben) bewusst akzeptiert.
 - 2026-10-27: **B7 bestanden**: `kushim start` live getestet, Claude antwortet per Stimme (Phase B bis auf B6 fertig)
 - 2026-10-27: **A5 ja** (Gates, Werkzeug-Verwaltung entfernen; rules.py, Notaus, test_no_egress bleiben). Umgesetzt
 - 2026-10-27: **B0 ja**: Channel-Weg (`--dangerously-load-development-channels`, Research Preview) und lokaler Port nur
