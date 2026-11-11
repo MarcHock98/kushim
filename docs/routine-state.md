@@ -46,6 +46,12 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
 - 2026-10-27 Loop-Durchlauf 16: **C1 fertig** (Freigabe-Anfragen im Channel). Fenster sichtbar + Lebensdauer gekoppelt.
   Loop auf Wunsch des Nutzers **gestoppt**, alle kushim-Prozesse beendet, Übergabe in `docs/UEBERGABE.md`.
 - Nächster Schritt beim Neustart des Loops: **C2** (sprechbare Beschreibung), dann C3, C4, C0. Noch offen: Z3.
+- 2026-11-11 Loop-Durchlauf 17: Prüfung: alle Branches waren gemerged, master = origin/master (Nutzer hat gepusht).
+  Alter Worktree `kushim-20261004-062421` hat einen überholten, uncommitteten Entwurf (`api/claude_api.py`, v1), nicht
+  gemerged; Entfernen entscheidet der Nutzer. **C2 fertig** (Branch `routine/c2-speakable`, gemerged, nicht gepusht):
+  `channel/speakable.py`, Ansage je Anfrage einmal. 573 Tests grün, Review freigegeben (2 niedrige Funde als Auflagen
+  in C3/C4 eingetragen). Claude Code ist inzwischen 2.1.321. Nicht geprüft: Aussprache mit Piper.
+- Nächster Schritt: **C3** (Antwort per Stimme), dann C4, C5, C0. Noch offen: Z3 (Nutzer).
 - Blockiert: A5 (Gates entfernen, Frage offen), Phase B ab B1 (B0).
 - Bereit zum Push durch den Nutzer: master, routine/a1-voice-commands, routine/a2-web-research, routine/a3-timers-notes,
   routine/a4-claude-control, routine/a6-local-llm, routine/a7-rest

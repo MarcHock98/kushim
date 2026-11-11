@@ -2,6 +2,7 @@
 import io
 import json
 import threading
+from collections import deque
 
 from kushim.channel import bridge as br
 from kushim.channel import server as ch
@@ -15,6 +16,7 @@ MSGS = [{"role": "system", "content": "egal"}, {"role": "user", "content": "alt"
 class FakeBridge:
     def __init__(self, send="ok", replies=(), available=True):
         self.sent, self._send, self.replies, self._available, self.fetches = [], send, list(replies), available, []
+        self.permissions = deque()
 
     def available(self):
         return self._available
@@ -101,5 +103,55 @@ def test_through_the_real_channel(tmp_path):
         spoken = list(cc.ClaudeChat(br.Bridge(tmp_path), TaskRegistry())(MSGS))
         assert spoken == [cc.ACK, "Die Tests sind grün."]
         assert json.loads(out.getvalue().splitlines()[-1])["params"]["content"] == "Mach die Tests grün"
+    finally:
+        httpd.shutdown()
+
+
+def perm(rid, cmd):
+    return br.Permission.parse({"request_id": rid, "tool_name": "Bash", "description": "",
+                                "input_preview": '{ "command": "%s" }' % cmd})
+
+
+def test_permission_requests_are_announced_once_while_the_turn_keeps_waiting():
+    b = FakeBridge()
+    replies = [("ok", []), ("ok", []), ("ok", ["Tests laufen durch."])]
+
+    def fetch(wait=0.0):
+        if len(replies) == 3:
+            b.permissions.append(perm("r1", "npm test"))                           # Claude fragt im Terminal nach
+        return replies.pop(0)
+    b.fetch = fetch
+    out = list(cc.ClaudeChat(b, TaskRegistry())(MSGS))
+    assert out == [cc.ACK, "Claude möchte den Befehl npm test ausführen. Bitte im Terminal bestätigen.",
+                   "Tests laufen durch."]
+
+
+def test_idle_announcement_reads_new_permission_requests_once():
+    clock = Clock()
+    b = FakeBridge()
+    chat = cc.ClaudeChat(b, TaskRegistry(), clock=clock)
+    b.permissions.extend([perm("r1", "ls"), perm("r2", "git status")])
+    assert chat.announcement() == ("Claude möchte den Befehl ls ausführen. Bitte im Terminal bestätigen. "
+                                   "Claude möchte den Befehl git status ausführen. Bitte im Terminal bestätigen.")
+    clock.t += cc.ANNOUNCE_EVERY
+    assert chat.announcement() is None                                              # schon angesagt
+    clock.t += cc.ANNOUNCE_EVERY
+    b.replies = [("ok", ["Fertig."])]
+    b.permissions.append(perm("r3", "pwd"))
+    assert chat.announcement() == "Claude möchte den Befehl pwd ausführen. Bitte im Terminal bestätigen. Fertig."
+
+
+def test_through_the_real_channel_a_permission_request_is_spoken(tmp_path):
+    out = io.StringIO()
+    c = ch.Channel(out, log=lambda s: None)
+    c.ready.set()
+    httpd = ch.make_http(c, tmp_path, "t" * 32)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    ch.write_info(tmp_path, httpd.server_address[1], "t" * 32)
+    try:
+        c.permission_request({"request_id": "abcde", "tool_name": "Bash", "description": "Run tests",
+                              "input_preview": '{ "command": "npm test", "description": "Run tests" }'})
+        chat = cc.ClaudeChat(br.Bridge(tmp_path), TaskRegistry())
+        assert chat.announcement() == "Claude möchte den Befehl npm test ausführen. Bitte im Terminal bestätigen."
     finally:
         httpd.shutdown()
