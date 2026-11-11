@@ -163,12 +163,19 @@ def _start(args, cfg: Config, root) -> int:
             print("\nClaude-Fenster geschlossen: kushim beendet sich.")
             _thread.interrupt_main()
     threading.Thread(target=watch_window, daemon=True).start()
-    talk = ["talk"] + (["--mic", args.mic] if args.mic else []) + (["--out", args.out] if args.out else []) + (["--ui"] if args.ui else [])
+    with_ui = not getattr(args, "no_ui", False)       # Standard: mit Oberfläche (Wunsch des Nutzers 2026-11-11)
+    talk = ["talk"] + (["--mic", args.mic] if args.mic else []) + (["--out", args.out] if args.out else []) + (["--ui"] if with_ui else [])
     talk += ["--claude-folder", str(folder)]          # nur darin sind Datei-Freigaben per Stimme möglich (C4)
+    ui_proc: list = []
+    if with_ui:
+        threading.Thread(target=_open_ui_window, args=(root, done, ui_proc), daemon=True).start()
     try:
         return _main(talk)
     finally:                                          # kushim endet (Strg+C, "beende dich", Notaus): Claude-Sitzung mit beenden
         done.set()
+        for p in ui_proc:                             # das selbst geöffnete App-Fenster mit schließen
+            if p.poll() is None:
+                kill_tree(p.pid)
         launch.stop(exe, root)
         if window.poll() is None:
             kill_tree(window.pid)
@@ -192,6 +199,25 @@ def _approved_folder(cfg: Config, raw: str | None):
         except ValueError:
             pass
     return path if path in known else None
+
+
+def _open_ui_window(root, done, procs: list, popen=None, wait=None) -> None:
+    """Öffnet das App-Fenster, sobald die API von `kushim talk --ui` bereit ist (frisches run/api.json). Fehlt die gebaute
+    App oder wird die API nicht bereit, gibt es nur einen Hinweis; Sprache und Claude laufen weiter."""
+    import subprocess
+    import time
+    from . import appstart
+    exe = appstart.ui_path(root)
+    if not exe.is_file():
+        print("Hinweis: Die Oberfläche ist nicht gebaut (cd ui && npx tauri build --no-bundle). kushim läuft ohne Fenster.")
+        return
+    since = time.time()
+    if not (wait or appstart.wait_for_api)(root, since, alive=lambda: not done.is_set()):
+        if not done.is_set():
+            print("Hinweis: Die Oberfläche konnte nicht verbinden (API nicht bereit). kushim läuft ohne Fenster.")
+        return
+    if not done.is_set():
+        procs.append((popen or subprocess.Popen)([str(exe)], cwd=str(root)))
 
 
 def _inside_claude_session(env=None) -> bool:
@@ -320,7 +346,8 @@ def _main(argv: list[str] | None = None) -> int:
     st.add_argument("folder", nargs="?", help="Name eines freigegebenen Ordners (kushim claude folders)")
     st.add_argument("--mic", help="Namensteil des Mikrofons, sonst Systemstandard")
     st.add_argument("--out", help="Namensteil des Ausgabegeräts, sonst Systemstandard")
-    st.add_argument("--ui", action="store_true", help="Backend-API für die Oberfläche mitstarten (127.0.0.1)")
+    st.add_argument("--ui", action="store_true", help="(Standard) Oberfläche mitstarten: API auf 127.0.0.1 und App-Fenster")
+    st.add_argument("--no-ui", action="store_true", help="ohne Oberfläche starten (nur Claude-Fenster und Sprache)")
     t = sub.add_parser("talk", help="Sprechen per Wake Word (nur das Wake Word wird dauerhaft ausgewertet)")
     t.add_argument("--mic", help="Namensteil des Mikrofons, sonst Systemstandard")
     t.add_argument("--out", help="Namensteil des Ausgabegeräts, sonst Systemstandard")
