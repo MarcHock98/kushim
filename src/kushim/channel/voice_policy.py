@@ -1,14 +1,14 @@
-"""Sperrliste für Freigaben per Stimme (Roadmap v2 C4).
+"""Was per Stimme freigegeben werden darf (Roadmap v2 C4, nach dem Safety-Audit 2026-11-11 als Erlaubt-Liste).
 
 Prüft die Rohdaten der Anfrage (`tool_name`, `input_preview`), nie den Ansagetext. Gibt einen Grund zurück, wenn eine
-Anfrage NICHT per Stimme erlaubt werden darf; dann bleibt nur der Dialog im Terminal. Im Zweifel gesperrt:
-- nur Shell-Befehle und Datei-Werkzeuge, alles andere (Web, MCP, Agenten, Unbekanntes) nie per Stimme;
-- Shell: Löschen, Überschreiben, Push und andere Git-Befehle, die Arbeit vernichten, alles mit Netz oder Installation,
-  Einstellungen, System, Prozesse beenden, versteckte Ausführung (`-c`, `eval`, `$(…)`), Pfade außerhalb des Ordners
-  (`..`, `~`, Laufwerke), Geheimnisse (`.env`, `.ssh`, Tokens);
-- Dateien: nur innerhalb des Arbeitsordners von Claude, nie in `.git`, `.claude`, Einstellungs- oder Schlüsseldateien
-  und nie an kushims eigenen Sicherheitsregeln.
-Die Liste ist bewusst grob: Ein falscher Treffer kostet nur einen Blick ins Terminal, ein fehlender kann schaden.
+Anfrage NICHT per Stimme erlaubt werden darf; dann bleibt nur der Dialog im Terminal. Eine Sperrliste für Shell-Befehle
+ließ sich im Audit leicht umgehen (Schleifen, `python -Bc`, .NET-Aufrufe, Optionen vor `git push`); darum gilt:
+- Shell: nur ein einzelner, einfacher Befehl aus einer festen Erlaubt-Liste (Tests, Prüfwerkzeuge, lesendes Git), nur
+  einfache Zeichen (keine Anführungszeichen, Pipes, Umleitungen, Variablen, Platzhalter, absoluten Pfade, kein `..`).
+- Dateien: nur Lesen, nur im Arbeitsordner von Claude, nie Geheimnisse oder geschützte Ordner. Schreiben und Ändern
+  nie per Stimme (der Inhalt wird nicht vorgelesen; eine geschriebene Datei kann später Code ausführen).
+- Alles andere (Web, MCP, Agenten, Unbekanntes) nie per Stimme. Ohne bekannten Arbeitsordner gar nichts.
+Ein falsches Nein kostet nur einen Blick ins Terminal, ein falsches Ja kann schaden.
 """
 from __future__ import annotations
 
@@ -20,116 +20,92 @@ from .bridge import Permission
 from .speakable import field
 
 SHELLS = {"bash", "powershell"}
-FILE_TOOLS = {"edit": "file_path", "multiedit": "file_path", "write": "file_path", "read": "file_path",
-              "notebookedit": "notebook_path"}
+READ_TOOLS = {"read": "file_path"}
 
-# Befehlsnamen (klein, ohne Pfad und Endung), die nie per Stimme freigegeben werden.
-BLOCKED_COMMANDS = {
-    # Löschen, Verschieben, Überschreiben
-    "rm", "rmdir", "del", "erase", "rd", "remove-item", "ri", "shred", "unlink", "truncate", "mv", "move", "move-item",
-    "mi", "ren", "rename", "rename-item", "rni", "clear-content", "clc", "set-content", "sc", "out-file", "tee",
-    "tee-object", "dd", "format", "diskpart", "mkfs", "fsutil", "cipher", "robocopy", "xcopy", "cp", "copy", "copy-item",
-    "cpi", "ln", "install", "add-content", "ac", "tar", "unzip", "7z", "expand-archive", "compress-archive",
-    # Netz, Daten senden, Herunterladen, Installieren
-    "curl", "wget", "invoke-webrequest", "iwr", "invoke-restmethod", "irm", "start-bitstransfer", "bitsadmin", "certutil",
-    "scp", "sftp", "ssh", "rsync", "ftp", "tftp", "nc", "ncat", "netcat", "telnet", "socat", "gh", "hub", "az", "aws", "gcloud",
-    "kubectl", "docker", "podman", "send-mailmessage", "mail", "sendmail", "pip", "pip3", "pipx", "uv", "poetry", "conda",
-    "npx", "bunx", "pnpm", "yarn", "bun", "winget", "choco", "scoop", "apt", "apt-get", "brew", "cargo", "go", "gem",
-    "install-module", "install-package", "twine",
-    # Einstellungen, Rechte, System
-    "setx", "reg", "regedit", "set-itemproperty", "sp", "new-itemproperty", "remove-itemproperty", "chmod", "chown",
-    "icacls", "takeown", "attrib", "set-executionpolicy", "netsh", "schtasks", "bcdedit", "sc.exe", "set-service",
-    "new-service", "set-acl", "shutdown", "restart-computer", "stop-computer", "logoff", "taskkill", "kill", "pkill",
-    "killall", "stop-process", "spps", "sudo", "runas", "su", "start-process", "saps", "start", "env", "printenv", "set",
-    "export", "claude", "kushim", "mklink", "new-item", "ni", "crontab",
-    # versteckte Ausführung
-    "eval", "exec", "iex", "invoke-expression", "invoke-command", "icm", "xargs", "source", ".", "bash", "sh", "zsh",
-    "cmd", "powershell", "pwsh", "wsl", "nohup", "sudoedit",
-}
-# Programme, bei denen erst ein Argument gefährlich macht.
-INLINE_CODE = {"python": {"-c"}, "python3": {"-c"}, "py": {"-c"}, "node": {"-e", "--eval", "-p", "--print"},
-               "perl": {"-e", "-E", "-i", "-pi"}, "ruby": {"-e"}, "deno": {"eval"}, "sed": {"-i", "--in-place"}}
-PYTHON_MODULES_ALLOWED = {"pytest", "unittest", "mypy", "ruff", "flake8", "pylint", "pyflakes", "compileall", "py_compile",
-                          "black", "isort"}
-GIT_BLOCKED = {"push", "clean", "rm", "mv", "reset", "restore", "checkout", "switch", "rebase", "filter-branch",
-               "filter-repo", "update-ref", "reflog", "gc", "prune", "config", "remote", "fetch", "pull", "clone",
-               "submodule", "worktree", "send-email", "request-pull", "am", "apply", "cherry-pick", "revert", "merge",
-               "tag", "notes", "replace", "credential", "lfs", "archive", "bundle", "daemon", "http-backend"}
-GIT_FLAGS_BLOCKED = {"branch": {"-d", "-D", "--delete", "-m", "-M", "--move", "-f", "--force"},
-                     "stash": {"drop", "clear", "pop"},
-                     "commit": {"--amend", "--no-verify", "-n"}}
-NPM_ALLOWED = {"test", "t", "ls", "list", "outdated", "--version", "-v"}
-NPM_SCRIPTS = re.compile(r"(test|build|lint|typecheck|check|dev)(:[\w:-]+)?")
-
-_SEGMENT = re.compile(r"&&|\|\||[;|&\n]")
-_SECRET = re.compile(r"(^|[\\/\s\"'=])(\.env\b|\.ssh\b|\.aws\b|\.gnupg\b|id_rsa|id_ed25519|\.pem\b|\.key\b|credentials|"
-                     r"secret|token|passw|vault|keyring|\.netrc|\.npmrc|\.pypirc)", re.I)
-_OUTSIDE = re.compile(r"(^|[\s\"'=])(\.\.([\\/]|\s|$)|~|[a-zA-Z]:|/|\\|\$env:|\$home\b|%[a-z_]+%|\$\{?HOME)", re.I)
-_SAFE_REDIRECT = re.compile(r"(?<!\S)(2>&1|[12]?>\s*/dev/null|[12]?>\s*nul|[12]?>\s*\$null)(?!\S)", re.I)
-
-PROTECTED_PARTS = {".git", ".claude", ".ssh", ".gnupg", ".aws", ".vscode", ".idea", "node_modules", "run"}
-PROTECTED_NAMES = re.compile(r"^(\.env.*|\.mcp\.json|config\.toml|wakewords\.toml|settings(\.local)?\.json|"
-                             r".*\.(pem|key|pfx|p12|kdbx)|id_[a-z0-9]+|\.netrc|\.npmrc|\.pypirc|\.gitconfig|"
-                             r"test_no_egress\.py|STOP)$", re.I)
-PROTECTED_DIRS = (("src", "kushim", "safety"),)        # kushims eigene Sicherheitsregeln
+_SAFE_CHARS = re.compile(r"[A-Za-z0-9 _./=,@+:-]+")
+_PYTHONS = {"python", "python3", "py", ".venv/scripts/python", ".venv/scripts/python.exe", ".venv/bin/python",
+            "venv/scripts/python", "venv/scripts/python.exe", "venv/bin/python"}
+_PY_MODULES = {"pytest", "unittest", "mypy", "flake8", "pylint", "compileall"}
+_NPM_SCRIPT = re.compile(r"(test|build|lint|typecheck|check)(:[a-z0-9-]+)?")
+_GIT_READ = {"status", "diff", "log", "show", "rev-parse", "ls-files", "blame", "shortlog", "describe"}
+_GIT_BRANCH_FLAGS = {"--list", "-a", "--all", "-v", "-vv", "-r", "--show-current"}
+_GIT_BAD_ARG = re.compile(r"(--output|-o|--ext-diff|--textconv|--no-index|-c|-C|--git-dir|--work-tree|--exec|-O|--open-files"
+                          r"|--run|--format=.*%\(|--pretty=.*%\()", re.I)
+_PYTEST_FLAGS = {"-q", "-qq", "-v", "-vv", "-x", "-s", "-k", "-m", "--lf", "--ff", "--last-failed", "--failed-first",
+                 "--tb=short", "--tb=line", "--tb=no", "--tb=long", "--co", "--collect-only", "-rA", "-ra", "--no-header",
+                 "--maxfail=1", "--durations=10", "--strict-markers"}
+_SECRET = re.compile(r"(^|[\\/._-])(env|ssh|aws|gnupg|id_[a-z0-9]+|pem|key|pfx|p12|kdbx|credentials?|secrets?|tokens?|"
+                     r"passw\w*|vault|keyring|netrc|npmrc|pypirc|gitconfig)([\\/._-]|$)", re.I)
+PROTECTED_PARTS = {".git", ".claude", ".ssh", ".gnupg", ".aws", ".vscode", ".idea", "run"}
 
 
-def _name(token: str) -> str:
-    base = re.split(r"[\\/]", token)[-1].lower()
-    return re.sub(r"\.(exe|cmd|bat|ps1|com)$", "", base)
+def _is_path_arg(tok: str) -> bool:
+    return not tok.startswith("-")
 
 
-def _tokens(segment: str) -> list[str]:
-    toks = [t.strip("\"'") for t in segment.split()]
-    while toks and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", toks[0]):       # FOO=bar befehl
-        toks.pop(0)
-    return [t for t in toks if t]
+def _plain_path(tok: str) -> bool:
+    """Relativer Pfad im Ordner: kein absoluter Pfad, kein `..`, kein Laufwerk, keine Geheimnisse."""
+    return (not tok.startswith("/") and ":" not in tok and ".." not in tok.split("/")
+            and not _SECRET.search(tok))
+
+
+def _pytest_args(args: list[str]) -> str | None:
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a in ("-k", "-m"):
+            if i + 1 >= len(args) or args[i + 1].startswith("-"):
+                return "pytest -k/-m ohne Ausdruck"
+            i += 2
+            continue
+        if a.startswith("-"):
+            if a not in _PYTEST_FLAGS:
+                return f"pytest-Option {a} nur im Terminal"
+        elif not _plain_path(a):
+            return "Pfad außerhalb des Arbeitsordners"
+        i += 1
+    return None
 
 
 def shell_reason(cmd: str) -> str | None:
-    """Grund, warum dieser Befehl nicht per Stimme erlaubt wird, oder None."""
-    if not cmd.strip() or not cmd.replace("\n", " ").isprintable():
-        return "leerer oder unlesbarer Befehl"
-    if "`" in cmd or "$(" in cmd or "<(" in cmd or ">(" in cmd or "${" in cmd:
-        return "versteckte Ausführung"
-    if _SECRET.search(cmd):
-        return "Geheimnisse"
-    cmd = _SAFE_REDIRECT.sub(" ", cmd)              # 2>&1, > /dev/null, > nul: harmlos, und `&` soll nicht trennen
-    if ">" in cmd:
-        return "schreibt in eine Datei"
-    if _OUTSIDE.search(cmd):
-        return "Pfad außerhalb des Arbeitsordners"
-    for segment in _SEGMENT.split(cmd):
-        toks = _tokens(segment)
-        if not toks:
-            continue
-        name, args = _name(toks[0]), toks[1:]
-        lower = [a.lower() for a in args]
-        if name in BLOCKED_COMMANDS:
-            return f"gesperrter Befehl {name}"
-        if name in INLINE_CODE and any(a in INLINE_CODE[name] or a.startswith(("-i", "--in-place")) and name in ("sed", "perl")
-                                       for a in args):
-            return "versteckte Ausführung oder Ändern an Ort und Stelle"
-        if name in ("python", "python3", "py") and "-m" in args:
-            i = args.index("-m")
-            if i + 1 >= len(args) or args[i + 1].lower() not in PYTHON_MODULES_ALLOWED:
-                return "python -m nur für Test- und Prüfwerkzeuge"
-        if name == "npm":
-            ok = bool(args) and (lower[0] in NPM_ALLOWED or
-                                 lower[0] in ("run", "run-script") and len(args) > 1 and NPM_SCRIPTS.fullmatch(lower[1]))
-            if not ok:
-                return "npm nur für test, build, lint und check"
-        if name == "git":
-            sub = next((a for a in lower if not a.startswith("-")), "")
-            if any(a.startswith("-c") or a.startswith("--git-dir") or a.startswith("--work-tree") or a == "-C" for a in args[:2]):
-                return "git mit geänderten Einstellungen"
-            if sub in GIT_BLOCKED:
-                return f"git {sub}"
-            if set(lower) & GIT_FLAGS_BLOCKED.get(sub, set()) or (sub == "stash" and len(lower) > 1 and lower[1] not in ("list", "show", "push")):
-                return f"git {sub} mit gefährlicher Option"
-            if "--force" in lower or "-f" in lower:
-                return "git mit --force"
-    return None
+    """Grund, warum dieser Befehl nicht per Stimme erlaubt wird, oder None (nur Befehle aus der Erlaubt-Liste)."""
+    if not cmd or not _SAFE_CHARS.fullmatch(cmd):
+        return "nur einfache Befehle ohne Sonderzeichen"
+    toks = cmd.split()
+    if not toks:
+        return "leerer Befehl"
+    name, args = toks[0].lower(), toks[1:]
+    if name == "pytest":
+        return _pytest_args(args)
+    if name in _PYTHONS:
+        if len(args) >= 2 and args[0] == "-m" and args[1] in _PY_MODULES:
+            if args[1] == "pytest":
+                return _pytest_args(args[2:])
+            return None if all(_is_path_arg(a) and _plain_path(a) or a in ("-q", "-v") for a in args[2:]) \
+                else "Option nur im Terminal"
+        return "python nur mit -m pytest, unittest oder Prüfwerkzeugen"
+    if name == "npm":
+        if args in (["test"], ["t"]) or (len(args) == 2 and args[0] in ("run", "run-script") and _NPM_SCRIPT.fullmatch(args[1])):
+            return None
+        return "npm nur test, build, lint, typecheck und check, ohne Zusätze"
+    if name == "git":
+        if not args:
+            return "git ohne Unterbefehl"
+        sub, rest = args[0].lower(), args[1:]
+        if sub == "branch":
+            return None if all(a in _GIT_BRANCH_FLAGS for a in rest) else "git branch nur zum Anzeigen"
+        if sub not in _GIT_READ:
+            return f"git {sub} nur im Terminal"
+        for a in rest:
+            if a.startswith("-") and _GIT_BAD_ARG.match(a):
+                return f"git-Option {a} nur im Terminal"
+            if not a.startswith("-") and not _plain_path(a):         # „master..HEAD“ ist erlaubt, „../x“ nicht
+                return "Pfad außerhalb des Arbeitsordners"
+        return None
+    if name in ("ls", "dir", "pwd") and all(_plain_path(a) for a in args if _is_path_arg(a)) \
+            and all(a in ("-l", "-la", "-a", "-al", "-lh") for a in args if not _is_path_arg(a)):
+        return None
+    return f"{name} nur im Terminal"
 
 
 def _inside(path: Path, folder: Path) -> bool:
@@ -141,11 +117,15 @@ def _inside(path: Path, folder: Path) -> bool:
 
 
 def file_reason(raw: str, folder: Path | None) -> str | None:
-    """Grund, warum diese Datei nicht per Stimme freigegeben wird, oder None."""
+    """Grund, warum diese Datei nicht per Stimme gelesen werden darf, oder None."""
     if folder is None:
         return "Arbeitsordner unbekannt"
-    if not raw.strip() or "\x00" in raw:
+    if not raw.strip() or not raw.isprintable():
         return "kein Pfad"
+    if re.search(r"[~%$*?\"<>|]", raw) or ":" in raw[2:] or re.match(r"^[A-Za-z]:(?![\\/])", raw) or raw.startswith("\\\\"):
+        return "ungewöhnlicher Pfad (Stream, Variable, Laufwerk oder Netz)"
+    if raw.rstrip() != raw or raw.endswith("."):
+        return "ungewöhnlicher Pfad"
     p = Path(raw)
     if not p.is_absolute():
         p = folder / p
@@ -157,24 +137,22 @@ def file_reason(raw: str, folder: Path | None) -> str | None:
     if not _inside(resolved, base) or resolved == base:
         return "außerhalb des Arbeitsordners"
     rel = PurePath(os.path.relpath(resolved, base))
-    parts = [x.lower() for x in rel.parts]
-    if set(parts[:-1]) & PROTECTED_PARTS or parts[0] in PROTECTED_PARTS:
+    if {x.lower() for x in rel.parts} & PROTECTED_PARTS:
         return "geschützter Ordner"
-    if PROTECTED_NAMES.match(rel.name):
+    if _SECRET.search(rel.as_posix()) or rel.name.lower() in ("stop", "config.toml", "wakewords.toml", ".mcp.json"):
         return "geschützte Datei"
-    for prot in PROTECTED_DIRS:
-        if tuple(parts[:len(prot)]) == prot:
-            return "kushims Sicherheitsregeln"
     return None
 
 
 def blocked(perm: Permission, folder: Path | None) -> str | None:
     """None nur, wenn die Anfrage per Stimme freigegeben werden darf; sonst der Grund."""
+    if folder is None:
+        return "Arbeitsordner unbekannt"
     key = perm.tool_name.strip().lower()
     if key in SHELLS:
         cmd = field(perm.input_preview, "command")
         return shell_reason(cmd) if cmd else "kein Befehl"
-    if key in FILE_TOOLS:
-        path = field(perm.input_preview, FILE_TOOLS[key])
+    if key in READ_TOOLS:
+        path = field(perm.input_preview, READ_TOOLS[key])
         return file_reason(path, folder) if path else "kein Pfad"
     return "Werkzeug nur im Terminal"

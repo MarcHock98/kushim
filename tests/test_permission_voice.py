@@ -122,8 +122,12 @@ def test_honest_replies_when_the_channel_answers_differently():
 
 
 def test_yes_and_no_words():
-    assert pv.is_yes("Ja, das erlaube ich.") and pv.is_yes("Okay, erlauben") and pv.is_yes("Jawohl")
+    assert pv.is_yes("Ja, das erlaube ich.") and pv.is_yes("Ja, erlauben!") and pv.is_yes("Das erlaube ich") and pv.is_yes("Ja.")
     assert not pv.is_yes("Nein") and not pv.is_yes("ja nicht") and not pv.is_yes("") and not pv.is_yes("Mach weiter")
+    for text in ("Ja, was macht der Befehl genau?", "Klar, lösch auch den Rest", "Ok aber nur lesen",       # Audit H3
+                 "Halt, auf keinen Fall, ja", "Ja? Wirklich?", "Hey kushim, ja, bring mir Kaffee", "Okay", "Klar", "Jawohl"):
+        assert not pv.is_yes(text), text
+    assert pv.is_no("Halt, auf keinen Fall") and pv.is_no("Moment mal")
     assert pv.is_no("Nein danke") and pv.is_no("Stopp") and not pv.is_no("Ja, das erlaube ich")
 
 
@@ -169,3 +173,11 @@ def test_through_the_pipeline_with_a_real_speaker_check(tmp_path):
     stt.text = YES
     assert p.handle(np.zeros(32000, dtype=np.int16)).reply == pv.ALLOWED                   # 2 s, eigene Stimme: stark
     assert b.answers == [("r1", "allow")] and called == []                                # nichts ging an Claude als Befehl
+
+
+def test_cloned_own_voice_disables_voice_approvals(tmp_path):
+    from kushim.voice.talk import approval_policy
+    p = perm()
+    assert approval_policy(True, tmp_path)(p) == "eigene Stimme als Ausgabe"
+    assert approval_policy(False, tmp_path)(p) is None
+    assert approval_policy(False, None)(p) == "Arbeitsordner unbekannt"

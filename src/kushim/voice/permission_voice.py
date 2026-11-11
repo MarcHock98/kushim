@@ -30,8 +30,12 @@ GONE = "Die Anfrage ist schon erledigt."
 KILLED = "Der Notaus ist aktiv, ich gebe nichts weiter."
 FAILED = "Das konnte ich nicht an Claude geben. Bitte im Terminal bestätigen."
 
-_YES = {"ja", "jawohl", "jawoll", "klar", "okay", "ok", "erlaube", "erlauben", "erlaubt", "genehmigt", "freigeben", "einverstanden"}
-_NO = {"nein", "nicht", "nee", "ne", "nö", "no", "stopp", "stop", "warte", "warten", "lass", "verbiete", "ablehnen", "später"}
+# Nur diese ganzen Sätze zählen als Ja (nach dem Audit 2026-11-11: „Ja, was macht der Befehl?“ darf nie erlauben).
+YES_PHRASES = {"ja das erlaube ich", "ja ich erlaube das", "ja ich erlaube es", "das erlaube ich", "ich erlaube das",
+               "ja erlauben", "ja erlaube es", "ja das ist erlaubt", "ja bitte erlauben", "ja das darfst du",
+               "ja das darf claude", "ja"}
+_NO = {"nein", "nicht", "nee", "ne", "nö", "no", "stopp", "stop", "warte", "warten", "lass", "verbiete", "ablehnen", "später",
+       "kein", "keine", "keinen", "halt", "moment", "abbrechen"}
 _TOKEN = re.compile(r"[a-zäöüß]+")
 
 
@@ -41,8 +45,8 @@ def _words(text: str) -> list[str]:
 
 
 def is_yes(text: str) -> bool:
-    w = _words(text)
-    return bool(w) and len(w) <= MAX_WORDS and bool(set(w) & _YES) and not set(w) & _NO
+    """Nur eine feste Zusage, nichts dazu. Ein bloßes „ja“ zählt als Ja, ist aber zu kurz für „stark“ (dann Nachfrage)."""
+    return " ".join(_words(text)) in YES_PHRASES
 
 
 def is_no(text: str) -> bool:
