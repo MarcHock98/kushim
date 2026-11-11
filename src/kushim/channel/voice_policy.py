@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import os
 import re
-from pathlib import Path, PurePath
+from pathlib import Path, PurePath, PureWindowsPath
 
 from .bridge import Permission
 from .speakable import field
@@ -22,15 +22,24 @@ from .speakable import field
 SHELLS = {"bash", "powershell"}
 READ_TOOLS = {"read": "file_path"}
 
-_SAFE_CHARS = re.compile(r"[A-Za-z0-9 _./=,@+:-]+")
+_SAFE_CHARS = re.compile(r"[A-Za-z0-9 _./=,+:-]+")          # kein @: `pytest @datei` liest Optionen aus einer Datei
 _PYTHONS = {"python", "python3", "py", ".venv/scripts/python", ".venv/scripts/python.exe", ".venv/bin/python",
             "venv/scripts/python", "venv/scripts/python.exe", "venv/bin/python"}
 _PY_MODULES = {"pytest", "unittest", "mypy", "flake8", "pylint", "compileall"}
 _NPM_SCRIPT = re.compile(r"(test|build|lint|typecheck|check)(:[a-z0-9-]+)?")
-_GIT_READ = {"status", "diff", "log", "show", "rev-parse", "ls-files", "blame", "shortlog", "describe"}
+# Lesendes Git mit einer Erlaubt-Liste der Optionen je Unterbefehl (Audit: Abkürzungen wie --ext-d, Ausgabe in Dateien).
+_SUMMARY = {"--stat", "--shortstat", "--numstat", "--name-only", "--name-status", "--no-patch", "-s"}
+_GIT_OPTS = {
+    "status": {"-s", "--short", "-b", "--branch", "--porcelain"},
+    "log": {"--oneline", "--graph", "--decorate", "--all", "--reverse", "--first-parent", "--no-merges"} | _SUMMARY,
+    "show": {"--oneline"} | _SUMMARY,
+    "diff": {"--cached", "--staged"} | _SUMMARY,
+    "rev-parse": {"--abbrev-ref", "--short", "--show-toplevel"},
+    "ls-files": {"-m", "--modified", "-o", "--others", "--exclude-standard"},
+}
+_GIT_PATCH = {"show", "diff"}           # zeigen Dateiinhalte: nur mit Zusammenfassung oder ausdrücklichen Pfaden nach `--`
+_GIT_COUNT = re.compile(r"-[0-9]+|-n[0-9]+|--max-count=[0-9]+")
 _GIT_BRANCH_FLAGS = {"--list", "-a", "--all", "-v", "-vv", "-r", "--show-current"}
-_GIT_BAD_ARG = re.compile(r"(--output|-o|--ext-diff|--textconv|--no-index|-c|-C|--git-dir|--work-tree|--exec|-O|--open-files"
-                          r"|--run|--format=.*%\(|--pretty=.*%\()", re.I)
 _PYTEST_FLAGS = {"-q", "-qq", "-v", "-vv", "-x", "-s", "-k", "-m", "--lf", "--ff", "--last-failed", "--failed-first",
                  "--tb=short", "--tb=line", "--tb=no", "--tb=long", "--co", "--collect-only", "-rA", "-ra", "--no-header",
                  "--maxfail=1", "--durations=10", "--strict-markers"}
@@ -94,13 +103,21 @@ def shell_reason(cmd: str) -> str | None:
         sub, rest = args[0].lower(), args[1:]
         if sub == "branch":
             return None if all(a in _GIT_BRANCH_FLAGS for a in rest) else "git branch nur zum Anzeigen"
-        if sub not in _GIT_READ:
+        if sub not in _GIT_OPTS:
             return f"git {sub} nur im Terminal"
+        paths, after_sep = [], False
         for a in rest:
-            if a.startswith("-") and _GIT_BAD_ARG.match(a):
-                return f"git-Option {a} nur im Terminal"
-            if not a.startswith("-") and not _plain_path(a):         # „master..HEAD“ ist erlaubt, „../x“ nicht
+            if a == "--" and not after_sep:
+                after_sep = True
+            elif a.startswith("-") and not after_sep:
+                if a not in _GIT_OPTS[sub] and not (sub == "log" and _GIT_COUNT.fullmatch(a)):
+                    return f"git-Option {a} nur im Terminal"
+            elif a.startswith("-") or not _plain_path(a):           # „master..HEAD“ ist erlaubt, „../x“ nicht
                 return "Pfad außerhalb des Arbeitsordners"
+            elif after_sep:
+                paths.append(a)
+        if sub in _GIT_PATCH and not set(rest) & _SUMMARY and not paths:
+            return f"git {sub} zeigt Inhalte: nur mit --stat oder Pfaden"
         return None
     if name in ("ls", "dir", "pwd") and all(_plain_path(a) for a in args if _is_path_arg(a)) \
             and all(a in ("-l", "-la", "-a", "-al", "-lh") for a in args if not _is_path_arg(a)):
@@ -122,15 +139,20 @@ def file_reason(raw: str, folder: Path | None) -> str | None:
         return "Arbeitsordner unbekannt"
     if not raw.strip() or not raw.isprintable():
         return "kein Pfad"
-    if re.search(r"[~%$*?\"<>|]", raw) or ":" in raw[2:] or re.match(r"^[A-Za-z]:(?![\\/])", raw) or raw.startswith("\\\\"):
-        return "ungewöhnlicher Pfad (Stream, Variable, Laufwerk oder Netz)"
+    if re.search(r"[~%$*?\"<>|]", raw) or ":" in raw[2:] or re.match(r"^[A-Za-z]:(?![\\/])", raw):
+        return "ungewöhnlicher Pfad (Stream, Variable oder Laufwerk)"
+    if len(raw) >= 2 and raw[0] in "\\/" and raw[1] in "\\/" or PureWindowsPath(raw).drive[:1] in ("\\", "/"):
+        return "Netzpfad"                           # \\host, //host, /\host: nie anfassen (kein SMB-Zugriff beim Prüfen)
     if raw.rstrip() != raw or raw.endswith("."):
         return "ungewöhnlicher Pfad"
     p = Path(raw)
     if not p.is_absolute():
         p = folder / p
+    lexical, base_lex = Path(os.path.normpath(p)), Path(os.path.normpath(folder))
+    if not _inside(lexical, base_lex) or os.path.normcase(str(lexical)) == os.path.normcase(str(base_lex)):
+        return "außerhalb des Arbeitsordners"       # rein lexikalisch, ohne Dateisystem oder Netz
     try:
-        resolved = p.resolve(strict=False)          # löst .. und Verknüpfungen auf (soweit vorhanden)
+        resolved = lexical.resolve(strict=False)    # erst jetzt (lokal, im Ordner): Verknüpfungen auflösen
         base = folder.resolve(strict=True)
     except (OSError, RuntimeError):
         return "Pfad nicht prüfbar"

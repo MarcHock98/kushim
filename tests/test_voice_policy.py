@@ -19,8 +19,9 @@ ALLOWED = [
     "npm test", "npm t", "npm run build", "npm run test:unit", "npm run lint", "npm run typecheck",
     "pytest", "pytest -q", "pytest tests/test_x.py -k perm -x", "python -m pytest -q", "py -m pytest tests -q --lf",
     ".venv/Scripts/python -m pytest -q", ".venv/Scripts/python.exe -m pytest tests/test_bridge.py", "python -m mypy src",
-    "python -m unittest", "git status", "git status -s", "git diff", "git diff --stat", "git diff master..HEAD",
-    "git log --oneline -5", "git show HEAD", "git branch", "git branch -a", "git rev-parse HEAD", "git ls-files src",
+    "python -m unittest", "git status", "git status -s", "git diff --stat", "git diff master..HEAD --stat",
+    "git diff -- src/app.py", "git diff --cached --name-only", "git show HEAD --stat", "git log --oneline -5", "git log -n3",
+    "git log --oneline -- src", "git branch", "git branch -a", "git rev-parse HEAD", "git ls-files src",
     "ls", "ls -la src", "dir", "pwd",
 ]
 
@@ -49,6 +50,10 @@ BLOCKED = [
     "pytest --basetemp=src", "pytest -p evil", "pytest --junitxml=out.xml", "pytest -c other.ini", "pytest -o x=y",
     "pytest --rootdir=..", "pytest ../other", "pytest /etc", "pytest tests/test_tokens.py", "python -m pytest -p x",
     "ls /", "ls C:", "dir ..", "ls -R",
+    # Audit Runde 2: Optionen aus Datei, Inhalte mit Geheimnissen, Abkürzungen
+    "pytest @args.txt", "python -m pytest @a", "git diff", "git show HEAD", "git log -p", "git log --patch",
+    "git log -p -- src", "git diff --ext-d", "git diff --no-ind a b", "git diff --orderfile=x", "git log --stdin",
+    "git show HEAD -- .env", "git diff -- ../x", "git diff -- -x", "git blame src/app.py", "git describe",
 ]
 
 
@@ -126,3 +131,17 @@ def test_talk_accepts_only_an_approved_valid_folder(tmp_path, monkeypatch):
     assert cli._approved_folder(cfg, str(b)) is None                 # gültig, aber nicht freigegeben
     assert cli._approved_folder(cfg, str(tmp_path / "x")) is None    # existiert nicht
     assert cli._approved_folder(cfg, None) is None
+
+
+def test_network_paths_are_rejected_without_touching_the_file_system(tmp_path, monkeypatch):
+    import pathlib
+    import os.path
+
+    def no_io(*a, **k):
+        raise AssertionError("Dateisystem/Netz angefasst")
+    for raw in ("//192.0.2.1/share/x.txt", r"\\192.0.2.1\share\x.txt", r"/\host\share\x", r"\/host/share/x",
+                r"D:\other\x.txt", "/etc/passwd", r"..\x"):
+        monkeypatch.setattr(pathlib.Path, "resolve", no_io)
+        monkeypatch.setattr(os.path, "realpath", no_io)
+        assert vp.file_reason(raw, tmp_path) is not None, raw
+        monkeypatch.undo()
