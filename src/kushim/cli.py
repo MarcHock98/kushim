@@ -660,9 +660,9 @@ def _main(argv: list[str] | None = None) -> int:
                     register_safety_view(core, LiveConfig(), root, store=store)
                     register_transcript(core, transcript)
                     bridge = getattr(pipeline.chat, 'bridge', None)
-                    if bridge is not None:                      # Freigaben von Claude Code (C0); on_decision: C5 hängt das Protokoll an
+                    if bridge is not None:                      # Freigaben von Claude Code (C0), protokolliert wie per Stimme (C5)
                         from .api.approvals_api import register_approvals
-                        register_approvals(core, bridge, root, audit=store.audit if store else None)
+                        register_approvals(core, bridge, root, on_decision=_approval_log(cfg))
                 api = _api_start(cfg, root, extra)
             loop = TalkLoop(mic, pipeline, kill, wake=lambda f: det.process(f) is not None, ack=ack,
                             flush=mic.flush, new_collector=lambda: utter(wait_ms),

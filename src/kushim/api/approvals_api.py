@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from ..channel.bridge import Bridge, Permission
-from ..channel.speakable import describe
+from ..channel.speakable import PREVIEW_LIMIT, describe
 from ..safety import killswitch
 from .protocol import ApiCore, ApiError
 
@@ -39,6 +39,13 @@ def _snapshot(bridge: Bridge) -> list[Permission]:
         except RuntimeError:                       # deque während des Kopierens verändert: nochmal
             continue
     return []
+
+
+def truncated(p: Permission) -> bool:
+    """Ist die Vorschau gekürzt (Claude Code: „…“/„⋯ elided ⋯“, oder am Längenlimit der Brücke)? Dann zeigt die Oberfläche
+    nicht alles, was ausgeführt würde: Erlauben nur im Terminal, Ablehnen geht."""
+    preview = p.input_preview
+    return "…" in preview or "⋯" in preview or "elided" in preview or len(preview) >= PREVIEW_LIMIT
 
 
 def _summary(p: Permission) -> str:
@@ -62,7 +69,8 @@ def register_approvals(core: ApiCore, bridge: Bridge, root: Path | None = None,
         if killed():
             return {"pending": []}
         items = [{"request_id": p.request_id, "tool_name": p.tool_name, "description": p.description,
-                  "input_preview": p.input_preview, "digest": digest_of(p), "summary": _summary(p)}
+                  "input_preview": p.input_preview, "digest": digest_of(p), "summary": _summary(p),
+                  "truncated": truncated(p)}
                  for p in _snapshot(bridge)[:MAX_OPEN]]
         return {"pending": items}
 
@@ -80,6 +88,8 @@ def register_approvals(core: ApiCore, bridge: Bridge, root: Path | None = None,
                 raise ApiError("none")
             if not hmac.compare_digest(digest.encode("utf-8", "replace"), digest_of(perm).encode()):
                 raise ApiError("stale")
+            if approve and truncated(perm):
+                raise ApiError("terminal_only")    # nicht alles sichtbar: Erlauben nur im Terminal
             behavior = "allow" if approve else "deny"
             status = bridge.answer(rid, behavior)
         result = behavior if status == "ok" else status
@@ -88,9 +98,10 @@ def register_approvals(core: ApiCore, bridge: Bridge, root: Path | None = None,
                 audit("approval", f"ui {result}")      # nie der fremde Text
             except Exception:                          # noqa: BLE001
                 pass
-        if on_decision is not None:
+        if on_decision is not None:                    # C5: gleiche Begriffe wie der Sprachweg
             try:
-                on_decision({"request_id": rid, "tool": perm.tool_name, "result": result, "source": "ui"})
+                on_decision({"request_id": rid, "tool": perm.tool_name, "what": _summary(perm), "source": "ui",
+                             "result": {"allow": "allowed", "deny": "denied", "unknown": "gone"}.get(result, result)})
             except Exception:                          # noqa: BLE001
                 pass
         if status == "ok":

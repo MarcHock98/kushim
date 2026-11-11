@@ -115,7 +115,8 @@ def test_on_decision_and_audit_hooks(tmp_path):
     seen, aud = [], []
     core, _ = make(tmp_path, on_decision=seen.append, audit=lambda e, d: aud.append((e, d)))
     decide(core)
-    assert seen == [{"request_id": "abcde", "tool": "Bash", "result": "allow", "source": "ui"}]
+    assert seen == [{"request_id": "abcde", "tool": "Bash", "result": "allowed", "source": "ui",
+                     "what": "Claude möchte den Befehl npm test ausführen."}]
     assert aud == [("approval", "ui allow")]                                  # nie der fremde Text
 
 
@@ -124,6 +125,33 @@ def test_failing_hooks_do_not_break_the_decision(tmp_path):
         raise RuntimeError("x")
     core, b = make(tmp_path, on_decision=boom, audit=boom)
     assert decide(core) == {"ok": True, "result": "allow"}
+
+
+def test_truncated_preview_can_only_be_denied_in_the_ui(tmp_path):
+    for preview in ('{ "command": "rm -rf build && ech…', '{ "command": "ls" }⋯ 2 fields elided: a, b ⋯',
+                    '{ "command": "' + "x" * 490 + '" }'):
+        long = Permission.parse({"request_id": "r9", "tool_name": "Bash", "description": "", "input_preview": preview})
+        core, b = make(tmp_path)
+        b.permissions.append(long)
+        item = [i for i in call(core, "approvals.get")["pending"] if i["request_id"] == "r9"][0]
+        assert item["truncated"] is True
+        assert decide(core, p=long)["error"] == "terminal_only" and b.answers == []
+        assert decide(core, approve=False, p=long) == {"ok": True, "result": "deny"}
+    core, _ = make(tmp_path)
+    assert call(core, "approvals.get")["pending"][0]["truncated"] is False
+
+
+def test_ui_decisions_land_in_the_approval_log(tmp_path):
+    from kushim.channel import approval_log as al
+    from kushim.memory.local import LocalStore
+    key = "ab" * 32
+    LocalStore(tmp_path / "v", create=True, key=key).close()
+    core, _ = make(tmp_path, on_decision=al.ApprovalLog(lambda: LocalStore(tmp_path / "v", key=key)))
+    decide(core)
+    with LocalStore(tmp_path / "v", key=key) as store:
+        row = al.recent(store)[0]
+    assert row["source"] == "ui" and row["result"] == "allowed" and "npm test" in row["what"]
+    assert "Oberfläche" in al.format_row(row)
 
 
 def test_failed_answer_is_reported_to_hook(tmp_path):

@@ -8,6 +8,7 @@ export interface PermissionRequest {
   input_preview: string;   // exakter Text der Anfrage
   digest: string;          // Hash dieses Textes: entschieden wird nur dafür
   summary: string;         // kurze Hörhilfe, maßgeblich ist der genaue Text
+  truncated?: boolean;     // Vorschau gekürzt: Erlauben nur im Terminal, Ablehnen geht
 }
 
 interface Props {
@@ -32,9 +33,11 @@ export function PermissionBar({ request, more, onDecide }: Props) {
       <p className="ap-note">Genauer Text von Claude (nur zur Ansicht):</p>
       <pre id="ap-prev" className="ap-preview" tabIndex={0}>{exact}</pre>
       {more > 0 && <p className="ap-time">Noch {more} weitere Anfrage(n) offen.</p>}
+      {request.truncated && <p className="ap-note">Der Text ist gekürzt. Erlauben bitte im Terminal, hier geht nur Ablehnen.</p>}
       <div className="ap-actions">
         <button ref={deny} type="button" className="ap-btn" onClick={() => onDecide(false)}>Ablehnen</button>
-        <button type="button" className="ap-btn primary" onClick={() => onDecide(true)}>Erlauben</button>
+        {!request.truncated &&
+          <button type="button" className="ap-btn primary" onClick={() => onDecide(true)}>Erlauben</button>}
       </div>
     </section>
   );

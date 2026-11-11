@@ -8,7 +8,8 @@ export class MockSocket implements Socket {
   onerror: Socket["onerror"] = null;
   kill = false;
   voice: { active: boolean; state: string; level: number } = { active: false, state: "idle", level: 0 };
-  pending: { request_id: string; tool_name: string; description: string; input_preview: string; digest: string; summary: string }[] = [];
+  pending: { request_id: string; tool_name: string; description: string; input_preview: string; digest: string; summary: string;
+    truncated?: boolean }[] = [];
   entries: { id: number; heard: string; reply: string; outcome: string }[] = [];
   folders: string[] = [];
   session: unknown = null;

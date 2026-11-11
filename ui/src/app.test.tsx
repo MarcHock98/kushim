@@ -177,6 +177,18 @@ describe("Freigabe-Leiste (Claude Code)", () => {
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
   });
 
+  it("gekürzter Text: kein Erlauben-Knopf, nur Ablehnen und der Hinweis aufs Terminal", async () => {
+    const sock: { current?: MockSocket } = {};
+    render(<App load={loaderWith(sock)} />);
+    await waitFor(() => screen.getAllByText(STATE_VIEW.idle.label));
+    sock.current!.pending = [{ ...P, truncated: true }];
+    await waitFor(() => expect(screen.getByRole("alertdialog")).toBeInTheDocument(), { timeout: 3000 });
+    expect(screen.queryByRole("button", { name: "Erlauben" })).toBeNull();
+    expect(screen.getByText(/Erlauben bitte im Terminal/)).toBeInTheDocument();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Ablehnen" })); });
+    expect(decides(sock.current!)[0]).toMatchObject({ request_id: "abcde", approve: false });
+  });
+
   it("Esc lehnt ab und sendet kein confirm", async () => {
     const sock = await asking();
     await act(async () => { fireEvent.keyDown(screen.getByRole("alertdialog"), { key: "Escape" }); });
