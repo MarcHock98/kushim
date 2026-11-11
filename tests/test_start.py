@@ -91,7 +91,8 @@ def test_doctor_claude_checks():
 def env(tmp_path, monkeypatch):
     proj = tmp_path / "proj"
     (proj / ".git").mkdir(parents=True)
-    for var in ("SystemRoot", "ProgramFiles", "ProgramFiles(x86)", "ProgramData", "APPDATA", "LOCALAPPDATA"):
+    for var in ("SystemRoot", "ProgramFiles", "ProgramFiles(x86)", "ProgramData", "APPDATA", "LOCALAPPDATA",
+                "CLAUDECODE", "CLAUDE_CODE_CHILD_SESSION"):          # Tests laufen evtl. selbst in Claude Code
         monkeypatch.delenv(var, raising=False)
     cfgfile = tmp_path / "config.toml"
     cfgfile.write_text(f'[memory]\nlocation = "local:{(tmp_path / "vault").as_posix()}"\n'
@@ -183,3 +184,10 @@ def test_start_refuses_without_claude_old_version_login_or_folder(env):
 def test_start_refuses_while_the_kill_switch_is_active(env):
     killswitch.trigger(env.proj.parent)
     assert start(env) == 1 and env.launched == []
+
+
+def test_start_refuses_inside_a_claude_code_session_and_says_why(env, capsys):
+    env.mp.setenv("CLAUDE_CODE_CHILD_SESSION", "1")
+    assert start(env) == 1 and env.launched == [] and env.talked == []
+    assert "Channels are not currently available" in capsys.readouterr().out
+    assert cli._inside_claude_session({"CLAUDECODE": "1"}) and not cli._inside_claude_session({})

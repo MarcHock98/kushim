@@ -108,6 +108,11 @@ def _start(args, cfg: Config, root) -> int:
     if is_triggered(root):
         print("Notaus ist aktiv. Erst bewusst aufheben: kushim resume")
         return 1
+    if _inside_claude_session():
+        print("kushim läuft hier innerhalb einer Claude-Code-Sitzung. Dann schaltet Claude Code den kushim-Channel ab "
+              "(\"Channels are not currently available\"). Bitte über die Verknüpfung \"kushim start\" oder in einem "
+              "eigenen Terminal starten.")
+        return 1
     exe = claude_base.find_claude()
     if exe is None:
         print("Claude Code nicht gefunden. Installieren und anmelden, dann erneut: kushim start")
@@ -186,6 +191,14 @@ def _approved_folder(cfg: Config, raw: str | None):
         except ValueError:
             pass
     return path if path in known else None
+
+
+def _inside_claude_session(env=None) -> bool:
+    """Wurde kushim aus einer laufenden Claude-Code-Sitzung gestartet? Dann gilt das neue Claude als Unter-Sitzung und
+    Claude Code lädt keine Channels (2026-11-11 so beobachtet mit 2.1.321). Wir umgehen das nicht, sondern sagen es."""
+    import os
+    env = os.environ if env is None else env
+    return bool(env.get("CLAUDE_CODE_CHILD_SESSION") or env.get("CLAUDECODE"))
 
 
 def _token_dir_inside(root, folder) -> bool:
