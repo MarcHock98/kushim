@@ -375,3 +375,7 @@ def test_interim_sprich_is_marked_and_the_result_is_final(tmp_path):
     c.take_events()
     assert c.last_final is True
     assert "zwischenstand" in ch.SPRICH_TOOL["inputSchema"]["properties"] and "zwischenstand=true" in ch.INSTRUCTIONS
+
+
+def test_instructions_keep_kushim_work_in_the_foreground():
+    assert "keine Hintergrund-Sitzungen" in ch.INSTRUCTIONS and "Hintergrund-Agenten" in ch.INSTRUCTIONS
