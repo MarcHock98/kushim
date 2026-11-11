@@ -71,47 +71,63 @@ class PermissionVoice:
     @property
     def awaiting(self) -> bool:
         if self._asked is not None and self.clock() - self._asked_at > self.ttl:
-            self._asked = None                      # Zeitablauf: nichts senden, Terminal entscheidet
+            perm, self._asked = self._asked, None   # Zeitablauf: nichts senden, Terminal entscheidet
+            self._log(perm, "timeout")
         return self._asked is not None
 
     def offer(self, perm: Permission) -> str:
         """Ansage für eine neue Anfrage. Fragt „Erlauben?“ nur, wenn eine Antwort per Stimme zulässig ist."""
-        if speakable.complete(perm) and self.blocked(perm) is None:
-            self._asked, self._asked_at = perm, self.clock()
-            return f"{speakable.describe(perm)} {speakable.QUESTION} {HOW}"
         if self._asked is not None:
-            self._asked = None                      # neue Anfrage: die alte Frage gilt nicht mehr
+            old, self._asked = self._asked, None    # neue Anfrage: die alte Frage gilt nicht mehr
+            self._log(old, "replaced")
+        reason = None if speakable.complete(perm) else "unvollständig"
+        reason = reason or self.blocked(perm)
+        if reason is None:
+            self._asked, self._asked_at = perm, self.clock()
+            self._log(perm, "asked")
+            return f"{speakable.describe(perm)} {speakable.QUESTION} {HOW}"
+        self._log(perm, "terminal_only", reason=reason)
         return speakable.announce(perm)
 
-    def handle(self, text: str, verified: bool, strong: bool = False) -> str | None:
-        """None, wenn keine Frage offen ist oder der Satz weder Ja noch Nein ist (dann geht er normal an Claude)."""
+    def handle(self, text: str, verified: bool, strong: bool = False, score: float | None = None) -> str | None:
+        """None, wenn keine Frage offen ist oder der Satz weder Ja noch Nein ist (dann geht er normal an Claude).
+        `score` (Sprecher-Ähnlichkeit) kommt nur ins Protokoll."""
         if not self.awaiting:
             return None
         perm = self._asked
+        voice = {"verified": verified, "strong": strong, "score": score}
         if is_no(text):
             self._asked = None
-            self._log(perm, "not_sent", verified, strong)
+            self._log(perm, "not_sent", **voice)
             return NOT_SENT
         if not is_yes(text):
             return None
         if not verified:
             self._asked = None
-            self._log(perm, "no_voice", verified, strong)
+            self._log(perm, "no_voice", **voice)
             return NEED_VOICE
         if not strong:
-            self._log(perm, "weak", verified, strong)
+            self._log(perm, "weak", **voice)
             return NEED_STRONG                      # Frage bleibt offen, bis zum Zeitablauf
         self._asked = None
-        if self.blocked(perm) is not None:          # nochmal prüfen, falls sich die Sperrliste geändert hat
-            self._log(perm, "blocked", verified, strong)
+        reason = self.blocked(perm)
+        if reason is not None:                      # nochmal prüfen, falls sich die Sperrliste geändert hat
+            self._log(perm, "blocked", reason=reason, **voice)
             return speakable.TERMINAL
         status = self.bridge.answer(perm.request_id, "allow")
-        self._log(perm, {"ok": "allowed", "unknown": "gone"}.get(status, status), verified, strong)
+        self._log(perm, {"ok": "allowed", "unknown": "gone"}.get(status, status), **voice)
         return {"ok": ALLOWED, "unknown": GONE, "kill": KILLED}.get(status, FAILED)
 
-    def _log(self, perm: Permission, result: str, verified: bool, strong: bool) -> None:
+    def _log(self, perm: Permission, result: str, verified: bool | None = None, strong: bool | None = None,
+             score: float | None = None, reason: str | None = None) -> None:
+        """Ein Eintrag fürs Freigabe-Protokoll (C5): was, Ergebnis, Sprecher-Prüfung. Nie Audio, nie der Rohtext."""
+        entry: dict[str, Any] = {"request_id": perm.request_id, "tool": perm.tool_name, "what": speakable.describe(perm),
+                                 "result": result, "source": "voice"}
+        if verified is not None:
+            entry.update(verified=verified, strong=strong, score=None if score is None else round(float(score), 3))
+        if reason is not None:
+            entry["reason"] = reason
         try:
-            self.on_decision({"request_id": perm.request_id, "tool": perm.tool_name, "result": result,
-                              "verified": verified, "strong": strong})
+            self.on_decision(entry)
         except Exception:                           # noqa: BLE001 (Protokoll darf nie die Antwort verhindern)
             pass
