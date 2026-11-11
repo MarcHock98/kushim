@@ -144,9 +144,10 @@ den kushim-Channel (lokaler MCP-Server, stdio). kushim (Python) spricht mit dem 
 - [x] C5 Protokoll jeder Freigabe lokal (was, wann, Sprecher-Score, Ergebnis), ohne Audio (2026-11-11): `channel/approval_log.py`
       im verschlüsselten Vault (Audit), Stimme und Oberfläche, `kushim claude approvals` zeigt es. Die Kurzbeschreibung kann
       Teile eines Befehls enthalten (z. B. ein Token im Klartext); sie liegt nur verschlüsselt im Vault.
-- [ ] C7 **(Entscheidung Nutzer)** Token-Dateien (`run/channel.json`, `run/api.json`) aus dem Projektordner verlegen
+- [x] C7 ~~Token-Dateien (`run/channel.json`, `run/api.json`) aus dem Projektordner verlegen~~
       (Safety-Audit 2026-11-11, B5): Arbeitet Claude im kushim-Repo selbst, könnte es die Token lesen und sich über Channel
-      oder API selbst Freigaben geben. Bis dahin warnt `kushim start`.
+      oder API selbst Freigaben geben. **Entscheidung Nutzer 2026-11-11: so lassen, nur Warnung** bei `kushim start`
+      (bewusst akzeptiertes Restrisiko; Verlegen nach `%LOCALAPPDATA%\kushim\run` bleibt möglich, wenn gewünscht).
 - [ ] C6 Live-Test **(Nutzer)**: Claude will einen Befehl ausführen → per Stimme erlauben → Claude macht weiter
 
 ## Phase D: Modell und Verbrauch
