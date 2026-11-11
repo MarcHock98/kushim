@@ -114,7 +114,7 @@ den kushim-Channel (lokaler MCP-Server, stdio). kushim (Python) spricht mit dem 
       (2026-10-27: vom Nutzer mit `kushim start` bestätigt, „Ja er antwortet“)
 
 ## Phase C: Freigaben per Stimme (offizielle Freigabe-Weiterleitung)
-- [ ] C0 Freigabe-Leiste der UI (`approvals.get`/`approvals.decide`, gleiche Regeln: exakter Text, Hash, `confirm`) neu an die
+- [x] C0 (2026-11-11, Python 764 und UI 59 grün; echtes Tauri-Fenster nicht geprüft; `on_decision`-Hook für C5 offen) Freigabe-Leiste der UI (`approvals.get`/`approvals.decide`, gleiche Regeln: exakter Text, Hash, `confirm`) neu an die
       Channel-Freigaben hängen (ergänzt 2026-10-26: der alte Unterbau fiel mit A1 weg)
 - [x] C1 Channel meldet `claude/channel/permission` an und reicht `permission_request` (request_id, tool_name, description,
       input_preview) an kushim weiter; Inhalte gelten als nicht vertrauenswürdig (nur vorlesen, nie ausführen)
