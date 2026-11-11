@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { ApprovalBar, type Pending } from "./components/ApprovalBar";
+import { PermissionBar, type PermissionRequest } from "./components/PermissionBar";
 import { Avatar } from "./components/Avatar";
 import { ClaudePanel } from "./components/ClaudePanel";
 import { Dashboard, type DashData } from "./components/Dashboard";
@@ -39,11 +39,17 @@ export async function defaultLoader(): Promise<{ client: ApiClient }> {
   return { client: new ApiClient(creds) };
 }
 
+const isRequest = (x: unknown): x is PermissionRequest => {       // Antwort des Backends prüfen, nicht blind vertrauen
+  const r = x as Record<string, unknown> | null;
+  return !!r && typeof r.request_id === "string" && typeof r.digest === "string" && typeof r.tool_name === "string"
+    && typeof r.description === "string" && typeof r.input_preview === "string" && typeof r.summary === "string";
+};
+
 export function App({ load = defaultLoader }: { load?: Loader }) {
   const [connected, setConnected] = useState(false);
   const [kill, setKill] = useState<boolean | null>(null);
   const [voice, setVoice] = useState<{ active: boolean; state?: AvatarState; level: number }>({ active: false, level: 0 });
-  const [pending, setPending] = useState<Pending | null>(null);
+  const [pending, setPending] = useState<PermissionRequest[]>([]);
   const [toast, setToast] = useState("");
   const [why, setWhy] = useState("");
   const [view, setView] = useState<View>("home");
@@ -102,19 +108,19 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
     return () => clearInterval(id);
   }, [connected]);
 
-  useEffect(() => {                                     // Freigabe nur abfragen, solange das Backend eine meldet
-    if (!connected || voice.state !== "asking") { setPending(null); return; }
+  useEffect(() => {                                     // offene Freigaben von Claude Code abfragen (nur anzeigen, nie selbst entscheiden)
+    if (!connected) { setPending([]); return; }
     let stop = false;
     const get = async () => {
       const r = await client.current?.call("approvals.get");
       if (stop || !r?.ok) return;
-      const p = r.pending as Pending | null;
-      setPending((old) => (p && old && old.digest === p.digest ? old : p));   // gleiche Freigabe: Zähler nicht zurücksetzen
+      const p = (Array.isArray(r.pending) ? r.pending : []).filter(isRequest);
+      setPending((old) => (old.length === p.length && old.every((o, i) => o.digest === p[i].digest) ? old : p));
     };
     void get();
     const id = setInterval(get, 1000);
     return () => { stop = true; clearInterval(id); };
-  }, [connected, voice.state]);
+  }, [connected]);
 
   useEffect(() => {                                     // Verlauf: nur neue Einträge, nicht bei verdecktem Fenster
     if (!connected) return;
@@ -169,13 +175,14 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
   }, []);
 
   const decide = useCallback(async (approve: boolean) => {
-    const p = pending;
+    const p = pending[0];
     if (!p) return;
-    setPending(null);                                   // nie doppelt absenden
-    const r = await client.current?.call("approvals.decide", { approve, digest: p.digest, ...(approve ? { confirm: true } : {}) });
-    if (r?.ok) setToast(approve ? "Erlaubt. Ich führe es aus." : "Abgelehnt. Es wurde nichts gesendet.");
-    else setToast(r && !r.ok && r.error === "stale" ? "Die Vorschau hat sich geändert. Bitte neu prüfen."
-      : "Nichts mehr zu entscheiden (abgelaufen oder erledigt).");
+    setPending((old) => old.filter((o) => o.request_id !== p.request_id));   // nie doppelt absenden
+    const r = await client.current?.call("approvals.decide", { request_id: p.request_id, approve, digest: p.digest, ...(approve ? { confirm: true } : {}) });
+    if (r?.ok) setToast(approve ? "Erlaubt. Claude Code macht weiter." : "Abgelehnt. Claude Code führt es nicht aus.");
+    else setToast(r && !r.ok && r.error === "stale" ? "Die Anfrage hat sich geändert. Bitte neu prüfen."
+      : r && !r.ok && r.error === "kill" ? "Notaus ist aktiv. Nichts wurde entschieden."
+      : "Nichts mehr zu entscheiden (erledigt oder Claude Code nicht erreichbar).");
     setTimeout(() => setToast(""), 5000);
   }, [pending]);
 
@@ -197,7 +204,7 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [doKill]);
 
-  const state = resolveState({ connected, killActive: kill, backendState: voice.active ? voice.state : undefined });
+  const state = resolveState({ connected, killActive: kill, backendState: pending.length > 0 ? "asking" : voice.active ? voice.state : undefined });
   const stateView = STATE_VIEW[state];
 
   const NAV: { id: View; label: string; icon: ReactNode }[] = [
@@ -225,7 +232,7 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
       </nav>
       <main className="view" ref={viewRef}>
         {state === "halted" && <HaltedBanner onResume={() => void doResume()} />}
-        {pending && state === "asking" && <ApprovalBar pending={pending} onDecide={(a) => void decide(a)} />}
+        {pending.length > 0 && state === "asking" && <PermissionBar request={pending[0]} more={pending.length - 1} onDecide={(a) => void decide(a)} />}
         <div className="toast" role="status" aria-live="polite">{toast}</div>
         <div className="content">
           <MemoryPanel client={client} connected={connected} active={view === "memory"} />

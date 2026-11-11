@@ -140,54 +140,82 @@ describe("Sprach-Zustand vom Backend", () => {
   });
 });
 
-describe("Freigabe-Leiste", () => {
-  const P = { kind: "research", preview: "Suchtext: Höhe des Eiffelturms", digest: "d".repeat(64), expires_in: 125, sends_data_out: true };
+describe("Freigabe-Leiste (Claude Code)", () => {
+  const P = { request_id: "abcde", tool_name: "Bash", description: "Tests laufen lassen", input_preview: '{ "command": "npm test" }',
+    digest: "d".repeat(64), summary: "Claude möchte den Befehl npm test ausführen." };
+  const decides = (s: MockSocket) => s.sent.filter((m) => (m as { type: string }).type === "approvals.decide") as
+    { request_id: string; approve: boolean; digest: string; confirm?: boolean }[];
 
-  async function asking() {
+  async function asking(extra: typeof P[] = []) {
     const sock: { current?: MockSocket } = {};
     render(<App load={loaderWith(sock)} />);
     await waitFor(() => screen.getAllByText(STATE_VIEW.idle.label));
-    sock.current!.pending = { ...P };
-    sock.current!.voice = { active: true, state: "asking", level: 0 };
+    sock.current!.pending = [{ ...P }, ...extra];
     await waitFor(() => expect(screen.getByRole("alertdialog")).toBeInTheDocument(), { timeout: 3000 });
     return sock.current!;
   }
 
-  it("zeigt den exakten Text, die Restzeit und den Hinweis auf Daten nach außen; Standardfokus liegt auf Ablehnen", async () => {
+  it("zeigt den exakten Text von Claude; Standardfokus liegt auf Ablehnen; kein 'Immer erlauben'", async () => {
     await asking();
-    expect(screen.getByText("Suchtext: Höhe des Eiffelturms")).toBeInTheDocument();
-    expect(screen.getByText(/Läuft ab in 02:0\d/)).toBeInTheDocument();
-    expect(screen.getByText(/Sendet Daten nach außen/)).toBeInTheDocument();
+    const dlg = screen.getByRole("alertdialog");
+    expect(dlg.textContent).toContain("Werkzeug: Bash");
+    expect(dlg.textContent).toContain("Beschreibung: Tests laufen lassen");
+    expect(dlg.textContent).toContain('Eingabe: { "command": "npm test" }');
+    expect(screen.getByText("Claude möchte den Befehl npm test ausführen.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Ablehnen" })).toHaveFocus();
-    expect(screen.queryByText(/immer/i)).toBeNull();                     // kein "Immer erlauben"
+    expect(screen.queryByText(/immer/i)).toBeNull();
   });
 
-  it("Erlauben sendet Hash und confirm; ohne Klick passiert nichts", async () => {
+  it("Erlauben sendet Anfrage-Nummer, Hash und confirm; ohne Klick passiert nichts", async () => {
     const sock = await asking();
-    expect(sock.sent.some((m) => (m as { type: string }).type === "approvals.decide")).toBe(false);
+    await new Promise((r) => setTimeout(r, 1300));                       // mehrere Abfragen später noch nichts entschieden
+    expect(decides(sock)).toHaveLength(0);
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Erlauben" })); });
-    const sent = sock.sent.find((m) => (m as { type: string }).type === "approvals.decide") as { approve: boolean; digest: string; confirm: boolean };
-    expect(sent).toMatchObject({ approve: true, digest: P.digest, confirm: true });
+    expect(decides(sock)).toHaveLength(1);
+    expect(decides(sock)[0]).toMatchObject({ request_id: "abcde", approve: true, digest: P.digest, confirm: true });
     await waitFor(() => expect(screen.getByText(/Erlaubt/)).toBeInTheDocument());
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
   });
 
-  it("Ablehnen und Esc lehnen ab und senden kein confirm", async () => {
+  it("Esc lehnt ab und sendet kein confirm", async () => {
     const sock = await asking();
     await act(async () => { fireEvent.keyDown(screen.getByRole("alertdialog"), { key: "Escape" }); });
-    const sent = sock.sent.find((m) => (m as { type: string }).type === "approvals.decide") as { approve: boolean; confirm?: boolean };
-    expect(sent.approve).toBe(false);
-    expect(sent.confirm).toBeUndefined();
+    expect(decides(sock)[0]).toMatchObject({ request_id: "abcde", approve: false });
+    expect(decides(sock)[0].confirm).toBeUndefined();
     await waitFor(() => expect(screen.getByText(/Abgelehnt/)).toBeInTheDocument());
   });
 
-  it("zeigt die Leiste nicht, solange das Backend nicht 'asking' meldet", async () => {
+  it("zeigt mehrere Anfragen nacheinander, die erste zuerst", async () => {
+    const sock = await asking([{ ...P, request_id: "zzzzz", input_preview: "zweite", digest: "e".repeat(64) }]);
+    expect(screen.getByText(/Noch 1 weitere/)).toBeInTheDocument();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Ablehnen" })); });
+    await waitFor(() => expect(screen.getByRole("alertdialog").textContent).toContain("Eingabe: zweite"));
+    expect(decides(sock)).toHaveLength(1);
+  });
+
+  it("ändert sich die Anfrage, meldet das Backend 'stale' und die UI sagt es", async () => {
+    const sock = await asking();
+    sock.pending = [{ ...P, digest: "f".repeat(64) }];                   // zwischen Anzeige und Klick ersetzt
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Erlauben" })); });
+    await waitFor(() => expect(screen.getByText(/hat sich geändert/)).toBeInTheDocument());
+  });
+
+  it("bei Notaus keine Leiste und keine Entscheidung", async () => {
     const sock: { current?: MockSocket } = {};
     render(<App load={loaderWith(sock)} />);
     await waitFor(() => screen.getAllByText(STATE_VIEW.idle.label));
-    sock.current!.pending = { ...P };
-    sock.current!.voice = { active: true, state: "thinking", level: 0 };
-    await new Promise((r) => setTimeout(r, 600));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "NOTAUS" })); });
+    sock.current!.pending = [{ ...P }];
+    await new Promise((r) => setTimeout(r, 1300));
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(decides(sock.current!)).toHaveLength(0);
+  });
+
+  it("ohne offene Anfrage keine Leiste", async () => {
+    const sock: { current?: MockSocket } = {};
+    render(<App load={loaderWith(sock)} />);
+    await waitFor(() => screen.getAllByText(STATE_VIEW.idle.label));
+    await new Promise((r) => setTimeout(r, 1300));
     expect(screen.queryByRole("alertdialog")).toBeNull();
   });
 });
