@@ -337,21 +337,22 @@ def test_a_second_channel_of_the_same_config_does_not_take_over(tmp_path, monkey
     import os
     import subprocess
     import sys
+    from kushim.safety import procs
     run = tmp_path / "run"
     run.mkdir()
     other = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
     try:
         (run / "channel.json").write_text(json.dumps({"port": 1234, "token": "t" * 32, "pid": other.pid}), encoding="utf-8")
-        assert ch.pid_alive(other.pid) and ch.other_owner(tmp_path) == other.pid          # Hintergrund-Sitzung: stumm bleiben
+        assert procs.pid_alive(other.pid) and ch.other_owner(tmp_path) == other.pid          # Hintergrund-Sitzung: stumm bleiben
     finally:
         other.kill()
         other.wait()
-    assert not ch.pid_alive(other.pid) and ch.other_owner(tmp_path) is None              # tot: übernehmen
+    assert not procs.pid_alive(other.pid) and ch.other_owner(tmp_path) is None              # tot: übernehmen
     (run / "channel.json").write_text(json.dumps({"pid": os.getpid()}), encoding="utf-8")
     assert ch.other_owner(tmp_path) is None                                               # die eigene Datei
     (run / "channel.json").write_text("kaputt", encoding="utf-8")
     assert ch.other_owner(tmp_path) is None
-    assert not ch.pid_alive(True) and not ch.pid_alive(-5) and not ch.pid_alive("12")
+    assert not procs.pid_alive(True) and not procs.pid_alive(-5) and not procs.pid_alive("12")
 
 
 def test_start_removes_a_stale_channel_file(tmp_path):

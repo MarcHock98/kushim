@@ -30,6 +30,7 @@ from typing import Any, Callable, TextIO
 from urllib.parse import parse_qs, urlsplit
 
 from ..safety import killswitch
+from ..safety import procs
 
 BIND_HOST = "127.0.0.1"
 NAME = "kushim"
@@ -318,28 +319,6 @@ def watch_kill(channel: Channel, root: Path, stop: threading.Event, interval: fl
             told = False
 
 
-def pid_alive(pid: Any) -> bool:
-    """Läuft dieser Prozess noch? Unter Windows über OpenProcess (os.kill(pid, 0) würde dort den Prozess BEENDEN)."""
-    if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0:
-        return False
-    if os.name == "nt":
-        import ctypes
-        k32 = ctypes.windll.kernel32
-        handle = k32.OpenProcess(0x1000, False, pid)            # PROCESS_QUERY_LIMITED_INFORMATION
-        if not handle:
-            return False
-        try:
-            code = ctypes.c_ulong()
-            return bool(k32.GetExitCodeProcess(handle, ctypes.byref(code))) and code.value == 259   # STILL_ACTIVE
-        finally:
-            k32.CloseHandle(handle)
-    try:
-        os.kill(pid, 0)
-        return True
-    except OSError:
-        return False
-
-
 def other_owner(root: Path) -> int | None:
     """PID eines anderen, noch laufenden kushim-Channels, dem `run/channel.json` gehört; sonst None.
 
@@ -350,7 +329,7 @@ def other_owner(root: Path) -> int | None:
         pid = json.loads((root / "run" / "channel.json").read_text(encoding="utf-8")).get("pid")
     except (OSError, ValueError, AttributeError):
         return None
-    return pid if pid != os.getpid() and pid_alive(pid) else None
+    return pid if pid != os.getpid() and procs.pid_alive(pid) else None
 
 
 def write_info(root: Path, port: int, token: str) -> Path:
