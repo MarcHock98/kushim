@@ -1,4 +1,8 @@
-"""Antwortweg über Claude Code (Roadmap v2 B4): Befehl über die Brücke senden, Quittung sprechen, `sprich`-Antwort vorlesen.
+"""Antwortweg über Claude Code (Roadmap v2 B4): Befehl über die Brücke senden, `sprich`-Antworten vorlesen.
+
+Seit 2026-11-11 (Wunsch des Nutzers) keine feste Quittung mehr: Claude sagt zuerst selbst kurz, was es vorhat
+(`sprich` mit zwischenstand=true), dann das Ergebnis. Nur wenn Claude ACK_AFTER Sekunden schweigt, sagt kushim einmal
+„Claude arbeitet.“.
 
 Ersetzt den Platzhalter `not_connected` in der Pipeline. Wartet in kurzen Abständen (POLL Sekunden) auf Claudes Antwort,
 damit "abbrechen" und der Notaus schnell greifen. Braucht Claude länger als `patience`, sagt kushim das und liest die
@@ -19,7 +23,8 @@ from ..tasks import TaskRegistry
 if TYPE_CHECKING:
     from .permission_voice import PermissionVoice
 
-ACK = "Ich geb's an Claude."
+ACK = "Claude arbeitet."          # nur, wenn Claude nach ACK_AFTER Sekunden noch nichts gesagt hat
+ACK_AFTER = 10.0
 NOT_RUNNING = "Claude ist gerade nicht verbunden. Starte kushim zusammen mit Claude."
 KILLED = "Der Notaus ist aktiv, ich gebe nichts weiter."
 FAILED = "Das konnte ich nicht an Claude geben."
@@ -58,8 +63,8 @@ class ClaudeChat:
         if status != "ok":
             yield {"not_running": NOT_RUNNING, "kill": KILLED}.get(status, FAILED)
             return
-        yield ACK
-        deadline = self.clock() + self.patience
+        start = self.clock()
+        deadline, said = start + self.patience, False
         with self.tasks.running("Claude arbeitet", cancel=self.bridge.cancel) as token:     # "abbrechen" sagt es auch Claude
             while not token.cancelled():
                 left = deadline - self.clock()
@@ -70,9 +75,18 @@ class ClaudeChat:
                 if token.cancelled():
                     return
                 notes = self.permission_notes()
-                if notes or texts:
+                if notes:
                     yield " ".join(notes + texts)
                     return                            # bei einer Freigabe wartet Claude: Runde beenden, damit zugehört wird
+                if texts:
+                    yield " ".join(texts)
+                    said = True
+                    if getattr(self.bridge, "last_final", True):
+                        return                        # Ergebnis da; nach einem Zwischenstand („Ich schaue …“) weiter warten
+                    continue
+                if not said and self.clock() - start >= ACK_AFTER:
+                    yield ACK                         # Claude hat sich noch nicht gemeldet: kurz Bescheid geben
+                    said = True
                 if status == "kill":
                     yield KILLED
                     return
