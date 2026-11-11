@@ -53,8 +53,6 @@ class Config:
     backup_keep: int = 10
     claude_enabled: bool = False
     gpu_whisper: str = "auto"      # "auto", "cpu" oder Kartennummer (kushim gpu)
-    voice_clone: bool = False             # [voice] clone: eigene Stimme (Chatterbox, lokal) statt Piper; nur der Nutzer schaltet das ein
-    voice_clone_ref: str = ""             # [voice] clone_ref: bestimmte Referenzaufnahme (sonst automatisch aus voice-data/clone)
     claude_folders: tuple[str, ...] = ()  # freigegebene Ordner für Claude als "name|pfad"; ändert nur der Nutzer (UI/CLI)
     voice_speaker_check: bool = False     # [voice] speaker_check: nur auf die eingeschriebene Stimme reagieren. Standard aus
                                           # (Entscheidung des Nutzers 2026-11-11); ohne Prüfung keine Freigaben per Stimme.
@@ -76,8 +74,6 @@ class Config:
             backup_keep=int(bak.get("keep", 10)),
             claude_enabled=bool(priv.get("claude_enabled", False)),
             gpu_whisper=str(gpu.get("whisper", "auto")),
-            voice_clone=bool(data.get("voice", {}).get("clone", False)),
-            voice_clone_ref=str(data.get("voice", {}).get("clone_ref", "")),
             voice_speaker_check=data.get("voice", {}).get("speaker_check", False) is True,
             claude_folders=folders,
             path=path,

@@ -44,7 +44,7 @@ Arbeitsweise: immer nur einen Schritt, danach Tests (`pytest`), Sicherheitsprüf
 ## Phase A: Aufräumen (nur löschen, nichts Neues)
 Bleibt: Wake Word (`voice/trigger.py`, `wakeconfig.py`, `wakebuild.py`), Sprecherprüfung (`speaker.py`, `verify.py`, `embedder.py`,
 `profile.py`, `enrollment.py`, `voiceprint.py`, `recorder.py`, `levels.py`), Audio (`audio.py`, `bargein.py`, `dialog.py`),
-Whisper (`stt.py`), TTS (`tts.py`, `clone.py`), Gesprächsschleife (`talk.py`, `pipeline.py`), Notaus (`safety/killswitch.py`),
+Whisper (`stt.py`), TTS (`tts.py`), Gesprächsschleife (`talk.py`, `pipeline.py`), Notaus (`safety/killswitch.py`),
 Abbrechen (`tasks.py`), Vault (`memory/`, für das Stimmprofil), `config.py`, `cli.py`, `doctor.py`, `tests/test_no_egress.py`.
 
 - [x] A1 Sprachbefehle für alte Werkzeuge entfernen: `voice/tool_commands.py`, `timer_commands.py`, `note_commands.py`,
@@ -166,6 +166,6 @@ Claude Code zeigt beides schon selbst (`/model`, `/usage`, Statuszeile). Hier nu
 
 ## Später / offen
 - [ ] Sprecher-Prüfung mit einer zweiten echten Person prüfen **(Nutzer)**
-- [ ] Eigene Stimme (Klon) Hörtest **(Nutzer)**: `kushim voice clone-test`
+- [x] ~~Eigene Stimme (Klon) Hörtest **(Nutzer)**: `kushim voice clone-test`~~ (2026-11-11: Stimmklon auf Wunsch des Nutzers komplett entfernt)
 - [ ] Echo-Unterdrückung für Lautsprecher-Betrieb
 - [ ] Optional: Microsoft Copilot Cowork / Claude Cowork als zweites Ziel (keine API, nur über Fenster-Einfügen, z. B. mit Handy)

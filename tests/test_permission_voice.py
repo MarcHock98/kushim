@@ -178,17 +178,16 @@ def test_through_the_pipeline_with_a_real_speaker_check(tmp_path):
     assert b.answers == [("r1", "allow")] and called == []                                # nichts ging an Claude als Befehl
 
 
-def test_cloned_own_voice_disables_voice_approvals(tmp_path):
+def test_approval_policy_needs_a_work_folder(tmp_path):
     from kushim.voice.talk import approval_policy
     p = perm()
-    assert approval_policy(True, tmp_path)(p) == "eigene Stimme als Ausgabe"
-    assert approval_policy(False, tmp_path)(p) is None
-    assert approval_policy(False, None)(p) == "Arbeitsordner unbekannt"
+    assert approval_policy(tmp_path)(p) is None
+    assert approval_policy(None)(p) == "Arbeitsordner unbekannt"
 
 
 def test_without_speaker_check_nothing_can_be_allowed_by_voice(tmp_path):
     from kushim.voice.talk import approval_policy
-    policy = approval_policy(False, tmp_path, speaker_check=False)
+    policy = approval_policy(tmp_path, speaker_check=False)
     assert policy(perm()) == "keine Sprecher-Prüfung"
     v = voice(blocked=policy)
     assert v.offer(perm()).endswith(speakable.TERMINAL) and not v.awaiting
