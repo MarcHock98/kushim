@@ -120,11 +120,16 @@ den kushim-Channel (lokaler MCP-Server, stdio). kushim (Python) spricht mit dem 
       input_preview) an kushim weiter; Inhalte gelten als nicht vertrauenswürdig (nur vorlesen, nie ausführen)
       (2026-10-27, 561 grün): Anfragen kommen über `GET /reply` (`permissions`), Antwort `POST /permission`; kushim
       beantwortet noch nichts selbst, Notaus lehnt alles Offene ab
-- [ ] C2 Sprechbare Beschreibung: „Claude möchte den Befehl npm test ausführen. Erlauben?“, „… die Datei app.py ändern …“
+- [x] C2 Sprechbare Beschreibung: „Claude möchte den Befehl npm test ausführen. Erlauben?“, „… die Datei app.py ändern …“
+      (2026-11-11, 573 grün): `channel/speakable.py` liest `input_preview` (Format aus Claude Code 2.1.321), `ClaudeChat`
+      sagt jede Anfrage einmal an (in der Runde und im Leerlauf). Bis C3 endet die Ansage mit „Bitte im Terminal
+      bestätigen.“ statt „Erlauben?“ (`announce(ask=True)` schaltet um). Nicht geprüft: Aussprache mit Piper (nur Nutzer).
 - [ ] C3 Antwort per Stimme: „ja“ nur mit **stark** verifizierter Stimme, „nein“/Stille/Zeitablauf = nichts senden (Terminal-Dialog
-      bleibt offen); Ergebnis als `allow`/`deny` mit der request_id zurück
+      bleibt offen); Ergebnis als `allow`/`deny` mit der request_id zurück. Ergänzt 2026-11-11 (Review C2): ein gekürzt
+      vorgelesener Befehl („und so weiter“) oder eine gekürzte `input_preview` („elided“, „…“) ist nie per Stimme freigebbar
 - [ ] C4 Sperrliste: gefährliche Aktionen (Löschen, `git push --force`, Daten senden, Einstellungen ändern) nie per Stimme
-      freigebbar, nur im Terminal (Idee aus voice-mod)
+      freigebbar, nur im Terminal (Idee aus voice-mod). Prüft die Rohdaten, nicht den Ansagetext. Ergänzt 2026-11-11 (Review
+      C2): Dateien außerhalb des Arbeitsordners (vorgelesen wird nur der Dateiname) nie per Stimme
 - [ ] C5 Protokoll jeder Freigabe lokal (was, wann, Sprecher-Score, Ergebnis), ohne Audio
 - [ ] C6 Live-Test **(Nutzer)**: Claude will einen Befehl ausführen → per Stimme erlauben → Claude macht weiter
 

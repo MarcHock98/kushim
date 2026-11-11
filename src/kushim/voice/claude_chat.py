@@ -3,12 +3,14 @@
 Ersetzt den Platzhalter `not_connected` in der Pipeline. Wartet in kurzen Abständen (POLL Sekunden) auf Claudes Antwort,
 damit "abbrechen" und der Notaus schnell greifen. Braucht Claude länger als `patience`, sagt kushim das und liest die
 Antwort später von sich aus vor (`announcement`, nur wenn gerade nichts läuft). Claudes Text ist nur zum Vorlesen da.
+Freigabe-Anfragen von Claude (C2) werden je einmal angesagt; beantwortet werden sie bis C3 nur im Terminal.
 """
 from __future__ import annotations
 
 import time
 from typing import Any, Callable, Iterator
 
+from ..channel import speakable
 from ..channel.bridge import Bridge
 from ..tasks import TaskRegistry
 
@@ -21,6 +23,7 @@ LOST = "Die Verbindung zu Claude ist weg."
 POLL = 2.0                      # Sekunden je Abruf: so schnell greifen Abbrechen und Notaus
 PATIENCE = 180.0                # so lange wartet eine Runde auf Claude, danach kommt die Antwort als Meldung
 ANNOUNCE_EVERY = 2.0            # so oft fragt die Schleife im Leerlauf nach verspäteten Antworten
+MAX_ANNOUNCED = 200             # gemerkte, schon angesagte Freigabe-Anfragen
 
 
 class ClaudeChat:
@@ -30,6 +33,18 @@ class ClaudeChat:
                  clock: Callable[[], float] = time.monotonic):
         self.bridge, self.tasks, self.patience, self.clock = bridge, tasks, patience, clock
         self._next_announce = 0.0
+        self._announced: list[str] = []         # request_ids, die schon vorgelesen wurden (neueste hinten)
+
+    def permission_notes(self) -> list[str]:
+        """Ansagen für neue, noch offene Freigabe-Anfragen; jede nur einmal."""
+        notes = []
+        for perm in list(self.bridge.permissions):
+            if perm.request_id in self._announced:
+                continue
+            self._announced.append(perm.request_id)
+            notes.append(speakable.announce(perm))
+        del self._announced[:-MAX_ANNOUNCED]
+        return notes
 
     def __call__(self, messages: list[dict[str, str]], **_: Any) -> Iterator[str]:
         text = next((m.get("content", "") for m in reversed(messages) if m.get("role") == "user"), "")
@@ -48,6 +63,9 @@ class ClaudeChat:
                 status, texts = self.bridge.fetch(wait=min(POLL, left))
                 if token.cancelled():
                     return
+                notes = self.permission_notes()
+                if notes:
+                    yield " ".join(notes)             # Claude wartet auf die Freigabe; die Runde wartet weiter
                 if texts:
                     yield " ".join(texts)
                     return
@@ -67,4 +85,5 @@ class ClaudeChat:
         if not self.bridge.available():
             return None
         status, texts = self.bridge.fetch(wait=0)
-        return " ".join(texts) if status == "ok" and texts else None
+        parts = self.permission_notes() + (texts if status == "ok" else [])
+        return " ".join(parts) if parts else None

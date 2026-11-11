@@ -115,6 +115,9 @@ Am Ende jedes Durchlaufs eine kurze Rückschau: Was hat gehakt? Was wurde wieder
 - **Wissen über Claude Code ohne Netz:** Die installierte `claude.exe` enthält die eingebauten Beschreibungen (z. B. das
   JSON der Statuszeile). Mit Python und `mmap` nach einem Feldnamen suchen und den Text drumherum lesen (`grep -a` auf der
   300-MB-Datei ist zu langsam und zerhackt die Zeilen). Version (`claude --version`) mit notieren.
+  Ausgabe dabei als Bytes (`sys.stdout.buffer.write`, Nicht-ASCII durch `.` ersetzen): `python -I` ignoriert
+  `PYTHONIOENCODING`, und `print` scheitert sonst an cp1252. Der Treffer im Code zeigt Funktionsnamen (z. B. `pdi(`);
+  mit `function pdi(` erneut suchen, um ihren Rumpf zu lesen.
 - **Ausgaben für andere Programme unter Windows:** Python schreibt in Pipes cp1252. Wer UTF-8 erwartet (Claude Code), bekommt
   Bytes über `sys.stdout.buffer.write(text.encode("utf-8"))`; mit `PYTHONIOENCODING=cp1252` im Test prüfen.
 - **Claude-Code-Sitzungen laufen im Hintergrund-Dienst weiter**, auch wenn ihr Fenster zu ist. Prozesse mit

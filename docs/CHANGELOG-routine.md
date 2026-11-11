@@ -65,3 +65,4 @@ Format: Datum, Datei, Grund (ein Satz).
 - 2026-10-26, `.claude/skills/kushim-routine/SKILL.md`: Fallstricke "Wissen über Claude Code ohne Netz (claude.exe lesen)" und "UTF-8 für andere Programme unter Windows" ergänzt (aus Z4).
 - 2026-10-27, `.claude/skills/kushim-safety-review/SKILL.md`, `kushim-routine/SKILL.md`, `agents/*.md`: Gate-Regeln durch "kushim führt nichts aus, Netz nur ALLOWLIST/127.0.0.1" ersetzt (A5, vom Nutzer freigegeben); `kushim-add-tool` als veraltet markiert.
 - 2026-10-27, `.claude/skills/kushim-routine/SKILL.md`: Fallstrick "Claude-Sitzungen im Hintergrund-Dienst, claude stop mit kurzer Job-ID" ergänzt.
+- 2026-11-11, `.claude/skills/kushim-routine/SKILL.md`: Fallstrick zu claude.exe lesen ergänzt (Ausgabe als Bytes, `python -I` ignoriert `PYTHONIOENCODING`; Funktionsrumpf über `function name(` finden).
