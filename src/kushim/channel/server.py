@@ -52,6 +52,9 @@ INSTRUCTIONS = (
     "klar (kurze Frage), überspring das und antworte direkt. (2) Am Ende genau einmal `sprich` ohne zwischenstand mit dem "
     "Ergebnis: kurz, deutsch, für die Ohren (ohne Markdown, Code, Pfade und Listen, höchstens drei Sätze). Bei einer Rückfrage "
     "stell sie in diesem letzten `sprich`. "
+    "Erledige kushim-Aufträge selbst in dieser Sitzung im Vordergrund: starte dafür keine Hintergrund-Sitzungen, keine "
+    "Hintergrund-Agenten und keine Hintergrund-Befehle, deren Ergebnis du nicht abwartest. Dort sieht der Nutzer weder "
+    "Rückfragen noch Freigaben, und das Ergebnis erreicht ihn nie. "
     'Eine Nachricht mit kind="cancel" heißt: Der Nutzer hat per Stimme abgebrochen. Den laufenden Auftrag nicht fortsetzen, '
     'nichts Neues beginnen, kurz per `sprich` bestätigen. Eine Nachricht mit kind="kill" ist der NOTAUS: sofort aufhören, keine '
     "Werkzeuge mehr benutzen, nichts mehr vorlesen lassen und auf den Nutzer im Terminal warten."
