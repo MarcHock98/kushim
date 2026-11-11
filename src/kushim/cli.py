@@ -371,10 +371,7 @@ def _main(argv: list[str] | None = None) -> int:
     th.add_argument("value", type=float)
     vo.add_parser("reset")
     vo.add_parser("check", help="Sprecher-Prüfung ein- oder ausschalten (Standard: aus)").add_argument("state", choices=["on", "off"])
-    ct = vo.add_parser("clone-test", help="Hörvergleich: derselbe Satz mit Piper und mit deiner geklonten Stimme (alles lokal, ohne Netz)")
-    ct.add_argument("text", nargs="*", help="Satz (Standard: ein Beispielsatz)")
-    ct.add_argument("--out", help="Namensteil des Ausgabegeräts, sonst Systemstandard")
-    rec = vo.add_parser("record", help="Absätze für den Stimmklon aufnehmen (nur lokal, voice-data/)")
+    rec = vo.add_parser("record", help="Absätze fürs Einschreiben der Stimme aufnehmen (nur lokal, voice-data/)")
     rec.add_argument("--mic", help="Namensteil des Mikrofons, sonst Systemstandard")
     rec.add_argument("--redo", action="store_true", help="Schon vorhandene Aufnahmen neu sprechen")
     rec.add_argument("--auto", action="store_true", help="Ende eines Absatzes automatisch per Stille statt per Enter")
@@ -498,24 +495,6 @@ def _main(argv: list[str] | None = None) -> int:
         from .voice.recorder import EnterController
         record_session(root / "voice-data" / "clone", iter(mic), redo=args.redo, flush=mic.flush,
                        controller=None if args.auto else EnterController())
-        return 0
-    if args.cmd == "voice" and args.sub == "clone-test":
-        from .voice import audio, clone
-        from .voice.tts import PiperEngine
-        text = " ".join(args.text) or "Hallo, ich bin kushim. Schön, dass du da bist. Die Hauptstadt von Frankreich ist Paris."
-        why = clone.missing(root, cfg.voice_clone_ref)
-        if why:
-            print(f"Nicht möglich: {why}")
-            return 1
-        dev = audio.find_device(args.out, "output")
-        piper = PiperEngine.from_local(str(root / "models" / "piper" / "de_DE-thorsten-high.onnx"))
-        engine = clone.build(root, piper, cfg.voice_clone_ref, on_note=print)
-        print("1) Piper (Standardstimme):")
-        audio.play_wav(piper.synthesize(text), dev)
-        print("2) Deine geklonte Stimme (erster Satz braucht einige Sekunden, das Modell lädt) ...")
-        audio.play_wav(engine.synthesize(text), dev)
-        print("Gefällt sie dir? Einschalten: in config.toml  [voice]  clone = true   (Piper bleibt als Ersatz, falls der Klon ausfällt).")
-        getattr(getattr(engine, "primary", None), "close", lambda: None)()
         return 0
     if args.cmd == "voice":
         from .voice import audio, voiceprint
@@ -687,7 +666,7 @@ def _main(argv: list[str] | None = None) -> int:
                 talklog.write("note", text=s)
             pipeline, kill, mic, ack = build_live(root, audio.find_device(args.out, "output"),
                                                   audio.find_device(args.mic, "input"),
-                                                  verifier=verifier, tasks=tasks, clone=cfg.voice_clone, clone_ref=cfg.voice_clone_ref,
+                                                  verifier=verifier, tasks=tasks,
                                                   on_note=note,
                                                   wake_names=[w.name for w in wcfg.enabled()],
                                                   whisper_device=plan.whisper_device,

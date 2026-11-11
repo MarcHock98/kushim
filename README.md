@@ -4,14 +4,14 @@ Ein lokaler „Jarvis“ als Sprach-Vorderseite für **Claude Code**: Du sprichs
 
 **Die Daten gehören dir.** Spracherkennung, Sprecherprüfung und Stimme laufen komplett auf deinem Rechner. Audio verlässt nie den PC; an Anthropic geht nur der erkannte Befehlstext über Claude Code selbst.
 
-Inhalt: [Was es heute kann](#was-es-heute-kann) · [Voraussetzungen](#voraussetzungen) · [Installation](#installation) · [Erster Start](#erster-start) · [Täglicher Gebrauch](#täglicher-gebrauch) · [Konfiguration](#konfiguration) · [Netzwerk und Datenschutz](#netzwerk-und-datenschutz) · [Eigene Stimme (Klon)](#eigene-stimme-klon) · [Fehlerbehebung](#fehlerbehebung) · [Deinstallation](#deinstallation) · [Entwicklung](#entwicklung)
+Inhalt: [Was es heute kann](#was-es-heute-kann) · [Voraussetzungen](#voraussetzungen) · [Installation](#installation) · [Erster Start](#erster-start) · [Täglicher Gebrauch](#täglicher-gebrauch) · [Konfiguration](#konfiguration) · [Netzwerk und Datenschutz](#netzwerk-und-datenschutz) · [Stimme aufnehmen](#stimme-aufnehmen) · [Fehlerbehebung](#fehlerbehebung) · [Deinstallation](#deinstallation) · [Entwicklung](#entwicklung)
 
 ## Was es heute kann
 
 - **Sprechen per Wake Word:** Du sagst eines deiner Wake Words („hey kushim“, „kushim“, „hi kushim“ …, alle in **einer zentralen Datei** einstellbar), kushim antwortet „Ja?“ und hört deinen Befehl. Vor dem Wake Word läuft nur ein kleines lokales Erkennungsmodell: keine Spracherkennung, keine Weitergabe, keine Speicherung.
 - **Nur auf deine Stimme:** Sprecherverifikation mit Mehr-Prototypen-Profil aus langer Aufnahme. Fremde Stimmen bekommen keine Antwort. Längere Äußerungen werden in Fenstern geprüft (sicherer). Ohne eingeschriebenes Stimmprofil startet das Sprechen gar nicht.
 - **Notaus:** per Desktop-Verknüpfung oder per Sprachbefehl („Notaus“, „stopp alles“). Wirkt für jede Stimme.
-- **Lokal:** Whisper (Spracherkennung, GPU), Piper (deutsche Stimme), optional eigene Stimme (Klon).
+- **Lokal:** Whisper (Spracherkennung, GPU), Piper (deutsche Stimme).
 - **Verschlüsseltes Gedächtnis (Vault)** für das Stimmprofil, mit Backups.
 
 **Umbau (Roadmap v2):** Die alten lokalen Werkzeuge (Ollama-Sprachmodell, Websuche, Timer, Notizen, eigene Claude-Läufe) sind entfernt. Die Brücke zu Claude Code (Channel) steht: kushim gibt Befehle an die laufende Claude-Code-Sitzung und liest Claudes Antwort vor. Ein gemeinsamer Startbefehl (`kushim start`) und Freigaben per Stimme folgen. Stand und Pläne: [ROADMAP.md](ROADMAP.md).
@@ -104,7 +104,7 @@ Diese Schritte machst nur du (sie betreffen deinen Schlüssel und deine Stimme).
    ```powershell
    .\.venv\Scripts\python -m kushim.cli key export
    ```
-3. **Stimme einschreiben.** Du liest die 10 Absätze aus `docs/voice-recording-text.md` (Teil B, etwa 5 Minuten) vor. Daraus entsteht dein Stimmprofil: viele Stimmabdrücke aus 3-Sekunden-Fenstern, gebündelt zu mehreren Prototypen, mit einer aus deinen Daten berechneten Schwelle. Im Vault liegen nur Zahlenvektoren. **Dieselben Aufnahmen** (`voice-data/clone/`, nicht im Git) dienen später für den Stimmklon, du sprichst nur einmal.
+3. **Stimme einschreiben.** Du liest die 10 Absätze aus `docs/voice-recording-text.md` (Teil B, etwa 5 Minuten) vor. Daraus entsteht dein Stimmprofil: viele Stimmabdrücke aus 3-Sekunden-Fenstern, gebündelt zu mehreren Prototypen, mit einer aus deinen Daten berechneten Schwelle. Im Vault liegen nur Zahlenvektoren. Die Aufnahmen liegen in `voice-data/clone/` (nicht im Git).
    ```powershell
    .\.venv\Scripts\python -m kushim.cli voice enroll
    ```
@@ -202,15 +202,15 @@ Vault verschieben (z. B. auf ein anderes Laufwerk): `python -m kushim.cli memory
 - **Stimmprofil:** nur ein Zahlenvektor, im verschlüsselten Vault.
 - **Schlüssel:** im Windows-Credential-Manager, nie im Vault, nie im Projekt.
 
-## Eigene Stimme (Klon)
+## Stimme aufnehmen
 
-Für eine Stimme, die wie du klingt, nimmst du Material auf (nur lokal, Ordner `voice-data/` ist nicht im Git). Text dazu: `docs/voice-recording-text.md`, Teil B.
+Fürs Einschreiben (Sprecher-Prüfung, standardmäßig aus) nimmst du Material auf (nur lokal, Ordner `voice-data/` ist nicht im Git). Text dazu: `docs/voice-recording-text.md`, Teil B.
 
 ```powershell
 .\.venv\Scripts\python -m kushim.cli voice record --mic "Arctis 5 Chat"
 ```
 
-Es nimmt 10 Absätze mit 24 kHz auf. Du startest und beendest jeden Absatz selbst mit Enter und kannst ihn behalten oder neu aufnehmen (`--auto`: Ende per Stille). Es prüft Pegel und Länge und überspringt vorhandene (`--redo` überschreibt). Das Klon-Modell selbst folgt, siehe [docs/research/voice-clone.md](docs/research/voice-clone.md).
+Es nimmt 10 Absätze mit 24 kHz auf. Du startest und beendest jeden Absatz selbst mit Enter und kannst ihn behalten oder neu aufnehmen (`--auto`: Ende per Stille). Es prüft Pegel und Länge und überspringt vorhandene (`--redo` überschreibt). Danach: `kushim voice enroll`.
 
 ## Fehlerbehebung
 
@@ -250,7 +250,6 @@ Es nimmt 10 Absätze mit 24 kHz auf. Du startest und beendest jeden Absatz selbs
 | Statische Prüfung gegen Netzwerkcode außerhalb der Allowlist | fertig |
 | Stimme: Wake Word, Sprecherverifikation, Whisper, Piper, Satz-Streaming, Barge-in | fertig, im Live-Test |
 | Start-Verknüpfungen, `doctor`, Installationsskript | fertig |
-| Eigene Stimme (Klon) | gebaut, Hörtest offen |
 | UI (Tauri, Avatar, Transkript, Notaus, Ordner) | fertig, wird auf Claude Code umgestellt (Phase E) |
 | Brücke zu Claude Code (Channel), Freigaben per Stimme | geplant (Phase B, C) |
 
