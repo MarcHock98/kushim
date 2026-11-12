@@ -53,7 +53,7 @@ Das Skript macht der Reihe nach und ist jederzeit wiederholbar (Vorhandenes wird
 3. Python-Pakete in festen Versionen installieren
 4. Modelle laden und per SHA-256 prüfen: Whisper large-v3-turbo, deutsche Piper-Stimme, Sprecher-Modell, Wake-Word-Modelle
 5. Logo-Icon erzeugen
-6. Desktop-Verknüpfungen anlegen: **kushim start**, **kushim App**, **kushim sprechen**, **kushim NOTAUS**
+6. Desktop-Verknüpfungen anlegen: **kushim** (startet alles) und **kushim NOTAUS**
 7. Am Ende fragt es, ob es den Vault anlegen und deine Stimme einschreiben soll (nur mit deinem Ja)
 
 Schalter:
@@ -114,9 +114,7 @@ Diese Schritte machst nur du (sie betreffen deinen Schlüssel und deine Stimme).
 
 | Aktion | So |
 |---|---|
-| Oberfläche öffnen | Desktop-Verknüpfung **kushim App** (oder `kushim app`): startet Sprache und API im Hintergrund, öffnet das Fenster und beendet beim Schließen alles, was sie selbst gestartet hat. `kushim app --no-voice` öffnet nur das Fenster mit der API (ohne Mikrofon). Einmalig bauen: `cd ui` und `npx tauri build --no-bundle` (braucht Node und Rust). |
-| **Mit Claude sprechen** | Desktop-Verknüpfung **kushim start** (oder `kushim start [ordner]`): öffnet Claude Code mit dem kushim-Channel in einem eigenen Fenster im freigegebenen Arbeitsordner (`kushim claude add <name> <pfad>`) und startet das Zuhören. Im Claude-Fenster einmal den Hinweis zum Entwicklungs-Channel bestätigen. Diese Claude-Sitzung lädt nur den kushim-Server (keine anderen MCP-Server), Telemetrie aus. `kushim doctor` prüft Version (ab 2.1.234) und Anmeldung. |
-| Starten und sprechen | Desktop-Verknüpfung **kushim sprechen** (oder `python -m kushim.cli talk`). Nach dem Start steht im Fenster, welche Wake Words gelten. |
+| **Starten** | Desktop-Verknüpfung **kushim** oder im Terminal einfach `kushim`. Das öffnet Claude Code mit dem kushim-Channel im eigenen Fenster „kushim-Claude“ (im freigegebenen Arbeitsordner, `kushim claude add <name> <pfad>`), startet das Zuhören und die Oberfläche. Im Claude-Fenster einmal den Hinweis zum Entwicklungs-Channel bestätigen. **Schließt du das Claude-Fenster, endet alles.** Ohne Oberfläche: `kushim start --no-ui`. Mehrere Ordner: `kushim start <name>`. |
 | Sprechen | Wake Word und Befehl in einem Zug sagen („hey kushim, wie spät ist es?“), kushim sagt „Ich geb's an Claude.“ und liest Claudes Antwort vor (Claude Code muss mit dem kushim-Channel laufen; braucht Claude länger, kommt die Antwort später von selbst). Sagst du nur das Wake Word, kommt nach `command_wait_seconds` (Standard 1,5) ein „Ja?“ und kushim wartet `listen_seconds` (Standard 4) auf den Befehl; bleibt es still, hört kushim wieder nur aufs Wake Word. |
 | Beenden | `Strg+C` im Fenster |
 | **Notaus** | Verknüpfung **kushim NOTAUS** anklicken oder „Notaus“ / „stopp alles“ sagen. Danach startet kushim erst wieder, wenn du bewusst aufhebst: `python -m kushim.cli resume`. |
