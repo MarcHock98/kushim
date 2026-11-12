@@ -11,7 +11,7 @@ TOKEN = new_token()
 
 
 def cfg(**kw):
-    base = dict(claude_enabled=False, memory_location="local:" , backup_target="")
+    base = dict(memory_location="local:" , backup_target="")
     base.update(kw)
     return SimpleNamespace(**base)
 
@@ -26,17 +26,17 @@ def make(tmp_path, c=None, **kw):
     return core
 
 
-def test_default_mode_a_no_kill_money_limit_zero(tmp_path):
+def test_default_no_kill_money_limit_zero(tmp_path):
     r = call(make(tmp_path))
-    assert r["mode"] == "A" and r["kill"] is False and r["money_limit_eur"] == 0.0
+    assert "mode" not in r and r["kill"] is False and r["money_limit_eur"] == 0.0
     assert r["vault"] == {"where": "local", "exists": False, "open": False}
     assert r["tools_active"] == [] and r["audit"] == [] and r["backup"] == {"configured": False, "age_days": None}
 
 
-def test_mode_c_and_kill_and_active_tools(tmp_path):
+def test_kill_and_remote_vault(tmp_path):
     killswitch.trigger(tmp_path)
-    r = call(make(tmp_path, cfg(claude_enabled=True, memory_location="remote:nas")))
-    assert r["mode"] == "C" and r["kill"] is True and r["tools_active"] == []
+    r = call(make(tmp_path, cfg(memory_location="remote:nas")))
+    assert r["kill"] is True and r["tools_active"] == []
     assert r["vault"]["where"] == "remote"
 
 
@@ -45,9 +45,9 @@ def test_live_config_object_is_read_fresh_each_call(tmp_path):
     live = SimpleNamespace(get=lambda: state["c"])
     core = ApiCore(TOKEN)
     register_safety_view(core, live, tmp_path)
-    assert call(core)["mode"] == "A"
-    state["c"] = cfg(claude_enabled=True)
-    assert call(core)["mode"] == "C"
+    assert call(core)["vault"]["where"] == "local"
+    state["c"] = cfg(memory_location="remote:nas")
+    assert call(core)["vault"]["where"] == "remote"
 
 
 def test_never_exposes_paths_keys_or_tokens(tmp_path):

@@ -15,7 +15,7 @@ export class MockSocket implements Socket {
   session: unknown = null;
   proposals = new Map<string, string>();
   overview: Record<string, unknown> = {
-    mode: "A", kill: false, tools_active: [], vault: { where: "local", exists: true, open: true },
+    kill: false, tools_active: [], vault: { where: "local", exists: true, open: true },
     backup: { configured: true, age_days: 2 }, money_limit_eur: 0, audit: [],
   };
   facts: { id: number; text: string; kind: string; source: string; created: number }[] = [];

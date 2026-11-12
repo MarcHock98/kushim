@@ -165,13 +165,13 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
     return () => { stop = true; clearInterval(id); };
   }, [connected]);
 
-  useEffect(() => {                                     // Sicherheitsstatus: immer (Modus C bleibt sichtbar), selten abfragen
+  useEffect(() => {                                     // Sicherheitsstatus: selten abfragen
     if (!connected) { setOverview(null); return; }
     let stop = false;
     const pull = async () => {
       if (document.hidden) return;
       const r = await client.current?.call("safety.overview");
-      if (!stop && r?.ok && typeof r.mode === "string") setOverview(r as unknown as Overview);
+      if (!stop && r?.ok && typeof r.kill === "boolean") setOverview(r as unknown as Overview);
     };
     void pull();
     const id = setInterval(pull, view === "security" ? 3000 : 10000);
@@ -309,7 +309,6 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
         <span className="brand">kushim</span>
         <span className="label brand-sub">Sprachassistent</span>
         <span className="status" aria-live={stateView.live} title={stateView.label}>{stateView.label}</span>
-        {overview?.mode === "C" && <span className="chip mode-c" title="Claude ist erlaubt: freigegebene Texte gehen an Anthropic">Modus C</span>}
         <KillButton onKill={() => void doKill()} />
       </header>
       <nav className="rail" aria-label="Bereiche">

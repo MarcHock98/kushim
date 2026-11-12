@@ -15,7 +15,8 @@ Plan: [ROADMAP.md](../ROADMAP.md). Frühere Übergaben stehen in der Git-Histori
 ## Entfernt seit der letzten Übergabe (Nutzerwünsche)
 Stimmklon (Code, Doku, `tools/chatterbox`, Aufnahmen), Sprecher-Prüfung (Einschreiben, Profil, Modelle), Freigaben per
 Stimme (`permission_voice`, `voice_policy`), `sanitize.py`, alte Pläne und Recherchen (Git-Historie), alte Modelle
-`models/speaker` und `models/piper-cohort` (Papierkorb). Telemetrie-Sperre aus `.claude/settings.json` (für Remote Control).
+`models/speaker` und `models/piper-cohort` (Papierkorb), der Schalter „Modus C“ (`claude_enabled`, `kushim claude enable/disable`,
+Chip und Zeile in der Oberfläche; die Sicherheitsanzeige nennt jetzt fest „Gehirn: Claude Code“). Telemetrie-Sperre aus `.claude/settings.json` (für Remote Control).
 
 ## Oberfläche (UI-Branch, hier gemerged)
 Design „Jarvin Cockpit“ (Artifact des Nutzers), Details und Pläne: `docs/ui-dynamic-plan.md`, `docs/ui-p2-plan.md`.
@@ -36,5 +37,4 @@ Design „Jarvin Cockpit“ (Artifact des Nutzers), Details und Pläne: `docs/ui
   Reiter), ein UI-Regeltest für KaTeX `trust: false`, Screenshots bei 375/800/1440 px, echtes Tauri-Fenster und GPU-Last
   neben Whisper prüfen (nicht gemessen). Danach P3 bis P6 laut `docs/ui-dynamic-plan.md` (je erst Detailplan, dann OK).
 - Nutzerregel: bei UI-Arbeit erst ein Plan, dann die Freigabe, dann der Code.
-- „Modus C“-Schalter (`claude_enabled`) noch in Config und UI-Sicherheitsanzeige: entfernen (der UI-Branch ist jetzt gemerged).
 - Z3 für den Nutzer: `py scripts\claude_setup.py --project . --statusline --test-hook`.

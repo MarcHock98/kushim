@@ -42,7 +42,7 @@ und wann das letzte Backup war. Schlüssel und Rohdaten nie anzeigen. Leer: "Noc
 Ampelzeilen (Wort + Icon + Farbe): Modus A/C ("Lokal" / "Claude erlaubt"), Sprecher verifiziert (letzte Prüfung, Wert,
 Schwelle, "stark"/"normal"), Notaus (bereit/aktiv), Vault (Ort, entsperrt), letztes Backup, Audit-Log (letzte 50
 Einträge, filterbar, nur lesen), Geldlimit ("0 €, gesperrt"). Warnungen oben, sachlich ("Backup älter als 7 Tage").
-Modus C wird dauerhaft in der Kopfzeile markiert, solange er aktiv ist.
+Die Zeile „Gehirn“ nennt fest Claude Code (was der Nutzer sagt, geht an Anthropic); einen Modus-Schalter gibt es nicht mehr.
 
 ## 6. Setup-Assistent
 Folgt `docs/ui-setup-plan.md` (vier Schritte). Links Fortschrittsleiste (Schritt, Status Text + Icon), rechts Inhalt,

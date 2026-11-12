@@ -35,7 +35,7 @@ Gedächtnis und Schlüssel
   kushim key import <vault_id> <hexkey>
 
 Prüfen und Hilfe
-  kushim claude [check|enable|disable]  Claude CLI und Anmeldung prüfen; Modus C ein/aus
+  kushim claude [check]        Claude CLI und Anmeldung prüfen
   kushim claude show           Die laufende Claude-Sitzung von kushim wieder in einem Fenster zeigen
   kushim claude folders|add|remove  Sichere Arbeitsordner für Claude verwalten
   kushim claude approvals           Protokoll der Freigaben (Oberfläche)
@@ -348,11 +348,9 @@ def _main(argv: list[str] | None = None) -> int:
     lv.add_argument("--apply", action="store_true", help="Vorschlag in wakewords.toml übernehmen")
     sub.add_parser("doctor", help="Prüft, ob alles installiert und eingerichtet ist")
     sub.add_parser("help", help="Übersicht aller Befehle mit Beispielen")
-    cl = sub.add_parser("claude", help="Claude CLI prüfen, Modus C ein-/ausschalten").add_subparsers(dest="sub")
-    cl.add_parser("check", help="Zeigt CLI, Anmeldung und Schalter")
+    cl = sub.add_parser("claude", help="Claude CLI prüfen, Sitzung zeigen, Ordner verwalten").add_subparsers(dest="sub")
+    cl.add_parser("check", help="Zeigt CLI und Anmeldung")
     cl.add_parser("show", help="Die laufende kushim-Sitzung von Claude Code wieder in einem Fenster zeigen")
-    cl.add_parser("enable", help="Modus C einschalten (mit Rückfrage)")
-    cl.add_parser("disable", help="Modus C sofort ausschalten")
     cl.add_parser("folders", help="Für Claude freigegebene Ordner anzeigen")
     ca = cl.add_parser("add", help="Einen Ordner für Claude freigeben (mit Rückfrage)")
     ca.add_argument("name")
@@ -420,24 +418,11 @@ def _main(argv: list[str] | None = None) -> int:
                 return 1
             print("Fenster \"kushim-Claude\" geöffnet.")
             return 0
-        if action == "enable":
-            print("Modus C: Fragen, die du an Claude richtest, gehen an Anthropic (über deine angemeldete Claude CLI; kushim speichert keine Zugangsdaten).")
-            if input("Einschalten? (j/N): ").strip().lower() not in ("j", "ja", "y", "yes"):
-                print("Nicht eingeschaltet.")
-                return 1
-            cfg.set_claude_enabled(True)
-            print("Modus C ist an.")
-            return 0
-        if action == "disable":
-            cfg.set_claude_enabled(False)
-            print("Modus C ist aus. Nichts geht mehr an Claude.")
-            return 0
         exe = claude_base.find_claude()
         print(f"Claude CLI: {exe if exe else 'nicht gefunden'}")
         if exe:
             auth = claude_base.auth_status(exe)
             print("Angemeldet: " + (f"ja ({'Abo' if auth.subscription else 'Konto: ' + auth.method})" if auth.logged_in else "nein (claude auth login)"))
-        print(f"Modus C: {'an' if cfg.claude_enabled else 'aus (kushim claude enable)'}")
         return 0
     if args.cmd == "setup":
         from .setup import status as setup_status

@@ -1,6 +1,6 @@
 """API-Typ `safety.overview`: Sicherheitsstatus für die Oberfläche (nur lesen).
 
-Zeigt: Modus A/C, Notaus, aktive Werkzeuge, Vault (lokal/Netz, vorhanden, offen), Backup-Alter, Geldlimit, letzte
+Zeigt: Notaus, aktive Werkzeuge, Vault (lokal/Netz, vorhanden, offen), Backup-Alter, Geldlimit, letzte
 Audit-Einträge. Nie Pfade, Schlüssel, Token oder Stimmprofile; Audit-Details sind auf 160 Zeichen gekürzt. Das LLM hat keinen Zugang.
 """
 from __future__ import annotations
@@ -48,7 +48,6 @@ def register_safety_view(core: ApiCore, live: Any, root: Path,
             except Exception:                             # noqa: BLE001 (Anzeige darf nie stören)
                 audit = []
         return {
-            "mode": "C" if cfg.claude_enabled else "A",
             "kill": killswitch.is_triggered(root),
             "tools_active": [],                       # kushim hat keine eigenen Werkzeuge mehr (Roadmap v2 A5)
             "vault": {"where": "local" if scheme == "local" else "remote", "exists": exists, "open": store is not None},

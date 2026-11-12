@@ -10,7 +10,7 @@ from pathlib import Path
 
 class LiveConfig:
     """Liest `config.toml` höchstens alle `ttl` Sekunden neu. Für lange laufende Gespräche: Schaltet der Nutzer in einem anderen Fenster
-    ein Werkzeug oder Modus C um, gilt das ohne Neustart (zu einem Zeitpunkt, den der Nutzer sieht, nie durch Sprache oder das LLM)."""
+    einen Ordner oder die Grafikkarte um, gilt das ohne Neustart (zu einem Zeitpunkt, den der Nutzer sieht, nie durch Sprache oder das LLM)."""
 
     def __init__(self, ttl: float = 2.0, loader=None, clock=None):
         import time
@@ -51,7 +51,6 @@ class Config:
     memory_location: str = "local:~/kushim-vault"
     backup_target: str = ""
     backup_keep: int = 10
-    claude_enabled: bool = False
     gpu_whisper: str = "auto"      # "auto", "cpu" oder Kartennummer (kushim gpu)
     claude_folders: tuple[str, ...] = ()  # freigegebene Ordner für Claude als "name|pfad"; ändert nur der Nutzer (UI/CLI)
                                           # (Entscheidung des Nutzers 2026-11-11); ohne Prüfung keine Freigaben per Stimme.
@@ -63,7 +62,7 @@ class Config:
         if not path.exists():
             return cls(path=path)
         data = tomllib.loads(path.read_text(encoding="utf-8"))
-        mem, bak, priv = data.get("memory", {}), data.get("backup", {}), data.get("privacy", {})
+        mem, bak = data.get("memory", {}), data.get("backup", {})
         gpu = data.get("gpu", {})
         raw_folders = data.get("claude", {}).get("folders", [])
         folders = tuple(f for f in raw_folders if isinstance(f, str) and "|" in f) if isinstance(raw_folders, list) else ()
@@ -71,7 +70,6 @@ class Config:
             memory_location=mem.get("location", cls.memory_location),
             backup_target=bak.get("target", ""),
             backup_keep=int(bak.get("keep", 10)),
-            claude_enabled=bool(priv.get("claude_enabled", False)),
             gpu_whisper=str(gpu.get("whisper", "auto")),
             claude_folders=folders,
             path=path,
@@ -107,31 +105,6 @@ class Config:
         tmp.write_text(chr(10).join(lines) + chr(10), encoding="utf-8")
         os.replace(tmp, path)
         self.claude_folders = tuple(clean)
-
-    def set_claude_enabled(self, on: bool) -> None:
-        """Schreibt nur `claude_enabled` im Abschnitt [privacy] (Modus C); übrige Datei bleibt erhalten. Atomar."""
-        path = self.path or config_path()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        line = f"claude_enabled = {'true' if on else 'false'}"
-        lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
-        in_priv, done = False, False
-        for i, l in enumerate(lines):
-            s = l.strip()
-            if s.startswith("["):
-                in_priv = s == "[privacy]"
-            elif in_priv and s.startswith("claude_enabled"):
-                lines[i] = line
-                done = True
-        if not done:
-            heads = [l.strip() for l in lines]
-            if "[privacy]" in heads:
-                lines.insert(heads.index("[privacy]") + 1, line)
-            else:
-                lines += ([""] if lines else []) + ["[privacy]", line]
-        tmp = path.with_suffix(".toml.tmp")
-        tmp.write_text("\n".join(lines) + "\n", encoding="utf-8")
-        os.replace(tmp, path)
-        self.claude_enabled = on
 
     def set_memory_location(self, location: str) -> None:
         """Schreibt nur die Zeile `location` um; übrige Datei bleibt erhalten."""

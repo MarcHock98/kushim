@@ -249,6 +249,9 @@ def test_ctrl_c_cancels_a_cli_command_quietly(tmp_path, monkeypatch, capsys):
     def interrupted(prompt=""):
         raise KeyboardInterrupt
     monkeypatch.setattr("builtins.input", interrupted)
-    assert cli.main(["claude", "enable"]) == 130
+    work = tmp_path / "proj"
+    work.mkdir()
+    monkeypatch.setattr("kushim.claude_cli.folders.validate_path", lambda raw, vault=None: work)  # tmp liegt unter AppData
+    assert cli.main(["claude", "add", "proj", str(work)]) == 130
     assert "Abgebrochen." in capsys.readouterr().out
-    assert not Config.load(f).claude_enabled                  # nach Abbruch nichts eingeschaltet
+    assert Config.load(f).claude_folders == ()                # nach Abbruch nichts freigegeben

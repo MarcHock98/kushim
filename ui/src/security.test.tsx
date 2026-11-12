@@ -25,20 +25,12 @@ async function open(overview: Record<string, unknown>) {
 }
 
 describe("Sicherheitsstatus", () => {
-  it("zeigt jeden Punkt mit Wort: Modus A, Geldlimit 0, Notaus bereit, Sicherung", async () => {
+  it("zeigt jeden Punkt mit Wort: Gehirn, Geldlimit 0, Notaus bereit, Sicherung", async () => {
     await open({});
-    expect(screen.getByText(/Lokal \(Modus A\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Claude Code \(was du sagst, geht an Anthropic\)/)).toBeInTheDocument();
     expect(screen.getByText(/0 €, gesperrt/)).toBeInTheDocument();
     expect(screen.getByText(/bereit/)).toBeInTheDocument();
     expect(screen.getByText(/vor 2 Tagen/)).toBeInTheDocument();
-    expect(document.querySelector(".head .mode-c")).toBeNull();
-  });
-
-  it("Modus C steht als Warnung im Bildschirm UND dauerhaft als Chip in der Kopfzeile", async () => {
-    await open({ mode: "C" });
-    expect(screen.getByText(/Claude erlaubt \(Modus C\)/)).toBeInTheDocument();
-    expect(screen.getByText(/Modus C ist aktiv/)).toBeInTheDocument();
-    expect(document.querySelector(".head .mode-c")).not.toBeNull();
   });
 
   it("warnt bei alter Sicherung und fehlendem Vault", async () => {

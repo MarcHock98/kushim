@@ -13,4 +13,4 @@ description: Use to continue kushim development: reads ROADMAP.md, picks the nex
 6. Element in `ROADMAP.md` abhaken, nur wenn getestet und geprüft.
 7. Committen auf Nutzerwunsch; nie ungefragt pushen.
 
-Leitplanken: lokal zuerst (Modus A), Claude nur Opt-in (Modus C), Gedächtnis nie nach außen, Vault-Ort nur über `memory.location`.
+Leitplanken: Claude Code ist das Gehirn (Roadmap v2), kushim selbst spricht nur mit 127.0.0.1, Gedächtnis nie nach außen, Vault-Ort nur über `memory.location`.

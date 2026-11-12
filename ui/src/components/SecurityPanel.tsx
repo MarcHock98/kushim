@@ -2,7 +2,6 @@ import { useState, type ReactNode } from "react";
 import { IconCheck, IconCross, IconWarn } from "./Icons";
 
 export interface Overview {
-  mode: "A" | "C";
   kill: boolean;
   tools_active: string[] | null;
   vault: { where: string; exists: boolean; open: boolean };
@@ -29,7 +28,6 @@ export const BACKUP_WARN_DAYS = 7;
 /** Warnungen oben, sachlich. Nur Anzeige, nichts davon lässt sich hier ändern (Einstellungen kommen mit eigenem Schutz). */
 export function warnings(o: Overview): string[] {
   const w: string[] = [];
-  if (o.mode === "C") w.push("Modus C ist aktiv: Texte, die du freigibst, gehen an Anthropic.");
   if (o.kill) w.push("Notaus ist aktiv.");
   if (!o.vault.exists) w.push("Es gibt noch keinen Vault.");
   if (o.backup.configured && (o.backup.age_days === null || o.backup.age_days > BACKUP_WARN_DAYS)) {
@@ -48,7 +46,7 @@ export function SecurityPanel({ overview }: { overview: Overview | null }) {
     <section className="security" aria-label="Sicherheitsstatus">
       {warnings(o).map((w) => <p key={w} className="sec-warn" role="status">{w}</p>)}
       <ul className="sec-list">
-        <Row label="Modus" tone={o.mode === "A" ? "ok" : "warn"} text={o.mode === "A" ? "Lokal (Modus A)" : "Claude erlaubt (Modus C)"} />
+        <Row label="Gehirn" tone="ok" text="Claude Code (was du sagst, geht an Anthropic)" />
         <Row label="Notaus" tone={o.kill ? "alarm" : "ok"} text={o.kill ? "aktiv" : "bereit"} />
         <Row label="Werkzeuge" tone={o.tools_active === null ? "warn" : "ok"} text={o.tools_active === null ? "unbekannt" : o.tools_active.length ? o.tools_active.join(", ") : "keines eingeschaltet"} />
         <Row label="Vault" tone={o.vault.exists && o.vault.open ? "ok" : "warn"}
