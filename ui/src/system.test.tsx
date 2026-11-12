@@ -21,6 +21,8 @@ async function open(system: Record<string, unknown> | null | undefined = undefin
   });
   render(<App load={loader} />);
   await waitFor(() => screen.getAllByText(STATE_VIEW.idle.label));
+  sock.current!.entries.push({ id: 1, heard: "Wie ist die Systemauslastung?", reply: "Gleich.", outcome: "spoken" });   // kushim soll es zeigen
+  await waitFor(() => panel(), { timeout: 3000 });
   return sock;
 }
 
@@ -60,10 +62,11 @@ describe("Systemzustand", () => {
     expect(within(panel()).getByText("nicht verfügbar")).toBeInTheDocument();
   });
 
-  it("fragt nur ab, solange der Start offen ist", async () => {
+  it("fragt nur ab, solange der Systemzustand gezeigt wird", async () => {
     const sock = await open();
     await waitFor(() => within(panel()).getByText("34 %"));
-    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Sicherheit" })); });
+    await act(async () => { fireEvent.keyDown(window, { key: "Escape" }); });
+    expect(screen.queryByRole("region", { name: "Systemzustand" })).toBeNull();
     const before = (sock.current!.sent as { type?: string }[]).filter((m) => m.type === "system.stats").length;
     await new Promise((r) => setTimeout(r, 3300));
     const after = (sock.current!.sent as { type?: string }[]).filter((m) => m.type === "system.stats").length;

@@ -1,6 +1,6 @@
 # Plan: Dynamische Oberfläche („Bühne“) für alle Anwendungsfälle
 
-Stand 2026-11-12. Noch nichts davon ist gebaut, das ist der Plan zur Freigabe. Vorgaben des Nutzers: Design „Jarvin Cockpit“.
+Stand 2026-11-12. P1 ist gebaut (3D-Kern, Bühne mit Dialog- und Zeige-Modus); der Rest ist der Plan zur Freigabe. Vorgaben des Nutzers: Design „Jarvin Cockpit“.
 Ein **rundes 3D-Modell wie bei Jarvis** steht im Ruhezustand groß in der Mitte. Kommt etwas zum Anzeigen, rückt es
 **mit Animation** zur Seite, je nachdem, was gezeigt wird. Gezeichnet wird mit **WebGL/three.js**. Formeln setzt
 **KaTeX** (lokal gebündelt). Reihenfolge: **3D zuerst**, dann die Inhalte.
@@ -12,7 +12,7 @@ Die Startseite wird eine **Bühne** mit festen Zonen. Was Claude Code liefert, b
 
 | Bühnen-Modus | Wann | Kern (3D) | Inhalt |
 |---|---|---|---|
-| **Ruhe** | nichts anzuzeigen | groß, mittig | Zustandswort darunter, Verlauf/System dezent an den Rändern |
+| **Dialog** | reines Gespräch, nichts zu zeigen | groß, mittig, allein | nur Zustandswort und Hinweise; **keine Standard-Panels** (Verlauf und Claude stehen in der Übersicht, der Systemzustand erscheint nur, wenn er gezeigt wird) |
 | **Begleiten** | kurze Antwort, Kennzahl, Karte | mittelgroß, rückt nach links oben | eine Karte rechts daneben |
 | **Fokus** | Rechenweg, Dokument, Mail, Recherche, Diagramm | klein, oben links (wie ein Avatar im Gespräch) | Inhalt nimmt die Mitte, Seitenleiste für Quellen/Schritte |
 | **Raum** | 3D-Modell, Simulation, Teilchen | Kern wird zum Begleiter oben rechts; die 3D-Szene teilt sich die WebGL-Leinwand mit ihm | Vollfläche-Szene mit Steuerleiste |

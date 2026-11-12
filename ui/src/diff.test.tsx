@@ -4,6 +4,12 @@ import { App } from "./App";
 import { ApiClient } from "./lib/api";
 import { MockSocket } from "./lib/mock";
 
+/** Verlauf und Claude-Bereich stehen in der Übersicht (die Startseite zeigt im Gespräch nur den Kern). */
+async function toOverview() {
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Übersicht" })); });
+}
+
+
 const TOKEN = "t".repeat(43);
 afterEach(cleanup);
 
@@ -25,6 +31,7 @@ async function open() {
     }),
   });
   render(<App load={loader} />);
+  await toOverview();
   await waitFor(() => screen.getByRole("list", { name: "Geänderte Dateien" }), { timeout: 3000 });
   return sock;
 }

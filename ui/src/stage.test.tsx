@@ -20,6 +20,10 @@ async function open() {
   return sock;
 }
 const stage = () => screen.getByRole("region", { name: "Gespräch" });
+const showSystem = async (sock: { current?: MockSocket }, id = 1) => {
+  sock.current!.entries.push({ id, heard: "Wie ist die CPU-Auslastung?", reply: "Gleich.", outcome: "spoken" });
+  await waitFor(() => expect(stage()).toHaveAttribute("data-mode", "zeige"), { timeout: 3000 });
+};
 
 describe("Bühne", () => {
   it("ohne WebGL (jsdom) zeichnet der 2D-Orb als Ersatz, mit Zustand als aria-label", async () => {
@@ -28,37 +32,49 @@ describe("Bühne", () => {
     expect(screen.getByRole("img")).toHaveAttribute("aria-label", STATE_VIEW.idle.label);
   });
 
-  it("Ruhe: Kern groß ohne Karte; eine Antwort öffnet die Karte im Modus Begleiten", async () => {
-    const sock = await open();
-    expect(stage()).toHaveAttribute("data-mode", "ruhe");
-    sock.current!.entries.push({ id: 1, heard: "Wie spät ist es?", reply: "Zehn Uhr.", outcome: "answered" });
-    await waitFor(() => expect(stage()).toHaveAttribute("data-mode", "begleiten"), { timeout: 3000 });
-    expect(screen.getByRole("article", { name: "Antwort" }).textContent).toContain("Zehn Uhr.");
+  it("im Gespräch nur der Kern: keine Standard-Panels auf dem Start", async () => {
+    await open();
+    expect(stage()).toHaveAttribute("data-mode", "dialog");
+    for (const name of ["Systemzustand", "Verlauf", "Claude"]) expect(screen.queryByRole("region", { name })).toBeNull();
+    expect(screen.queryByRole("complementary", { name: "Claude" })).toBeNull();
   });
 
-  it("Esc und der Schließen-Knopf bringen die Ruhe zurück", async () => {
+  it("eine normale Antwort ändert nichts, der Kern bleibt groß in der Mitte", async () => {
     const sock = await open();
-    sock.current!.entries.push({ id: 1, heard: "a", reply: "b", outcome: "answered" });
-    await waitFor(() => expect(stage()).toHaveAttribute("data-mode", "begleiten"), { timeout: 3000 });
+    sock.current!.entries.push({ id: 1, heard: "Wie spät ist es?", reply: "Zehn Uhr.", outcome: "spoken" });
+    await new Promise((r) => setTimeout(r, 1300));
+    expect(stage()).toHaveAttribute("data-mode", "dialog");
+  });
+
+  it("fragt man nach dem System, zeigt kushim den Systemzustand; Esc und Schließen bringen das Gespräch zurück", async () => {
+    const sock = await open();
+    await showSystem(sock);
+    expect(screen.getByRole("region", { name: "Systemzustand" })).toBeInTheDocument();
     await act(async () => { fireEvent.keyDown(window, { key: "Escape" }); });
-    expect(stage()).toHaveAttribute("data-mode", "ruhe");
-    sock.current!.entries.push({ id: 2, heard: "c", reply: "d", outcome: "answered" });
-    await waitFor(() => expect(stage()).toHaveAttribute("data-mode", "begleiten"), { timeout: 3000 });
+    expect(stage()).toHaveAttribute("data-mode", "dialog");
+    await showSystem(sock, 2);
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Schließen (Esc)" })); });
-    expect(stage()).toHaveAttribute("data-mode", "ruhe");
+    expect(stage()).toHaveAttribute("data-mode", "dialog");
   });
 
-  it("eine neue Frage (Zuhören) räumt die Karte ab", async () => {
+  it("eine neue Frage (Zuhören) bringt das Gespräch zurück", async () => {
     const sock = await open();
-    sock.current!.entries.push({ id: 1, heard: "a", reply: "b", outcome: "answered" });
-    await waitFor(() => expect(stage()).toHaveAttribute("data-mode", "begleiten"), { timeout: 3000 });
+    await showSystem(sock);
     sock.current!.voice = { active: true, state: "listening", level: 0.3 };
-    await waitFor(() => expect(stage()).toHaveAttribute("data-mode", "ruhe"), { timeout: 3000 });
+    await waitFor(() => expect(stage()).toHaveAttribute("data-mode", "dialog"), { timeout: 3000 });
   });
 
-  it("der Kern ist in Ruhe groß und beim Begleiten klein, nie unter dem Minimum", () => {
+  it("Verlauf und Claude stehen in der Übersicht", async () => {
+    await open();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Übersicht" })); });
+    expect(screen.getByRole("region", { name: "Verlauf" })).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "Claude" })).toBeInTheDocument();
+  });
+
+  it("der Kern ist im Gespräch groß und im Zeige-Modus klein, nie unter dem Minimum", () => {
     const box = { width: 1200, height: 900 };
     expect(coreSmall(box)).toBeLessThan(avatarSize(box));
+    expect(avatarSize(box)).toBeGreaterThanOrEqual(600 * 0.9);
     expect(coreSmall({ width: 200, height: 200 })).toBe(AVATAR_MIN);
   });
 });

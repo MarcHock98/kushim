@@ -57,7 +57,7 @@ describe("Navigation", () => {
     await waitFor(() => screen.getByRole("img"));
     expect(screen.getByRole("img")).toHaveStyle({ width: `${AVATAR_DEFAULT}px` });
     await act(async () => { cb([{ contentRect: { width: 400, height: 500 } } as ResizeObserverEntry], {} as ResizeObserver); });
-    await waitFor(() => expect(screen.getByRole("img")).toHaveStyle({ width: "250px" }));      // schmal: min(400*0,7=280, 500*0,5=250)
+    await waitFor(() => expect(screen.getByRole("img")).toHaveStyle({ width: "280px" }));      // min(400*0,7=280, 500*0,68=340)
     await act(async () => { cb([{ contentRect: { width: 1600, height: 1000 } } as ResizeObserverEntry], {} as ResizeObserver); });
     await waitFor(() => expect(screen.getByRole("img")).toHaveStyle({ width: `${AVATAR_MAX}px` }));
   });

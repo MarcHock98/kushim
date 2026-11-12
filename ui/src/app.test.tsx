@@ -6,6 +6,12 @@ import { ApiClient } from "./lib/api";
 import { resolveState, STATE_VIEW } from "./lib/avatarState";
 import { MockSocket } from "./lib/mock";
 
+/** Verlauf und Claude-Bereich stehen in der Übersicht (die Startseite zeigt im Gespräch nur den Kern). */
+async function toOverview() {
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Übersicht" })); });
+}
+
+
 const TOKEN = "t".repeat(43);
 afterEach(cleanup);
 
@@ -260,6 +266,7 @@ describe("Daumen-Feedback", () => {
   async function withReply() {
     const sock: { current?: MockSocket } = {};
     render(<App load={loaderWith(sock)} />);
+    await toOverview();
     await waitFor(() => screen.getByText(/Noch nichts gesagt/));
     sock.current!.entries = [{ id: 7, heard: "Wie spät?", reply: "Zehn Uhr.", outcome: "spoken" },
       { id: 8, heard: "", reply: "", outcome: "rejected_speaker" }];
@@ -289,6 +296,7 @@ describe("Live-Transkript", () => {
   it("zeigt neue Einträge als reinen Text (nie HTML) und holt jeden nur einmal", async () => {
     const sock: { current?: MockSocket } = {};
     render(<App load={loaderWith(sock)} />);
+    await toOverview();
     await waitFor(() => screen.getByText(/Noch nichts gesagt/));
     sock.current!.entries = [
       { id: 1, heard: "Wie spät ist es?", reply: "Es ist <b>zehn</b> Uhr.", outcome: "spoken" },
@@ -318,6 +326,7 @@ describe("Claude-Bereich", () => {
       }),
     });
     render(<App load={loader} />);
+    await toOverview();
     await waitFor(() => screen.getByLabelText("Auftrag"));
     return sock;
   }
@@ -358,6 +367,7 @@ describe("Claude-Bereich", () => {
 
   it("ohne freigegebenen Ordner steht der Hinweis, kein Formular", async () => {
     render(<App load={loaderWith({})} />);
+    await toOverview();
     await waitFor(() => screen.getByText(/kein Ordner freigegeben/));
     expect(screen.queryByLabelText("Auftrag")).toBeNull();
   });
@@ -376,6 +386,7 @@ describe("Claude: Rückfragen und Erlaubnisse", () => {
       }),
     });
     render(<App load={loader} />);
+    await toOverview();
     await waitFor(() => screen.getByLabelText("Antwort an Claude"));
     return sock;
   }

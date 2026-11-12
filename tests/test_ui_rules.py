@@ -44,10 +44,10 @@ def test_rust_part_has_no_network_or_process_code():
 CSS = (UI / "src" / "styles" / "app.css").read_text(encoding="utf-8")
 
 
-def test_css_has_the_three_layout_steps_and_the_two_column_home():
+def test_css_has_the_three_layout_steps_and_the_two_column_show_mode():
     assert re.search(r'@media \(max-width: 799px\)[\s\S]*?grid-template-areas: "head" "view" "rail"', CSS)       # Leiste unten
     assert re.search(r"@media \(min-width: 1100px\)[\s\S]*?--rail-w: 200px", CSS)                              # Beschriftung neben dem Symbol
-    assert re.search(r"@media \(min-width: 1000px\)[\s\S]*?\.home \{ grid-template-columns:", CSS)             # zwei Spalten
+    assert re.search(r'@media \(min-width: 1000px\)[\s\S]*?\.stage\[data-mode="zeige"\] \{ grid-template-columns:', CSS)  # Zeige-Modus: Kern | Inhalt
     assert re.search(r"@media \(max-width: 599px\)", CSS)                                                       # schmale Telefone
 
 

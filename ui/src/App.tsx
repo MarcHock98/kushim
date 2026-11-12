@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { flushSync } from "react-dom";
 import { PermissionBar, type PermissionRequest } from "./components/PermissionBar";
 import { Core3D } from "./components/Core3D";
-import { StageCard } from "./components/StageCard";
 import { ClaudePanel } from "./components/ClaudePanel";
 import { Dashboard, type DashData } from "./components/Dashboard";
 import { MemoryPanel } from "./components/MemoryPanel";
@@ -28,6 +27,11 @@ type View = "home" | "dashboard" | "security" | "memory";
 const POLL_MS = 2000;
 const VOICE_POLL_MS = 200;
 const SYSTEM_POLL_MS = 3000;
+// Übergang bis P2 (`zeige`): Eine Frage nach dem Systemzustand lässt kushim die Werte zeigen. Später entscheidet Claude Code.
+const SYSTEM_ASK = /\b(system(zustand|status|auslastung)?|auslastung|cpu|prozessor|arbeitsspeicher|ram|gpu|grafikkarte|festplatte|speicherplatz|akku)\b/i;
+
+/** Was die Bühne gerade zeigt. Im reinen Gespräch nichts: dann steht nur der Kern groß in der Mitte. */
+type Shown = { kind: "system" } | null;
 
 /** Bühnenwechsel mit Animation (View Transitions in WebView2/Chromium); ohne Unterstützung oder bei weniger Bewegung sofort. */
 function staged(change: () => void): void {
@@ -72,7 +76,7 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
   const [sys, setSys] = useState<SysData | null>(null);
   const [sysNo, setSysNo] = useState(false);
   const [entries, setEntries] = useState<Entry[]>([]);
-  const [card, setCard] = useState<Entry | null>(null);       // Bühne: offene Antwort-Karte (Modus „Begleiten“)
+  const [shown, setShown] = useState<Shown>(null);           // Bühne: null = Dialog (nur Kern), sonst Zeige-Modus
   const lastId = useRef(0);
   const [rated, setRated] = useState<Record<number, 1 | -1>>({});
   const client = useRef<ApiClient | null>(null);
@@ -151,8 +155,7 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
       if (fresh.length === 0) return;
       lastId.current = Math.max(...fresh.map((e) => e.id));
       setEntries((old) => [...old, ...fresh].slice(-20));
-      const answer = [...fresh].reverse().find((e) => e.reply);
-      if (answer) staged(() => setCard(answer));
+      if (fresh.some((e) => SYSTEM_ASK.test(e.heard))) staged(() => setShown({ kind: "system" }));
     };
     void pull();
     const id = setInterval(pull, 1000);
@@ -186,8 +189,8 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
     return () => { stop = true; clearInterval(id); };
   }, [connected, view]);
 
-  useEffect(() => {                                     // Systemzustand nur abfragen, solange der Start offen und das Fenster sichtbar ist
-    if (!connected || view !== "home") return;
+  useEffect(() => {                                     // Systemzustand nur abfragen, solange er gezeigt wird und das Fenster sichtbar ist
+    if (!connected || view !== "home" || shown?.kind !== "system") return;
     let stop = false;
     const pull = async () => {
       if (document.hidden) return;
@@ -199,7 +202,7 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
     void pull();
     const id = setInterval(pull, SYSTEM_POLL_MS);
     return () => { stop = true; clearInterval(id); };
-  }, [connected, view]);
+  }, [connected, view, shown]);
 
   const rate = useCallback(async (id: number, rating: 1 | -1) => {
     const r = await client.current?.call("feedback.add", { entry: id, rating });
@@ -238,18 +241,18 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [doKill]);
 
-  const closeCard = useCallback(() => staged(() => setCard(null)), []);
-  const cardRef = useRef(card);
-  cardRef.current = card;
-  useEffect(() => {                                     // neue Frage: Bühne räumt die Karte ab
-    if (voice.active && voice.state === "listening" && cardRef.current) closeCard();
-  }, [voice.active, voice.state, closeCard]);
+  const closeShown = useCallback(() => staged(() => setShown(null)), []);
+  const shownRef = useRef(shown);
+  shownRef.current = shown;
+  useEffect(() => {                                     // neue Frage: zurück zum Gespräch, der Kern kommt groß in die Mitte
+    if (voice.active && voice.state === "listening" && shownRef.current) closeShown();
+  }, [voice.active, voice.state, closeShown]);
   useEffect(() => {
-    if (!card) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !(e.target as HTMLElement | null)?.closest?.(".approval")) closeCard(); };
+    if (!shown) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !(e.target as HTMLElement | null)?.closest?.(".approval")) closeShown(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [card, closeCard]);
+  }, [shown, closeShown]);
 
   const state = resolveState({ connected, killActive: kill, backendState: pending.length > 0 ? "asking" : voice.active ? voice.state : undefined });
   const stateView = STATE_VIEW[state];
@@ -284,22 +287,26 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
         <div className="toast" role="status" aria-live="polite">{toast}</div>
         <div className="content">
           <MemoryPanel client={client} connected={connected} active={view === "memory"} />
-          {view === "dashboard" && <Dashboard data={dash} overview={overview} unavailable={dashNo} />}
+          {view === "dashboard" && (
+            <div className="overview">
+              {connected && (
+                <section className="panel overview-log" aria-labelledby="log-h">
+                  <div className="panel-head"><h2 id="log-h">Verlauf</h2><span className="label">{entries.length} Einträge</span></div>
+                  <Transcript entries={entries} rated={rated} onRate={(id, r) => void rate(id, r)} />
+                </section>
+              )}
+              <aside className="overview-claude" aria-label="Claude">
+                <ClaudePanel client={client} connected={connected} />
+              </aside>
+              <div className="overview-dash"><Dashboard data={dash} overview={overview} unavailable={dashNo} /></div>
+            </div>
+          )}
           {view === "security" && <SecurityPanel overview={overview} />}
           {view === "home" && (
-            <div className="home">
-              <section className="home-main panel stage" aria-label="Gespräch" data-state={state} data-mode={card ? "begleiten" : "ruhe"}>
-                <div className="stage-core">
-                  <Core3D state={state} size={card ? coreSmall(box) : avatarSize(box)} level={voice.level} />
-                </div>
+            <section className="stage" aria-label="Gespräch" data-state={state} data-mode={shown ? "zeige" : "dialog"}>
+              <div className="stage-core">
+                <Core3D state={state} size={shown ? coreSmall(box) : avatarSize(box)} level={voice.level} />
                 <p className="line">{stateView.label}</p>
-                {card && <StageCard entry={card} onClose={closeCard} />}
-                {voice.active && (
-                  <div className="meter">
-                    <div className="meter-head"><span className="label">Pegel</span><span className="label">{Math.round(voice.level * 100)} %</span></div>
-                    <div className="track" aria-hidden="true"><div className="fill" style={{ width: `${Math.round(voice.level * 100)}%` }} /></div>
-                  </div>
-                )}
                 {connected && !voice.active && state === "idle" && (
                   <p className="hint">Der Sprachdienst läuft nicht. Starte ihn mit „kushim talk“.</p>
                 )}
@@ -307,18 +314,11 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
                 {state === "offline" && (
                   <button type="button" className="primary" onClick={() => void connect()}>Erneut versuchen</button>
                 )}
-              </section>
-              {connected && (
-                <section className="home-log panel" aria-labelledby="log-h">
-                  <div className="panel-head"><h2 id="log-h">Verlauf</h2><span className="label">{entries.length} Einträge</span></div>
-                  <Transcript entries={entries} rated={rated} onRate={(id, r) => void rate(id, r)} />
-                </section>
+              </div>
+              {shown?.kind === "system" && (
+                <div className="stage-content"><SystemPanel data={sys} unavailable={sysNo} onClose={closeShown} /></div>
               )}
-              {connected && <SystemPanel data={sys} unavailable={sysNo} />}
-              <aside className="home-side" aria-label="Claude">
-                <ClaudePanel client={client} connected={connected} />
-              </aside>
-            </div>
+            </section>
           )}
         </div>
       </main>

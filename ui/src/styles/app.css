@@ -47,9 +47,6 @@ h2, h3 { font-family: var(--font-display); font-weight: 600; letter-spacing: .04
 
 .hint { margin: 0; color: var(--text-muted); font-size: var(--fs-sm); text-align: center; }
 
-.meter { width: 100%; display: grid; gap: var(--s-2); padding-top: var(--s-4); border-top: 1px solid var(--line); }
-.meter-head { display: flex; justify-content: space-between; gap: var(--s-2); }
-[data-state="listening"] .meter .fill { background: var(--amber); }
 
 /* Freigabe (Bernstein: deine Entscheidung) */
 .approval { position: sticky; top: 0; z-index: 5; max-height: 80%; overflow: auto; margin: 0 0 var(--s-4); border-color: var(--amber); box-shadow: var(--shadow-1); display: grid; gap: var(--s-3); }
@@ -161,20 +158,17 @@ h2, h3 { font-family: var(--font-display); font-weight: 600; letter-spacing: .04
 
 /* Bühne (docs/ui-dynamic-plan.md, P1): Kern groß in der Mitte („Ruhe“); kommt eine Antwort, rückt er klein zur Seite und
    die Karte bekommt den Platz („Begleiten“). Die Fahrt macht die View-Transition (WebView2), sonst wechselt es sofort. */
-.stage { position: relative; align-items: center; }
-.stage-core { view-transition-name: core3d; display: grid; place-items: center; }
+.stage { display: grid; grid-template-columns: minmax(0, 1fr); place-items: center; align-content: center; gap: var(--s-5); min-height: max(420px, calc(100vh - 160px)); }
+.stage-core { view-transition-name: core3d; display: grid; justify-items: center; gap: var(--s-3); }
 .stage .line { view-transition-name: stage-word; }
+.stage-content { view-transition-name: stage-content; width: 100%; min-width: 0; }
+.stage[data-mode="zeige"] { place-items: start stretch; align-content: start; min-height: 0; }
+.stage[data-mode="zeige"] .stage-core { justify-self: center; }
+.stage[data-mode="zeige"] .line { font-size: var(--fs-lg); }
+.overview { display: grid; gap: var(--s-5); grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); align-items: start; }
+.overview-log { display: grid; gap: var(--s-3); align-content: start; }
+.overview-dash { grid-column: 1 / -1; }
 .core3d { display: block; }
-.stage[data-mode="begleiten"] { grid-template-columns: minmax(140px, 38%) minmax(0, 1fr); justify-items: stretch; align-items: start; column-gap: var(--s-5); }
-.stage[data-mode="begleiten"] > * { grid-column: 1; }
-.stage[data-mode="begleiten"] .line { font-size: var(--fs-lg); text-align: center; }
-.stage[data-mode="begleiten"] .stage-card { grid-column: 2; grid-row: 1 / span 6; }
-.stage-card { view-transition-name: stage-card; display: grid; gap: var(--s-3); align-content: start; padding: var(--s-4); background: var(--bg-3); border-radius: var(--r-md); min-width: 0; }
-.stage-card h2 { margin: 0; font-size: var(--fs-lg); }
-.stage-q, .stage-a { margin: 0; overflow-wrap: anywhere; }
-.stage-q { color: var(--amber); }
-.stage-a { color: var(--arc); font-size: var(--fs-lg); line-height: 1.45; }
-.stage-q .label, .stage-a .label { display: block; margin-bottom: var(--s-1); color: inherit; }
 .ghost-icon { min-width: var(--hit); padding: 0; display: inline-grid; place-items: center; background: transparent; border-color: var(--line); color: var(--text-muted); }
 ::view-transition-group(*) { animation-duration: var(--t-slow); animation-timing-function: var(--ease); }
 
@@ -201,14 +195,10 @@ h2, h3 { font-family: var(--font-display); font-weight: 600; letter-spacing: .04
 
 .view { grid-area: view; min-width: 0; min-height: 0; overflow: auto; padding: clamp(var(--s-3), 2.5vw, var(--s-6)); }
 .content { width: 100%; max-width: 1200px; margin-inline: auto; display: grid; gap: var(--s-5); }
-.content > *, .home > *, .home-sys > *, .home-main > *, .home-side > * { min-width: 0; }
+.content > *, .stage > *, .overview > * { min-width: 0; }
+.overview-log .hint, .claude .hint { text-align: left; }
+.sys-panel { display: grid; gap: var(--s-4); align-content: start; min-width: 0; }
 
-.home { display: grid; gap: var(--s-5); grid-template-columns: minmax(0, 1fr); grid-template-areas: "main" "sys" "log" "side"; align-items: start; }
-.home-main { grid-area: main; display: grid; justify-items: center; align-content: start; gap: var(--s-4); }
-.home-log { grid-area: log; display: grid; gap: var(--s-3); align-content: start; }
-.home-log .hint, .claude .hint { text-align: left; }
-.home-side { grid-area: side; min-width: 0; }
-.home-sys { grid-area: sys; display: grid; gap: var(--s-4); align-content: start; min-width: 0; }
 
 .dash { grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); align-items: start; }
 .security { grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); align-items: start; }
@@ -224,7 +214,7 @@ h2, h3 { font-family: var(--font-display); font-weight: 600; letter-spacing: .04
 }
 
 @media (min-width: 1000px) {
-  .home { grid-template-columns: minmax(0, 1.25fr) minmax(340px, 1fr); grid-template-areas: "main sys" "log sys" "log side"; }
+  .stage[data-mode="zeige"] { grid-template-columns: minmax(200px, 0.3fr) minmax(0, 1fr); }
 }
 
 @media (min-width: 1100px) {
@@ -235,7 +225,6 @@ h2, h3 { font-family: var(--font-display); font-weight: 600; letter-spacing: .04
 
 @media (min-width: 1440px) {
   .content { max-width: 1440px; }
-  .home { grid-template-columns: minmax(300px, 1fr) minmax(0, 1.4fr) minmax(340px, 1fr); grid-template-areas: "log main sys" "log main side"; }
 }
 
 @media (max-width: 799px) {
@@ -246,8 +235,6 @@ h2, h3 { font-family: var(--font-display); font-weight: 600; letter-spacing: .04
   .head { padding: var(--s-2) var(--s-3); gap: var(--s-2); }
   .brand { font-size: var(--fs-lg); }
   .brand-sub { display: none; }
-  .stage[data-mode="begleiten"] { grid-template-columns: minmax(0, 1fr); justify-items: center; }
-  .stage[data-mode="begleiten"] .stage-card { grid-column: 1; grid-row: auto; justify-self: stretch; }
 }
 
 @media (max-width: 599px) {

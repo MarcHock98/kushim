@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { IconWarn } from "./Icons";
+import { IconCross, IconWarn } from "./Icons";
 
 // Panel „Systemzustand“ (Design „Jarvin Cockpit“): Kacheln für CPU, Arbeitsspeicher, GPU und Netz, Balken für Datenträger
 // und Akku, darunter System und Laufzeit. Zeigt nur, was `system.stats` liefert; fehlt ein Wert, steht dort „unbekannt“.
@@ -66,13 +66,16 @@ function Tile({ label, big, warn, bar, children }: { label: string; big: string;
   );
 }
 
-export function SystemPanel({ data, unavailable = false }: { data: SysData | null; unavailable?: boolean }) {
+export function SystemPanel({ data, unavailable = false, onClose }: { data: SysData | null; unavailable?: boolean; onClose?: () => void }) {
   const head = (note: string) => (
-    <div className="panel-head"><h2 id="sys-h">Systemzustand</h2><span className="label">{note}</span></div>
+    <div className="panel-head">
+      <h2 id="sys-h">Systemzustand</h2><span className="label">{note}</span>
+      {onClose && <button type="button" className="ghost-icon" aria-label="Schließen (Esc)" title="Schließen (Esc)" onClick={onClose}><IconCross /></button>}
+    </div>
   );
   if (!data) {
     return (
-      <section className="home-sys panel" aria-labelledby="sys-h">
+      <section className="sys-panel panel" aria-labelledby="sys-h">
         {head(unavailable ? "nicht verfügbar" : "lädt")}
         <p className="hint">{unavailable ? "Dieser Dienst liefert keine Systemwerte. Starte kushim neu (kushim app)." : "Systemwerte werden gelesen …"}</p>
       </section>
@@ -86,7 +89,7 @@ export function SystemPanel({ data, unavailable = false }: { data: SysData | nul
   const note = known === 0 ? "Werte unbekannt" : high === 0 ? `Alle Werte unter ${w} %` : `${high} ${high === 1 ? "Wert" : "Werte"} hoch`;
 
   return (
-    <section className="home-sys panel" aria-labelledby="sys-h">
+    <section className="sys-panel panel" aria-labelledby="sys-h">
       {head(note)}
       <div className="sys-tiles">
         <Tile label="CPU Auslastung" big={cpu ? `${de(cpu.percent, 0)} %` : UNKNOWN} warn={!!cpu && cpu.percent >= w} bar={cpu?.percent} />
