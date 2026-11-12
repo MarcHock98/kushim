@@ -114,6 +114,10 @@ den kushim-Channel (lokaler MCP-Server, stdio). kushim (Python) spricht mit dem 
       (2026-10-27: vom Nutzer mit `kushim start` bestätigt, „Ja er antwortet“)
 
 ## Phase C: Freigaben per Stimme (offizielle Freigabe-Weiterleitung)
+> **Stand 2026-11-12 (Nutzerwunsch):** Die Sprecher-Prüfung wurde entfernt, damit auch die Freigaben per Stimme.
+> **C3 und C4 sind zurückgebaut** (`voice/permission_voice.py`, `channel/voice_policy.py` gelöscht). Es bleiben C0 (Leiste
+> in der Oberfläche), C1 (Weiterleitung), C2 (Ansage, endet immer mit „Bitte im Terminal bestätigen.“) und C5 (Protokoll,
+> nur noch Entscheidungen aus der Oberfläche, ohne Sprecher-Score). Freigegeben wird im Claude-Fenster oder in der Leiste.
 - [x] C0 (2026-11-11, Python 778 und UI 61 grün, Safety-Audit freigegeben; echtes Tauri-Fenster nicht geprüft; gekürzte
       Vorschau: in der UI nur Ablehnen; Knöpfe nach jedem Wechsel 700 ms gesperrt; Entscheidungen im Protokoll C5) Freigabe-Leiste der UI (`approvals.get`/`approvals.decide`, gleiche Regeln: exakter Text, Hash, `confirm`) neu an die
       Channel-Freigaben hängen (ergänzt 2026-10-26: der alte Unterbau fiel mit A1 weg)
@@ -125,14 +129,14 @@ den kushim-Channel (lokaler MCP-Server, stdio). kushim (Python) spricht mit dem 
       (2026-11-11, 573 grün): `channel/speakable.py` liest `input_preview` (Format aus Claude Code 2.1.321), `ClaudeChat`
       sagt jede Anfrage einmal an (in der Runde und im Leerlauf). Bis C3 endet die Ansage mit „Bitte im Terminal
       bestätigen.“ statt „Erlauben?“ (`announce(ask=True)` schaltet um). Nicht geprüft: Aussprache mit Piper (nur Nutzer).
-- [x] C3 Antwort per Stimme: „ja“ nur mit **stark** verifizierter Stimme, „nein“/Stille/Zeitablauf = nichts senden (Terminal-Dialog
+- [x] C3 ~~Antwort per Stimme~~ (gebaut 2026-11-11, **entfernt 2026-11-12**, siehe oben): „ja“ nur mit **stark** verifizierter Stimme, „nein“/Stille/Zeitablauf = nichts senden (Terminal-Dialog
       bleibt offen); Ergebnis als `allow`/`deny` mit der request_id zurück. Ergänzt 2026-11-11 (Review C2): ein gekürzt
       vorgelesener Befehl („und so weiter“) oder eine gekürzte `input_preview` („elided“, „…“) ist nie per Stimme freigebbar
       (2026-11-11): `voice/permission_voice.py`. Nur feste Sätze („Ja, das erlaube ich“), ein bloßes „ja“ ist zu kurz für
       „stark“ (Nachfrage). Gilt nur für die zuletzt gestellte Frage, 60 s. kushim sendet nie „deny“ (nur der Notaus).
       Nach einer Frage endet die Runde, damit zugehört wird; Claudes Antwort kommt später als Meldung. Mit der geklonten
       eigenen Stimme als Ausgabe keine Freigaben per Stimme (Echo könnte die Sprecher-Prüfung bestehen).
-- [x] C4 ~~Sperrliste~~ **Erlaubt-Liste** (umgebaut nach dem Safety-Audit 2026-11-11: die Sperrliste war mit Schleifen,
+- [x] C4 ~~Sperrliste~~ ~~Erlaubt-Liste~~ (gebaut 2026-11-11, **entfernt 2026-11-12**, siehe oben) (umgebaut nach dem Safety-Audit 2026-11-11: die Sperrliste war mit Schleifen,
       `python -Bc`, .NET-Aufrufen u. a. umgehbar): `channel/voice_policy.py` prüft die Rohdaten. Per Stimme nur: ein einfacher
       Befehl aus Tests/Prüfwerkzeugen (`npm test`, `npm run test|build|lint|typecheck|check`, `pytest`, `python -m pytest|…`),
       lesendes Git mit Options-Liste (`show`/`diff` nur mit `--stat` oder Pfaden), `ls`/`dir`/`pwd`, Lesen von Dateien im
@@ -165,7 +169,7 @@ Claude Code zeigt beides schon selbst (`/model`, `/usage`, Statuszeile). Hier nu
 - [ ] E3 Setup-Assistent: Mikrofon, ~~Stimme einschreiben~~ (Sprecher-Prüfung entfernt 2026-11-12), Wake Words, Claude-Anmeldung prüfen
 
 ## Später / offen
-- [ ] Sprecher-Prüfung mit einer zweiten echten Person prüfen **(Nutzer)**
+- [x] ~~Sprecher-Prüfung mit einer zweiten echten Person prüfen~~ (entfällt: Sprecher-Prüfung entfernt 2026-11-12)
 - [x] ~~Eigene Stimme (Klon) Hörtest **(Nutzer)**: `kushim voice clone-test`~~ (2026-11-11: Stimmklon auf Wunsch des Nutzers komplett entfernt)
 - [ ] Echo-Unterdrückung für Lautsprecher-Betrieb
 - [ ] Optional: Microsoft Copilot Cowork / Claude Cowork als zweites Ziel (keine API, nur über Fenster-Einfügen, z. B. mit Handy)

@@ -171,16 +171,21 @@ describe("Freigabe-Leiste (Claude Code)", () => {
     render(<App load={loaderWith(sock)} />);
     await waitFor(() => screen.getAllByText(STATE_VIEW.idle.label));
     sock.current!.pending = [{ ...P }];
-    await waitFor(() => expect(screen.getByRole("alertdialog")).toBeInTheDocument(), { timeout: 3000 });
-    expect(screen.getByRole("button", { name: "Erlauben" })).toBeDisabled();
-    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Erlauben" })); });
+    // Die Sperre dauert nur ARM_MS: im selben Schritt prüfen, in dem die Leiste erscheint (sonst läuft sie unter Last ab).
+    await waitFor(() => {
+      expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Erlauben" })).toBeDisabled();
+      fireEvent.click(screen.getByRole("button", { name: "Erlauben" }));
+    }, { timeout: 3000 });
     await act(async () => { fireEvent.keyDown(screen.getByRole("alertdialog"), { key: "Escape" }); });
     expect(decides(sock.current!)).toHaveLength(0);
     await armed();
     sock.current!.pending = [{ ...P, request_id: "neu00", input_preview: "andere", digest: "f".repeat(64) }];   // erledigt, die nächste rückt nach
-    await waitFor(() => expect(screen.getByRole("alertdialog").textContent).toContain("Eingabe: andere"), { timeout: 3000 });
-    expect(screen.getByRole("button", { name: "Erlauben" })).toBeDisabled();
-    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Erlauben" })); });
+    await waitFor(() => {
+      expect(screen.getByRole("alertdialog").textContent).toContain("Eingabe: andere");
+      expect(screen.getByRole("button", { name: "Erlauben" })).toBeDisabled();
+      fireEvent.click(screen.getByRole("button", { name: "Erlauben" }));
+    }, { timeout: 3000 });
     expect(decides(sock.current!)).toHaveLength(0);
   });
 

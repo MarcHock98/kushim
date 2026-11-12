@@ -103,6 +103,11 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
   durch Claude Code, Tauri-Fenster. Zwei Wackler notiert (Übergabe). Nächster Schritt: Roadmap C2 bis C5 anpassen, dann die
   Wackler untersuchen; P3b erst nach eigenem Plan und OK.
 
+- 2026-11-12 Loop: Roadmap Phase C an den Rückbau der Sprachfreigaben angepasst (C3, C4 als entfernt markiert). Zwei
+  Wackler-Tests behoben (Branch `routine/flaky-tests`, gemerged): 413-Test im Channel (gemessen: 1 von 400 brach ab, nur mit
+  großem Körper), Knopfsperre in der UI (Ursache plausibel, nicht nachgestellt). Offen ohne Nutzer: nichts Unabhängiges mehr.
+  Wartet auf den Nutzer: P3b-Plan gewünscht?, D-Phase (Roadmap) prüfen, echte Prüfung im Tauri-Fenster.
+
 ## Slack
 - Nutzer-ID / Kanal-ID: nicht verwendet. Verbundenes Slack-Konto hat andere Mail (Arbeits-Workspace) als die Git-/Claude-Mail, Empfänger unsicher, daher nichts gesendet
 
