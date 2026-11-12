@@ -221,6 +221,7 @@ def _api_start(cfg: Config, root, extra=None):
     from .api.protocol import ApiCore, new_token
     from .api.setup_api import register_setup
     from .api.voice_api import register_voice
+    from .api.system_api import register_system
     from .net.server import LocalServer
     store = None
     try:
@@ -230,6 +231,7 @@ def _api_start(cfg: Config, root, extra=None):
     token = new_token()
     core = ApiCore(token)
     register_voice(core, root)
+    register_system(core, root)                        # Systemzustand (nur lesen, nur lokale Messwerte)
     register_setup(core, root, lambda: _vault_state(cfg),
                    audit=store.audit if store else None)
     from .api.safety_view import register_safety_view

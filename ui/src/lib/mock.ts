@@ -20,6 +20,12 @@ export class MockSocket implements Socket {
   };
   facts: { id: number; text: string; kind: string; source: string; created: number }[] = [];
   deleted: number[] = [];
+  system: Record<string, unknown> | null = {          // Beispielwerte; null = Dienst kennt system.stats nicht
+    cpu: { percent: 34 }, memory: { percent: 61, used_gb: 9.8, total_gb: 16 },
+    gpu: { percent: 22, vram_used_mb: 3100, vram_total_mb: 8192, temp_c: 58 },
+    disk: { percent: 41, used_gb: 412, total_gb: 1000 }, battery: { present: false, percent: null, on_ac: null },
+    net: { down_mbit: 42.1, up_mbit: 8.3 }, system: { os: "Windows 11", uptime_s: 568800 }, warn_at: 80,
+  };
   dash: Record<string, unknown> = { timers: [], tasks: [], pending_approvals: 0, results: [] };
   review: unknown = null;
   diffText = "";
@@ -61,6 +67,7 @@ export class MockSocket implements Socket {
       if (m.confirm !== true) reply = { ok: false, error: "confirm_required" };
       else { this.deleted.push(m.id ?? -1); reply = { ok: true, deleted: m.id }; }
     }
+    else if (msg.type === "system.stats" && this.system) reply = { ok: true, ...this.system };
     else if (msg.type === "dashboard.get") reply = { ok: true, ...this.dash };
     else if (msg.type === "claude.folders") reply = { ok: true, folders: this.folders };
     else if (msg.type === "claude.folder_list") reply = { ok: true, folders: this.folders.map((n) => ({ name: n, path: `C:/proj/${n}` })) };

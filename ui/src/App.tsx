@@ -5,6 +5,7 @@ import { ClaudePanel } from "./components/ClaudePanel";
 import { Dashboard, type DashData } from "./components/Dashboard";
 import { MemoryPanel } from "./components/MemoryPanel";
 import { SecurityPanel, type Overview } from "./components/SecurityPanel";
+import { parseSystem, SystemPanel, type SysData } from "./components/SystemPanel";
 import { Transcript, type Entry } from "./components/Transcript";
 import { IconHome, IconMemory, IconOverview, IconShield } from "./components/Icons";
 import { HaltedBanner, KillButton } from "./components/KillButton";
@@ -24,6 +25,7 @@ type View = "home" | "dashboard" | "security" | "memory";
 
 const POLL_MS = 2000;
 const VOICE_POLL_MS = 200;
+const SYSTEM_POLL_MS = 3000;
 
 export type Loader = () => Promise<{ client: ApiClient }>;
 
@@ -56,6 +58,8 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [dash, setDash] = useState<DashData | null>(null);
   const [dashNo, setDashNo] = useState(false);
+  const [sys, setSys] = useState<SysData | null>(null);
+  const [sysNo, setSysNo] = useState(false);
   const [entries, setEntries] = useState<Entry[]>([]);
   const lastId = useRef(0);
   const [rated, setRated] = useState<Record<number, 1 | -1>>({});
@@ -168,6 +172,21 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
     return () => { stop = true; clearInterval(id); };
   }, [connected, view]);
 
+  useEffect(() => {                                     // Systemzustand nur abfragen, solange der Start offen und das Fenster sichtbar ist
+    if (!connected || view !== "home") return;
+    let stop = false;
+    const pull = async () => {
+      if (document.hidden) return;
+      const r = await client.current?.call("system.stats");
+      if (stop || !r) return;
+      if (r.ok) { setSys(parseSystem(r)); setSysNo(false); }
+      else if (r.error === "unknown_type") setSysNo(true);                    // älterer Dienst ohne Systemwerte
+    };
+    void pull();
+    const id = setInterval(pull, SYSTEM_POLL_MS);
+    return () => { stop = true; clearInterval(id); };
+  }, [connected, view]);
+
   const rate = useCallback(async (id: number, rating: 1 | -1) => {
     const r = await client.current?.call("feedback.add", { entry: id, rating });
     if (r?.ok || (r && !r.ok && r.error === "already_rated")) setRated((old) => ({ ...old, [id]: old[id] ?? rating }));
@@ -265,6 +284,7 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
                   <Transcript entries={entries} rated={rated} onRate={(id, r) => void rate(id, r)} />
                 </section>
               )}
+              {connected && <SystemPanel data={sys} unavailable={sysNo} />}
               <aside className="home-side" aria-label="Claude">
                 <ClaudePanel client={client} connected={connected} />
               </aside>
