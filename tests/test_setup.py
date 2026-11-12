@@ -57,13 +57,15 @@ def test_fresh_install_is_a_first_start(tmp_path):
 
 
 def test_facts_win_over_remembered_skip(tmp_path):
-    state.mark(tmp_path, "audio_voice", "skipped")
+    state.mark(tmp_path, "system", "skipped")
+    assert steps(tmp_path, vault="ok")["system"].status == "done"
+    assert steps(tmp_path, vault="kein-vault")["system"].status == "skipped"
+    state.mark(tmp_path, "audio_voice", "done")                          # Mikrofon/Lautsprecher bestätigt der Nutzer selbst
     assert steps(tmp_path, vault="ok")["audio_voice"].status == "done"
-    assert steps(tmp_path, vault="kein-profil")["audio_voice"].status == "skipped"
 
 
 def test_system_step_needs_checks_and_vault(tmp_path):
-    assert steps(tmp_path, vault="kein-profil")["system"].status == "done"
+    assert steps(tmp_path, vault="ok")["system"].status == "done"
     assert steps(tmp_path, vault="kein-vault")["system"].status == "open"
     bad = steps(tmp_path, vault="ok", checks=BAD)["system"]
     assert bad.status == "open" and "Whisper-Modell" in bad.detail and bad.detail.endswith("...")
@@ -83,7 +85,7 @@ def test_skipping_everything_ends_first_start_and_explains_limits(tmp_path):
     s = list(steps(tmp_path).values())
     assert not status.first_start(s)
     notes = status.restricted_notes(s)
-    assert len(notes) == 4 and any("Sprechen bleibt gesperrt" in n for n in notes)
+    assert len(notes) == 4 and any("Standardgeräte" in n for n in notes)
     assert all("Sicherheitsregel" not in n or "bleiben" in n or "gelten" in n for n in notes)
 
 
@@ -93,7 +95,7 @@ def test_skipping_everything_ends_first_start_and_explains_limits(tmp_path):
 def api(tmp_path):
     token = new_token()
     core = ApiCore(token)
-    register_setup(core, tmp_path, lambda: "kein-profil",
+    register_setup(core, tmp_path, lambda: "ok",
                    list_devices=lambda: {"inputs": ["Mikro A", "Mikro B"], "outputs": ["Box"]})
 
     def call(type_, **kw):
@@ -125,7 +127,7 @@ def test_api_validates_steps_and_forbids_faking_fact_steps(api):
     for bad in ("", "../x", None, 3, ["system"]):
         assert api("setup.skip", step=bad) == {"ok": False, "error": "bad_step"}
     assert api("setup.skip") == {"ok": False, "error": "bad_step"}
-    for fact_step in ("system", "audio_voice"):                         # nicht per API "erledigt" behaupten
+    for fact_step in ("system",):                                      # nicht per API "erledigt" behaupten
         assert api("setup.done", step=fact_step) == {"ok": False, "error": "not_allowed"}
 
 

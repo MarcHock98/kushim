@@ -1,18 +1,18 @@
 # kushim
 
-Ein lokaler „Jarvis“ als Sprach-Vorderseite für **Claude Code**: Du sprichst, kushim erkennt lokal Wake Word, deine Stimme und deinen Befehl, gibt ihn an deine laufende Claude-Code-Sitzung und liest die Antwort vor. Claude Code ist die einzige KI; kushim selbst hat kein Sprachmodell.
+Ein lokaler „Jarvis“ als Sprach-Vorderseite für **Claude Code**: Du sprichst, kushim erkennt lokal Wake Word und Befehl, gibt ihn an deine laufende Claude-Code-Sitzung und liest die Antwort vor. Claude Code ist die einzige KI; kushim selbst hat kein Sprachmodell.
 
-**Die Daten gehören dir.** Spracherkennung, Sprecherprüfung und Stimme laufen komplett auf deinem Rechner. Audio verlässt nie den PC; an Anthropic geht nur der erkannte Befehlstext über Claude Code selbst.
+**Die Daten gehören dir.** Spracherkennung und Stimme laufen komplett auf deinem Rechner. Audio verlässt nie den PC; an Anthropic geht nur der erkannte Befehlstext über Claude Code selbst.
 
-Inhalt: [Was es heute kann](#was-es-heute-kann) · [Voraussetzungen](#voraussetzungen) · [Installation](#installation) · [Erster Start](#erster-start) · [Täglicher Gebrauch](#täglicher-gebrauch) · [Konfiguration](#konfiguration) · [Netzwerk und Datenschutz](#netzwerk-und-datenschutz) · [Stimme aufnehmen](#stimme-aufnehmen) · [Fehlerbehebung](#fehlerbehebung) · [Deinstallation](#deinstallation) · [Entwicklung](#entwicklung)
+Inhalt: [Was es heute kann](#was-es-heute-kann) · [Voraussetzungen](#voraussetzungen) · [Installation](#installation) · [Erster Start](#erster-start) · [Täglicher Gebrauch](#täglicher-gebrauch) · [Konfiguration](#konfiguration) · [Netzwerk und Datenschutz](#netzwerk-und-datenschutz) · [Fehlerbehebung](#fehlerbehebung) · [Deinstallation](#deinstallation) · [Entwicklung](#entwicklung)
 
 ## Was es heute kann
 
 - **Sprechen per Wake Word:** Du sagst eines deiner Wake Words („hey kushim“, „kushim“, „hi kushim“ …, alle in **einer zentralen Datei** einstellbar), kushim antwortet „Ja?“ und hört deinen Befehl. Vor dem Wake Word läuft nur ein kleines lokales Erkennungsmodell: keine Spracherkennung, keine Weitergabe, keine Speicherung.
-- **Nur auf deine Stimme:** Sprecherverifikation mit Mehr-Prototypen-Profil aus langer Aufnahme. Fremde Stimmen bekommen keine Antwort. Längere Äußerungen werden in Fenstern geprüft (sicherer). Ohne eingeschriebenes Stimmprofil startet das Sprechen gar nicht.
+- **Jede Stimme zählt:** Es gibt keine Sprecherprüfung. Jede Person im Raum kann Befehle geben; Freigaben (Claude möchte etwas ausführen) gibt es deshalb nie per Stimme, nur im Claude-Fenster oder in der Oberfläche.
 - **Notaus:** per Desktop-Verknüpfung oder per Sprachbefehl („Notaus“, „stopp alles“). Wirkt für jede Stimme.
 - **Lokal:** Whisper (Spracherkennung, GPU), Piper (deutsche Stimme).
-- **Verschlüsseltes Gedächtnis (Vault)** für das Stimmprofil, mit Backups.
+- **Verschlüsseltes Gedächtnis (Vault)** mit Backups.
 
 **Umbau (Roadmap v2):** Die alten lokalen Werkzeuge (Ollama-Sprachmodell, Websuche, Timer, Notizen, eigene Claude-Läufe) sind entfernt. Die Brücke zu Claude Code (Channel) steht: kushim gibt Befehle an die laufende Claude-Code-Sitzung und liest Claudes Antwort vor. Ein gemeinsamer Startbefehl (`kushim start`) und Freigaben per Stimme folgen. Stand und Pläne: [ROADMAP.md](ROADMAP.md).
 
@@ -22,7 +22,7 @@ Inhalt: [Was es heute kann](#was-es-heute-kann) · [Voraussetzungen](#voraussetz
 |---|---|
 | System | Windows 10 oder 11 (64 Bit) |
 | Grafikkarte | NVIDIA mit mindestens 8 GB VRAM (getestet: RTX 3070), aktueller NVIDIA-Treiber |
-| Speicher | mindestens 10 GB frei (Modelle ca. 2 GB, Python-Umgebung ca. 3 GB, optional Stimmklon mehr) |
+| Speicher | mindestens 10 GB frei (Modelle ca. 2 GB, Python-Umgebung ca. 3 GB,  |
 | RAM | 16 GB, besser 32 GB |
 | Python | 3.11 oder 3.12 von [python.org](https://www.python.org/downloads/) (Haken bei „Add Python to PATH“) |
 | Hardware | Mikrofon und Lautsprecher/Kopfhörer |
@@ -104,18 +104,7 @@ Diese Schritte machst nur du (sie betreffen deinen Schlüssel und deine Stimme).
    ```powershell
    .\.venv\Scripts\python -m kushim.cli key export
    ```
-3. **Stimme einschreiben.** Du liest die 10 Absätze aus `docs/voice-recording-text.md` (Teil B, etwa 5 Minuten) vor. Daraus entsteht dein Stimmprofil: viele Stimmabdrücke aus 3-Sekunden-Fenstern, gebündelt zu mehreren Prototypen, mit einer aus deinen Daten berechneten Schwelle. Im Vault liegen nur Zahlenvektoren. Die Aufnahmen liegen in `voice-data/clone/` (nicht im Git).
-   ```powershell
-   .\.venv\Scripts\python -m kushim.cli voice enroll
-   ```
-   **So läuft jeder Absatz:** Enter drücken, kurz warten und vorlesen, am Ende des Absatzes selbst Enter drücken (kein Zeitlimit durch Stille; Tastenklick vorn und hinten wird abgeschnitten). Danach „Enter = behalten“ oder „r + Enter“ zum Neuaufnehmen. Wer lieber die Stille das Ende bestimmen lässt: `--auto`.
-
-   Optional ein bestimmtes Mikrofon: `--mic "Arctis 5 Chat"`. Alles neu aufnehmen: `--record`. Das alte kurze Einschreiben (5 Sätze, weniger robust): `--quick`.
-4. **Prüfen, ob dich kushim erkennt** (und andere nicht). Es zeigt pro Äußerung Ähnlichkeit, Schwelle, Länge, Fenster und ob die Prüfung „stark“ war. Teste kurze und lange Sätze und lass einmal eine zweite Person sprechen:
-   ```powershell
-   .\.venv\Scripts\python -m kushim.cli voice test
-   ```
-5. **Gesamtkontrolle:**
+3. **Gesamtkontrolle:**
    ```powershell
    .\.venv\Scripts\python -m kushim.cli doctor
    ```
@@ -132,7 +121,6 @@ Diese Schritte machst nur du (sie betreffen deinen Schlüssel und deine Stimme).
 | Beenden | `Strg+C` im Fenster |
 | **Notaus** | Verknüpfung **kushim NOTAUS** anklicken oder „Notaus“ / „stopp alles“ sagen. Danach startet kushim erst wieder, wenn du bewusst aufhebst: `python -m kushim.cli resume`. |
 | Wake Words ändern | In der zentralen Datei `wakewords.toml` (siehe unten); gilt ab dem nächsten Start. |
-| Stimmprofil prüfen / löschen | `python -m kushim.cli voice status` / `voice reset` |
 | Backup | `python -m kushim.cli memory backup` |
 
 Geräte wählen (Namensteil genügt): `python -m kushim.cli talk --mic "Arctis 5 Chat" --out "Arctis 5 Game"`. Ohne Angabe gelten die Windows-Standardgeräte.
@@ -196,21 +184,10 @@ Vault verschieben (z. B. auf ein anderes Laufwerk): `python -m kushim.cli memory
 
 ## Netzwerk und Datenschutz
 
-- **Installation:** Netzwerk nur zu `pypi.org` (Pakete), `github.com` (Sprecher-Modell, Wake-Word-Modelle) und `huggingface.co` (Whisper, Stimme). Alles in festen Versionen, Modelle per Größe und SHA-256 geprüft.
+- **Installation:** Netzwerk nur zu `pypi.org` (Pakete), `github.com` (Wake-Word-Modelle) und `huggingface.co` (Whisper, Stimme). Alles in festen Versionen, Modelle per Größe und SHA-256 geprüft.
 - **Betrieb:** kushim selbst geht nie ins Internet. Sein Netzwerkcode spricht ausschließlich 127.0.0.1: `src/kushim/net/server.py` (API für die eigene Oberfläche) und `src/kushim/net/loopback.py` (für die kommende Brücke zu Claude Code). Ein Test (`tests/test_no_egress.py`) verhindert anderen Netzwerkcode. Nach außen spricht nur Claude Code selbst (zu Anthropic).
 - **Mikrofon:** Audio bleibt im Arbeitsspeicher und wird nicht gespeichert. Vor dem Wake Word sieht nur das kleine Wake-Word-Modell das Signal.
-- **Stimmprofil:** nur ein Zahlenvektor, im verschlüsselten Vault.
 - **Schlüssel:** im Windows-Credential-Manager, nie im Vault, nie im Projekt.
-
-## Stimme aufnehmen
-
-Fürs Einschreiben (Sprecher-Prüfung, standardmäßig aus) nimmst du Material auf (nur lokal, Ordner `voice-data/` ist nicht im Git). Text dazu: `docs/voice-recording-text.md`, Teil B.
-
-```powershell
-.\.venv\Scripts\python -m kushim.cli voice record --mic "Arctis 5 Chat"
-```
-
-Es nimmt 10 Absätze mit 24 kHz auf. Du startest und beendest jeden Absatz selbst mit Enter und kannst ihn behalten oder neu aufnehmen (`--auto`: Ende per Stille). Es prüft Pegel und Länge und überspringt vorhandene (`--redo` überschreibt). Danach: `kushim voice enroll`.
 
 ## Fehlerbehebung
 
@@ -218,9 +195,7 @@ Es nimmt 10 Absätze mit 24 kHz auf. Du startest und beendest jeden Absatz selbs
 |---|---|
 | `python -m kushim.cli doctor` zeigt `[FEHLT]` | Der Hinweis dahinter nennt den Befehl. Meist hilft `install.ps1` erneut. |
 | „Noch kein Vault“ | `python -m kushim.cli memory init` |
-| „Kein Stimmprofil“ beim Sprechen | `python -m kushim.cli voice enroll` |
 | „Notaus ist aktiv“ | `python -m kushim.cli resume` |
-| kushim erkennt meine Stimme nicht / zu oft nicht | `voice test` zeigt die Werte. Näher ans Mikrofon, ruhiger Raum, dasselbe Mikrofon wie beim Einschreiben. Sehr kurze Äußerungen („ja“) sind unzuverlässig: lieber ganze Sätze. Notfalls `python -m kushim.cli voice enroll --record` und neu aufnehmen. |
 | `cublas64_12.dll not found` | `install.ps1` erneut (installiert die NVIDIA-Bibliotheken) |
 | Nichts passiert beim Wake Word | Mikrofon prüfen (`--mic`), deutlicher sprechen, in `wakewords.toml` `threshold` senken (z. B. 0.10) oder mehr Wörter aktivieren |
 | Wake Word löst zu oft aus | `threshold` erhöhen (z. B. 0.25) oder kurze Wörter wie „kush“ ausschalten (`enabled = false`) |
@@ -238,7 +213,7 @@ Es nimmt 10 Absätze mit 24 kHz auf. Du startest und beendest jeden Absatz selbs
 1. **Schäden jeder Art sind verboten:** seelisch, finanziell, körperlich, an Daten und Privatsphäre, an Dritten und langfristig. Im Zweifel nichts tun und fragen. Die Regeln stehen in `src/kushim/safety/rules.py` und können weder von der KI noch vom Lernen geändert werden.
 2. **Nichts nach außen außer Claude Code:** kushim selbst spricht nur 127.0.0.1. Claude Code ist die einzige KI und die einzige Verbindung nach außen (Befehlstext an Anthropic); Audio verlässt nie den PC.
 3. **Default-Deny und Fail-Closed:** Unbekannte Aktionen, fehlender Prüfer oder Zweifel führen zu Ablehnung. Geldlimit standardmäßig 0, Zahlungen sind gesperrt, ein Notaus stoppt alles.
-4. **Nur du gibst Befehle:** Sprecherverifikation und zweiter Faktor bei riskanten Aktionen. Inhalte aus Web, Mail und Dateien sind nur Daten, nie Anweisungen.
+4. **Riskantes nur im Terminal:** Ohne Sprecherprüfung gibt kushim keine Freigaben per Stimme; Claude fragt im eigenen Fenster. Inhalte aus Web, Mail und Dateien sind nur Daten, nie Anweisungen.
 5. **Transparent:** Jede Entscheidung und jeder ausgehende Zugriff steht im verschlüsselten Audit-Log.
 
 ## Architektur
@@ -248,7 +223,7 @@ Es nimmt 10 Absätze mit 24 kHz auf. Du startest und beendest jeden Absatz selbs
 | Verschlüsselter Vault (SQLCipher), Migration und Backups | fertig |
 | Notaus, Audit, Grundregeln (`safety/rules.py`) | fertig |
 | Statische Prüfung gegen Netzwerkcode außerhalb der Allowlist | fertig |
-| Stimme: Wake Word, Sprecherverifikation, Whisper, Piper, Satz-Streaming, Barge-in | fertig, im Live-Test |
+| Stimme: Wake Word, Whisper, Piper, Satz-Streaming, Barge-in | fertig, im Live-Test |
 | Start-Verknüpfungen, `doctor`, Installationsskript | fertig |
 | UI (Tauri, Avatar, Transkript, Notaus, Ordner) | fertig, wird auf Claude Code umgestellt (Phase E) |
 | Brücke zu Claude Code (Channel), Freigaben per Stimme | geplant (Phase B, C) |

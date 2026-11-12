@@ -15,20 +15,18 @@ class Check:
 
 
 MODULES = [("faster_whisper", "Spracherkennung"), ("piper", "Sprachausgabe"),
-           ("sherpa_onnx", "Sprecherverifikation"), ("sounddevice", "Audio"),
+           ("sherpa_onnx", "Wake Word (freie Wörter)"), ("sounddevice", "Audio"),
            ("openwakeword", "Wake Word"), ("sentencepiece", "freie Wake Words"), ("sqlcipher3", "Vault"), ("keyring", "Schluesselbund")]
 
 FILES = [
     ("Whisper-Modell", "models/whisper-large-v3-turbo/model.bin"),
     ("Piper-Stimme", "models/piper/de_DE-thorsten-high.onnx"),
-    ("Sprecher-Modell", "models/speaker/wespeaker_en_voxceleb_CAM++_LM.onnx"),
-    ("Vergleichsstimmen für das Einschreiben", "models/piper-cohort/de_DE-mls-medium.onnx"),
     ("Wake-Word-Modell (freie Wörter)", "models/kws/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01/bpe.model"),
 ]
 
 
 def run_checks(root: Path, vault_state: Callable[[], str] | None = None) -> list[Check]:
-    """`vault_state()` liefert "ok", "kein-vault" oder "kein-profil" (wird vom CLI bereitgestellt)."""
+    """`vault_state()` liefert "ok" oder "kein-vault" (wird vom CLI bereitgestellt)."""
     checks: list[Check] = []
     for mod, what in MODULES:
         checks.append(Check(f"Python-Paket {mod} ({what})", importlib.util.find_spec(mod) is not None,
@@ -42,7 +40,6 @@ def run_checks(root: Path, vault_state: Callable[[], str] | None = None) -> list
     if vault_state is not None:
         state = vault_state()
         checks.append(Check("Vault vorhanden", state != "kein-vault", "kushim memory init"))
-        checks.append(Check("Stimmprofil eingeschrieben", state == "ok", "kushim voice enroll"))
     return checks
 
 

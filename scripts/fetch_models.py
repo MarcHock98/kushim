@@ -3,7 +3,7 @@
 Aufruf:  .venv\\Scripts\\python scripts/fetch_models.py [--check]
 
 Das ist der EINZIGE Ort ausser pip in install.ps1, der beim Einrichten ins Netz geht,
-und zwar nur zu: huggingface.co (Whisper, Piper-Stimme), github.com (Sprecher-Modell, Wake-Word-Modelle
+und zwar nur zu: huggingface.co (Whisper, Piper-Stimme), github.com (Wake-Word-Modelle
 ueber openWakeword). Nach der Installation arbeitet kushim offline. Mit --check wird nur geprueft,
 nichts geladen. Vorhandene, passende Dateien werden uebersprungen.
 Dieses Skript liegt bewusst ausserhalb von src/ (der Egress-Test gilt fuer das Programm).
@@ -35,9 +35,6 @@ class Item:
 
 WHISPER = ("mobiuslabsgmbh/faster-whisper-large-v3-turbo", "0a363e9161cbc7ed1431c9597a8ceaf0c4f78fcf")
 PIPER = ("rhasspy/piper-voices", "c10ece1aade47bb51c153c893d14e5bf8e5b7117")
-SPEAKER_URL = ("https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/"
-               "wespeaker_en_voxceleb_CAM%2B%2B_LM.onnx")
-
 ITEMS = [
     Item("models/whisper-large-v3-turbo/model.bin", 1617884929,
          "e76620f83d5f5b69efd3d87e3dc180c1bd21df9fbebacfd4335e5e1efcc018da", *WHISPER, "model.bin"),
@@ -52,14 +49,6 @@ ITEMS = [
     Item("models/piper/de_DE-thorsten-high.onnx.json", 4875,
          "6de734444e4c3f9e33b7ebe2746dbc19b71e85f613e79c65acf623200b99a76a", *PIPER,
          "de/de_DE/thorsten/high/de_DE-thorsten-high.onnx.json"),
-    Item("models/piper-cohort/de_DE-mls-medium.onnx", 76961079,
-         "69cd1d2aa5a35839a518966fcc4924b5f93e5f8c948ed0752b1a616ad53f65bf", *PIPER,
-         "de/de_DE/mls/medium/de_DE-mls-medium.onnx"),
-    Item("models/piper-cohort/de_DE-mls-medium.onnx.json", 8948,
-         "b0af1c89ddfdc72d32e015729b0e89b99eec13c2c8caa1db7488d98e9e570b40", *PIPER,
-         "de/de_DE/mls/medium/de_DE-mls-medium.onnx.json"),
-    Item("models/speaker/wespeaker_en_voxceleb_CAM++_LM.onnx", 29292687,
-         "e197af7e9d473030cf486b3124149a19bf37014d0e4485e4c70c483b0ec10cb2", url=SPEAKER_URL),
 ]
 
 KWS_URL = ("https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/"

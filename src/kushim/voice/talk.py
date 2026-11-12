@@ -217,16 +217,14 @@ class TalkLoop:
         return None
 
 
-def approval_policy(claude_folder: Path | None, speaker_check: bool = True) -> Callable[[Any], str | None]:
-    """Was per Stimme freigegeben werden darf. Ohne Sprecher-Prüfung nichts (jede Stimme könnte „ja“ sagen)."""
-    from ..channel import voice_policy
-    if not speaker_check:
-        return lambda perm: "keine Sprecher-Prüfung"
-    return lambda perm: voice_policy.blocked(perm, claude_folder)
+def approval_policy(claude_folder: Path | None) -> Callable[[Any], str | None]:
+    """Was per Stimme freigegeben werden darf: nichts. Ohne Sprecher-Prüfung könnte jede Stimme im Raum „ja“ sagen;
+    Freigaben gibt es nur im Terminal oder in der Oberfläche."""
+    return lambda perm: "keine Sprecher-Prüfung"
 
 
 def build_live(root: Path, out_device: int | None, in_device: int | None = None,
-               verifier: Any = None, commands: Any = None, wake_names: Iterable[str] = (),
+               commands: Any = None, wake_names: Iterable[str] = (),
                whisper_device: str = "cuda", whisper_index: int = 0, tasks: Any = None,
                on_note: Callable[[str], None] = lambda s: None,
                claude_folder: Path | None = None,
@@ -265,8 +263,8 @@ def build_live(root: Path, out_device: int | None, in_device: int | None = None,
             on_note(f"Freigabe per Stimme: {d['result']} ({d['tool']})")
             if approval_log is not None:
                 approval_log(d)                        # C5: lokal im Vault, ohne Audio
-        voice = PermissionVoice(bridge, blocked=approval_policy(claude_folder, speaker_check=verifier is not None), on_decision=on_decision)
+        voice = PermissionVoice(bridge, blocked=approval_policy(claude_folder), on_decision=on_decision)
         commands = voice
-    pipeline = Pipeline(stt, ClaudeChat(bridge, tasks, voice=voice), speaker, dialog, kill, verifier, commands=commands,
+    pipeline = Pipeline(stt, ClaudeChat(bridge, tasks, voice=voice), speaker, dialog, kill, commands=commands,
                         wake_names=tuple(wake_names), tasks=tasks)
     return pipeline, kill, mic, lambda: audio.play_wav(ack_wav, out_device)

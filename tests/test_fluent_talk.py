@@ -187,7 +187,7 @@ def make_pipeline(tmp_path, text, chat, played, block=None):
             block()
     spk = Speaker(Eng(), play, lambda: kill.fired)
     stt = SimpleNamespace(transcribe=lambda pcm: SimpleNamespace(text=text))
-    return Pipeline(stt, chat, spk, dialog, kill, None), stopped
+    return Pipeline(stt, chat, spk, dialog, kill), stopped
 
 
 PCM = np.zeros(16000, dtype=np.int16)
