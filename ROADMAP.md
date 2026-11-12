@@ -6,7 +6,7 @@ liest die Antwort lokal vor (Piper) und nimmt Freigaben per Stimme entgegen. Obe
 (Verlauf, Modell, Verbrauch); ein eigenes Fenster ist optional (Phase E).
 
 Oberste Regel: Schäden jeder Art sind verboten. **Sprachdaten verlassen nie den PC.** An Anthropic geht nur der erkannte Befehlstext
-(das ist der Zweck). Die alte Roadmap liegt in [docs/ROADMAP-v1.md](docs/ROADMAP-v1.md).
+(das ist der Zweck). Die alte Roadmap (v1) steht in der Git-Historie.
 
 ## Datenschutz-Grundregeln (Nutzerwunsch 2026-10-26, gelten für jeden Schritt)
 1. Jeder Server, den kushim mitbringt oder startet (Channel, Brücke, Ollama, Whisper, Piper), bindet nur an **127.0.0.1** und

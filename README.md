@@ -14,7 +14,7 @@ Inhalt: [Was es heute kann](#was-es-heute-kann) · [Voraussetzungen](#voraussetz
 - **Lokal:** Whisper (Spracherkennung, GPU), Piper (deutsche Stimme).
 - **Verschlüsseltes Gedächtnis (Vault)** mit Backups.
 
-**Umbau (Roadmap v2):** Die alten lokalen Werkzeuge (Ollama-Sprachmodell, Websuche, Timer, Notizen, eigene Claude-Läufe) sind entfernt. Die Brücke zu Claude Code (Channel) steht: kushim gibt Befehle an die laufende Claude-Code-Sitzung und liest Claudes Antwort vor. Ein gemeinsamer Startbefehl (`kushim start`) und Freigaben per Stimme folgen. Stand und Pläne: [ROADMAP.md](ROADMAP.md).
+**Start:** einfach `kushim` (oder die Desktop-Verknüpfung **kushim**). Claude Code öffnet sich mit dem kushim-Channel, kushim hört zu und liest Claudes Antworten vor. Stand und Pläne: [ROADMAP.md](ROADMAP.md).
 
 ## Voraussetzungen
 
@@ -88,7 +88,7 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python -m kushim.cli doctor
 ```
 
-Die Desktop-Verknüpfungen legt nur `install.ps1` an; von Hand erstellst du Verknüpfungen auf `.venv\Scripts\python.exe` mit den Argumenten `-m kushim.cli talk` und `-m kushim.cli kill`, Arbeitsordner = Projektordner.
+Die Desktop-Verknüpfungen legt nur `install.ps1` an; von Hand erstellst du Verknüpfungen auf `.venv\Scripts\python.exe` mit den Argumenten `-m kushim.cli start` und `-m kushim.cli kill`, Arbeitsordner = Projektordner.
 
 Von früheren Versionen können `tools\ollama`, `models\ollama` und die Verknüpfung **kushim** übrig sein; kushim braucht sie nicht mehr, du kannst sie löschen.
 
@@ -121,7 +121,7 @@ Diese Schritte machst nur du (sie betreffen deinen Schlüssel und deine Stimme).
 | Wake Words ändern | In der zentralen Datei `wakewords.toml` (siehe unten); gilt ab dem nächsten Start. |
 | Backup | `python -m kushim.cli memory backup` |
 
-Geräte wählen (Namensteil genügt): `python -m kushim.cli talk --mic "Arctis 5 Chat" --out "Arctis 5 Game"`. Ohne Angabe gelten die Windows-Standardgeräte.
+Geräte wählen (Namensteil genügt): `kushim start --mic "Arctis 5 Chat" --out "Arctis 5 Game"`. Ohne Angabe gelten die Windows-Standardgeräte.
 
 ## Konfiguration
 
@@ -137,8 +137,6 @@ Kopiere `config.example.toml` nach `config.toml` (oder `%APPDATA%\kushim\config.
 [memory]
 location = "local:~/kushim-vault"   # einziger Ort, der den Speicherort kennt
 
-[privacy]
-claude_enabled = false               # alter Schalter (Modus C); wird mit der Brücke zu Claude Code neu geregelt
 ```
 
 ### Wake Words: eine zentrale Datei
@@ -174,7 +172,7 @@ enabled = false             # oder eigene .onnx-Datei aus models/wakewords/
 
 Standard sind deine sechs Wörter „hey kushim“, „kushim“, „kush“, „hallo kush“, „hi kushim“ und „kushi“. Ohne Änderung läuft kein „hey jarvis“.
 
-- Änderungen gelten ab dem nächsten Start von `kushim talk`. Eine fehlerhafte Datei wird nicht ignoriert: `talk` startet nicht und nennt den Fehler.
+- Änderungen gelten ab dem nächsten Start von `kushim`. Eine fehlerhafte Datei wird nicht ignoriert: kushim startet nicht und nennt den Fehler.
 - Einmalig überschreiben (ohne die Datei zu ändern): `talk --wake-words "hey kushim,kushim"`.
 - **Zuverlässigkeit (ehrlich):** Die freien Wörter nutzen ein kleines englisches Erkennungsmodell, das nicht auf Deutsch oder deinen Namen trainiert ist. In Tests mit künstlicher deutscher Stimme wurden 11 von 18 Aufrufen erkannt, bei 0 Fehlalarmen in 10 normalen Sätzen. Mit deiner echten Stimme kann das besser oder schlechter sein; deshalb ist es einstellbar (`threshold`, `boost`). Sehr kurze Wörter („kush“, „kushi“) lösen leichter versehentlich aus, und Wörter mit gleichem Anfang (kush/kushim) lassen sich nicht sicher unterscheiden. Eine Fehlauslösung öffnet nur das Zuhören: Befehle brauchen weiter deine Stimme.
 
@@ -223,8 +221,8 @@ Vault verschieben (z. B. auf ein anderes Laufwerk): `python -m kushim.cli memory
 | Statische Prüfung gegen Netzwerkcode außerhalb der Allowlist | fertig |
 | Stimme: Wake Word, Whisper, Piper, Satz-Streaming, Barge-in | fertig, im Live-Test |
 | Start-Verknüpfungen, `doctor`, Installationsskript | fertig |
-| UI (Tauri, Avatar, Transkript, Notaus, Ordner) | fertig, wird auf Claude Code umgestellt (Phase E) |
-| Brücke zu Claude Code (Channel), Freigaben per Stimme | geplant (Phase B, C) |
+| UI (Tauri, Avatar, Transkript, Notaus, Freigabe-Leiste) | fertig, neues Design in Arbeit |
+| Brücke zu Claude Code (Channel), Antworten vorlesen, Abbrechen | fertig, live getestet |
 
 ## Entwicklung
 
@@ -242,4 +240,4 @@ Gedächtnis-Befehle: `kushim memory init|info|backup|migrate`. Tests brauchen ke
 
 ## Status
 
-Umbau auf Claude Code. Die Sprachkette (Wake Word, nur deine Stimme, Whisper, Piper) steht; die Brücke zu Claude Code und Freigaben per Stimme folgen.
+Sprachassistent mit Claude Code als Gehirn: Wake Word, Whisper und Piper lokal, Start mit `kushim`. Freigaben gibt es bewusst nur im Claude-Fenster oder in der Oberfläche.
