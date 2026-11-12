@@ -38,5 +38,7 @@ Design „Jarvin Cockpit“ (Artifact des Nutzers), Details und Pläne: `docs/ui
   `.claude/launch.json`) bei 375/800/1440 px angesehen; dabei behoben: Karte und Hauptbereich teilten die Klasse `view`
   (jetzt `view-card`), Diagramm-Linie lief über das Gitter, Achsentitel überdeckte eine Zahl. Offen: echtes Tauri-Fenster
   und GPU-Last neben Whisper (nicht gemessen). Danach P3 bis P6 laut `docs/ui-dynamic-plan.md` (je erst Detailplan, dann OK).
+- **P3:** Detailplan `docs/ui-p3-plan.md` liegt zur Freigabe vor (Schnitt P3a/P3b, Countdown, Mail, altes Claude-Panel).
+  Kein Code vor dem OK des Nutzers.
 - Nutzerregel: bei UI-Arbeit erst ein Plan, dann die Freigabe, dann der Code.
 - Z3 für den Nutzer: `py scripts\claude_setup.py --project . --statusline --test-hook`.
