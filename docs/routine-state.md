@@ -92,10 +92,17 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
   Tauri-Fenster, GPU-Last neben Whisper (braucht den Nutzer am Rechner). Nächster Schritt: Detailplan P3 schreiben und dem
   Nutzer zur Freigabe vorlegen (kein UI-Code vor dem OK).
 
+- 2026-11-12 Loop: **Detailplan P3 geschrieben** (`docs/ui-p3-plan.md`, Branch `routine/p3-plan`, gemerged). Wartet auf den
+  Nutzer (vier Entscheidungen, siehe Offene Fragen). Bis dahin kein UI-Code. Unabhängig offen: Roadmap C2 bis C5 an den
+  Wegfall der Freigaben per Stimme anpassen (nur Dokument).
+
 ## Slack
 - Nutzer-ID / Kanal-ID: nicht verwendet. Verbundenes Slack-Konto hat andere Mail (Arbeits-Workspace) als die Git-/Claude-Mail, Empfänger unsicher, daher nichts gesendet
 
 ## Offene Fragen an den Nutzer
+- 2026-11-12 **P3 der Oberfläche** (`docs/ui-p3-plan.md`): (1) erst P3a (Anzeige über `zeige`), P3b (Dateien) später?
+  Empfehlung ja. (2) Countdown nur als Anzeige ohne Ton? Empfehlung ja. (3) Mail-Ansichten jetzt mitbauen? Empfehlung ja.
+  (4) Altes Claude-Panel entfernen? Empfehlung ja. Bis zur Antwort: kein UI-Code.
 - Keine offenen Fragen. (C7 am 2026-11-11 beantwortet, siehe Entscheidungen.)
 
 ## Blockiert
