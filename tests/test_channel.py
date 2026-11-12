@@ -120,12 +120,14 @@ def live(tmp_path):
     httpd.shutdown()
 
 
-def post(port, body, token="geheim", host=None, path="/message", raw=None):
+def post(port, body, token="geheim", host=None, path="/message", raw=None, length=None):
     conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
     data = raw if raw is not None else json.dumps(body).encode()
     headers = {"Content-Type": "application/json", "Host": host or f"127.0.0.1:{port}"}
     if token is not None:
         headers["Authorization"] = f"Bearer {token}"
+    if length is not None:                                # angekündigte Länge unabhängig vom gesendeten Körper
+        headers["Content-Length"] = str(length)
     conn.request("POST", path, body=data, headers=headers)
     r = conn.getresponse()
     return r.status, json.loads(r.read() or b"{}")
@@ -145,7 +147,10 @@ def test_everything_else_is_refused_and_nothing_reaches_the_session(live):
     assert post(port, {"text": "x"}, path="/anders")[0] == 404
     assert post(port, None, raw=b"{kaputt")[0] == 400
     assert post(port, {"text": "   "})[0] == 400 and post(port, {"text": 5})[0] == 400
-    assert post(port, None, raw=b"x" * (ch.MAX_BODY + 1))[0] == 413
+    # Der Server lehnt schon nach der angekündigten Länge ab und liest den Körper nicht. Schickt der Test den großen Körper
+    # mit, schließt der Server mitten im Senden, und unter Windows geht die Antwort dann manchmal verloren (1 von 400).
+    assert post(port, None, raw=b"", length=ch.MAX_BODY + 1)[0] == 413
+    assert post(port, None, raw=b"", length=-5)[0] == 413
     assert get(port, "/message")[0] == 404
     assert out.getvalue() == ""
 

@@ -42,7 +42,8 @@ Design „Jarvin Cockpit“ (Artifact des Nutzers), Details und Pläne: `docs/ui
   `zeitplan`, `mail`, `mail-entwurf`, `countdown` (Schema, Channel-Beschreibung, `ui/src/components/stage/Live.tsx`). Das alte
   Claude-Panel ist entfernt, `FolderPanel.tsx` zeigt die Ordner. Offen: echter Aufruf durch Claude Code, Tauri-Fenster;
   P3b (Dokument und Diff aus Dateien) braucht einen eigenen Plan mit Audit.
-- Wackler: `test_channel.py::test_everything_else_is_refused…` (Verbindungsabbruch unter Windows) und der UI-Test „Knöpfe
-  kurz gesperrt“ fielen je einmal aus und liefen danach durch. Noch nicht untersucht.
+- Zwei Wackler-Tests behoben (nur Tests geändert): Der 413-Test im Channel schickt keinen großen Körper mehr mit (der Server
+  schloss mitten im Senden, 1 von 400 Läufen brach ab); der UI-Test zur Knopfsperre prüft im selben Schritt, in dem die
+  Leiste erscheint. Beim UI-Test ist die Ursache plausibel, aber nicht nachgestellt.
 - Nutzerregel: bei UI-Arbeit erst ein Plan, dann die Freigabe, dann der Code.
 - Z3 für den Nutzer: `py scripts\claude_setup.py --project . --statusline --test-hook`.
