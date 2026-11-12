@@ -34,7 +34,9 @@ Design „Jarvin Cockpit“ (Artifact des Nutzers), Details und Pläne: `docs/ui
 
 ## Offen
 - **P2 zu Ende:** Vitest-Tests je Ansicht und der Regeltest für KaTeX sind da (`ui/src/views.test.tsx`,
-  `tests/test_ui_rules.py`). Offen: Screenshots bei 375/800/1440 px, echtes Tauri-Fenster und GPU-Last neben Whisper
-  (nicht gemessen). Danach P3 bis P6 laut `docs/ui-dynamic-plan.md` (je erst Detailplan, dann OK).
+  `tests/test_ui_rules.py`). Im Browser (`?mock&demo`, Dev-Server `kushim-ui` in
+  `.claude/launch.json`) bei 375/800/1440 px angesehen; dabei behoben: Karte und Hauptbereich teilten die Klasse `view`
+  (jetzt `view-card`), Diagramm-Linie lief über das Gitter, Achsentitel überdeckte eine Zahl. Offen: echtes Tauri-Fenster
+  und GPU-Last neben Whisper (nicht gemessen). Danach P3 bis P6 laut `docs/ui-dynamic-plan.md` (je erst Detailplan, dann OK).
 - Nutzerregel: bei UI-Arbeit erst ein Plan, dann die Freigabe, dann der Code.
 - Z3 für den Nutzer: `py scripts\claude_setup.py --project . --statusline --test-hook`.

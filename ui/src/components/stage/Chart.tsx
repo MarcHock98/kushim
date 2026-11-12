@@ -4,7 +4,7 @@ import type { Block } from "../../lib/stage";
 // nichts geglättet oder hochgerechnet. Reihen unterscheiden sich in Farbe UND Strichart, die Legende nennt sie mit Namen.
 
 type D = Extract<Block, { typ: "diagramm" }>;
-const W = 640, H = 300, L = 56, R = 16, T = 16, B = 44;
+const W = 640, H = 300, L = 56, R = 16, T = 30, B = 44;
 const DASH = ["", "7 4", "2 4", "10 4 2 4"];
 const SERIES = ["var(--arc)", "var(--amber)", "var(--text)", "var(--text-muted)"];
 const fmt = (v: number) => v.toLocaleString("de-DE", { maximumFractionDigits: Math.abs(v) < 10 ? 2 : 0 });
@@ -14,7 +14,11 @@ function ticks(lo: number, hi: number, n = 5): number[] {
   const raw = (hi - lo) / n, mag = 10 ** Math.floor(Math.log10(raw));
   const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw) ?? raw;
   const out: number[] = [];
-  for (let v = Math.floor(lo / step) * step; v <= hi + step * 0.001; v += step) out.push(Number(v.toFixed(10)));
+  // Die Marken reichen bis über den höchsten Wert, damit keine Linie über das Gitter hinausläuft.
+  for (let v = Math.floor(lo / step) * step; out.length < 50; v += step) {
+    out.push(Number(v.toFixed(10)));
+    if (v >= hi - step * 0.001) break;
+  }
   return out;
 }
 
@@ -31,7 +35,7 @@ export function Chart({ d }: { d: D }) {
     ? L + ((x as number) - x0) / (x1 - x0 || 1) * (W - L - R)
     : L + band * (cats.indexOf(String(x)) + 0.5);
   const py = (y: number) => T + (1 - (y - y0) / (y1 - y0 || 1)) * (H - T - B);
-  const xLabels = numericX ? ticks(x0, x1, 6) : cats.filter((_, i) => i % Math.ceil(cats.length / 8) === 0);
+  const xLabels = numericX ? ticks(x0, x1, 6).filter((v) => v >= x0 && v <= x1) : cats.filter((_, i) => i % Math.ceil(cats.length / 8) === 0);
   const label = `Diagramm${d.y_titel ? `: ${d.y_titel}` : ""}${d.x_titel ? ` über ${d.x_titel}` : ""}, ${d.reihen.map((r) => r.name).join(", ")}`;
 
   return (
@@ -59,7 +63,7 @@ export function Chart({ d }: { d: D }) {
             })}
           </g>
         ))}
-        {d.y_titel && <text x={8} y={T - 4} className="chart-title">{d.y_titel}</text>}
+        {d.y_titel && <text x={8} y={12} className="chart-title">{d.y_titel}</text>}
         {d.x_titel && <text x={W - R} y={H - 6} className="chart-title" textAnchor="end">{d.x_titel}</text>}
       </svg>
       <figcaption className="chart-legend">

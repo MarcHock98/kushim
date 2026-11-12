@@ -35,7 +35,7 @@ describe("Ansichten je Art", () => {
     ]));
     expect(screen.getByText("Erster Absatz.")).toBeInTheDocument();
     expect(screen.getByText(/<b>fett<\/b>/)).toBeInTheDocument();
-    expect(document.querySelector(".view b, .view img")).toBeNull();
+    expect(document.querySelector(".view-card b, .view-card img")).toBeNull();
     expect(document.querySelectorAll("ol.v-list li")).toHaveLength(2);
   });
 
@@ -67,7 +67,7 @@ describe("Ansichten je Art", () => {
     ]));
     await waitFor(() => expect(document.querySelector(".katex")).not.toBeNull(), { timeout: 5000 });
     await new Promise((r) => setTimeout(r, 200));
-    expect(document.querySelector(".view a, .view [href], .view .boese, .view script, .view img")).toBeNull();
+    expect(document.querySelector(".view-card a, .view-card [href], .view-card .boese, .view-card script, .view-card img")).toBeNull();
   });
 
   it("markt: Kennzahlen mit Wort für die Richtung, Stand, Tabelle und der feste Hinweis", () => {
@@ -112,7 +112,7 @@ describe("Ansichten je Art", () => {
     const aside = screen.getByRole("complementary", { name: "Quellen" });
     expect(within(aside).getByText(/Erste Quelle/)).toBeInTheDocument();
     expect(within(aside).getByText("https://beispiel.example/a").tagName).toBe("CODE");
-    expect(document.querySelector(".view a")).toBeNull();
+    expect(document.querySelector(".view-card a")).toBeNull();
     expect(document.querySelector(".view-main .v-sources")).toBeNull();          // Quellen stehen nur in der Seitenspalte
   });
 });
@@ -144,6 +144,18 @@ describe("Diagramm", () => {
     expect(svg.querySelectorAll("rect")).toHaveLength(3);
     expect(svg.querySelector("polyline")).toBeNull();
     for (const q of ["Q1", "Q2", "Q3"]) expect(within(svg as unknown as HTMLElement).getByText(q)).toBeInTheDocument();
+  });
+
+  it("kein Punkt liegt außerhalb des Gitters, auch wenn der höchste Wert keine runde Zahl ist", () => {
+    card(view("markt", [{ typ: "diagramm", form: "linie", x_titel: "", y_titel: "Punkte", reihen: [
+      { name: "DAX", punkte: [[9, 19260], [10, 19310], [14, 19420.5]] }] }]));
+    const svg = document.querySelector(".chart svg")!;
+    const gridY = [...svg.querySelectorAll("line.chart-grid")].map((l) => Number(l.getAttribute("y1")));
+    const ys = points(svg.querySelector("polyline")!).map((p) => Number(p.split(",")[1]));
+    expect(Math.min(...ys)).toBeGreaterThanOrEqual(Math.min(...gridY));
+    expect(Math.max(...ys)).toBeLessThanOrEqual(Math.max(...gridY));
+    const title = [...svg.querySelectorAll("text.chart-title")].find((e) => e.textContent === "Punkte")!;
+    expect(Number(title.getAttribute("y"))).toBeLessThan(Math.min(...gridY) - 10);     // Titel überdeckt die oberste Zahl nicht
   });
 
   it("ein einzelner Punkt oder gleiche Werte zeichnen ohne NaN", () => {
@@ -181,7 +193,7 @@ describe("Bühne mit Ansichten", () => {
     expect(screen.queryByText("Erster Stand")).toBeNull();
     expect(screen.getByText("Zweiter Stand")).toBeInTheDocument();
     expect(screen.queryByRole("tablist")).toBeNull();
-    expect(document.querySelectorAll("article.view")).toHaveLength(1);
+    expect(document.querySelectorAll("article.view-card")).toHaveLength(1);
   });
 
   it("mehrere Ansichten: die neueste ist offen, die übrigen als Reiter (höchstens 5), ein Klick wechselt", async () => {
@@ -206,7 +218,7 @@ describe("Bühne mit Ansichten", () => {
     await heading("Erste");
     sock.current!.stageSeq += 1;
     sock.current!.stage = [{ id: "a", schliessen: true, seq: sock.current!.stageSeq }];
-    await waitFor(() => expect(document.querySelector("article.view")).toBeNull(), { timeout: 3000 });
+    await waitFor(() => expect(document.querySelector("article.view-card")).toBeNull(), { timeout: 3000 });
     expect(screen.getByRole("region", { name: "Gespräch" })).toHaveAttribute("data-mode", "dialog");
   });
 
@@ -215,7 +227,7 @@ describe("Bühne mit Ansichten", () => {
     show(sock, "a", "Erste");
     await heading("Erste");
     await act(async () => { fireEvent.keyDown(window, { key: "Escape" }); });
-    expect(document.querySelector("article.view")).toBeNull();
+    expect(document.querySelector("article.view-card")).toBeNull();
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Übersicht" })); });
     const list = screen.getByRole("region", { name: "Gezeigt" });
     expect(within(list).getByText(/Erste/)).toBeInTheDocument();

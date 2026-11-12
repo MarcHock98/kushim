@@ -147,3 +147,7 @@ Am Ende jedes Durchlaufs eine kurze Rückschau: Was hat gehakt? Was wurde wieder
   Tests, die einen freigegebenen Ordner brauchen, ersetzen `validate_path` per `monkeypatch`.
 - **UI-Tests im Hauptordner:** Nach dem Mergen eines UI-Branches mit neuen Paketen erst `cd ui && npm ci` (gepinnte
   Pakete aus `package-lock.json`), sonst scheitern Vitest und `tsc` an fehlenden Modulen.
+- **UI im Browser ansehen:** Dev-Server `kushim-ui` (`.claude/launch.json`), Adresse mit `?mock&demo`. Die Demo braucht rund
+  55 s, bis alle vier Ansichten als Reiter da sind; danach Reiter anklicken und die Breite umstellen, ohne neu zu laden.
+  Geänderte Dateien lädt der versteckte Browser nicht von selbst nach: neu laden. Überlauf per Skript messen
+  (`scrollWidth` gegen `clientWidth`), nicht nur am Bild schätzen.
