@@ -220,6 +220,7 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
       <header className="head">
         <img className="logo" src="/kushim.png" alt="" width={28} height={28} />
         <span className="brand">kushim</span>
+        <span className="label brand-sub">Sprachassistent</span>
         <span className="status" aria-live={stateView.live} title={stateView.label}>{stateView.label}</span>
         {overview?.mode === "C" && <span className="chip mode-c" title="Claude ist erlaubt: freigegebene Texte gehen an Anthropic">Modus C</span>}
         <KillButton onKill={() => void doKill()} />
@@ -241,10 +242,15 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
           {view === "security" && <SecurityPanel overview={overview} />}
           {view === "home" && (
             <div className="home">
-              <section className="home-main" aria-label="Gespräch">
+              <section className="home-main panel" aria-label="Gespräch" data-state={state}>
                 <Avatar state={state} size={avatarSize(box)} level={voice.level} />
                 <p className="line">{stateView.label}</p>
-                {connected && <Transcript entries={entries} rated={rated} onRate={(id, r) => void rate(id, r)} />}
+                {voice.active && (
+                  <div className="meter">
+                    <div className="meter-head"><span className="label">Pegel</span><span className="label">{Math.round(voice.level * 100)} %</span></div>
+                    <div className="track" aria-hidden="true"><div className="fill" style={{ width: `${Math.round(voice.level * 100)}%` }} /></div>
+                  </div>
+                )}
                 {connected && !voice.active && state === "idle" && (
                   <p className="hint">Der Sprachdienst läuft nicht. Starte ihn mit „kushim talk“.</p>
                 )}
@@ -253,6 +259,12 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
                   <button type="button" className="primary" onClick={() => void connect()}>Erneut versuchen</button>
                 )}
               </section>
+              {connected && (
+                <section className="home-log panel" aria-labelledby="log-h">
+                  <div className="panel-head"><h2 id="log-h">Verlauf</h2><span className="label">{entries.length} Einträge</span></div>
+                  <Transcript entries={entries} rated={rated} onRate={(id, r) => void rate(id, r)} />
+                </section>
+              )}
               <aside className="home-side" aria-label="Claude">
                 <ClaudePanel client={client} connected={connected} />
               </aside>

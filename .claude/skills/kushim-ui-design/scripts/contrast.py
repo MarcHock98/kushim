@@ -29,7 +29,11 @@ PAIRS = [
     ("--alarm", "--alarm-bg", 4.5, "Alarm-Text auf Alarm-Fläche"),
     ("--alarm-ink", "--alarm", 4.5, "Text auf Notaus-Knopf"),
     ("--line-strong", "--bg-1", 3.0, "Rahmen von Eingabefeldern"),
-    ("--amber", "--bg-1", 3.0, "Fokusring"),
+    ("--arc", "--bg-2", 4.5, "Arc-Text (Antworten) auf Panel"),
+    ("--arc-ink", "--arc", 4.5, "Text auf Arc-Knopf"),
+    ("--amber", "--bg-3", 4.5, "Amber-Text auf erhöhter Fläche"),
+    ("--text-muted", "--bg-3", 4.5, "Hilfstext auf erhöhter Fläche"),
+    ("--arc", "--bg-1", 3.0, "Fokusring"),
 ]
 
 
