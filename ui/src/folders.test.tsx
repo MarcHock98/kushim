@@ -39,7 +39,7 @@ async function fill(name: string, path: string) {
 describe("Ordner für Claude", () => {
   it("ohne Ordner: Hinweis und Formular; Freigeben zeigt erst die Vorschau mit dem Pfad, nichts wird ohne Klick freigegeben", async () => {
     const sock = await open();
-    expect(screen.getByText("Claude: kein Ordner freigegeben.")).toBeInTheDocument();
+    expect(screen.getByText(/Kein Ordner freigegeben/)).toBeInTheDocument();
     await fill("proj", "C:/projekte/proj");
     await waitFor(() => screen.getByText(/Claude darf in «C:\/projekte\/proj» arbeiten/));
     expect(screen.getByRole("button", { name: "Ablehnen" })).toHaveFocus();
@@ -48,7 +48,7 @@ describe("Ordner für Claude", () => {
     const sent = sock.current!.sent.find((m) => (m as { type: string }).type === "claude.folder_confirm") as { confirm: boolean; proposal: string };
     expect(sent).toMatchObject({ confirm: true, proposal: "f1" });
     await waitFor(() => screen.getByText("Ordner freigegeben."));
-    await waitFor(() => screen.getByLabelText("Auftrag"));                      // jetzt gibt es einen Ordner für Aufträge
+    await waitFor(() => screen.getByRole("button", { name: "Freigabe entziehen: proj" }));   // der Ordner steht jetzt in der Liste
   });
 
   it("Ablehnen gibt nichts frei und sendet claude.folder_deny", async () => {
@@ -74,6 +74,6 @@ describe("Ordner für Claude", () => {
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Freigabe entziehen: alt" })); });
     expect(types(sock)).toContain("claude.folder_remove");
     await waitFor(() => screen.getByText(/Freigabe für «alt» entzogen/));
-    await waitFor(() => screen.getByText("Claude: kein Ordner freigegeben."));
+    await waitFor(() => screen.getByText(/Kein Ordner freigegeben/));
   });
 });

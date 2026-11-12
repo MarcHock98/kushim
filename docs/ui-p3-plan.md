@@ -1,6 +1,6 @@
 # Plan P3: Live-Arbeit sichtbar machen (Aufträge, Listen, Mails, Dokumente)
 
-Stand 2026-11-12. Teil von `docs/ui-dynamic-plan.md`. **Noch nicht gebaut, zur Freigabe.** Baut auf P2 auf (`zeige`,
+Stand 2026-11-12. Teil von `docs/ui-dynamic-plan.md`. **P3a ist gebaut (2026-11-12, vom Nutzer freigegeben); P3b ist offen.** Baut auf P2 auf (`zeige`,
 `stage/schema.py`, `stage.get`, `ViewCard.tsx`). Ziel: Wenn Claude Code länger arbeitet, etwas plant oder eine Mail vorlegt,
 sieht man das im kushim-Fenster, statt nur einen Satz zu hören.
 
@@ -76,3 +76,14 @@ Zu klären (siehe Abschnitt 7):
 3. **Mail**: `mail` und `mail-entwurf` jetzt mitbauen, oder erst, wenn du Claude Code mit einem Mail-Konnektor nutzt?
    Empfehlung: mitbauen, es ist reine Anzeige.
 4. **Altes Claude-Panel** entfernen? Empfehlung: ja.
+
+## 8. Stand nach dem Bau von P3a
+- Alle vier Empfehlungen wurden übernommen (Schnitt, Countdown ohne Ton, Mail-Ansichten, altes Claude-Panel entfernt).
+- Abweichungen vom Plan: Der Mail-Text kommt als `absaetze: [str]` (höchstens 40 Absätze, zusammen 6000 Zeichen) statt als
+  ein Feld `text`. Die Endzeit des Countdowns prüft das Schema nur der Form nach (`JJJJ-MM-TTThh:mm[:ss]`, optional mit
+  Zone); die Grenze von 24 Stunden setzt die Oberfläche (sonst „Zeit unbekannt“). Grund: `stage/schema.py` darf laut
+  `test_no_egress.py` nur eine feste Liste von Standardmodulen laden, `datetime` gehört nicht dazu, und diese Liste
+  ändert nur der Nutzer.
+- Die Bausteine liegen in einer Datei `ui/src/components/stage/Live.tsx`; die Ordner-Verwaltung steht in `FolderPanel.tsx`.
+- Geprüft: 586 Python-Tests, 92 UI-Tests, Mock-Demo im Browser bei 375, 800 und 1440 px. Nicht geprüft: echtes
+  Tauri-Fenster, echter Aufruf durch Claude Code über den Channel.

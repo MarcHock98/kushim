@@ -151,3 +151,5 @@ Am Ende jedes Durchlaufs eine kurze Rückschau: Was hat gehakt? Was wurde wieder
   55 s, bis alle vier Ansichten als Reiter da sind; danach Reiter anklicken und die Breite umstellen, ohne neu zu laden.
   Geänderte Dateien lädt der versteckte Browser nicht von selbst nach: neu laden. Überlauf per Skript messen
   (`scrollWidth` gegen `clientWidth`), nicht nur am Bild schätzen.
+- **`stage/schema.py` hat eine feste Importliste** (`test_no_egress.py`: `__future__`, `json`, `math`, `re`, `typing`). Neue
+  Prüfungen dort ohne weitere Module bauen (z. B. Zeiten per Muster statt `datetime`); die Liste ändert nur der Nutzer.

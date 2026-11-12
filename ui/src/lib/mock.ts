@@ -12,8 +12,6 @@ export class MockSocket implements Socket {
     truncated?: boolean }[] = [];
   entries: { id: number; heard: string; reply: string; outcome: string }[] = [];
   folders: string[] = [];
-  session: unknown = null;
-  proposals = new Map<string, string>();
   overview: Record<string, unknown> = {
     kill: false, tools_active: [], vault: { where: "local", exists: true, open: true },
     backup: { configured: true, age_days: 2 }, money_limit_eur: 0, audit: [],
@@ -34,8 +32,6 @@ export class MockSocket implements Socket {
     this.stage = [...this.stage.filter((v) => v.id !== view.id), { ...view, seq: this.stageSeq }];
   }
   dash: Record<string, unknown> = { timers: [], tasks: [], pending_approvals: 0, results: [] };
-  review: unknown = null;
-  diffText = "";
   folderProposal: { name: string; path: string } | null = null;
   rated = new Set<number>();
   ratings: { entry: number; rating: number }[] = [];
@@ -63,6 +59,10 @@ export class MockSocket implements Socket {
     turn(24000, "Wie steht der DAX?", "Der DAX liegt bei 19.420 Punkten.", DEMO_VIEWS[1]);
     turn(35000, "Was weiß man über Koffein und Schlaf?", "Ich habe drei Quellen zusammengefasst.", DEMO_VIEWS[2]);
     turn(46000, "Wie ist die Systemauslastung?", "Ich zeige dir den Systemzustand.", DEMO_VIEWS[3]);
+    turn(57000, "Mach die Tests grün und plane meinen Dienstag.", "Ich arbeite den Plan ab.", {
+      ...DEMO_VIEWS[4], bausteine: [...(DEMO_VIEWS[4].bausteine as unknown[]),
+        { typ: "countdown", titel: "Tee zieht", ende: new Date(Date.now() + 4 * 60000).toISOString() }] });
+    turn(68000, "Was schreibt Anna, und antworte ihr.", "Hier die Mail und mein Entwurf.", DEMO_VIEWS[5]);
   }
 
   send(data: string): void {
@@ -100,7 +100,6 @@ export class MockSocket implements Socket {
       reply = { ok: true, items: this.kill ? [] : this.stage.filter((v) => (v.seq as number) > since), last: this.stageSeq };
     }
     else if (msg.type === "dashboard.get") reply = { ok: true, ...this.dash };
-    else if (msg.type === "claude.folders") reply = { ok: true, folders: this.folders };
     else if (msg.type === "claude.folder_list") reply = { ok: true, folders: this.folders.map((n) => ({ name: n, path: `C:/proj/${n}` })) };
     else if (msg.type === "claude.folder_propose") {
       const m = msg as { name?: string; path?: string };
@@ -119,33 +118,6 @@ export class MockSocket implements Socket {
       this.folders = this.folders.filter((x) => x !== n);
       reply = { ok: true, folders: this.folders.map((x) => ({ name: x, path: "x" })) };
     }
-    else if (msg.type === "claude.status") reply = { ok: true, session: this.session };
-    else if (msg.type === "claude.review") reply = { ok: true, review: this.review };
-    else if (msg.type === "claude.diff") {
-      const p = (msg as { path?: string }).path ?? "";
-      const known = ((this.review as { files?: { path: string }[] } | null)?.files ?? []).some((f) => f.path === p);
-      reply = known ? { ok: true, path: p, diff: this.diffText, truncated: false, protected: p.startsWith("src/kushim/safety/") }
-                    : { ok: false, error: "not_changed" };
-    }
-    else if (msg.type === "claude.start") {
-      const m = msg as { task?: string };
-      if (/IBAN/.test(m.task ?? "")) reply = { ok: true, allowed: false, reason: "Enthält eine IBAN." };
-      else { this.proposals.set("p1", m.task ?? ""); reply = { ok: true, allowed: true, proposal: "p1", kind: "start", preview: `Auftrag: «${m.task}»`, expires_in: 90 }; }
-    }
-    else if (msg.type === "claude.approve") {
-      const m = msg as { proposal?: string; confirm?: boolean };
-      if (m.confirm !== true) reply = { ok: false, error: "confirm_required" };
-      else if (!m.proposal || !this.proposals.delete(m.proposal)) reply = { ok: false, error: "unknown_proposal" };
-      else { this.session = { id: "s", folder: "kushim", branch: "b", turn: 1, status: "running", cost_usd: 0, seconds: 1, error: "" }; reply = { ok: true, session: this.session }; }
-    }
-    else if (msg.type === "claude.deny") reply = { ok: true, denied: this.proposals.delete((msg as { proposal?: string }).proposal ?? "") };
-    else if (msg.type === "claude.answer") {
-      const m = msg as { text?: string; allow?: string[] };
-      this.proposals.set("p2", m.text ?? "");
-      const extra = m.allow && m.allow.length ? ` Erlaubt: ${m.allow.join(", ")}` : "";
-      reply = { ok: true, allowed: true, proposal: "p2", kind: "answer", preview: `Antwort: «${m.text}».${extra}`, expires_in: 60 };
-    }
-    else if (msg.type === "claude.stop") { this.session = null; reply = { ok: true, stopped: true }; }
     else if (msg.type === "feedback.add") {
       const m = msg as { entry?: number; rating?: number };
       if (this.rated.has(m.entry ?? -1)) reply = { ok: false, error: "already_rated" };
@@ -198,4 +170,19 @@ export const DEMO_VIEWS: Record<string, unknown>[] = [
       { nr: 2, titel: "Ratgeber (Beispiel)", adresse: "beispiel.org/koffein" },
       { nr: 3, titel: "Studie (Beispiel)" } ] } ] },
   { id: "system", art: "antwort", titel: "Systemzustand", bausteine: [{ typ: "systemzustand" }] },
+  { id: "auftrag", art: "auftrag", titel: "Tests grün machen (Beispiel)", bausteine: [
+    { typ: "fortschritt", hinweis: "Zwei Tests sind noch rot.", schritte: [
+      { text: "Tests laufen lassen", zustand: "fertig" }, { text: "Ursache im Schema finden", zustand: "fertig" },
+      { text: "Fehler beheben", zustand: "laeuft" }, { text: "Alte Ausgabe löschen", zustand: "fehler" },
+      { text: "Committen", zustand: "offen" } ] },
+    { typ: "zeitplan", tag: "Dienstag, 17. November", termine: [
+      { von: "09:00", bis: "10:00", titel: "Team-Runde", ort: "Büro" }, { von: "09:30", bis: "11:00", titel: "Zahnarzt", ort: "" },
+      { von: "13:00", bis: "14:30", titel: "Projektplanung", ort: "Video" } ] },
+    { typ: "aufgaben", punkte: [{ text: "Milch kaufen", erledigt: true }, { text: "Paket abholen", erledigt: false }] } ] },
+  { id: "mail", art: "mail", titel: "Mail von Anna (Beispiel)", bausteine: [
+    { typ: "mail", von: "Anna Beispiel <anna@beispiel.org>", an: "", betreff: "Treffen am Dienstag", datum: "12.11.2026 09:14",
+      zusammenfassung: "Anna fragt, ob das Treffen am Dienstag um 13 Uhr passt.",
+      absaetze: ["Hallo,", "passt dir Dienstag um 13 Uhr für die Projektplanung? Ich würde den Raum buchen.", "Viele Grüße, Anna"] },
+    { typ: "mail-entwurf", an: "anna@beispiel.org", cc: "", betreff: "Re: Treffen am Dienstag",
+      absaetze: ["Hallo Anna,", "Dienstag um 13 Uhr passt. Bitte buch den Raum.", "Viele Grüße"] } ] },
 ];

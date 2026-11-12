@@ -3,9 +3,10 @@ import { ART_LABEL, type Block, type View } from "../../lib/stage";
 import { IconCross } from "../Icons";
 import { SystemPanel, type SysData } from "../SystemPanel";
 import { Chart } from "./Chart";
+import { Countdown, Mail, MailDraft, Progress, Schedule, Tasks } from "./Live";
 import { Tex } from "./Tex";
 
-// Eine Ansicht von Claude auf der Bühne. Layout je Art (antwort, rechnung, markt, recherche), Bausteine nur als Text.
+// Eine Ansicht von Claude auf der Bühne. Layout je Art (antwort, rechnung, markt, recherche, auftrag, mail), Bausteine nur als Text.
 // Quellen-Adressen sind Text, kein Link: nichts öffnet sich, nichts wird nachgeladen.
 
 const num = (v: string | number) => (typeof v === "number" ? v.toLocaleString("de-DE", { maximumFractionDigits: 2 }) : v);
@@ -66,6 +67,12 @@ function BlockView({ b, sys, sysNo }: { b: Block; sys: SysData | null; sysNo: bo
     );
     case "hinweis": return <p className="v-note">{b.text}</p>;
     case "systemzustand": return <SystemPanel data={sys} unavailable={sysNo} />;
+    case "fortschritt": return <Progress b={b} />;
+    case "aufgaben": return <Tasks b={b} />;
+    case "zeitplan": return <Schedule b={b} />;
+    case "mail": return <Mail b={b} />;
+    case "mail-entwurf": return <MailDraft b={b} />;
+    case "countdown": return <Countdown b={b} />;
   }
 }
 

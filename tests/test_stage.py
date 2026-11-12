@@ -158,3 +158,108 @@ def test_no_views_pass_while_the_kill_switch_is_active(channel):
     c.show(MATHE)
     killswitch.trigger(root)
     assert b.fetch()[0] != "ok" and b.stage.since(0)[0] == []
+
+
+# --- P3a: Aufträge, Listen, Zeitplan, Mail, Countdown (docs/ui-p3-plan.md) ---------------------------
+
+def _soon(minutes=10):
+    from datetime import datetime, timedelta
+    return (datetime.now() + timedelta(minutes=minutes)).isoformat(timespec="seconds")
+
+
+def p3(typ, art="auftrag", **fields):
+    return {"id": "p3", "art": art, "titel": "T", "bausteine": [{"typ": typ, **fields}]}
+
+
+STEPS = [{"text": "Tests lesen", "zustand": "fertig"}, {"text": "Fehler beheben", "zustand": "laeuft"}, {"text": "Committen"}]
+MAIL = dict(von="Anna <anna@example.org>", betreff="Termin", absaetze=["Hallo,", "passt Dienstag?"])
+DRAFT = dict(an="anna@example.org", betreff="Re: Termin", absaetze=["Ja, Dienstag passt."])
+
+
+def test_p3a_blocks_pass_and_get_a_fixed_shape():
+    b = schema.validate(p3("fortschritt", schritte=STEPS))["bausteine"][0]
+    assert [s["zustand"] for s in b["schritte"]] == ["fertig", "laeuft", "offen"] and b["hinweis"] == ""
+    b = schema.validate(p3("aufgaben", punkte=[{"text": "Milch", "erledigt": True}, {"text": "Brot"}]))["bausteine"][0]
+    assert b["punkte"] == [{"text": "Milch", "erledigt": True}, {"text": "Brot", "erledigt": False}]
+    b = schema.validate(p3("zeitplan", tag="Dienstag", termine=[{"von": "14:00", "bis": "15:00", "titel": "B"},
+                                                               {"von": "09:30", "bis": "10:00", "titel": "A", "ort": "Büro"}]))["bausteine"][0]
+    assert [t["titel"] for t in b["termine"]] == ["A", "B"] and b["termine"][0]["ort"] == "Büro"     # nach Zeit sortiert
+    b = schema.validate(p3("mail", art="mail", **MAIL))["bausteine"][0]
+    assert b["von"] == MAIL["von"] and b["absaetze"] == MAIL["absaetze"] and b["an"] == "" and b["zusammenfassung"] == ""
+    b = schema.validate(p3("mail-entwurf", art="mail", **DRAFT))["bausteine"][0]
+    assert b == {"typ": "mail-entwurf", "an": DRAFT["an"], "cc": "", "betreff": DRAFT["betreff"], "absaetze": DRAFT["absaetze"]}
+
+
+def test_mail_text_loses_control_and_direction_characters():
+    tricky = "Rechnung" + chr(0x202e) + "fdp.exe" + chr(0) + chr(27) + "[31m rot" + chr(10) + "zweite Zeile"
+    b = schema.validate(p3("mail", art="mail", von="x", betreff="y" + chr(0x200f), absaetze=[tricky]))["bausteine"][0]
+    text = b["absaetze"][0] + b["betreff"]
+    assert all(ch.isprintable() for ch in text) and chr(0x202e) not in text and chr(10) not in text
+    assert "Rechnung" in text and "zweite Zeile" in text
+
+
+def test_countdown_accepts_only_a_plain_iso_time():
+    for ende in (_soon(), "2026-11-12T12:00", "2026-11-12T12:00:03+01:00", "2026-11-12T11:00:03Z"):
+        assert schema.validate(p3("countdown", titel="Tee", ende=ende))["bausteine"][0] == {"typ": "countdown", "titel": "Tee", "ende": ende}
+    for ende in ("morgen", "", None, 1794522000, "2026-13-01T10:00:00", "2026-11-32T10:00:00", "2026-11-12T24:00:00",
+                 "2026-11-12T10:60:00", "2026-11-12 10:00:00", "2026-11-12T10:00:00+0100", "2026-11-12T10:00:00 ", "9" * 41,
+                 "2026-11-12T10:00:00<script>", "٢٠٢٦-11-12T10:00:00"):
+        with pytest.raises(schema.ViewError):
+            schema.validate(p3("countdown", titel="Tee", ende=ende))
+    with pytest.raises(schema.ViewError):
+        schema.validate(p3("countdown", ende=_soon()))                                                # ohne Titel
+
+
+@pytest.mark.parametrize("typ,fields", [
+    ("fortschritt", dict(schritte=[])),
+    ("fortschritt", dict(schritte=[{"text": "x", "zustand": "fast fertig"}])),
+    ("fortschritt", dict(schritte=[{"text": "x", "befehl": "rm"}])),
+    ("fortschritt", dict(schritte=[{"text": "x"}] * 21)),
+    ("fortschritt", dict(schritte=[{"text": "x" * 201}])),
+    ("fortschritt", dict(schritte=STEPS, prozent=50)),
+    ("aufgaben", dict(punkte=[{"text": "x", "erledigt": "ja"}])),
+    ("aufgaben", dict(punkte=[{"text": "x"}] * 41)),
+    ("aufgaben", dict(punkte=["x"])),
+    ("zeitplan", dict(termine=[{"von": "9:00", "bis": "10:00", "titel": "A"}])),
+    ("zeitplan", dict(termine=[{"von": "24:00", "bis": "25:00", "titel": "A"}])),
+    ("zeitplan", dict(termine=[{"von": "10:00", "bis": "10:00", "titel": "A"}])),
+    ("zeitplan", dict(termine=[{"von": "11:00", "bis": "10:00", "titel": "A"}])),
+    ("zeitplan", dict(termine=[{"von": "10:00", "bis": "10:60", "titel": "A"}])),
+    ("zeitplan", dict(termine=[{"von": "١٠:٠٠", "bis": "11:00", "titel": "A"}])),
+    ("zeitplan", dict(termine=[{"von": 600, "bis": "11:00", "titel": "A"}])),
+    ("zeitplan", dict(termine=[{"von": "10:00", "bis": "11:00", "titel": "A", "link": "x"}])),
+    ("zeitplan", dict(termine=[{"von": "10:00", "bis": "11:00", "titel": "A"}] * 31)),
+    ("mail", {**MAIL, "von": ""}),
+    ("mail", {**MAIL, "html": "<b>x</b>"}),
+    ("mail", {**MAIL, "anhang": "rechnung.pdf"}),
+    ("mail", {**MAIL, "absaetze": ["x" * 1500] * 5}),
+    ("mail", {**MAIL, "absaetze": "Hallo"}),
+    ("mail", {**MAIL, "absaetze": ["x"] * 41}),
+    ("mail-entwurf", {**DRAFT, "an": ""}),
+    ("mail-entwurf", {**DRAFT, "senden": True}),
+    ("mail-entwurf", {**DRAFT, "bcc": "x@example.org"}),
+    ("mail-entwurf", {**DRAFT, "absaetze": []}),
+])
+def test_p3a_rejections(typ, fields):
+    with pytest.raises(schema.ViewError) as e:
+        schema.validate(p3(typ, **fields))
+    assert e.value.code == "bad_block_1"
+
+
+def test_zeige_tool_names_the_new_kinds_and_tells_claude_showing_is_not_an_approval():
+    assert {"auftrag", "mail"} <= set(ch.ZEIGE_TOOL["inputSchema"]["properties"]["art"]["enum"])
+    kinds = ch.ZEIGE_TOOL["inputSchema"]["properties"]["bausteine"]["items"]["properties"]["typ"]["enum"]
+    assert {"fortschritt", "aufgaben", "zeitplan", "mail", "mail-entwurf", "countdown"} <= set(kinds)
+    assert "gesendet wird damit nichts" in ch.ZEIGE_TOOL["description"] and "ohne Ton" in ch.ZEIGE_TOOL["inputSchema"]["properties"]["bausteine"]["description"]
+    assert "Zeigen ersetzt nie eine Freigabe" in ch.INSTRUCTIONS
+
+
+def test_p3a_views_travel_through_the_real_channel_into_the_bridge_store(channel):
+    c, out, root = channel
+    view = {"id": "job", "art": "auftrag", "titel": "Tests grün machen", "bausteine": [{"typ": "fortschritt", "schritte": STEPS}]}
+    b = br.Bridge(root)
+    call(c, out, view)
+    c.say("Ich fange an.")
+    assert b.fetch() == ("ok", ["Ich fange an."])
+    got = b.stage.since(0)[0]
+    assert got[0]["art"] == "auftrag" and got[0]["bausteine"][0]["schritte"][1]["zustand"] == "laeuft"

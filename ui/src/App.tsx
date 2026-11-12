@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { flushSync } from "react-dom";
 import { PermissionBar, type PermissionRequest } from "./components/PermissionBar";
 import { Core3D } from "./components/Core3D";
-import { ClaudePanel } from "./components/ClaudePanel";
+import { FolderPanel } from "./components/FolderPanel";
 import { Dashboard, type DashData } from "./components/Dashboard";
 import { MemoryPanel } from "./components/MemoryPanel";
 import { SecurityPanel, type Overview } from "./components/SecurityPanel";
@@ -346,7 +346,7 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
                 </section>
               )}
               <aside className="overview-claude" aria-label="Claude">
-                <ClaudePanel client={client} connected={connected} />
+                <FolderPanel client={client} connected={connected} />
               </aside>
               <div className="overview-dash"><Dashboard data={dash} overview={overview} unavailable={dashNo} /></div>
             </div>
