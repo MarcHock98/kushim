@@ -1,8 +1,8 @@
-"""Sprachpipeline: Äußerung -> STT -> Notaus-Prüfung -> Sprecher-Prüfung -> LLM -> Sprachausgabe.
+"""Sprachpipeline: Äußerung -> STT -> Notaus-Prüfung -> Claude -> Sprachausgabe.
 
 Reihenfolge ist sicherheitsrelevant:
-  1. Notaus-Wortlaut wird VOR allem anderen geprüft (ohne Sprecherprüfung, ohne LLM).
-  2. Ist ein Sprecherprofil eingeschrieben, wird bei Nichtübereinstimmung nichts beantwortet.
+  1. Notaus-Wortlaut wird VOR allem anderen geprüft (ohne Claude).
+  2. Es gibt keine Sprecher-Prüfung: jede Stimme kann Befehle geben, Freigaben per Stimme sind deshalb gesperrt.
   3. Die Antwort ist nur Text. Aktionen gibt es in kushim nicht; Freigaben macht Claude Code (Roadmap v2 Phase C).
 Alle Komponenten werden injiziert (testbar ohne Audio/Modelle).
 """
@@ -17,7 +17,6 @@ from typing import Any, Callable, Iterable, Sequence
 from ..safety.killswitch import KillSwitch, is_kill_phrase
 from ..tasks import TaskRegistry, is_cancel_phrase
 from .dialog import Dialog, State
-from .verify import AudioVerifier
 from .stt import SpeechToText
 from .tts import Speaker, chunk_stream, prefetch, split_sentences
 
@@ -91,13 +90,13 @@ def strip_wake_words(text: str, names: Sequence[str]) -> str:
 class Result:
     heard: str
     reply: str
-    outcome: str      # "spoken" | "killed" | "empty" | "wake_only" | "rejected_speaker" | "halted" | "interrupted" | "end_conversation" | "cancelled"
+    outcome: str      # "spoken" | "killed" | "empty" | "wake_only" | "halted" | "interrupted" | "end_conversation" | "cancelled"
     detail: str = ""  # nur Anzeige, z. B. Score und Dauer bei abgelehntem Sprecher (kein Audio)
 
 
 class Pipeline:
     def __init__(self, stt: SpeechToText, chat: ChatStream, speaker: Speaker, dialog: Dialog,
-                 kill: KillSwitch, verifier: AudioVerifier | None = None,
+                 kill: KillSwitch,
                  history_limit: int = 6,
                  commands: Any = None, wake_names: Sequence[str] = (), tasks: TaskRegistry | None = None):
         self.wake_names = tuple(wake_names)       # werden am Anfang des erkannten Textes entfernt
@@ -106,7 +105,6 @@ class Pipeline:
         previous_stop = speaker.should_stop
         speaker.should_stop = lambda: previous_stop() or self._interrupted.is_set()
         self.stt, self.chat, self.speaker, self.dialog, self.kill = stt, chat, speaker, dialog, kill
-        self.verifier = verifier
         self.commands = commands          # Sprachbefehle ohne LLM (`handle(text, verified, strong)`), optional
         self.history: list[dict[str, str]] = []
         self.history_limit = history_limit
@@ -155,27 +153,17 @@ class Pipeline:
             self.kill.on_transcript(text)
             self.dialog.halt()
             return Result(text, "", "killed")
-        if is_cancel_phrase(strip_wake_words(text, self.wake_names) or text):   # Abbrechen ist immer sicher: ohne Sprecher-Prüfung
+        if is_cancel_phrase(strip_wake_words(text, self.wake_names) or text):   # Abbrechen ist immer sicher
             return self._cancel(text)
         text = strip_wake_words(text, self.wake_names)
         if not text:
             return Result("", "", "wake_only")      # nur das Wake Word: kein Befehl, nichts prüfen, nichts antworten
-        verified = strong = False
-        score: float | None = None                       # Sprecher-Ähnlichkeit, nur fürs Protokoll (C5)
-        if self.verifier is not None and self.verifier.enrolled:
-            # Eine kurze Bestätigung ("ja") nach einer stark verifizierten Anfrage darf kürzer sein.
-            short_ok = getattr(self.commands, "awaiting", False)
-            v = self.verifier.check(pcm, min_seconds=0.4) if short_ok else self.verifier.check(pcm)
-            if not v.accepted:
-                return Result(text, "", "rejected_speaker",
-                              f"Ähnlichkeit {v.score:.2f} (Schwelle {float(self.verifier.profile.threshold):.2f}), "
-                              f"{v.seconds:.1f} s, {v.windows} Fenster: {v.reason}")
-            verified, strong, score = True, v.strong, v.score
-        if " ".join(_TOKEN.findall(re.sub(r"['’`]", "", text.lower()))) in END_PHRASES:     # Gespräch beenden (nur verifizierte Stimme)
-            if verified or self.verifier is None or not self.verifier.enrolled:
-                self.speaker.say([END_REPLY])
-                return Result(text, END_REPLY, "end_conversation")
-        if is_shutdown_phrase(text) and (verified or self.verifier is None or not self.verifier.enrolled):     # kushim beenden (nur verifizierte Stimme)
+        verified = strong = False                        # keine Sprecher-Prüfung mehr: jede Stimme zählt gleich
+        score: float | None = None
+        if " ".join(_TOKEN.findall(re.sub(r"['’`]", "", text.lower()))) in END_PHRASES:     # Gespräch beenden
+            self.speaker.say([END_REPLY])
+            return Result(text, END_REPLY, "end_conversation")
+        if is_shutdown_phrase(text):                     # kushim beenden
             self.speaker.say([SHUTDOWN_REPLY])
             return Result(text, SHUTDOWN_REPLY, "shutdown")
         if self.commands is not None:

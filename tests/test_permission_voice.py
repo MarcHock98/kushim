@@ -142,52 +142,10 @@ def test_a_failing_log_never_blocks_the_answer():
     assert v.handle(YES, verified=True, strong=True) == pv.ALLOWED
 
 
-def test_through_the_pipeline_with_a_real_speaker_check(tmp_path):
-    import numpy as np
-    from types import SimpleNamespace
-    from kushim.safety.killswitch import KillSwitch
-    from kushim.voice.dialog import Dialog
-    from kushim.voice.pipeline import Pipeline
-    from kushim.voice.speaker import SpeakerVerifier
-    from kushim.voice.tts import Speaker
-    from kushim.voice.verify import AudioVerifier
-
-    class STT:
-        text = ""
-
-        def transcribe(self, pcm):
-            return SimpleNamespace(text=self.text)
-
-    class Eng:
-        def synthesize(self, t):
-            return t
-
-    profile = SpeakerVerifier()
-    me = np.random.default_rng(3).normal(size=32)
-    profile.enroll([me, me + 0.01, me - 0.01])
-    b, stt, played, called = FakeBridge(), STT(), [], []
-    kill = KillSwitch(tmp_path, [])
-    v = voice(b)
-    p = Pipeline(stt, lambda m: called.append(1) or iter(["x."]), Speaker(Eng(), played.append, lambda: kill.fired),
-                 Dialog(lambda: None), kill, AudioVerifier(profile, lambda pcm: me), commands=v)
-    v.offer(perm())
-    stt.text = "Ja."
-    assert p.handle(np.zeros(8000, dtype=np.int16)).reply == pv.NEED_STRONG                # 0,5 s: erkannt, aber nicht stark
-    stt.text = YES
-    assert p.handle(np.zeros(32000, dtype=np.int16)).reply == pv.ALLOWED                   # 2 s, eigene Stimme: stark
-    assert b.answers == [("r1", "allow")] and called == []                                # nichts ging an Claude als Befehl
-
-
-def test_approval_policy_needs_a_work_folder(tmp_path):
+def test_nothing_can_be_allowed_by_voice_any_more(tmp_path):
     from kushim.voice.talk import approval_policy
-    p = perm()
-    assert approval_policy(tmp_path)(p) is None
-    assert approval_policy(None)(p) == "Arbeitsordner unbekannt"
-
-
-def test_without_speaker_check_nothing_can_be_allowed_by_voice(tmp_path):
-    from kushim.voice.talk import approval_policy
-    policy = approval_policy(tmp_path, speaker_check=False)
+    policy = approval_policy(tmp_path)
+    assert approval_policy(None)(perm()) == "keine Sprecher-Prüfung"
     assert policy(perm()) == "keine Sprecher-Prüfung"
     v = voice(blocked=policy)
     assert v.offer(perm()).endswith(speakable.TERMINAL) and not v.awaiting

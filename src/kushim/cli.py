@@ -18,15 +18,8 @@ Täglich
   kushim kill                  NOTAUS: stoppt alle kushim-Dienste
   kushim resume                Notaus bewusst aufheben
 
-Stimme
-  kushim voice enroll          Stimme einschreiben (10 Absätze) [--record] [--auto] [--quick] [--mic NAME]
-  kushim voice test            Sprecherprüfung mit echten Werten ausprobieren [--mic NAME]
-  kushim voice status          Profil und Schwelle anzeigen
-  kushim voice threshold 0.79  Schwelle setzen (0,5 bis 0,9; niedriger = lockerer)
-  kushim voice record          Absätze für den Stimmklon aufnehmen [--redo] [--auto] [--mic NAME]
+Mikrofon
   kushim voice level           Mikrofonpegel messen, Schwellen vorschlagen [--apply] [--mic NAME]
-  kushim voice reset           Stimmprofil löschen
-  kushim voice check on|off    Sprecher-Prüfung ein/aus (Standard: aus; ohne sie keine Freigaben per Stimme)
 
 Oberfläche und Grafikkarte
   kushim gpu                   Grafikkarten zeigen und welche Whisper nutzt
@@ -256,11 +249,10 @@ def _approval_log(cfg: Config):
 
 
 def _vault_state(cfg: Config) -> str:
-    """"ok" (Vault und Stimmprofil da), "kein-profil" oder "kein-vault" (für doctor und setup)."""
-    from .voice import voiceprint
+    """"ok" (Vault da) oder "kein-vault" (für doctor und setup)."""
     try:
-        with open_store(cfg) as store:
-            return "ok" if voiceprint.load(store) else "kein-profil"
+        with open_store(cfg):
+            return "ok"
     except FileNotFoundError:
         return "kein-vault"
 
@@ -365,27 +357,10 @@ def _main(argv: list[str] | None = None) -> int:
     t.add_argument("--ui", action="store_true", help="Backend-API für die Oberfläche mitstarten (127.0.0.1): Freigabe-Leiste, Zustand, Notaus")
     t.add_argument("--wake-words", help="Komma-getrennt, überschreibt wakewords.toml nur für diesen Start (z. B. \"hey kushim,kushim\")")
     t.add_argument("--claude-folder", help=argparse.SUPPRESS)   # setzt `kushim start`: Arbeitsordner für Freigaben per Stimme (C4)
-    vo = sub.add_parser("voice", help="Eigene Stimme: einschreiben, testen, Status, löschen").add_subparsers(
-        dest="sub", required=True)
-    for name in ("enroll", "test"):
-        v = vo.add_parser(name)
-        v.add_argument("--mic", help="Namensteil des Mikrofons, sonst Systemstandard")
-        if name == "enroll":
-            v.add_argument("--record", action="store_true", help="die 10 Absätze neu aufnehmen (auch wenn vorhanden)")
-            v.add_argument("--quick", action="store_true", help="altes kurzes Einschreiben mit 5 Sätzen")
-            v.add_argument("--auto", action="store_true", help="Ende eines Absatzes automatisch per Stille statt per Enter")
-    vo.add_parser("status")
+    vo = sub.add_parser("voice", help="Mikrofonpegel messen und Schwellen vorschlagen").add_subparsers(dest="sub", required=True)
     lv = vo.add_parser("level", help="Mikrofonpegel messen und Schwellen fürs Sprechen/Unterbrechen vorschlagen")
     lv.add_argument("--mic", help="Namensteil des Mikrofons, sonst Systemstandard")
     lv.add_argument("--apply", action="store_true", help="Vorschlag in wakewords.toml übernehmen")
-    th = vo.add_parser("threshold", help="Schwelle der Sprecherprüfung setzen (0,5 bis 0,9; niedriger = lockerer)")
-    th.add_argument("value", type=float)
-    vo.add_parser("reset")
-    vo.add_parser("check", help="Sprecher-Prüfung ein- oder ausschalten (Standard: aus)").add_argument("state", choices=["on", "off"])
-    rec = vo.add_parser("record", help="Absätze fürs Einschreiben der Stimme aufnehmen (nur lokal, voice-data/)")
-    rec.add_argument("--mic", help="Namensteil des Mikrofons, sonst Systemstandard")
-    rec.add_argument("--redo", action="store_true", help="Schon vorhandene Aufnahmen neu sprechen")
-    rec.add_argument("--auto", action="store_true", help="Ende eines Absatzes automatisch per Stille statt per Enter")
     sub.add_parser("doctor", help="Prüft, ob alles installiert und eingerichtet ist")
     sub.add_parser("help", help="Übersicht aller Befehle mit Beispielen")
     cl = sub.add_parser("claude", help="Claude CLI prüfen, Modus C ein-/ausschalten").add_subparsers(dest="sub")
@@ -499,19 +474,8 @@ def _main(argv: list[str] | None = None) -> int:
         for c in results:
             print(("[ok]    " if c.ok else "[FEHLT] ") + c.name + ("" if c.ok else f"  -> {c.hint}"))
         return 0 if all(c.ok for c in results) else 1
-    if args.cmd == "voice" and args.sub == "record":
-        from .voice import audio
-        from .voice.recorder import record_session
-        mic = audio.Mic(audio.find_device(args.mic, "input"), rate=24_000, frame=1920)
-        from .voice.recorder import EnterController
-        record_session(root / "voice-data" / "clone", iter(mic), redo=args.redo, flush=mic.flush,
-                       controller=None if args.auto else EnterController())
-        return 0
     if args.cmd == "voice":
-        from .voice import audio, voiceprint
-        from .voice.embedder import SherpaEmbedder
-        from .voice.enrollment import enroll as run_quick_enroll, frames_recorder
-        from .voice.verify import AudioVerifier
+        from .voice import audio
         if args.sub == "level":
             from dataclasses import replace
             from .voice import levels, wakeconfig
@@ -539,101 +503,14 @@ def _main(argv: list[str] | None = None) -> int:
             else:
                 print("Übernehmen mit: kushim voice level --apply")
             return 0
-        if args.sub == "check":
-            cfg.set_speaker_check(args.state == "on")
-            print("Sprecher-Prüfung an: kushim reagiert nur auf deine eingeschriebene Stimme." if args.state == "on" else
-                  "Sprecher-Prüfung aus: kushim reagiert auf jede Stimme; Freigaben per Stimme sind gesperrt.")
-            print("Gilt ab dem nächsten Start von kushim.")
-            return 0
-        model = root / "models" / "speaker" / "wespeaker_en_voxceleb_CAM++_LM.onnx"
-        with _vault(cfg) as store:
-            if args.sub == "status":
-                print(f"Sprecher-Prüfung: {'an' if cfg.voice_speaker_check else 'aus'}")
-                vp = voiceprint.load(store)
-                if vp is None:
-                    print("Stimmprofil: keines")
-                else:
-                    stats = getattr(vp, "stats", {})
-                    extra = (f", {stats['prototypes']} Prototypen aus {stats['recordings']} Aufnahmen, "
-                             f"Abstand zu Fremden {stats['separation']:+.2f}") if stats else " (älteres Format, bitte neu einschreiben)"
-                    print(f"Stimmprofil: vorhanden, Schwelle {vp.threshold:.2f}{extra}")
-            elif args.sub == "threshold":
-                try:
-                    old = voiceprint.set_threshold(store, args.value)
-                except ValueError as e:
-                    print(f"Nicht geändert: {e}")
-                    return 1
-                print(f"Schwelle {old:.2f} -> {args.value:.2f}. Gilt ab dem nächsten Start von `kushim talk`. "
-                      "Niedriger heißt: auch fremde Stimmen kommen eher durch; prüfe das mit `voice test`.")
-            elif args.sub == "reset":
-                voiceprint.clear(store)
-                print("Stimmprofil gelöscht. kushim talk startet erst nach erneutem Einschreiben.")
-            else:
-                embed = SherpaEmbedder.from_local(str(model))
-                if args.sub == "enroll":
-                    rec_dir = root / "voice-data" / "clone"
-                    if args.quick:
-                        frames = iter(audio.Mic(audio.find_device(args.mic, "input")))
-                        print("Kurzes Einschreiben (5 Sätze, weniger robust). Aufnahmen bleiben im Speicher.")
-                        res = run_quick_enroll(frames_recorder(frames), embed)
-                        voiceprint.save(store, res.verifier, model.name)
-                        print(f"Gespeichert im Vault. Proben: {res.used}, Schwelle {res.threshold:.2f}.")
-                        return 0
-                    if args.record or len(list(rec_dir.glob("*.wav"))) < 3:
-                        from .voice.recorder import record_session
-                        print("Aufnahme der 10 Absätze (ca. 5 Minuten). Danach wird daraus dein Stimmprofil berechnet.")
-                        mic = audio.Mic(audio.find_device(args.mic, "input"), rate=24_000, frame=1920)
-                        from .voice.recorder import EnterController
-                        record_session(rec_dir, iter(mic), redo=args.record, flush=mic.flush,
-                                       controller=None if args.auto else EnterController())
-                    paths = sorted(rec_dir.glob("*.wav"))
-                    if len(paths) < 3:
-                        print("Zu wenige Aufnahmen. Nochmal: kushim voice enroll --record")
-                        return 1
-                    from .voice.enrollment import cohort_audio, enroll_from_recordings
-                    from .voice.recorder import load_paragraphs
-                    print("Berechne Stimmabdrücke ...")
-                    cohort = cohort_audio(root, load_paragraphs(root))
-                    try:
-                        profile = enroll_from_recordings(paths, embed, cohort, model.name)
-                    except ValueError as e:
-                        print(f"Einschreiben nicht möglich: {e}")
-                        return 1
-                    voiceprint.save_profile(store, profile)
-                    st = profile.stats
-                    print(f"Gespeichert im Vault: {st['prototypes']} Prototypen aus {st['recordings']} Aufnahmen "
-                          f"({st['windows']} Stimmabdrücke).")
-                    print(f"Deine Werte (zurückgehalten): Median {st['target_median']}, schwächste 10 % ab {st['target_p10']}. "
-                          f"Fremde Vergleichsstimmen: obere 5 % bei {st['cohort_p95']}. Schwelle: {profile.threshold:.2f}.")
-                    if st["separation"] < 0.1:
-                        print("ACHTUNG: Deine Stimme und die Vergleichsstimmen liegen eng beieinander "
-                              f"(Abstand {st['separation']:+.2f}). Die Prüfung ist dann nur begrenzt sicher; "
-                              "`voice test` zeigt dir die echten Werte, auch mit einer zweiten Person.")
-                else:
-                    vp = voiceprint.load(store)
-                    if vp is None:
-                        print("Kein Stimmprofil. Erst: kushim voice enroll")
-                        return 1
-                    ver = AudioVerifier(vp, embed)
-                    frames = iter(audio.Mic(audio.find_device(args.mic, "input")))
-                    print("Sprich einen oder mehrere Sätze (Test). Strg+C beendet.")
-                    try:
-                        while True:
-                            v = ver.check(frames_recorder(frames)())
-                            print(f"Ähnlichkeit {v.score:.2f} (Schwelle {vp.threshold:.2f}), {v.seconds:.1f} s, "
-                                  f"{v.windows} Fenster: {'akzeptiert' if v.accepted else 'abgelehnt'}"
-                                  f"{' (stark)' if v.strong else ''}")
-                    except KeyboardInterrupt:
-                        pass
         return 0
     if args.cmd == "start":
         return _start(args, cfg, root)
     if args.cmd == "talk":
         from .safety.killswitch import is_triggered
-        from .voice import audio, voiceprint, wakeconfig
+        from .voice import audio, wakeconfig
         from .voice.audio import UtteranceCollector
         from .voice.bargein import BargeIn
-        from .voice.embedder import SherpaEmbedder
         from .voice.talk import TalkLoop, build_live
         from .voice.wakebuild import build_detector
         if is_triggered(root):
@@ -645,20 +522,6 @@ def _main(argv: list[str] | None = None) -> int:
         except ValueError as e:
             print(f"Wake-Word-Konfiguration: {e}")
             return 2
-        verifier = None
-        if cfg.voice_speaker_check:
-            with _vault(cfg) as store:
-                profile = voiceprint.load(store)
-            if profile is None:
-                print("Sprecher-Prüfung ist an, aber es gibt kein Stimmprofil: erst `kushim voice enroll` "
-                      "(oder ausschalten: `kushim voice check off`).")
-                return 1
-            embed = SherpaEmbedder.from_local(str(root / "models" / "speaker" / "wespeaker_en_voxceleb_CAM++_LM.onnx"))
-            from .voice.verify import AudioVerifier
-            verifier = AudioVerifier(profile, embed)
-        else:
-            print("Sprecher-Prüfung ist aus: kushim reagiert auf jede Stimme. Freigaben per Stimme sind dann gesperrt "
-                  "(nur Terminal oder Oberfläche). Einschalten: kushim voice check on")
         try:
             _, plan = _gpu_plan(cfg)
         except ValueError as e:
@@ -670,14 +533,14 @@ def _main(argv: list[str] | None = None) -> int:
             from .voice.talklog import TalkLog
             tasks = TaskRegistry()
             talklog = TalkLog(root / "run" / "talk.log")       # Gesprächsprotokoll zur Fehlersuche (lokal, ohne Audio)
-            talklog.write("start", folder=bool(args.claude_folder), speaker_check=verifier is not None)
+            talklog.write("start", folder=bool(args.claude_folder))
 
             def note(s: str) -> None:
                 print(f"[Hinweis] {s}")
                 talklog.write("note", text=s)
             pipeline, kill, mic, ack = build_live(root, audio.find_device(args.out, "output"),
                                                   audio.find_device(args.mic, "input"),
-                                                  verifier=verifier, tasks=tasks,
+                                                  tasks=tasks,
                                                   on_note=note,
                                                   wake_names=[w.name for w in wcfg.enabled()],
                                                   whisper_device=plan.whisper_device,

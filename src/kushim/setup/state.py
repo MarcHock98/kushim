@@ -1,6 +1,6 @@
 """`run/setup-state.json`: merkt sich nur "übersprungen" bzw. "erledigt" (nicht sensibel, nicht im Git).
 
-Maßgeblich bleiben die echten Fakten (existiert der Vault, gibt es ein Stimmprofil); die Datei verhindert nur,
+Maßgeblich bleiben die echten Fakten (existiert der Vault); die Datei verhindert nur,
 dass die Oberfläche bei jedem Start wieder nervt. Fehlt sie oder ist sie kaputt, gilt alles als offen.
 Geschrieben wird atomar (Temp-Datei, dann ersetzen).
 """

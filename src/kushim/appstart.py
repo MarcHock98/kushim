@@ -79,7 +79,7 @@ def run(root: Path, voice: bool = True, popen: Callable[..., Any] = subprocess.P
             backend = start(backend_args(root, voice))
             ready = wait(root, time.time(), alive=lambda: backend.poll() is None)
             if not ready and voice and backend.poll() is not None:
-                # Der Sprachdienst ist früh beendet (z. B. kein Stimmprofil, Mikrofon fehlt): Fenster trotzdem öffnen, nur mit der API.
+                # Der Sprachdienst ist früh beendet (z. B. Mikrofon fehlt): Fenster trotzdem öffnen, nur mit der API.
                 say(f"Der Sprachdienst startet nicht (siehe {LOG}). Ich öffne das Fenster ohne Sprache.")
                 backend = start(backend_args(root, False))
                 ready = wait(root, time.time(), alive=lambda: backend.poll() is None)

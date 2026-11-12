@@ -65,23 +65,22 @@ class Eng:
         return t
 
 
-def make_pipeline(tmp_path, text, chat=None, tasks=None, verifier=None):
+def make_pipeline(tmp_path, text, chat=None, tasks=None):
     played = []
     dialog = Dialog(lambda: None)
     kill = KillSwitch(tmp_path, [])
     spk = Speaker(Eng(), played.append, lambda: kill.fired)
     stt = SimpleNamespace(transcribe=lambda pcm: SimpleNamespace(text=text))
-    p = Pipeline(stt, chat or (lambda m: iter(["Antwort."])), spk, dialog, kill, verifier, tasks=tasks)
+    p = Pipeline(stt, chat or (lambda m: iter(["Antwort."])), spk, dialog, kill, tasks=tasks)
     return p, played
 
 
 PCM = np.zeros(16000, dtype=np.int16)
 
 
-def test_spoken_cancel_stops_running_tasks_and_confirms_without_the_llm_or_speaker_check(tmp_path):
+def test_spoken_cancel_stops_running_tasks_and_confirms_without_the_llm(tmp_path):
     tasks, called = TaskRegistry(), []
-    p, played = make_pipeline(tmp_path, "Abbrechen", chat=lambda m: called.append(1) or iter([]), tasks=tasks,
-                              verifier=SimpleNamespace(enrolled=True, check=lambda *a, **k: pytest.fail("keine Sprecher-Prüfung nötig")))
+    p, played = make_pipeline(tmp_path, "Abbrechen", chat=lambda m: called.append(1) or iter([]), tasks=tasks)
     with tasks.running("Recherche", lambda: called.append("cancel")) as tok:
         r = p.handle(PCM)
     assert r.outcome == "cancelled" and r.reply == CANCEL_REPLY and played == [CANCEL_REPLY] and tok.cancelled()

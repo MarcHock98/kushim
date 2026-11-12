@@ -14,7 +14,7 @@
   Netzwerk nur waehrend der Installation und nur zu: pypi.org (Python-Pakete), github.com
   (Sprecher-Modell, Wake-Word-Modelle), huggingface.co (Whisper, Stimme). Danach arbeitet kushim offline.
   Ein lokales Sprachmodell (Ollama) gibt es nicht mehr: die einzige KI ist Claude Code.
-  Vault-Schluessel und Stimmprofil legt NUR du an (Rueckfrage am Ende).
+  Den Vault-Schluessel legt NUR du an (Rueckfrage am Ende).
 #>
 param(
     [switch]$Check,
@@ -151,10 +151,6 @@ if (Test-Path $Py) {
 
     & $Py -m kushim.cli doctor
     $doctorOk = ($LASTEXITCODE -eq 0)
-    if (-not $doctorOk -and -not $Check) {
-        & $Py -m kushim.cli voice status 2>$null | Out-Null
-        if (Ask "Deine Stimme jetzt einschreiben (10 Absaetze vorlesen, ca. 5 Minuten, Mikrofon noetig)?") { & $Py -m kushim.cli voice enroll }
-    }
 }
 
 Write-Host ""

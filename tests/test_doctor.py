@@ -25,8 +25,6 @@ def test_kill_marker_is_flagged(tmp_path):
 
 def test_vault_states(tmp_path):
     by = {c.name: c for c in run_checks(tmp_path, lambda: "kein-vault")}
-    assert not by["Vault vorhanden"].ok and not by["Stimmprofil eingeschrieben"].ok
-    by = {c.name: c for c in run_checks(tmp_path, lambda: "kein-profil")}
-    assert by["Vault vorhanden"].ok and not by["Stimmprofil eingeschrieben"].ok
+    assert not by["Vault vorhanden"].ok and "Stimmprofil eingeschrieben" not in by       # keine Sprecher-Prüfung mehr
     by = {c.name: c for c in run_checks(tmp_path, lambda: "ok")}
-    assert by["Vault vorhanden"].ok and by["Stimmprofil eingeschrieben"].ok
+    assert by["Vault vorhanden"].ok

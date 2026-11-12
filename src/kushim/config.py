@@ -54,7 +54,6 @@ class Config:
     claude_enabled: bool = False
     gpu_whisper: str = "auto"      # "auto", "cpu" oder Kartennummer (kushim gpu)
     claude_folders: tuple[str, ...] = ()  # freigegebene Ordner für Claude als "name|pfad"; ändert nur der Nutzer (UI/CLI)
-    voice_speaker_check: bool = False     # [voice] speaker_check: nur auf die eingeschriebene Stimme reagieren. Standard aus
                                           # (Entscheidung des Nutzers 2026-11-11); ohne Prüfung keine Freigaben per Stimme.
     path: Path | None = field(default=None, repr=False)
 
@@ -74,7 +73,6 @@ class Config:
             backup_keep=int(bak.get("keep", 10)),
             claude_enabled=bool(priv.get("claude_enabled", False)),
             gpu_whisper=str(gpu.get("whisper", "auto")),
-            voice_speaker_check=data.get("voice", {}).get("speaker_check", False) is True,
             claude_folders=folders,
             path=path,
         )
@@ -109,31 +107,6 @@ class Config:
         tmp.write_text(chr(10).join(lines) + chr(10), encoding="utf-8")
         os.replace(tmp, path)
         self.claude_folders = tuple(clean)
-
-    def set_speaker_check(self, on: bool) -> None:
-        """Schreibt nur `speaker_check` im Abschnitt [voice]; übrige Datei bleibt erhalten. Atomar."""
-        path = self.path or config_path()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        line = f"speaker_check = {'true' if on else 'false'}"
-        lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
-        in_sec, done = False, False
-        for i, l in enumerate(lines):
-            s = l.strip()
-            if s.startswith("["):
-                in_sec = s == "[voice]"
-            elif in_sec and s.startswith("speaker_check"):
-                lines[i] = line
-                done = True
-        if not done:
-            heads = [l.strip() for l in lines]
-            if "[voice]" in heads:
-                lines.insert(heads.index("[voice]") + 1, line)
-            else:
-                lines += ([""] if lines else []) + ["[voice]", line]
-        tmp = path.with_suffix(".toml.tmp")
-        tmp.write_text(chr(10).join(lines) + chr(10), encoding="utf-8")
-        os.replace(tmp, path)
-        self.voice_speaker_check = on
 
     def set_claude_enabled(self, on: bool) -> None:
         """Schreibt nur `claude_enabled` im Abschnitt [privacy] (Modus C); übrige Datei bleibt erhalten. Atomar."""
