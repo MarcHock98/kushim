@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import "katex/dist/katex.min.css";
 
-/** Formel mit KaTeX (lokal gebündelt). `katex.render` baut DOM-Knoten (kein innerHTML); `trust: false` verbietet
+/** Formel mit KaTeX (lokal gebündelt). `katex.render` baut DOM-Knoten (kein HTML-Text); `trust: false` verbietet
  *  \href, \url und HTML-Befehle. Fehlerhafte Formeln erscheinen als Text mit dem Wort „Formel fehlerhaft“. */
 export function Tex({ tex, block = false }: { tex: string; block?: boolean }) {
   const ref = useRef<HTMLSpanElement>(null);
