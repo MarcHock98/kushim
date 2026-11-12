@@ -33,8 +33,8 @@ Design „Jarvin Cockpit“ (Artifact des Nutzers), Details und Pläne: `docs/ui
 - **Verlauf und Claude-Panel** stehen in der Übersicht (auf dem Start nur der Kern). Demo im Browser: `?mock&demo`.
 
 ## Offen
-- **P2 zu Ende:** Vitest-Tests je Ansicht (Formelfehler als Text, Diagramm, Markt-Hinweis, Widerspruchs-Kasten, Live-Update,
-  Reiter), ein UI-Regeltest für KaTeX `trust: false`, Screenshots bei 375/800/1440 px, echtes Tauri-Fenster und GPU-Last
-  neben Whisper prüfen (nicht gemessen). Danach P3 bis P6 laut `docs/ui-dynamic-plan.md` (je erst Detailplan, dann OK).
+- **P2 zu Ende:** Vitest-Tests je Ansicht und der Regeltest für KaTeX sind da (`ui/src/views.test.tsx`,
+  `tests/test_ui_rules.py`). Offen: Screenshots bei 375/800/1440 px, echtes Tauri-Fenster und GPU-Last neben Whisper
+  (nicht gemessen). Danach P3 bis P6 laut `docs/ui-dynamic-plan.md` (je erst Detailplan, dann OK).
 - Nutzerregel: bei UI-Arbeit erst ein Plan, dann die Freigabe, dann der Code.
 - Z3 für den Nutzer: `py scripts\claude_setup.py --project . --statusline --test-hook`.

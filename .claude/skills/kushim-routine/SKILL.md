@@ -143,3 +143,7 @@ Am Ende jedes Durchlaufs eine kurze Rückschau: Was hat gehakt? Was wurde wieder
 - Sofort stoppen bei: `docs/STOP`, mehrfach gescheiterter Selbstkorrektur ohne Fortschritt (3 Durchläufe in Folge), unerwartet veränderten Sicherheitsdateien, Hinweis auf kompromittierte Umgebung. Dann den Nutzer informieren.
 
 - **Fremde Python-Pakete laden gern still nach** (z. B. Modelle von GitHub bei der Initialisierung): beim Offline-Betrieb die Netzsperre im Prozess aktiv lassen, damit so etwas auffällt und scheitert, dann den Nachlade-Pfad gezielt abschalten. Kindprozess-Protokolle (stdout) von Bibliotheksausgaben trennen (stdout nach stderr umleiten, Protokoll auf eigenem Kanal) und der Leser überspringt Nicht-JSON-Zeilen.
+- **`tmp_path` liegt unter AppData:** Die Ordnerprüfung (`claude_cli/folders.validate_path`) lehnt Testordner dort ab.
+  Tests, die einen freigegebenen Ordner brauchen, ersetzen `validate_path` per `monkeypatch`.
+- **UI-Tests im Hauptordner:** Nach dem Mergen eines UI-Branches mit neuen Paketen erst `cd ui && npm ci` (gepinnte
+  Pakete aus `package-lock.json`), sonst scheitern Vitest und `tsc` an fehlenden Modulen.
