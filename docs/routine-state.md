@@ -108,10 +108,20 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
   großem Körper), Knopfsperre in der UI (Ursache plausibel, nicht nachgestellt). Offen ohne Nutzer: nichts Unabhängiges mehr.
   Wartet auf den Nutzer: P3b-Plan gewünscht?, D-Phase (Roadmap) prüfen, echte Prüfung im Tauri-Fenster.
 
+- 2026-11-13 Loop: Phase D geprüft, nichts gebaut; Entscheidung des Nutzers nötig (Offene Fragen). Unabhängige Arbeit ist
+  aufgebraucht: offen sind nur Punkte für den Nutzer (Z3, C6, Phase D, P3b-Plan, Tauri-Fenster prüfen).
+
 ## Slack
 - Nutzer-ID / Kanal-ID: nicht verwendet. Verbundenes Slack-Konto hat andere Mail (Arbeits-Workspace) als die Git-/Claude-Mail, Empfänger unsicher, daher nichts gesendet
 
 ## Offene Fragen an den Nutzer
+- 2026-11-13 **Phase D (Modell und Verbrauch per Stimme):** D1 ist durch Z4 fast erfüllt (Statuszeile zeigt Modell, Kontext,
+  Abo-Grenzen, Kosten); der kushim-Zustand fehlt, wäre dort aber meist veraltet (die Zeile wird nur nach jeder Antwort neu
+  gezeichnet). D2 braucht die Statusdaten in kushim: Dafür müsste `scripts/statusline.py` eine kleine Datei schreiben
+  (`run/claude-status.json`, nur für die kushim-Sitzung). Heute sichert ein Test zu, dass das Skript keine Dateien schreibt.
+  Optionen: (A) Phase D schließen: D1 gilt als erledigt ohne kushim-Zustand, D2 und D3 streichen; nach dem Modell kann man
+  Claude selbst fragen, den Verbrauch zeigt die Statuszeile (Empfehlung, am einfachsten). (B) D2 bauen: Statuszeile schreibt
+  die Datei, kushim beantwortet „welches Modell?“ und „wie viel Verbrauch?“ lokal. Bis zur Antwort: nichts an Phase D.
 - Keine offenen Fragen. (C7 am 2026-11-11 beantwortet, siehe Entscheidungen.)
 
 ## Blockiert
