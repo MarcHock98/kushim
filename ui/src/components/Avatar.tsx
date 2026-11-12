@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { STATE_VIEW, type AvatarState } from "../lib/avatarState";
 
-// Orb im Stil „Jarvin Cockpit“: Haarlinien-Ring, Skalenring aus Strichen, 72 Strahlen um einen ruhigen Kern mit Keil-K.
+// 2D-Orb im Stil „Jarvin Cockpit“ (Ersatz, wenn es kein WebGL gibt; sonst zeichnet Core3D): Haarlinien-Ring, Skalenring aus Strichen, 72 Strahlen um einen ruhigen Kern (ohne K).
 // Die Strahlen tragen die Information (Pegel vom Backend), der Kern bleibt ruhig. Entwurfsmaß 340 px, skaliert mit `size`.
 const BARS = 72;
 const BASE = 340;
@@ -92,18 +92,13 @@ export function draw(ctx: CanvasRenderingContext2D, size: number, state: AvatarS
   ctx.beginPath(); ctx.arc(cx, cy, 64 * k, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
   ctx.shadowBlur = 0;
 
-  ctx.globalAlpha = state === "idle" || state === "offline" ? 0.7 : 1;   // Keil-K, vereinfacht
-  ctx.strokeStyle = c.core;
-  ctx.lineWidth = Math.max(2.5, 5 * k);
-  ctx.lineJoin = "round";
-  const g = 24 * k;
-  ctx.beginPath();
-  ctx.moveTo(cx - g * 0.6, cy - g); ctx.lineTo(cx - g * 0.6, cy + g);
-  ctx.moveTo(cx + g * 0.8, cy - g); ctx.lineTo(cx - g * 0.6, cy + g * 0.05); ctx.lineTo(cx + g * 0.8, cy + g);
-  ctx.stroke();
+  ctx.globalAlpha = state === "idle" || state === "offline" ? 0.5 : 0.9;   // ruhiger Lichtpunkt statt K (K nur im Logo)
+  ctx.fillStyle = c.core;
+  ctx.beginPath(); ctx.arc(cx, cy, 10 * k, 0, Math.PI * 2); ctx.fill();
   if (state === "halted" || state === "offline") {      // durchgestrichen: Form, nicht nur Farbe
     ctx.globalAlpha = 1;
     ctx.strokeStyle = state === "halted" ? c.ring : c.core;
+    ctx.lineWidth = Math.max(2.5, 5 * k);
     ctx.beginPath();
     ctx.moveTo(cx - 45 * k, cy + 45 * k); ctx.lineTo(cx + 45 * k, cy - 45 * k);
     ctx.stroke();

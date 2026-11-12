@@ -19,13 +19,19 @@ export function useBoxSize(ref: RefObject<HTMLElement | null>): Box | null {
 }
 
 export const AVATAR_MIN = 120;
-export const AVATAR_MAX = 300;
-export const AVATAR_DEFAULT = 220;
+export const AVATAR_MAX = 440;
+export const AVATAR_DEFAULT = 260;
 
-/** Avatar-Größe aus dem sichtbaren Bereich: nie größer als ein Drittel bis die Hälfte, damit Status und Verlauf auch in kleinen Fenstern sichtbar bleiben. */
+/** Größe des 3D-Kerns in Ruhe: groß in der Mitte, aber Status, Verlauf und Panels bleiben sichtbar. Ab 1000 px teilt sich
+ *  die Breite in Spalten (Kern nur in der mittleren), darunter steht er allein in der Breite. */
 export function avatarSize(box: Box | null): number {
   if (!box) return AVATAR_DEFAULT;
-  const byWidth = box.width * 0.55;
-  const byHeight = box.height * 0.36;
+  const byWidth = box.width * (box.width >= 1000 ? 0.36 : 0.7);
+  const byHeight = box.height * 0.5;
   return Math.round(Math.max(AVATAR_MIN, Math.min(AVATAR_MAX, byWidth, byHeight)));
+}
+
+/** Kleiner Kern, wenn die Bühne Inhalt zeigt (Modus „Begleiten“): rückt zur Seite und macht der Karte Platz. */
+export function coreSmall(box: Box | null): number {
+  return Math.max(AVATAR_MIN, Math.round(avatarSize(box) * 0.45));
 }

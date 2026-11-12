@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { Avatar } from "./components/Avatar";
@@ -263,7 +263,7 @@ describe("Daumen-Feedback", () => {
     await waitFor(() => screen.getByText(/Noch nichts gesagt/));
     sock.current!.entries = [{ id: 7, heard: "Wie spät?", reply: "Zehn Uhr.", outcome: "spoken" },
       { id: 8, heard: "", reply: "", outcome: "rejected_speaker" }];
-    await waitFor(() => screen.getByText("Zehn Uhr."), { timeout: 3000 });
+    await waitFor(() => within(screen.getByRole("list", { name: "Verlauf" })).getByText("Zehn Uhr."), { timeout: 3000 });
     return sock.current!;
   }
 
@@ -294,14 +294,16 @@ describe("Live-Transkript", () => {
       { id: 1, heard: "Wie spät ist es?", reply: "Es ist <b>zehn</b> Uhr.", outcome: "spoken" },
       { id: 2, heard: "", reply: "", outcome: "rejected_speaker" },
     ];
-    await waitFor(() => screen.getByText("Wie spät ist es?"), { timeout: 3000 });
-    expect(screen.getByText("Es ist <b>zehn</b> Uhr.")).toBeInTheDocument();      // als Text, nicht als Element
+    const log = () => within(screen.getByRole("list", { name: "Verlauf" }));
+    await waitFor(() => log().getByText("Wie spät ist es?"), { timeout: 3000 });
+    expect(log().getByText("Es ist <b>zehn</b> Uhr.")).toBeInTheDocument();      // als Text, nicht als Element
     expect(document.querySelector(".bubble b")).toBeNull();
+    expect(document.querySelector(".stage-card b")).toBeNull();                    // auch die Karte auf der Bühne nur Text
     expect(screen.getByText("Stimme nicht erkannt. Keine Antwort.")).toBeInTheDocument();
     await new Promise((r) => setTimeout(r, 1300));
     const gets = sock.current!.sent.filter((m) => (m as { type: string }).type === "transcript.get") as { since: number }[];
     expect(gets[gets.length - 1].since).toBe(2);                                   // ab dem letzten Eintrag
-    expect(screen.getAllByText("Wie spät ist es?")).toHaveLength(1);
+    expect(log().getAllByText("Wie spät ist es?")).toHaveLength(1);
   });
 });
 

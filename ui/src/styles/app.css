@@ -159,6 +159,25 @@ h2, h3 { font-family: var(--font-display); font-weight: 600; letter-spacing: .04
 .sys-table dt { font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-muted); }
 .sys-table dd { margin: 0; font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text); }
 
+/* Bühne (docs/ui-dynamic-plan.md, P1): Kern groß in der Mitte („Ruhe“); kommt eine Antwort, rückt er klein zur Seite und
+   die Karte bekommt den Platz („Begleiten“). Die Fahrt macht die View-Transition (WebView2), sonst wechselt es sofort. */
+.stage { position: relative; align-items: center; }
+.stage-core { view-transition-name: core3d; display: grid; place-items: center; }
+.stage .line { view-transition-name: stage-word; }
+.core3d { display: block; }
+.stage[data-mode="begleiten"] { grid-template-columns: minmax(140px, 38%) minmax(0, 1fr); justify-items: stretch; align-items: start; column-gap: var(--s-5); }
+.stage[data-mode="begleiten"] > * { grid-column: 1; }
+.stage[data-mode="begleiten"] .line { font-size: var(--fs-lg); text-align: center; }
+.stage[data-mode="begleiten"] .stage-card { grid-column: 2; grid-row: 1 / span 6; }
+.stage-card { view-transition-name: stage-card; display: grid; gap: var(--s-3); align-content: start; padding: var(--s-4); background: var(--bg-3); border-radius: var(--r-md); min-width: 0; }
+.stage-card h2 { margin: 0; font-size: var(--fs-lg); }
+.stage-q, .stage-a { margin: 0; overflow-wrap: anywhere; }
+.stage-q { color: var(--amber); }
+.stage-a { color: var(--arc); font-size: var(--fs-lg); line-height: 1.45; }
+.stage-q .label, .stage-a .label { display: block; margin-bottom: var(--s-1); color: inherit; }
+.ghost-icon { min-width: var(--hit); padding: 0; display: inline-grid; place-items: center; background: transparent; border-color: var(--line); color: var(--text-muted); }
+::view-transition-group(*) { animation-duration: var(--t-slow); animation-timing-function: var(--ease); }
+
 /* ===== Responsive Layout =====
    < 800 px:     Leiste unten (vier gleich große Felder), Inhalt darüber
    800 bis 1099: Seitenleiste 72 px, Beschriftung unter dem Symbol
@@ -227,6 +246,8 @@ h2, h3 { font-family: var(--font-display); font-weight: 600; letter-spacing: .04
   .head { padding: var(--s-2) var(--s-3); gap: var(--s-2); }
   .brand { font-size: var(--fs-lg); }
   .brand-sub { display: none; }
+  .stage[data-mode="begleiten"] { grid-template-columns: minmax(0, 1fr); justify-items: center; }
+  .stage[data-mode="begleiten"] .stage-card { grid-column: 1; grid-row: auto; justify-self: stretch; }
 }
 
 @media (max-width: 599px) {

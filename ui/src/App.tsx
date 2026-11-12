@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import { PermissionBar, type PermissionRequest } from "./components/PermissionBar";
-import { Avatar } from "./components/Avatar";
+import { Core3D } from "./components/Core3D";
+import { StageCard } from "./components/StageCard";
 import { ClaudePanel } from "./components/ClaudePanel";
 import { Dashboard, type DashData } from "./components/Dashboard";
 import { MemoryPanel } from "./components/MemoryPanel";
@@ -12,7 +14,7 @@ import { HaltedBanner, KillButton } from "./components/KillButton";
 import { ApiClient, type Credentials } from "./lib/api";
 import { isAvatarState, resolveState, STATE_VIEW, type AvatarState } from "./lib/avatarState";
 import { MockSocket } from "./lib/mock";
-import { avatarSize, useBoxSize } from "./lib/useBoxSize";
+import { avatarSize, coreSmall, useBoxSize } from "./lib/useBoxSize";
 
 const WHY: Record<string, string> = {
   offline: "kein laufender Dienst gefunden (run/api.json fehlt oder ist nicht lesbar)",
@@ -27,6 +29,14 @@ const POLL_MS = 2000;
 const VOICE_POLL_MS = 200;
 const SYSTEM_POLL_MS = 3000;
 
+/** Bühnenwechsel mit Animation (View Transitions in WebView2/Chromium); ohne Unterstützung oder bei weniger Bewegung sofort. */
+function staged(change: () => void): void {
+  const doc = document as Document & { startViewTransition?: (cb: () => void) => unknown };
+  const calm = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (doc.startViewTransition && !calm) doc.startViewTransition(() => flushSync(change));
+  else change();
+}
+
 export type Loader = () => Promise<{ client: ApiClient }>;
 
 /** Echte Zugangsdaten kommen vom Tauri-Rustteil (liest run/api.json). Ohne Tauri: nur mit ?mock das gefälschte Backend. */
@@ -34,7 +44,8 @@ export async function defaultLoader(): Promise<{ client: ApiClient }> {
   const inTauri = "__TAURI_INTERNALS__" in window;
   if (!inTauri) {
     if (!new URLSearchParams(location.search).has("mock")) throw new Error("no-credentials");
-    return { client: new ApiClient({ port: 1, token: "t".repeat(43) }, (u) => new MockSocket(u)) };
+    const demo = new URLSearchParams(location.search).has("demo");
+    return { client: new ApiClient({ port: 1, token: "t".repeat(43) }, (u) => { const m = new MockSocket(u); if (demo) m.demo(); return m; }) };
   }
   const { invoke } = await import("@tauri-apps/api/core");
   const creds = await invoke<Credentials>("api_info");
@@ -61,6 +72,7 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
   const [sys, setSys] = useState<SysData | null>(null);
   const [sysNo, setSysNo] = useState(false);
   const [entries, setEntries] = useState<Entry[]>([]);
+  const [card, setCard] = useState<Entry | null>(null);       // Bühne: offene Antwort-Karte (Modus „Begleiten“)
   const lastId = useRef(0);
   const [rated, setRated] = useState<Record<number, 1 | -1>>({});
   const client = useRef<ApiClient | null>(null);
@@ -139,6 +151,8 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
       if (fresh.length === 0) return;
       lastId.current = Math.max(...fresh.map((e) => e.id));
       setEntries((old) => [...old, ...fresh].slice(-20));
+      const answer = [...fresh].reverse().find((e) => e.reply);
+      if (answer) staged(() => setCard(answer));
     };
     void pull();
     const id = setInterval(pull, 1000);
@@ -224,6 +238,19 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [doKill]);
 
+  const closeCard = useCallback(() => staged(() => setCard(null)), []);
+  const cardRef = useRef(card);
+  cardRef.current = card;
+  useEffect(() => {                                     // neue Frage: Bühne räumt die Karte ab
+    if (voice.active && voice.state === "listening" && cardRef.current) closeCard();
+  }, [voice.active, voice.state, closeCard]);
+  useEffect(() => {
+    if (!card) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !(e.target as HTMLElement | null)?.closest?.(".approval")) closeCard(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [card, closeCard]);
+
   const state = resolveState({ connected, killActive: kill, backendState: pending.length > 0 ? "asking" : voice.active ? voice.state : undefined });
   const stateView = STATE_VIEW[state];
 
@@ -261,9 +288,12 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
           {view === "security" && <SecurityPanel overview={overview} />}
           {view === "home" && (
             <div className="home">
-              <section className="home-main panel" aria-label="Gespräch" data-state={state}>
-                <Avatar state={state} size={avatarSize(box)} level={voice.level} />
+              <section className="home-main panel stage" aria-label="Gespräch" data-state={state} data-mode={card ? "begleiten" : "ruhe"}>
+                <div className="stage-core">
+                  <Core3D state={state} size={card ? coreSmall(box) : avatarSize(box)} level={voice.level} />
+                </div>
                 <p className="line">{stateView.label}</p>
+                {card && <StageCard entry={card} onClose={closeCard} />}
                 {voice.active && (
                   <div className="meter">
                     <div className="meter-head"><span className="label">Pegel</span><span className="label">{Math.round(voice.level * 100)} %</span></div>

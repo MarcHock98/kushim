@@ -38,6 +38,16 @@ export class MockSocket implements Socket {
     queueMicrotask(() => (this.fail ? this.onerror?.() : this.onopen?.()));
   }
 
+  /** Vorführung im Browser (`?mock&demo`): Sprach-Zustände der Reihe nach, danach eine Antwort auf der Bühne. Nur Mock. */
+  demo(): void {
+    const steps: [string, number][] = [["idle", 0], ["listening", 0.6], ["thinking", 0], ["speaking", 0.7], ["idle", 0]];
+    steps.forEach(([state, level], i) => setTimeout(() => {
+      this.voice = { active: true, state, level };
+      if (state === "speaking") this.entries.push({ id: this.entries.length + 1, heard: "Wie wird das Wetter morgen?",
+        reply: "Morgen 11 Grad, ab Nachmittag leichter Regen.", outcome: "spoken" });
+    }, 2500 + i * 3500));
+  }
+
   send(data: string): void {
     const msg = JSON.parse(data) as { type?: string; token?: string };
     this.sent.push(msg);
