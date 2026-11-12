@@ -62,7 +62,9 @@ INSTRUCTIONS = (
     "Werkzeuge mehr benutzen, nichts mehr vorlesen lassen und auf den Nutzer im Terminal warten. "
     "Wenn Sehen hilft (Rechenweg, Zahlen, Kurse, Tabellen, mehrere Quellen, Systemzustand), rufe zusätzlich das Werkzeug "
     "`zeige` auf: Es zeigt die Ansicht im kushim-Fenster. `sprich` bleibt trotzdem kurz. Für ein reines Gespräch kein `zeige`. "
-    "Bei Kursen und Preisen immer `stand` angeben und nur wiedergeben, was die Quellen sagen; keine Anlageempfehlung."
+    "Bei Kursen und Preisen immer `stand` angeben und nur wiedergeben, was die Quellen sagen; keine Anlageempfehlung. "
+    "Bei Arbeit mit mehreren Schritten zeige den Plan als `fortschritt` (art auftrag) und aktualisiere ihn unter derselben id; "
+    "einen Mail-Entwurf zeige vor dem Senden als `mail-entwurf` (art mail). Zeigen ersetzt nie eine Freigabe."
 )
 MAX_VIEWS = 10                   # nicht abgeholte Ansichten (zeige); ältere fallen weg
 CANCEL_TEXT = "Abbruch per Stimme: den laufenden Auftrag nicht fortsetzen und nichts Neues beginnen."
@@ -82,7 +84,8 @@ ZEIGE_TOOL = {
     "name": "zeige",
     "description": ("Zeigt dem Nutzer eine Ansicht im kushim-Fenster (zusätzlich zu `sprich`). Arten: antwort (Text), rechnung "
                     "(Rechenweg: schritte mit tex, ergebnis), markt (kennzahlen, diagramm, tabelle; `stand` Pflicht), recherche "
-                    "(text, aussagen mit Quellennummern, widerspruch, quellen). Nur Text, kein HTML/Markdown; Formeln als "
+                    "(text, aussagen mit Quellennummern, widerspruch, quellen), auftrag (fortschritt, aufgaben, zeitplan, countdown), mail "
+                    "(mail, mail-entwurf; reine Anzeige, gesendet wird damit nichts). Nur Text, kein HTML/Markdown; Formeln als "
                     "KaTeX-TeX in `tex`; Adressen nur als Text. Dieselbe id aktualisiert die Ansicht, schliessen=true räumt ab. "
                     "Baustein {\"typ\":\"systemzustand\"} zeigt kushims eigene Systemwerte (CPU, RAM, GPU ...)."),
     "inputSchema": {"type": "object", "required": ["id"], "additionalProperties": False, "properties": {
@@ -96,7 +99,10 @@ ZEIGE_TOOL = {
             "schritte{schritte:[{text,tex?}]}, ergebnis{text?,tex?}, kennzahlen{werte:[{name,wert,einheit?,aenderung?,"
             "richtung?:auf|ab|gleich}]}, tabelle{spalten:[str],zeilen:[[str|zahl]]}, diagramm{form:linie|balken,x_titel?,"
             "y_titel?,reihen:[{name,punkte:[[x,y]]}]}, aussagen{aussagen:[{text,quellen:[nr]}]}, widerspruch{aussagen:"
-            "[{text,quellen:[nr]}]}, quellen{quellen:[{nr,titel,adresse?}]}, hinweis{text}, systemzustand{}"),
+            "[{text,quellen:[nr]}]}, quellen{quellen:[{nr,titel,adresse?}]}, hinweis{text}, systemzustand{}, "
+            "fortschritt{schritte:[{text,zustand:offen|laeuft|fertig|fehler}],hinweis?}, aufgaben{punkte:[{text,erledigt}]}, "
+            "zeitplan{tag?,termine:[{von:HH:MM,bis:HH:MM,titel,ort?}]}, mail{von,an?,betreff,datum?,zusammenfassung?,absaetze:[str]}, "
+            "mail-entwurf{an,cc?,betreff,absaetze:[str]}, countdown{titel,ende:JJJJ-MM-TTThh:mm:ss, höchstens 24 h entfernt, nur Anzeige ohne Ton}"),
             "items": {"type": "object", "required": ["typ"], "properties": {"typ": {"type": "string", "enum": list(stage_schema.BLOCKS)}}}},
     }},
 }

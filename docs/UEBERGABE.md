@@ -38,7 +38,11 @@ Design „Jarvin Cockpit“ (Artifact des Nutzers), Details und Pläne: `docs/ui
   `.claude/launch.json`) bei 375/800/1440 px angesehen; dabei behoben: Karte und Hauptbereich teilten die Klasse `view`
   (jetzt `view-card`), Diagramm-Linie lief über das Gitter, Achsentitel überdeckte eine Zahl. Offen: echtes Tauri-Fenster
   und GPU-Last neben Whisper (nicht gemessen). Danach P3 bis P6 laut `docs/ui-dynamic-plan.md` (je erst Detailplan, dann OK).
-- **P3:** Detailplan `docs/ui-p3-plan.md` liegt zur Freigabe vor (Schnitt P3a/P3b, Countdown, Mail, altes Claude-Panel).
-  Kein Code vor dem OK des Nutzers.
+- **P3a ist gebaut** (`docs/ui-p3-plan.md`, Abschnitt 8): Arten `auftrag` und `mail`, Bausteine `fortschritt`, `aufgaben`,
+  `zeitplan`, `mail`, `mail-entwurf`, `countdown` (Schema, Channel-Beschreibung, `ui/src/components/stage/Live.tsx`). Das alte
+  Claude-Panel ist entfernt, `FolderPanel.tsx` zeigt die Ordner. Offen: echter Aufruf durch Claude Code, Tauri-Fenster;
+  P3b (Dokument und Diff aus Dateien) braucht einen eigenen Plan mit Audit.
+- Wackler: `test_channel.py::test_everything_else_is_refused…` (Verbindungsabbruch unter Windows) und der UI-Test „Knöpfe
+  kurz gesperrt“ fielen je einmal aus und liefen danach durch. Noch nicht untersucht.
 - Nutzerregel: bei UI-Arbeit erst ein Plan, dann die Freigabe, dann der Code.
 - Z3 für den Nutzer: `py scripts\claude_setup.py --project . --statusline --test-hook`.

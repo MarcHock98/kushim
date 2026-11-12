@@ -1,4 +1,4 @@
-"""Prüfung einer Ansicht für die Bühne (Werkzeug `zeige`, Plan docs/ui-p2-plan.md).
+"""Prüfung einer Ansicht für die Bühne (Werkzeug `zeige`, Pläne docs/ui-p2-plan.md und docs/ui-p3-plan.md).
 
 Claude Code schickt eine Ansicht als JSON. Sie ist Eingabe von außen: Hier wird sie streng geprüft und auf eine feste Form
 gebracht. Nur bekannte Felder und Bausteine, nur Text und endliche Zahlen, feste Grenzen. Was nicht passt, wird abgelehnt
@@ -14,7 +14,7 @@ from typing import Any, Callable
 
 MAX_JSON = 48 * 1024
 ID = re.compile(r"[a-z0-9-]{1,40}")
-ARTEN = ("antwort", "rechnung", "markt", "recherche")
+ARTEN = ("antwort", "rechnung", "markt", "recherche", "auftrag", "mail")
 MAX_BLOCKS = 12
 RICHTUNG = ("auf", "ab", "gleich")
 
@@ -179,10 +179,95 @@ def _systemzustand(b: dict[str, Any], c: str) -> dict[str, Any]:
     return {}
 
 
+ZUSTAND = ("offen", "laeuft", "fertig", "fehler")
+MAIL_CHARS = 6000
+ISO_TIME = re.compile("([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2})(?::([0-9]{2}))?(Z|[+-][0-9]{2}:[0-9]{2})?")
+
+
+def _fortschritt(b: dict[str, Any], c: str) -> dict[str, Any]:
+    _fields(b, {"schritte", "hinweis"}, c)
+    out = []
+    for s in _list(b.get("schritte"), 1, 20, c):
+        if not isinstance(s, dict) or set(s) - {"text", "zustand"} or s.get("zustand", "offen") not in ZUSTAND:
+            raise ViewError(c)
+        out.append({"text": _text(s.get("text"), 200, c), "zustand": s.get("zustand", "offen")})
+    return {"schritte": out, "hinweis": _text(b.get("hinweis"), 300, c, optional=True)}
+
+
+def _aufgaben(b: dict[str, Any], c: str) -> dict[str, Any]:
+    _fields(b, {"punkte"}, c)
+    out = []
+    for p in _list(b.get("punkte"), 1, 40, c):
+        if not isinstance(p, dict) or set(p) - {"text", "erledigt"} or not isinstance(p.get("erledigt", False), bool):
+            raise ViewError(c)
+        out.append({"text": _text(p.get("text"), 200, c), "erledigt": p.get("erledigt", False)})
+    return {"punkte": out}
+
+
+def _clock(v: Any, c: str) -> str:
+    """Uhrzeit `HH:MM` (00:00 bis 23:59), sonst abgelehnt."""
+    if not isinstance(v, str) or len(v) != 5 or v[2] != ":" or not (v[:2] + v[3:]).isascii() or not (v[:2] + v[3:]).isdigit():
+        raise ViewError(c)
+    if int(v[:2]) > 23 or int(v[3:]) > 59:
+        raise ViewError(c)
+    return v
+
+
+def _zeitplan(b: dict[str, Any], c: str) -> dict[str, Any]:
+    _fields(b, {"tag", "termine"}, c)
+    out = []
+    for t in _list(b.get("termine"), 1, 30, c):
+        if not isinstance(t, dict) or set(t) - {"von", "bis", "titel", "ort"}:
+            raise ViewError(c)
+        von, bis = _clock(t.get("von"), c), _clock(t.get("bis"), c)
+        if bis <= von:
+            raise ViewError(c)
+        out.append({"von": von, "bis": bis, "titel": _text(t.get("titel"), 120, c), "ort": _text(t.get("ort"), 80, c, optional=True)})
+    return {"tag": _text(b.get("tag"), 40, c, optional=True), "termine": sorted(out, key=lambda t: (t["von"], t["bis"]))}
+
+
+def _mail_text(b: dict[str, Any], c: str) -> list[str]:
+    """Der Text einer Mail als Absätze (fremder Inhalt: nur druckbare Zeichen, je Absatz eine Zeile, insgesamt begrenzt)."""
+    paras = [_text(a, 1500, c) for a in _list(b.get("absaetze"), 1, 40, c)]
+    if sum(len(p) for p in paras) > MAIL_CHARS:
+        raise ViewError(c)
+    return paras
+
+
+def _mail(b: dict[str, Any], c: str) -> dict[str, Any]:
+    _fields(b, {"von", "an", "betreff", "datum", "zusammenfassung", "absaetze"}, c)
+    return {"von": _text(b.get("von"), 200, c), "an": _text(b.get("an"), 300, c, optional=True),
+            "betreff": _text(b.get("betreff"), 200, c), "datum": _text(b.get("datum"), 40, c, optional=True),
+            "zusammenfassung": _text(b.get("zusammenfassung"), 600, c, optional=True), "absaetze": _mail_text(b, c)}
+
+
+def _mail_entwurf(b: dict[str, Any], c: str) -> dict[str, Any]:
+    _fields(b, {"an", "cc", "betreff", "absaetze"}, c)
+    return {"an": _text(b.get("an"), 300, c), "cc": _text(b.get("cc"), 300, c, optional=True),
+            "betreff": _text(b.get("betreff"), 200, c), "absaetze": _mail_text(b, c)}
+
+
+def _countdown(b: dict[str, Any], c: str) -> dict[str, Any]:
+    """Nur eine Anzeige (kushim hat keine Timer und klingelt nicht). Hier wird nur die Form der Endzeit geprüft
+    (`JJJJ-MM-TTThh:mm[:ss]`, optional mit Zone; ohne Zone gilt die Ortszeit). Die Oberfläche zeigt nur Zeiten, die
+    höchstens 24 Stunden entfernt sind, sonst „Zeit unbekannt“."""
+    _fields(b, {"titel", "ende"}, c)
+    raw = b.get("ende")
+    m = ISO_TIME.fullmatch(raw) if isinstance(raw, str) else None
+    if not m:
+        raise ViewError(c)
+    _, month, day, hour, minute, second = (int(g) if g else 0 for g in m.groups()[:6])
+    if not (1 <= month <= 12 and 1 <= day <= 31 and hour <= 23 and minute <= 59 and second <= 59):
+        raise ViewError(c)
+    return {"titel": _text(b.get("titel"), 80, c), "ende": raw}
+
+
 BLOCKS: dict[str, Callable[[dict[str, Any], str], dict[str, Any]]] = {
     "text": _text_block, "liste": _liste, "formel": _formel, "schritte": _schritte, "ergebnis": _ergebnis,
     "kennzahlen": _kennzahlen, "tabelle": _tabelle, "diagramm": _diagramm, "aussagen": _aussagen,
     "widerspruch": _aussagen, "quellen": _quellen, "hinweis": _hinweis, "systemzustand": _systemzustand,
+    "fortschritt": _fortschritt, "aufgaben": _aufgaben, "zeitplan": _zeitplan, "mail": _mail,
+    "mail-entwurf": _mail_entwurf, "countdown": _countdown,
 }
 
 
