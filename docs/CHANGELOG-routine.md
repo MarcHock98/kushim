@@ -69,3 +69,4 @@ Format: Datum, Datei, Grund (ein Satz).
 - 2026-11-11, `.claude/skills/kushim-routine/SKILL.md`: Prüfen um Pflicht-Audit für Freigabe-Logik und die Regel "Shell nur mit Erlaubt-Listen, Pfade erst lexikalisch" ergänzt (aus drei Audit-Runden zu C3/C4).
 - 2026-11-11, `.claude/skills/kushim-routine/SKILL.md`: Fallstricke "Grün prüfen, nicht grepen" und "Channel-Server nur Standardmodule und safety" (ein roter Test war per grep-Kette committet worden).
 - 2026-11-12, `.claude/skills/kushim-routine/SKILL.md`: Fallstricke „tmp_path unter AppData“ und „npm ci nach UI-Merge“ ergänzt (beide kosteten in diesem Durchlauf einen roten Testlauf).
+- 2026-11-12, `.claude/skills/kushim-routine/SKILL.md`: Vorgehen „UI im Browser ansehen“ ergänzt (Demo-Dauer, neu laden, Überlauf messen); `.claude/launch.json` für den Dev-Server angelegt.

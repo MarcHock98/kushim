@@ -86,6 +86,12 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
   echtes Tauri-Fenster, GPU-Last. Nächster Schritt: diese drei Prüfungen (Fenster braucht den Nutzer am Rechner), danach
   Detailplan P3 zur Freigabe vorlegen.
 
+- 2026-11-12 Loop: **P2 im Browser geprüft** (Branch `routine/p2-screens`, gemerged, nicht gepusht): Mock-Demo bei 375, 800 und
+  1440 px angesehen. Drei Fehler behoben, je mit Test: Klasse `view` doppelt belegt (Hauptbereich bekam Rahmen und Scrollbalken
+  der Karte), Diagramm-Marken endeten unter dem höchsten Wert, Achsentitel über der obersten Zahl. Nicht geprüft: echtes
+  Tauri-Fenster, GPU-Last neben Whisper (braucht den Nutzer am Rechner). Nächster Schritt: Detailplan P3 schreiben und dem
+  Nutzer zur Freigabe vorlegen (kein UI-Code vor dem OK).
+
 ## Slack
 - Nutzer-ID / Kanal-ID: nicht verwendet. Verbundenes Slack-Konto hat andere Mail (Arbeits-Workspace) als die Git-/Claude-Mail, Empfänger unsicher, daher nichts gesendet
 

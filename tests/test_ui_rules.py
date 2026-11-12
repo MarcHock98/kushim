@@ -87,3 +87,9 @@ def test_katex_is_only_used_in_one_place_and_never_trusts_the_formula():
     calls = [l for l in src.splitlines() if "katex.render(" in l]
     assert calls and all("trust: false" in l for l in calls), calls
     assert "trust: true" not in src and "renderToString" not in src   # kein HTML-Text, keine Links aus Formeln
+
+
+def test_the_view_card_does_not_share_a_class_with_the_main_area():
+    card = (UI / "src" / "components" / "stage" / "ViewCard.tsx").read_text(encoding="utf-8")
+    assert "className={`view-card view-${view.art}`}" in card and "className={`view " not in card
+    assert ".view-card {" in CSS and CSS.count(chr(10) + ".view {") == 1     # .view gehört nur dem Hauptbereich (Scrollen)

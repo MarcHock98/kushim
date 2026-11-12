@@ -73,7 +73,7 @@ export function ViewCard({ view, sys, sysNo, onClose }: { view: View; sys: SysDa
   const sources = view.bausteine.filter((b) => b.typ === "quellen");
   const main = view.art === "recherche" ? view.bausteine.filter((b) => b.typ !== "quellen") : view.bausteine;
   return (
-    <article className={`view view-${view.art}`} aria-labelledby={`v-${view.id}`}>
+    <article className={`view-card view-${view.art}`} aria-labelledby={`v-${view.id}`}>
       <div className="panel-head">
         <h2 id={`v-${view.id}`}>{view.titel || ART_LABEL[view.art]}</h2>
         <span className="label">{ART_LABEL[view.art]}{view.stand && ` · Stand: ${view.stand}`}</span>
