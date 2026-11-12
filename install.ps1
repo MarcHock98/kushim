@@ -14,7 +14,7 @@
   Netzwerk nur waehrend der Installation und nur zu: pypi.org (Python-Pakete), github.com
   (Sprecher-Modell, Wake-Word-Modelle), huggingface.co (Whisper, Stimme). Danach arbeitet kushim offline.
   Ein lokales Sprachmodell (Ollama) gibt es nicht mehr: die einzige KI ist Claude Code.
-  Vault-Schluessel und Stimmprofil legt NUR du an (Rueckfrage am Ende).
+  Den Vault-Schluessel legt NUR du an (Rueckfrage am Ende).
 #>
 param(
     [switch]$Check,
@@ -117,9 +117,7 @@ elseif (Test-Path $Py) {
     $desk = [Environment]::GetFolderPath("Desktop")
     $ws = New-Object -ComObject WScript.Shell
     $defs = @(
-        @{ Name = "kushim App.lnk";     Args = "-m kushim.cli app";   Desc = "kushim App öffnen (Oberfläche, startet Sprache und API selbst)"; Icon = $ico; Target = (Join-Path (Split-Path $Py) "pythonw.exe") },
-        @{ Name = "kushim start.lnk";    Args = "-m kushim.cli start"; Desc = "Claude Code mit kushim-Channel öffnen und per Stimme sprechen"; Icon = $ico },
-        @{ Name = "kushim sprechen.lnk"; Args = "-m kushim.cli talk";  Desc = "kushim sprechen (Wake Word)";                       Icon = $ico },
+        @{ Name = "kushim.lnk";          Args = "-m kushim.cli start"; Desc = "kushim starten: Claude Code, Zuhören und Oberfläche"; Icon = $ico },
         @{ Name = "kushim NOTAUS.lnk";   Args = "-m kushim.cli kill";  Desc = "kushim NOTAUS";                                     Icon = "$env:SystemRoot\System32\shell32.dll,131" }
     )
     foreach ($d in $defs) {
@@ -151,10 +149,6 @@ if (Test-Path $Py) {
 
     & $Py -m kushim.cli doctor
     $doctorOk = ($LASTEXITCODE -eq 0)
-    if (-not $doctorOk -and -not $Check) {
-        & $Py -m kushim.cli voice status 2>$null | Out-Null
-        if (Ask "Deine Stimme jetzt einschreiben (10 Absaetze vorlesen, ca. 5 Minuten, Mikrofon noetig)?") { & $Py -m kushim.cli voice enroll }
-    }
 }
 
 Write-Host ""

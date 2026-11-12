@@ -76,6 +76,7 @@ class Bridge:
         self.permissions: deque[Permission] = deque(maxlen=MAX_PERMS)    # abgeholte, noch nicht beantwortete Freigabe-Anfragen
         self._perm_lock = threading.Lock()      # Sprach-Thread hängt an, API-Threads lesen und entfernen
         self.stage = ViewStore()                # Ansichten von Claude (zeige) für die Oberfläche (stage.get)
+        self.last_final = True                  # war beim letzten Abholen ein Ergebnis dabei (sonst nur ein Zwischenstand)?
 
     def pending(self) -> list[Permission]:
         """Kopie der offenen Freigabe-Anfragen (thread-sicher)."""
@@ -142,6 +143,8 @@ class Bridge:
             except stage_schema.ViewError:
                 continue
         clean = [clean_text(t)[:MAX_SPOKEN] for t in texts[:MAX_QUEUE] if isinstance(t, str)]
+        final = data.get("final")
+        self.last_final = final is not False      # ältere Channel ohne das Feld: alles gilt als Ergebnis
         return "ok", [t for t in clean if t]
 
     def answer(self, request_id: str, behavior: str) -> str:

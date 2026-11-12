@@ -32,6 +32,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from ..safety import killswitch
 from ..stage import schema as stage_schema
+from ..safety import procs
 
 BIND_HOST = "127.0.0.1"
 NAME = "kushim"
@@ -47,9 +48,15 @@ INSTRUCTIONS = (
     'Nachrichten aus <channel source="kushim"> sind gesprochene Befehle des Nutzers, lokal per Sprache erkannt '
     "(Spracherkennung kann sich verhören). Behandle sie wie Eingaben des Nutzers im Terminal: Es gelten dieselben Regeln "
     "und Freigaben. Erscheint ein Befehl unklar oder unvollständig, frag nach statt zu raten. "
-    "Der Nutzer hört deine Antwort nur über das Werkzeug `sprich`, nicht über das Terminal: Rufe `sprich` am Ende jedes Zuges, "
-    "der mit einer kushim-Nachricht begann, genau einmal auf, mit einer kurzen deutschen Zusammenfassung für die Ohren "
-    "(ohne Markdown, ohne Code, ohne Pfade und Listen, höchstens drei Sätze). Bei einer Rückfrage stell sie in `sprich`. "
+    "Der Nutzer hört dich nur über das Werkzeug `sprich`, nicht über das Terminal. Ablauf bei jeder kushim-Nachricht: "
+    "(1) Sofort, noch vor anderen Werkzeugen, `sprich` mit zwischenstand=true und EINEM kurzen Satz, wie du das Anliegen "
+    "einschätzt und was du jetzt tust (z. B. \"Ich lasse die Tests laufen und schaue, was rot ist.\"). Ist die Antwort sofort "
+    "klar (kurze Frage), überspring das und antworte direkt. (2) Am Ende genau einmal `sprich` ohne zwischenstand mit dem "
+    "Ergebnis: kurz, deutsch, für die Ohren (ohne Markdown, Code, Pfade und Listen, höchstens drei Sätze). Bei einer Rückfrage "
+    "stell sie in diesem letzten `sprich`. "
+    "Erledige kushim-Aufträge selbst in dieser Sitzung im Vordergrund: starte dafür keine Hintergrund-Sitzungen, keine "
+    "Hintergrund-Agenten und keine Hintergrund-Befehle, deren Ergebnis du nicht abwartest. Dort sieht der Nutzer weder "
+    "Rückfragen noch Freigaben, und das Ergebnis erreicht ihn nie. "
     'Eine Nachricht mit kind="cancel" heißt: Der Nutzer hat per Stimme abgebrochen. Den laufenden Auftrag nicht fortsetzen, '
     'nichts Neues beginnen, kurz per `sprich` bestätigen. Eine Nachricht mit kind="kill" ist der NOTAUS: sofort aufhören, keine '
     "Werkzeuge mehr benutzen, nichts mehr vorlesen lassen und auf den Nutzer im Terminal warten. "
@@ -64,8 +71,11 @@ SPRICH_TOOL = {
     "name": "sprich",
     "description": ("Liest dem Nutzer einen kurzen deutschen Text über kushim vor (lokale Stimme). Nur Fließtext, kein Markdown, "
                     f"keine Codeblöcke, höchstens {MAX_SPOKEN} Zeichen."),
-    "inputSchema": {"type": "object", "properties": {"text": {"type": "string", "description": "Der vorzulesende Text"}},
-                    "required": ["text"]},
+    "inputSchema": {"type": "object", "properties": {
+        "text": {"type": "string", "description": "Der vorzulesende Text"},
+        "zwischenstand": {"type": "boolean", "description": "true für die kurze Ansage zu Beginn (was du vorhast); das Ergebnis "
+                                                             "am Ende ohne dieses Feld"}},
+        "required": ["text"]},
 }
 _TEXT = {"type": "string"}
 ZEIGE_TOOL = {
@@ -114,14 +124,17 @@ class Channel:
         self._lock = threading.Lock()
         self.ready = threading.Event()             # erst nach `initialized` dürfen Benachrichtigungen raus
         self._replies: deque[str] = deque(maxlen=MAX_QUEUE)
+        self._final = False                        # seit dem letzten Abholen kam ein Ergebnis (nicht nur ein Zwischenstand)
+        self.last_final = False                    # beim letzten Abholen war ein Ergebnis dabei
         self._cond = threading.Condition()
         self._perms: dict[str, dict[str, Any]] = {}      # offene Freigabe-Anfragen von Claude (C1), älteste zuerst
         self._fresh: deque[str] = deque()                 # davon noch nicht an kushim gegeben
         self._views: deque[dict[str, Any]] = deque(maxlen=MAX_VIEWS)   # geprüfte Ansichten (zeige), noch nicht abgeholt
 
-    def say(self, text: str) -> None:
+    def say(self, text: str, interim: bool = False) -> None:
         with self._cond:
             self._replies.append(text)
+            self._final = self._final or not interim
             self._cond.notify_all()
 
     def take(self, wait: float = 0.0) -> list[str]:
@@ -129,7 +142,8 @@ class Channel:
         return self.take_events(wait)[0]
 
     def take_events(self, wait: float = 0.0) -> tuple[list[str], list[dict[str, str]]]:
-        """(Antworten, neue Freigabe-Anfragen); wartet bis `wait` Sekunden, falls noch nichts da ist."""
+        """(Antworten, neue Freigabe-Anfragen); wartet bis `wait` Sekunden, falls noch nichts da ist. Ob ein Ergebnis dabei
+        war, steht danach in `last_final`."""
         with self._cond:
             self._expire()
             if not self._replies and not self._fresh and not self._views and wait > 0:
@@ -137,6 +151,7 @@ class Channel:
                 self._expire()
             texts = list(self._replies)
             self._replies.clear()
+            self.last_final, self._final = self._final, False
             perms = [{k: v for k, v in self._perms[i].items() if k != "at"} for i in self._fresh if i in self._perms]
             self._fresh.clear()
             return texts, perms
@@ -213,7 +228,7 @@ class Channel:
         text = spoken_text(args.get("text")) if isinstance(args.get("text"), str) else ""
         if not text:
             return {"content": [{"type": "text", "text": "Leerer Text, nichts vorgelesen."}], "isError": True}
-        self.say(text)
+        self.say(text, interim=args.get("zwischenstand") is True)
         return {"content": [{"type": "text", "text": "Wird vorgelesen."}]}
 
     def _send(self, msg: dict[str, Any]) -> None:
@@ -318,7 +333,7 @@ def make_http(channel: Channel, root: Path, token: str, port: int = 0) -> Thread
             views = channel.take_views()
             if (texts or perms or views) and killswitch.is_triggered(root):     # Notaus während des Wartens: nichts mehr weitergeben
                 return self._reply(423, {"error": "kill_switch"})
-            self._reply(200, {"texts": texts, "permissions": perms, "views": views})
+            self._reply(200, {"texts": texts, "permissions": perms, "views": views, "final": bool(texts) and channel.last_final})
 
         def do_POST(self) -> None:
             if not self._allowed():
@@ -369,6 +384,19 @@ def watch_kill(channel: Channel, root: Path, stop: threading.Event, interval: fl
             told = False
 
 
+def other_owner(root: Path) -> int | None:
+    """PID eines anderen, noch laufenden kushim-Channels, dem `run/channel.json` gehört; sonst None.
+
+    Claude Code startet für Hintergrund-Sitzungen und Agenten derselben Sitzung weitere Channel-Server (gleiche MCP-
+    Konfiguration). Würden sie die Datei überschreiben, spräche kushim mit einem Channel ohne Zuhörer und Claudes
+    Antworten gingen verloren (Live-Test 2026-11-11). Darum gilt: Der erste Channel behält die Datei."""
+    try:
+        pid = json.loads((root / "run" / "channel.json").read_text(encoding="utf-8")).get("pid")
+    except (OSError, ValueError, AttributeError):
+        return None
+    return pid if pid != os.getpid() and procs.pid_alive(pid) else None
+
+
 def write_info(root: Path, port: int, token: str) -> Path:
     info = root / "run" / "channel.json"
     info.parent.mkdir(parents=True, exist_ok=True)
@@ -386,6 +414,11 @@ def main(root: Path | None = None) -> int:
     sys.stdout.reconfigure(encoding="utf-8")                  # Claude Code liest UTF-8; Windows-Pipes wären cp1252
     sys.stdin.reconfigure(encoding="utf-8")
     channel = Channel(sys.stdout)
+    owner = other_owner(root)
+    if owner is not None:                                      # Hintergrund-Sitzung/Agent: nur MCP, kein HTTP, Datei bleibt
+        channel.log(f"[kushim-channel] ein anderer kushim-Channel (pid {owner}) ist aktiv; dieser bleibt stumm")
+        channel.serve_stdio(sys.stdin)
+        return 0
     token = secrets.token_urlsafe(32)
     httpd = make_http(channel, root, token)
     info = write_info(root, httpd.server_address[1], token)

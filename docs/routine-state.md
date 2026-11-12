@@ -95,6 +95,9 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
 - 2026-10-04: Gelegentlich genau 1 roter Test im Gesamtlauf (2 von ca. 12 Läufen, Name nicht erfasst, in 9 Wiederholungen nicht reproduzierbar). Verdacht: Zeit-/Thread-Test, wenn die Maschine gerade belastet ist (laufen gleichzeitig `kushim serve`, `tauri dev`, vite). Nächster Lauf: bei einem Fehlschlag sofort den Namen sichern (`pytest -q 2>&1 | grep FAILED`), nicht blind wiederholen.
 
 ## Entscheidungen des Nutzers
+- 2026-11-11: **Sprecher-Prüfung standardmäßig aus** (Live-Test: eigene Stimme mit 0,55 unter Schwelle 0,60 abgelehnt).
+  Einschalten mit `kushim voice check on` (`[voice] speaker_check = true`). Ohne Prüfung reagiert kushim auf jede Stimme
+  und Freigaben per Stimme sind gesperrt (nur Terminal/Oberfläche). Ersetzt die Entscheidung vom 2026-10-03.
 - 2026-11-11: **C7 so lassen, nur Warnung**: Token-Dateien bleiben in `run/` im kushim-Ordner; `kushim start` warnt, wenn
   sie in Claudes Arbeitsordner liegen. Restrisiko (Claude liest Token und gibt sich selbst Freigaben) bewusst akzeptiert.
 - 2026-10-27: **B7 bestanden**: `kushim start` live getestet, Claude antwortet per Stimme (Phase B bis auf B6 fertig)

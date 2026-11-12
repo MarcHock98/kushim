@@ -5,9 +5,7 @@ import numpy as np
 from kushim.safety.killswitch import KillSwitch
 from kushim.voice.dialog import Dialog, State
 from kushim.voice.pipeline import Pipeline
-from kushim.voice.speaker import SpeakerVerifier
 from kushim.voice.tts import Speaker
-from kushim.voice.verify import AudioVerifier
 
 
 class FakeSTT:
@@ -23,14 +21,13 @@ class Eng:
         return t
 
 
-def build(tmp_path, text, chat=None, verifier=None, embed=None):
+def build(tmp_path, text, chat=None):
     played, stopped = [], []
     dialog = Dialog(lambda: stopped.append(1))
     kill = KillSwitch(tmp_path, [lambda: stopped.append("kill")])
     chat = chat or (lambda msgs: iter(["Hall", "o. Wie ", "geht's?"]))
     spk = Speaker(Eng(), played.append, lambda: kill.fired)
-    audio_verifier = AudioVerifier(verifier, embed) if verifier is not None else None
-    p = Pipeline(FakeSTT(text), chat, spk, dialog, kill, audio_verifier)
+    p = Pipeline(FakeSTT(text), chat, spk, dialog, kill)
     return p, played, dialog, kill
 
 
@@ -53,38 +50,9 @@ def test_kill_phrase_skips_llm_and_halts(tmp_path):
     assert p.handle(PCM).outcome == "halted"
 
 
-def test_kill_works_even_for_unknown_speaker(tmp_path):
-    v = SpeakerVerifier()
-    base = np.random.default_rng(0).normal(size=32)
-    v.enroll([base + 0.01, base - 0.01, base])
-    p, _, _, kill = build(tmp_path, "stopp alles", verifier=v, embed=lambda pcm: -base)
-    assert p.handle(PCM).outcome == "killed" and kill.fired
-
-
-def test_unknown_speaker_gets_no_answer(tmp_path):
-    v = SpeakerVerifier()
-    base = np.random.default_rng(1).normal(size=32)
-    v.enroll([base, base + 0.01, base - 0.01])
-    called = []
-    p, played, _, _ = build(tmp_path, "Hallo", chat=lambda m: called.append(1) or iter(["x."]),
-                            verifier=v, embed=lambda pcm: -base)
-    assert p.handle(PCM).outcome == "rejected_speaker" and not called and not played
-
-
-def test_enrolled_but_embedder_gives_nothing_fails_closed(tmp_path):
-    v = SpeakerVerifier()
-    b = np.ones(8)
-    v.enroll([b, b * 1.01, b * 0.99])
-    p, played, _, _ = build(tmp_path, "Hallo", verifier=v, embed=lambda pcm: np.zeros(0))
-    assert p.handle(PCM).outcome == "rejected_speaker" and not played
-
-
-def test_too_short_utterance_is_rejected(tmp_path):
-    v = SpeakerVerifier()
-    base = np.random.default_rng(2).normal(size=32)
-    v.enroll([base, base + 0.01, base - 0.01])
-    p, played, _, _ = build(tmp_path, "Hallo", verifier=v, embed=lambda pcm: base)
-    assert p.handle(np.zeros(4000, dtype=np.int16)).outcome == "rejected_speaker" and not played
+def test_any_voice_is_answered_without_speaker_check(tmp_path):
+    p, played, _, _ = build(tmp_path, "Hallo")
+    assert p.handle(np.zeros(4000, dtype=np.int16)).outcome == "spoken" and played     # auch kurz, auch fremd
 
 
 def test_empty_transcript(tmp_path):
@@ -140,3 +108,31 @@ def test_kill_phrase_after_wake_word_still_kills(tmp_path):
     p, played, _, kill = build(tmp_path, "Hey Kushim, Notaus")
     p.wake_names = NAMES
     assert p.handle(PCM).outcome == "killed" and kill.fired
+
+
+def test_whisper_spellings_of_hey_still_count_as_wake_word():
+    from kushim.voice.pipeline import strip_wake_words
+    names = ["hey kushim", "kushim"]
+    assert strip_wake_words("Hej, kushim.", names) == ""                               # Live-Test 2026-11-11
+    assert strip_wake_words("Hei Kushim, lass die Tests laufen", names) == "lass die Tests laufen"
+    assert strip_wake_words("Hey, wie spät ist es?", names) == "Hey, wie spät ist es?"   # ohne kushim kein Wake Word
+
+
+def test_whole_messages_are_spoken_at_once_not_held_back_until_the_next_one(tmp_path):
+    import threading
+    gate = threading.Event()
+    played_at = []
+
+    class Chat:
+        yields_messages = True
+
+        def __call__(self, messages):
+            yield "Ich geb's an Claude."
+            self.heard_before_reply = gate.wait(2)         # Claude arbeitet noch: die Quittung muss jetzt schon laufen
+            yield "Fertig. Alles grün."
+    chat = Chat()
+    p, played, _, _ = build(tmp_path, "Lass die Tests laufen", chat=chat)
+    p.speaker.play = lambda wav: (played_at.append(wav), gate.set() if wav == "Ich geb's an Claude." else None)
+    r = p.handle(PCM)
+    assert chat.heard_before_reply is True                 # früher: Quittung erst nach Claudes Antwort (Live-Test 2026-11-11)
+    assert played_at == ["Ich geb's an Claude.", "Fertig.", "Alles grün."] and r.outcome == "spoken"

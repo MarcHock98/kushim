@@ -9,28 +9,22 @@ from .memory.keys import get_or_create_key, store_key
 from .memory.migrate import backup, migrate
 
 
-HELP = """kushim: persönlicher, lokaler Assistent. Alles läuft auf diesem Rechner.
+HELP = """kushim: Sprachassistent mit Claude Code als Gehirn. Wake Word, Spracherkennung und Stimme laufen lokal.
 
-Täglich
-  kushim start [ordner]        Claude Code mit kushim-Channel im freigegebenen Ordner öffnen und per Wake Word sprechen
-  kushim talk                  Sprechen per Wake Word (Claude Code mit Channel muss schon laufen)
-                               [--mic NAME] [--out NAME] [--wake-words "hey kushim,kushim"]
+Starten
+  kushim                       Alles starten: Claude Code (eigenes Fenster), Zuhören und Oberfläche
+  kushim start [ordner]        Dasselbe in einem bestimmten freigegebenen Ordner [--no-ui] [--mic NAME] [--out NAME]
   kushim kill                  NOTAUS: stoppt alle kushim-Dienste
   kushim resume                Notaus bewusst aufheben
 
-Stimme
-  kushim voice enroll          Stimme einschreiben (10 Absätze) [--record] [--auto] [--quick] [--mic NAME]
-  kushim voice test            Sprecherprüfung mit echten Werten ausprobieren [--mic NAME]
-  kushim voice status          Profil und Schwelle anzeigen
-  kushim voice threshold 0.79  Schwelle setzen (0,5 bis 0,9; niedriger = lockerer)
-  kushim voice record          Absätze für den Stimmklon aufnehmen [--redo] [--auto] [--mic NAME]
+Mikrofon
   kushim voice level           Mikrofonpegel messen, Schwellen vorschlagen [--apply] [--mic NAME]
-  kushim voice reset           Stimmprofil löschen
 
-Oberfläche und Grafikkarte
+Einzelteile (startet `kushim` sonst selbst)
+  kushim talk                  Nur Zuhören (Claude Code mit Channel muss schon laufen) [--wake-words "hey kushim,kushim"]
+  kushim app                   Nur die Oberfläche öffnen (--no-voice: ohne Mikrofon)
+  kushim serve                 Nur die API für die Oberfläche (127.0.0.1, Port/Token in run/api.json)
   kushim gpu                   Grafikkarten zeigen und welche Whisper nutzt
-  kushim app                   Die Oberfläche öffnen (startet Sprache und API selbst; --no-voice nur Oberfläche)
-  kushim serve                 Backend-API für die Oberfläche starten (nur 127.0.0.1, Port/Token in run/api.json)
 
 Gedächtnis und Schlüssel
   kushim memory init           Vault anlegen (erzeugt auch den Schlüssel)
@@ -44,9 +38,9 @@ Prüfen und Hilfe
   kushim claude [check|enable|disable]  Claude CLI und Anmeldung prüfen; Modus C ein/aus
   kushim claude show           Die laufende Claude-Sitzung von kushim wieder in einem Fenster zeigen
   kushim claude folders|add|remove  Sichere Arbeitsordner für Claude verwalten
-  kushim claude approvals           Protokoll der Freigaben (Stimme, Oberfläche)
+  kushim claude approvals           Protokoll der Freigaben (Oberfläche)
   kushim doctor                Prüft, ob alles installiert und eingerichtet ist
-  kushim setup                 Stand der Einrichtung: Systemcheck, Stimme, Wake Words, Notaus
+  kushim setup                 Stand der Einrichtung: Systemcheck, Mikrofon, Wake Words, Notaus
   kushim help                  Diese Übersicht
   kushim <befehl> --help       Optionen eines Befehls
 
@@ -108,6 +102,11 @@ def _start(args, cfg: Config, root) -> int:
     if is_triggered(root):
         print("Notaus ist aktiv. Erst bewusst aufheben: kushim resume")
         return 1
+    if _inside_claude_session():
+        print("kushim läuft hier innerhalb einer Claude-Code-Sitzung. Dann schaltet Claude Code den kushim-Channel ab "
+              "(\"Channels are not currently available\"). Bitte über die Verknüpfung \"kushim start\" oder in einem "
+              "eigenen Terminal starten.")
+        return 1
     exe = claude_base.find_claude()
     if exe is None:
         print("Claude Code nicht gefunden. Installieren und anmelden, dann erneut: kushim start")
@@ -157,35 +156,60 @@ def _start(args, cfg: Config, root) -> int:
             print("\nClaude-Fenster geschlossen: kushim beendet sich.")
             _thread.interrupt_main()
     threading.Thread(target=watch_window, daemon=True).start()
-    talk = ["talk"] + (["--mic", args.mic] if args.mic else []) + (["--out", args.out] if args.out else []) + (["--ui"] if args.ui else [])
-    talk += ["--claude-folder", str(folder)]          # nur darin sind Datei-Freigaben per Stimme möglich (C4)
+    with_ui = not getattr(args, "no_ui", False)       # Standard: mit Oberfläche (Wunsch des Nutzers 2026-11-11)
+    talk = ["talk"] + (["--mic", args.mic] if args.mic else []) + (["--out", args.out] if args.out else []) + (["--ui"] if with_ui else [])
+    ui_proc: list = []
+    if with_ui:
+        def ui_closed():
+            print()
+            print("kushim-Fenster geschlossen: kushim beendet sich.")
+            _thread.interrupt_main()
+        threading.Thread(target=_open_ui_window, args=(root, done, ui_proc), kwargs={"on_close": ui_closed},
+                         daemon=True).start()
     try:
         return _main(talk)
     finally:                                          # kushim endet (Strg+C, "beende dich", Notaus): Claude-Sitzung mit beenden
         done.set()
+        for p in ui_proc:                             # das selbst geöffnete App-Fenster mit schließen
+            if p.poll() is None:
+                kill_tree(p.pid)
         launch.stop(exe, root)
         if window.poll() is None:
             kill_tree(window.pid)
         print("Claude-Sitzung beendet (der Verlauf bleibt in Claude Code erhalten).")
 
 
-def _approved_folder(cfg: Config, raw: str | None):
-    """Arbeitsordner für Datei-Freigaben per Stimme: nur ein freigegebener, gültiger Ordner (`kushim claude add`), sonst None
-    (dann sind Datei-Freigaben per Stimme gesperrt)."""
-    from .claude_cli import folders as cfolders
-    if not raw:
-        return None
-    try:
-        path = cfolders.validate_path(raw, cfolders.vault_path(cfg.memory_location))
-    except ValueError:
-        return None
-    known = []
-    for f in cfolders.parse(cfg.claude_folders):
-        try:
-            known.append(cfolders.validate_path(str(f.path), cfolders.vault_path(cfg.memory_location)))
-        except ValueError:
-            pass
-    return path if path in known else None
+def _open_ui_window(root, done, procs: list, popen=None, wait=None, on_close=None) -> None:
+    """Öffnet das App-Fenster, sobald die API von `kushim talk --ui` bereit ist (frisches run/api.json). Fehlt die gebaute
+    App oder wird die API nicht bereit, gibt es nur einen Hinweis; Sprache und Claude laufen weiter. Schließt der Nutzer
+    das Fenster selbst, ruft `on_close()` auf: dann beendet sich ganz kushim (Wunsch des Nutzers 2026-11-11)."""
+    import subprocess
+    import time
+    from . import appstart
+    exe = appstart.ui_path(root)
+    if not exe.is_file():
+        print("Hinweis: Die Oberfläche ist nicht gebaut (cd ui && npx tauri build --no-bundle). kushim läuft ohne Fenster.")
+        return
+    since = time.time()
+    if not (wait or appstart.wait_for_api)(root, since, alive=lambda: not done.is_set()):
+        if not done.is_set():
+            print("Hinweis: Die Oberfläche konnte nicht verbinden (API nicht bereit). kushim läuft ohne Fenster.")
+        return
+    if done.is_set():
+        return
+    proc = (popen or subprocess.Popen)([str(exe)], cwd=str(root))
+    procs.append(proc)
+    proc.wait()
+    if not done.is_set() and on_close is not None:     # vom Nutzer geschlossen, nicht von kushim beim Beenden
+        on_close()
+
+
+def _inside_claude_session(env=None) -> bool:
+    """Wurde kushim aus einer laufenden Claude-Code-Sitzung gestartet? Dann gilt das neue Claude als Unter-Sitzung und
+    Claude Code lädt keine Channels (2026-11-11 so beobachtet mit 2.1.321). Wir umgehen das nicht, sondern sagen es."""
+    import os
+    env = os.environ if env is None else env
+    return bool(env.get("CLAUDE_CODE_CHILD_SESSION") or env.get("CLAUDECODE"))
 
 
 def _token_dir_inside(root, folder) -> bool:
@@ -205,11 +229,10 @@ def _approval_log(cfg: Config):
 
 
 def _vault_state(cfg: Config) -> str:
-    """"ok" (Vault und Stimmprofil da), "kein-profil" oder "kein-vault" (für doctor und setup)."""
-    from .voice import voiceprint
+    """"ok" (Vault da) oder "kein-vault" (für doctor und setup)."""
     try:
-        with open_store(cfg) as store:
-            return "ok" if voiceprint.load(store) else "kein-profil"
+        with open_store(cfg):
+            return "ok"
     except FileNotFoundError:
         return "kein-vault"
 
@@ -289,6 +312,10 @@ def _vault(cfg: Config):
 
 
 def _main(argv: list[str] | None = None) -> int:
+    import sys
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if not argv:                                       # einfach `kushim`: alles starten
+        argv = ["start"]
     p = argparse.ArgumentParser(prog="kushim")
     sub = p.add_subparsers(dest="cmd", required=True)
     mem = sub.add_parser("memory", help="Vault anlegen, Info, Backup, Umzug").add_subparsers(dest="sub", required=True)
@@ -308,36 +335,17 @@ def _main(argv: list[str] | None = None) -> int:
     st.add_argument("folder", nargs="?", help="Name eines freigegebenen Ordners (kushim claude folders)")
     st.add_argument("--mic", help="Namensteil des Mikrofons, sonst Systemstandard")
     st.add_argument("--out", help="Namensteil des Ausgabegeräts, sonst Systemstandard")
-    st.add_argument("--ui", action="store_true", help="Backend-API für die Oberfläche mitstarten (127.0.0.1)")
+    st.add_argument("--ui", action="store_true", help="(Standard) Oberfläche mitstarten: API auf 127.0.0.1 und App-Fenster")
+    st.add_argument("--no-ui", action="store_true", help="ohne Oberfläche starten (nur Claude-Fenster und Sprache)")
     t = sub.add_parser("talk", help="Sprechen per Wake Word (nur das Wake Word wird dauerhaft ausgewertet)")
     t.add_argument("--mic", help="Namensteil des Mikrofons, sonst Systemstandard")
     t.add_argument("--out", help="Namensteil des Ausgabegeräts, sonst Systemstandard")
     t.add_argument("--ui", action="store_true", help="Backend-API für die Oberfläche mitstarten (127.0.0.1): Freigabe-Leiste, Zustand, Notaus")
     t.add_argument("--wake-words", help="Komma-getrennt, überschreibt wakewords.toml nur für diesen Start (z. B. \"hey kushim,kushim\")")
-    t.add_argument("--claude-folder", help=argparse.SUPPRESS)   # setzt `kushim start`: Arbeitsordner für Freigaben per Stimme (C4)
-    vo = sub.add_parser("voice", help="Eigene Stimme: einschreiben, testen, Status, löschen").add_subparsers(
-        dest="sub", required=True)
-    for name in ("enroll", "test"):
-        v = vo.add_parser(name)
-        v.add_argument("--mic", help="Namensteil des Mikrofons, sonst Systemstandard")
-        if name == "enroll":
-            v.add_argument("--record", action="store_true", help="die 10 Absätze neu aufnehmen (auch wenn vorhanden)")
-            v.add_argument("--quick", action="store_true", help="altes kurzes Einschreiben mit 5 Sätzen")
-            v.add_argument("--auto", action="store_true", help="Ende eines Absatzes automatisch per Stille statt per Enter")
-    vo.add_parser("status")
+    vo = sub.add_parser("voice", help="Mikrofonpegel messen und Schwellen vorschlagen").add_subparsers(dest="sub", required=True)
     lv = vo.add_parser("level", help="Mikrofonpegel messen und Schwellen fürs Sprechen/Unterbrechen vorschlagen")
     lv.add_argument("--mic", help="Namensteil des Mikrofons, sonst Systemstandard")
     lv.add_argument("--apply", action="store_true", help="Vorschlag in wakewords.toml übernehmen")
-    th = vo.add_parser("threshold", help="Schwelle der Sprecherprüfung setzen (0,5 bis 0,9; niedriger = lockerer)")
-    th.add_argument("value", type=float)
-    vo.add_parser("reset")
-    ct = vo.add_parser("clone-test", help="Hörvergleich: derselbe Satz mit Piper und mit deiner geklonten Stimme (alles lokal, ohne Netz)")
-    ct.add_argument("text", nargs="*", help="Satz (Standard: ein Beispielsatz)")
-    ct.add_argument("--out", help="Namensteil des Ausgabegeräts, sonst Systemstandard")
-    rec = vo.add_parser("record", help="Absätze für den Stimmklon aufnehmen (nur lokal, voice-data/)")
-    rec.add_argument("--mic", help="Namensteil des Mikrofons, sonst Systemstandard")
-    rec.add_argument("--redo", action="store_true", help="Schon vorhandene Aufnahmen neu sprechen")
-    rec.add_argument("--auto", action="store_true", help="Ende eines Absatzes automatisch per Stille statt per Enter")
     sub.add_parser("doctor", help="Prüft, ob alles installiert und eingerichtet ist")
     sub.add_parser("help", help="Übersicht aller Befehle mit Beispielen")
     cl = sub.add_parser("claude", help="Claude CLI prüfen, Modus C ein-/ausschalten").add_subparsers(dest="sub")
@@ -451,37 +459,8 @@ def _main(argv: list[str] | None = None) -> int:
         for c in results:
             print(("[ok]    " if c.ok else "[FEHLT] ") + c.name + ("" if c.ok else f"  -> {c.hint}"))
         return 0 if all(c.ok for c in results) else 1
-    if args.cmd == "voice" and args.sub == "record":
-        from .voice import audio
-        from .voice.recorder import record_session
-        mic = audio.Mic(audio.find_device(args.mic, "input"), rate=24_000, frame=1920)
-        from .voice.recorder import EnterController
-        record_session(root / "voice-data" / "clone", iter(mic), redo=args.redo, flush=mic.flush,
-                       controller=None if args.auto else EnterController())
-        return 0
-    if args.cmd == "voice" and args.sub == "clone-test":
-        from .voice import audio, clone
-        from .voice.tts import PiperEngine
-        text = " ".join(args.text) or "Hallo, ich bin kushim. Schön, dass du da bist. Die Hauptstadt von Frankreich ist Paris."
-        why = clone.missing(root, cfg.voice_clone_ref)
-        if why:
-            print(f"Nicht möglich: {why}")
-            return 1
-        dev = audio.find_device(args.out, "output")
-        piper = PiperEngine.from_local(str(root / "models" / "piper" / "de_DE-thorsten-high.onnx"))
-        engine = clone.build(root, piper, cfg.voice_clone_ref, on_note=print)
-        print("1) Piper (Standardstimme):")
-        audio.play_wav(piper.synthesize(text), dev)
-        print("2) Deine geklonte Stimme (erster Satz braucht einige Sekunden, das Modell lädt) ...")
-        audio.play_wav(engine.synthesize(text), dev)
-        print("Gefällt sie dir? Einschalten: in config.toml  [voice]  clone = true   (Piper bleibt als Ersatz, falls der Klon ausfällt).")
-        getattr(getattr(engine, "primary", None), "close", lambda: None)()
-        return 0
     if args.cmd == "voice":
-        from .voice import audio, voiceprint
-        from .voice.embedder import SherpaEmbedder
-        from .voice.enrollment import enroll as run_quick_enroll, frames_recorder
-        from .voice.verify import AudioVerifier
+        from .voice import audio
         if args.sub == "level":
             from dataclasses import replace
             from .voice import levels, wakeconfig
@@ -509,94 +488,14 @@ def _main(argv: list[str] | None = None) -> int:
             else:
                 print("Übernehmen mit: kushim voice level --apply")
             return 0
-        model = root / "models" / "speaker" / "wespeaker_en_voxceleb_CAM++_LM.onnx"
-        with _vault(cfg) as store:
-            if args.sub == "status":
-                vp = voiceprint.load(store)
-                if vp is None:
-                    print("Stimmprofil: keines")
-                else:
-                    stats = getattr(vp, "stats", {})
-                    extra = (f", {stats['prototypes']} Prototypen aus {stats['recordings']} Aufnahmen, "
-                             f"Abstand zu Fremden {stats['separation']:+.2f}") if stats else " (älteres Format, bitte neu einschreiben)"
-                    print(f"Stimmprofil: vorhanden, Schwelle {vp.threshold:.2f}{extra}")
-            elif args.sub == "threshold":
-                try:
-                    old = voiceprint.set_threshold(store, args.value)
-                except ValueError as e:
-                    print(f"Nicht geändert: {e}")
-                    return 1
-                print(f"Schwelle {old:.2f} -> {args.value:.2f}. Gilt ab dem nächsten Start von `kushim talk`. "
-                      "Niedriger heißt: auch fremde Stimmen kommen eher durch; prüfe das mit `voice test`.")
-            elif args.sub == "reset":
-                voiceprint.clear(store)
-                print("Stimmprofil gelöscht. kushim talk startet erst nach erneutem Einschreiben.")
-            else:
-                embed = SherpaEmbedder.from_local(str(model))
-                if args.sub == "enroll":
-                    rec_dir = root / "voice-data" / "clone"
-                    if args.quick:
-                        frames = iter(audio.Mic(audio.find_device(args.mic, "input")))
-                        print("Kurzes Einschreiben (5 Sätze, weniger robust). Aufnahmen bleiben im Speicher.")
-                        res = run_quick_enroll(frames_recorder(frames), embed)
-                        voiceprint.save(store, res.verifier, model.name)
-                        print(f"Gespeichert im Vault. Proben: {res.used}, Schwelle {res.threshold:.2f}.")
-                        return 0
-                    if args.record or len(list(rec_dir.glob("*.wav"))) < 3:
-                        from .voice.recorder import record_session
-                        print("Aufnahme der 10 Absätze (ca. 5 Minuten). Danach wird daraus dein Stimmprofil berechnet.")
-                        mic = audio.Mic(audio.find_device(args.mic, "input"), rate=24_000, frame=1920)
-                        from .voice.recorder import EnterController
-                        record_session(rec_dir, iter(mic), redo=args.record, flush=mic.flush,
-                                       controller=None if args.auto else EnterController())
-                    paths = sorted(rec_dir.glob("*.wav"))
-                    if len(paths) < 3:
-                        print("Zu wenige Aufnahmen. Nochmal: kushim voice enroll --record")
-                        return 1
-                    from .voice.enrollment import cohort_audio, enroll_from_recordings
-                    from .voice.recorder import load_paragraphs
-                    print("Berechne Stimmabdrücke ...")
-                    cohort = cohort_audio(root, load_paragraphs(root))
-                    try:
-                        profile = enroll_from_recordings(paths, embed, cohort, model.name)
-                    except ValueError as e:
-                        print(f"Einschreiben nicht möglich: {e}")
-                        return 1
-                    voiceprint.save_profile(store, profile)
-                    st = profile.stats
-                    print(f"Gespeichert im Vault: {st['prototypes']} Prototypen aus {st['recordings']} Aufnahmen "
-                          f"({st['windows']} Stimmabdrücke).")
-                    print(f"Deine Werte (zurückgehalten): Median {st['target_median']}, schwächste 10 % ab {st['target_p10']}. "
-                          f"Fremde Vergleichsstimmen: obere 5 % bei {st['cohort_p95']}. Schwelle: {profile.threshold:.2f}.")
-                    if st["separation"] < 0.1:
-                        print("ACHTUNG: Deine Stimme und die Vergleichsstimmen liegen eng beieinander "
-                              f"(Abstand {st['separation']:+.2f}). Die Prüfung ist dann nur begrenzt sicher; "
-                              "`voice test` zeigt dir die echten Werte, auch mit einer zweiten Person.")
-                else:
-                    vp = voiceprint.load(store)
-                    if vp is None:
-                        print("Kein Stimmprofil. Erst: kushim voice enroll")
-                        return 1
-                    ver = AudioVerifier(vp, embed)
-                    frames = iter(audio.Mic(audio.find_device(args.mic, "input")))
-                    print("Sprich einen oder mehrere Sätze (Test). Strg+C beendet.")
-                    try:
-                        while True:
-                            v = ver.check(frames_recorder(frames)())
-                            print(f"Ähnlichkeit {v.score:.2f} (Schwelle {vp.threshold:.2f}), {v.seconds:.1f} s, "
-                                  f"{v.windows} Fenster: {'akzeptiert' if v.accepted else 'abgelehnt'}"
-                                  f"{' (stark)' if v.strong else ''}")
-                    except KeyboardInterrupt:
-                        pass
         return 0
     if args.cmd == "start":
         return _start(args, cfg, root)
     if args.cmd == "talk":
         from .safety.killswitch import is_triggered
-        from .voice import audio, voiceprint, wakeconfig
+        from .voice import audio, wakeconfig
         from .voice.audio import UtteranceCollector
         from .voice.bargein import BargeIn
-        from .voice.embedder import SherpaEmbedder
         from .voice.talk import TalkLoop, build_live
         from .voice.wakebuild import build_detector
         if is_triggered(root):
@@ -608,14 +507,6 @@ def _main(argv: list[str] | None = None) -> int:
         except ValueError as e:
             print(f"Wake-Word-Konfiguration: {e}")
             return 2
-        with _vault(cfg) as store:
-            profile = voiceprint.load(store)
-        if profile is None:
-            print("Kein Stimmprofil. kushim hört nur auf deine Stimme: erst `kushim voice enroll`.")
-            return 1
-        embed = SherpaEmbedder.from_local(str(root / "models" / "speaker" / "wespeaker_en_voxceleb_CAM++_LM.onnx"))
-        from .voice.verify import AudioVerifier
-        verifier = AudioVerifier(profile, embed)
         try:
             _, plan = _gpu_plan(cfg)
         except ValueError as e:
@@ -624,16 +515,27 @@ def _main(argv: list[str] | None = None) -> int:
         api = None
         try:
             from .tasks import TaskRegistry
+            from .voice.talklog import TalkLog
             tasks = TaskRegistry()
+            talklog = TalkLog(root / "run" / "talk.log")       # Gesprächsprotokoll zur Fehlersuche (lokal, ohne Audio)
+            talklog.write("start")
+
+            def note(s: str) -> None:
+                print(f"[Hinweis] {s}")
+                talklog.write("note", text=s)
             pipeline, kill, mic, ack = build_live(root, audio.find_device(args.out, "output"),
                                                   audio.find_device(args.mic, "input"),
-                                                  verifier=verifier, tasks=tasks, clone=cfg.voice_clone, clone_ref=cfg.voice_clone_ref,
-                                                  on_note=lambda s: print(f"[Hinweis] {s}"),
+                                                  tasks=tasks,
+                                                  on_note=note,
                                                   wake_names=[w.name for w in wcfg.enabled()],
                                                   whisper_device=plan.whisper_device,
-                                                  whisper_index=plan.whisper_index,
-                                                  claude_folder=_approved_folder(cfg, args.claude_folder),
-                                                  approval_log=_approval_log(cfg))
+                                                  whisper_index=plan.whisper_index)
+            pipeline.handle = talklog.timed(pipeline.handle)    # jedes Ergebnis mit Dauer ins Protokoll
+            raw_ack = ack
+
+            def ack():
+                talklog.write("wake")                           # Wake Word erkannt, "Ja?" kommt
+                raw_ack()
             det = build_detector(wcfg, root)
             wait_ms = int(wcfg.settings.listen_seconds * 1000)
             first_ms = int(wcfg.settings.command_wait_seconds * 1000)
@@ -689,7 +591,7 @@ def _main(argv: list[str] | None = None) -> int:
                             follow_collector=(lambda: utter(follow_ms)) if follow_ms > 0 else None,
                             barge=barge, preroll_frames=round(st.preroll_seconds / 0.08),
                             announce=pipeline.chat.announcement,          # verspätete Antworten von Claude
-                            say=pipeline.say_text, on_note=lambda s: print(f"[Hinweis] {s}"))
+                            say=pipeline.say_text, on_note=note)
             print("Wake Words: " + ", ".join(w.name for w in wcfg.enabled())
                   + ". Notaus: 'Notaus' sagen oder die Verknüpfung. Strg+C beendet.")
             if follow_ms > 0:
@@ -698,11 +600,17 @@ def _main(argv: list[str] | None = None) -> int:
             if barge is not None:
                 print("Unterbrechen: einfach dazwischensprechen (Kopfhörer empfohlen; mit Lautsprechern kann kushim sich "
                       "selbst hören: barge_in_level erhöhen oder barge_in = false in wakewords.toml).")
+            talklog.write("ready", wake_words=", ".join(w.name for w in wcfg.enabled()),
+                          channel=pipeline.chat.bridge.available())
             reason = loop.run()
             publisher.clear()
             print("Ende:", reason)
+            talklog.write("end", reason=reason)
         except KeyboardInterrupt:
-            pass
+            talklog.write("end", reason="strg+c oder Fenster geschlossen")
+        except Exception as e:                            # noqa: BLE001 (protokollieren, dann wie bisher abbrechen)
+            talklog.write("error", where="talk", error=f"{type(e).__name__}: {e}")
+            raise
         finally:
             if api is not None:
                 _api_stop(*api)

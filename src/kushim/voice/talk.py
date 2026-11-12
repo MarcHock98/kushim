@@ -217,26 +217,13 @@ class TalkLoop:
         return None
 
 
-def approval_policy(clone: bool, claude_folder: Path | None) -> Callable[[Any], str | None]:
-    """Was per Stimme freigegeben werden darf. Mit der geklonten eigenen Stimme als Ausgabe nichts: Ein Echo der Frage
-    könnte die Sprecher-Prüfung bestehen (Safety-Audit 2026-11-11, M4)."""
-    from ..channel import voice_policy
-    if clone:
-        return lambda perm: "eigene Stimme als Ausgabe"
-    return lambda perm: voice_policy.blocked(perm, claude_folder)
-
-
 def build_live(root: Path, out_device: int | None, in_device: int | None = None,
-               verifier: Any = None, commands: Any = None, wake_names: Iterable[str] = (),
+               commands: Any = None, wake_names: Iterable[str] = (),
                whisper_device: str = "cuda", whisper_index: int = 0, tasks: Any = None,
-               clone: bool = False, clone_ref: str = "", on_note: Callable[[str], None] = lambda s: None,
-               claude_folder: Path | None = None,
-               approval_log: Callable[[dict[str, Any]], None] | None = None):
+               on_note: Callable[[str], None] = lambda s: None):
     """Echte Komponenten. Antworten kommen von Claude Code über den kushim-Channel (Roadmap v2 B4); `pipeline.chat` ist ein
-    `ClaudeChat` mit `announcement()` für verspätete Antworten. Ohne eigene `commands` beantwortet `PermissionVoice` Claudes
-    Freigabe-Anfragen per Stimme (C3), begrenzt durch die Sperrliste (C4) und den Arbeitsordner `claude_folder`."""
+    `ClaudeChat` mit `announcement()` für verspätete Antworten. Freigaben gibt es nie per Stimme (keine Sprecher-Prüfung)."""
     from ..channel.bridge import Bridge
-    from .permission_voice import PermissionVoice
     from ..tasks import TaskRegistry
     from . import audio
     from .claude_chat import ClaudeChat
@@ -255,22 +242,11 @@ def build_live(root: Path, out_device: int | None, in_device: int | None = None,
     engine = PiperEngine.from_local(str(root / "models" / "piper" / "de_DE-thorsten-high.onnx"))
     dialog = Dialog(audio.stop_playback)
     kill = KillSwitch(root, [audio.stop_playback])
-    if clone:                                         # eigene Stimme (lokal, ohne Netz), Piper als Ersatz
-        from .clone import build as build_clone
-        engine = build_clone(root, engine, clone_ref, on_note=on_note)
     speaker = Speaker(engine, lambda wav: audio.play_wav(wav, out_device), lambda: kill.fired)
     ack_wav = engine.synthesize(ACK_TEXT)
     mic = audio.Mic(in_device)
     tasks = tasks if tasks is not None else TaskRegistry()
     bridge = Bridge(root)
-    voice = None
-    if commands is None:
-        def on_decision(d: dict[str, Any]) -> None:
-            on_note(f"Freigabe per Stimme: {d['result']} ({d['tool']})")
-            if approval_log is not None:
-                approval_log(d)                        # C5: lokal im Vault, ohne Audio
-        voice = PermissionVoice(bridge, blocked=approval_policy(clone, claude_folder), on_decision=on_decision)
-        commands = voice
-    pipeline = Pipeline(stt, ClaudeChat(bridge, tasks, voice=voice), speaker, dialog, kill, verifier, commands=commands,
+    pipeline = Pipeline(stt, ClaudeChat(bridge, tasks), speaker, dialog, kill, commands=commands,
                         wake_names=tuple(wake_names), tasks=tasks)
     return pipeline, kill, mic, lambda: audio.play_wav(ack_wav, out_device)

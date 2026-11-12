@@ -132,6 +132,11 @@ Am Ende jedes Durchlaufs eine kurze Rückschau: Was hat gehakt? Was wurde wieder
   betroffen sind (dann nur die betroffenen Tests entfernen). API-Typen, die wegfallen, zeigt die UI als „nicht verfügbar“
   (`unknown_type` zählt nicht für die Trennung); trotzdem in `ui/src` nachsehen, wer sie ruft, und Ersatz in die Roadmap schreiben.
 
+- **Grün prüfen, nicht grepen:** `pytest … | grep -E "passed|failed" && git commit` committet auch bei roten Tests (grep
+  findet "failed" und liefert 0). Erst Ergebnis prüfen (`! grep -qE "[0-9]+ (failed|error)"`), dann committen.
+- **Channel-Server (`channel/server.py`) darf nur Standardmodule und `safety` importieren** (`test_no_egress`); Hilfen
+  dafür nach `safety/` legen und als `from ..safety import modul` einbinden.
+
 ## Takt und Ende
 - Im `/loop`-Modus: weitere Durchläufe über `ScheduleWakeup`. Arbeit offen und frei: 270 s bis wenige Minuten. Nur auf Antwort gewartet: 1200-1800 s. Alles blockiert: 3600 s.
 - **Ziel erreicht**, wenn alle Roadmap-Punkte abgehakt sind (und keine neuen sinnvollen offen), alle Pakete gemerged, Tests grün, Review sauber: Abschlussbericht im Terminal, dann `ScheduleWakeup` mit `stop: true`.

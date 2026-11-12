@@ -15,21 +15,21 @@ from . import state as state_file
 
 TITLES = {
     "system": "Systemcheck und Vault",
-    "audio_voice": "Mikrofon, Lautsprecher und Stimme",
+    "audio_voice": "Mikrofon und Lautsprecher",
     "wake_words": "Wake Words",
     "safety": "Sicherheit und Notaus",
 }
 
 # Folge des Überspringens (aus dem Plan, "Eingeschränkter Modus"); Sicherheitsregeln bleiben immer gleich.
 IF_SKIPPED = {
-    "system": "Kein Gedächtnis, kein Stimmprofil, kein Sprechen. Notaus und Sicherheitsregeln gelten weiter.",
-    "audio_voice": "Sprechen bleibt gesperrt (ohne Stimmprofil antwortet kushim nicht per Sprache); Texteingabe ist möglich.",
+    "system": "Kein Gedächtnis. Notaus und Sicherheitsregeln gelten weiter.",
+    "audio_voice": "Es gelten die Windows-Standardgeräte und die Standard-Pegel.",
     "wake_words": "Es gelten die Standard-Wörter aus der Vorlage.",
     "safety": "Der Notaus wirkt trotzdem.",
 }
 
 # Schritte ohne eigene Tatsache: erledigt heißt "der Nutzer hat es bestätigt".
-MANUAL_DONE = ("wake_words", "safety")
+MANUAL_DONE = ("audio_voice", "wake_words", "safety")
 
 
 @dataclass(frozen=True)
@@ -50,7 +50,7 @@ def _facts(root: Path, vault_state: Callable[[], str], checks: list[Check]) -> d
         system_detail = "Kein Vault angelegt" if vault == "kein-vault" else "Alles vorhanden"
     return {
         "system": (not failing and vault != "kein-vault", system_detail),
-        "audio_voice": (vault == "ok", "Stimmprofil eingeschrieben" if vault == "ok" else "Noch keine Stimme eingeschrieben"),
+        "audio_voice": (False, "Mikrofon und Lautsprecher noch nicht bestätigt (Pegel: kushim voice level)"),
         "wake_words": (own_wake_file, "Eigene Wake-Word-Datei vorhanden" if own_wake_file else "Es gelten die Standard-Wörter"),
         "safety": (False, "Notaus noch nicht ausprobiert"),
     }

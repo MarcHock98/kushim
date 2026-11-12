@@ -91,7 +91,8 @@ def test_doctor_claude_checks():
 def env(tmp_path, monkeypatch):
     proj = tmp_path / "proj"
     (proj / ".git").mkdir(parents=True)
-    for var in ("SystemRoot", "ProgramFiles", "ProgramFiles(x86)", "ProgramData", "APPDATA", "LOCALAPPDATA"):
+    for var in ("SystemRoot", "ProgramFiles", "ProgramFiles(x86)", "ProgramData", "APPDATA", "LOCALAPPDATA",
+                "CLAUDECODE", "CLAUDE_CODE_CHILD_SESSION"):          # Tests laufen evtl. selbst in Claude Code
         monkeypatch.delenv(var, raising=False)
     cfgfile = tmp_path / "config.toml"
     cfgfile.write_text(f'[memory]\nlocation = "local:{(tmp_path / "vault").as_posix()}"\n'
@@ -128,9 +129,9 @@ class Window:
         self.closed.set()
 
 
-def start(env, *argv):
+def start(env, *argv, no_ui=False):
     from kushim.config import Config
-    args = SimpleNamespace(folder=None, mic=None, out=None, ui=False)
+    args = SimpleNamespace(folder=None, mic=None, out=None, ui=False, no_ui=no_ui)
     for a in argv:
         args.folder = a
     return cli._start(args, Config.load(env.cfg), env.proj.parent)
@@ -142,7 +143,7 @@ def test_start_launches_claude_in_the_only_folder_then_talks(env, capsys):
     env.mp.setattr(pf, "kill_tree", lambda pid: env.window.close())
     assert start(env) == 0
     assert env.launched == [(EXE, env.proj.resolve())]
-    assert env.talked == [["talk", "--claude-folder", str(env.proj.resolve())]]           # Arbeitsordner für Freigaben (C4)
+    assert env.talked == [["talk", "--ui"]]                                            # Standard: mit Oberfläche
     assert env.stopped == [EXE] and env.window.closed.is_set()                           # kushim endet: Claude und Fenster auch
     out = capsys.readouterr().out
     assert "Entwicklungs-Channel bestätigen" in out and "beendet sich alles" in out
@@ -183,3 +184,56 @@ def test_start_refuses_without_claude_old_version_login_or_folder(env):
 def test_start_refuses_while_the_kill_switch_is_active(env):
     killswitch.trigger(env.proj.parent)
     assert start(env) == 1 and env.launched == []
+
+
+def test_start_refuses_inside_a_claude_code_session_and_says_why(env, capsys):
+    env.mp.setenv("CLAUDE_CODE_CHILD_SESSION", "1")
+    assert start(env) == 1 and env.launched == [] and env.talked == []
+    assert "Channels are not currently available" in capsys.readouterr().out
+    assert cli._inside_claude_session({"CLAUDECODE": "1"}) and not cli._inside_claude_session({})
+
+
+def test_start_without_ui_on_request(env, capsys):
+    import kushim.procflags as pf
+    env.mp.setattr(pf, "kill_tree", lambda pid: env.window.close())
+    assert start(env, no_ui=True) == 0
+    assert env.talked == [["talk"]]
+
+
+def test_ui_window_opens_once_the_api_is_ready_and_not_after_the_end(tmp_path, capsys):
+    import threading
+    from kushim import appstart
+    done, procs, opened = threading.Event(), [], []
+    cli._open_ui_window(tmp_path, done, procs)                                          # App nicht gebaut: nur Hinweis
+    assert procs == [] and "nicht gebaut" in capsys.readouterr().out
+    exe = appstart.ui_path(tmp_path)
+    exe.parent.mkdir(parents=True)
+    exe.write_bytes(b"")
+    class Window:
+        def wait(self):
+            return 0
+    window, closed = Window(), []
+    cli._open_ui_window(tmp_path, done, procs, popen=lambda a, **k: opened.append(a) or window,
+                        wait=lambda root, since, alive: True, on_close=lambda: closed.append(1))
+    assert opened == [[str(exe)]] and procs == [window]
+    assert closed == [1]                                                                # Nutzer schließt das Fenster: alles endet
+    done.set()
+    cli._open_ui_window(tmp_path, done, procs, popen=lambda a, **k: opened.append(a), wait=lambda root, since, alive: False)
+    assert len(opened) == 1 and "nicht verbinden" not in capsys.readouterr().out
+
+
+def test_closing_by_kushim_itself_does_not_trigger_the_shutdown_again(tmp_path):
+    import threading
+    from kushim import appstart
+    exe = appstart.ui_path(tmp_path)
+    exe.parent.mkdir(parents=True)
+    exe.write_bytes(b"")
+    done, closed = threading.Event(), []
+
+    class Window:
+        def wait(self):
+            done.set()                                                                  # kushim endet und schließt das Fenster
+            return 0
+    cli._open_ui_window(tmp_path, done, [], popen=lambda a, **k: Window(), wait=lambda root, since, alive: True,
+                        on_close=lambda: closed.append(1))
+    assert closed == []
