@@ -217,23 +217,13 @@ class TalkLoop:
         return None
 
 
-def approval_policy(claude_folder: Path | None) -> Callable[[Any], str | None]:
-    """Was per Stimme freigegeben werden darf: nichts. Ohne Sprecher-Prüfung könnte jede Stimme im Raum „ja“ sagen;
-    Freigaben gibt es nur im Terminal oder in der Oberfläche."""
-    return lambda perm: "keine Sprecher-Prüfung"
-
-
 def build_live(root: Path, out_device: int | None, in_device: int | None = None,
                commands: Any = None, wake_names: Iterable[str] = (),
                whisper_device: str = "cuda", whisper_index: int = 0, tasks: Any = None,
-               on_note: Callable[[str], None] = lambda s: None,
-               claude_folder: Path | None = None,
-               approval_log: Callable[[dict[str, Any]], None] | None = None):
+               on_note: Callable[[str], None] = lambda s: None):
     """Echte Komponenten. Antworten kommen von Claude Code über den kushim-Channel (Roadmap v2 B4); `pipeline.chat` ist ein
-    `ClaudeChat` mit `announcement()` für verspätete Antworten. Ohne eigene `commands` beantwortet `PermissionVoice` Claudes
-    Freigabe-Anfragen per Stimme (C3), begrenzt durch die Sperrliste (C4) und den Arbeitsordner `claude_folder`."""
+    `ClaudeChat` mit `announcement()` für verspätete Antworten. Freigaben gibt es nie per Stimme (keine Sprecher-Prüfung)."""
     from ..channel.bridge import Bridge
-    from .permission_voice import PermissionVoice
     from ..tasks import TaskRegistry
     from . import audio
     from .claude_chat import ClaudeChat
@@ -257,14 +247,6 @@ def build_live(root: Path, out_device: int | None, in_device: int | None = None,
     mic = audio.Mic(in_device)
     tasks = tasks if tasks is not None else TaskRegistry()
     bridge = Bridge(root)
-    voice = None
-    if commands is None:
-        def on_decision(d: dict[str, Any]) -> None:
-            on_note(f"Freigabe per Stimme: {d['result']} ({d['tool']})")
-            if approval_log is not None:
-                approval_log(d)                        # C5: lokal im Vault, ohne Audio
-        voice = PermissionVoice(bridge, blocked=approval_policy(claude_folder), on_decision=on_decision)
-        commands = voice
-    pipeline = Pipeline(stt, ClaudeChat(bridge, tasks, voice=voice), speaker, dialog, kill, commands=commands,
+    pipeline = Pipeline(stt, ClaudeChat(bridge, tasks), speaker, dialog, kill, commands=commands,
                         wake_names=tuple(wake_names), tasks=tasks)
     return pipeline, kill, mic, lambda: audio.play_wav(ack_wav, out_device)
