@@ -50,7 +50,10 @@ CHANNEL = SRC / "channel" / "server.py"
 def test_channel_server_has_only_stdlib_imports():
     mods = set(imports(CHANNEL))
     assert mods <= {"__future__", "hmac", "json", "os", "re", "secrets", "sys", "threading", "collections", "http.server",
-                    "pathlib", "time", "typing", "urllib.parse", "safety", "..safety"}, mods
+                    "pathlib", "time", "typing", "urllib.parse", "safety", "..safety", "stage"}, mods
+    # stage/schema.py prüft die Ansichten von `zeige` im Channel-Server: selbst nur Standardbibliothek, kein Netz.
+    schema = SRC / "stage" / "schema.py"
+    assert set(imports(schema)) <= {"__future__", "json", "math", "re", "typing"}, set(imports(schema))
 
 
 def test_channel_server_binds_only_to_the_fixed_loopback_address():

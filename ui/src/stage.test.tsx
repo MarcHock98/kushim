@@ -21,7 +21,7 @@ async function open() {
 }
 const stage = () => screen.getByRole("region", { name: "Gespräch" });
 const showSystem = async (sock: { current?: MockSocket }, id = 1) => {
-  sock.current!.entries.push({ id, heard: "Wie ist die CPU-Auslastung?", reply: "Gleich.", outcome: "spoken" });
+  sock.current!.show({ id: `s${id}`, art: "antwort", titel: "System", bausteine: [{ typ: "systemzustand" }] });
   await waitFor(() => expect(stage()).toHaveAttribute("data-mode", "zeige"), { timeout: 3000 });
 };
 

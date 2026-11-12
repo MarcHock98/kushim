@@ -26,6 +26,13 @@ export class MockSocket implements Socket {
     disk: { percent: 41, used_gb: 412, total_gb: 1000 }, battery: { present: false, percent: null, on_ac: null },
     net: { down_mbit: 42.1, up_mbit: 8.3 }, system: { os: "Windows 11", uptime_s: 568800 }, warn_at: 80,
   };
+  stage: Record<string, unknown>[] = [];                // Ansichten wie von Claude über `zeige` (mit seq)
+  stageSeq = 0;
+  /** Wie Claudes Werkzeug `zeige`: legt eine Ansicht ab, die die Oberfläche über stage.get abholt. */
+  show(view: Record<string, unknown>): void {
+    this.stageSeq += 1;
+    this.stage = [...this.stage.filter((v) => v.id !== view.id), { ...view, seq: this.stageSeq }];
+  }
   dash: Record<string, unknown> = { timers: [], tasks: [], pending_approvals: 0, results: [] };
   review: unknown = null;
   diffText = "";
@@ -38,19 +45,24 @@ export class MockSocket implements Socket {
     queueMicrotask(() => (this.fail ? this.onerror?.() : this.onopen?.()));
   }
 
-  /** Vorführung im Browser (`?mock&demo`): Sprach-Zustände der Reihe nach, danach eine Antwort auf der Bühne. Nur Mock. */
+  /** Vorführung im Browser (`?mock&demo`): erst ein reines Gespräch (Kern bleibt groß), dann zeigt „Claude“ der Reihe nach
+   *  Rechnung, Markt, Recherche und Systemzustand. Nur Mock, Beispieldaten. */
   demo(): void {
-    const steps: [string, number][] = [["idle", 0], ["listening", 0.6], ["thinking", 0], ["speaking", 0.7], ["idle", 0],
-      ["listening", 0.5], ["thinking", 0], ["speaking", 0.6], ["idle", 0]];
-    const asks = ["Wie wird das Wetter morgen?", "Wie ist die Systemauslastung?"];           // erst reines Gespräch, dann etwas zum Zeigen
-    const replies = ["Morgen 11 Grad, ab Nachmittag leichter Regen.", "Ich zeige dir den Systemzustand."];
-    steps.forEach(([state, level], i) => setTimeout(() => {
-      this.voice = { active: true, state, level };
-      if (state === "speaking") {
-        const k = this.entries.length;
-        this.entries.push({ id: k + 1, heard: asks[k % 2], reply: replies[k % 2], outcome: "spoken" });
-      }
-    }, 2500 + i * 3500));
+    const turn = (at: number, heard: string, reply: string, view?: Record<string, unknown>) => {
+      const steps: [string, number][] = [["listening", 0.6], ["thinking", 0], ["speaking", 0.7], ["idle", 0]];
+      steps.forEach(([state, level], i) => setTimeout(() => {
+        this.voice = { active: true, state, level };
+        if (state === "speaking") {
+          this.entries.push({ id: this.entries.length + 1, heard, reply, outcome: "spoken" });
+          if (view) this.show(view);
+        }
+      }, at + i * 2500));
+    };
+    turn(2000, "Wie wird das Wetter morgen?", "Morgen 11 Grad, ab Nachmittag leichter Regen.");
+    turn(13000, "Löse x² minus 5x plus 6 gleich 0.", "Die Lösungen sind 2 und 3.", DEMO_VIEWS[0]);
+    turn(24000, "Wie steht der DAX?", "Der DAX liegt bei 19.420 Punkten.", DEMO_VIEWS[1]);
+    turn(35000, "Was weiß man über Koffein und Schlaf?", "Ich habe drei Quellen zusammengefasst.", DEMO_VIEWS[2]);
+    turn(46000, "Wie ist die Systemauslastung?", "Ich zeige dir den Systemzustand.", DEMO_VIEWS[3]);
   }
 
   send(data: string): void {
@@ -83,6 +95,10 @@ export class MockSocket implements Socket {
       else { this.deleted.push(m.id ?? -1); reply = { ok: true, deleted: m.id }; }
     }
     else if (msg.type === "system.stats" && this.system) reply = { ok: true, ...this.system };
+    else if (msg.type === "stage.get") {
+      const since = (msg as { since?: number }).since ?? 0;
+      reply = { ok: true, items: this.kill ? [] : this.stage.filter((v) => (v.seq as number) > since), last: this.stageSeq };
+    }
     else if (msg.type === "dashboard.get") reply = { ok: true, ...this.dash };
     else if (msg.type === "claude.folders") reply = { ok: true, folders: this.folders };
     else if (msg.type === "claude.folder_list") reply = { ok: true, folders: this.folders.map((n) => ({ name: n, path: `C:/proj/${n}` })) };
@@ -153,3 +169,33 @@ export class MockSocket implements Socket {
 
   close(): void { queueMicrotask(() => this.onclose?.()); }
 }
+
+/** Beispiel-Ansichten für die Vorführung (erfundene Beispielwerte, nur im Mock). */
+export const DEMO_VIEWS: Record<string, unknown>[] = [
+  { id: "mathe-1", art: "rechnung", titel: "Quadratische Gleichung", bausteine: [
+    { typ: "formel", tex: "x^2 - 5x + 6 = 0" },
+    { typ: "schritte", schritte: [
+      { text: "Mitternachtsformel mit a = 1, b = -5, c = 6", tex: "x_{1,2} = \\frac{5 \\pm \\sqrt{25 - 24}}{2}" },
+      { text: "Wurzel ausrechnen", tex: "x_{1,2} = \\frac{5 \\pm 1}{2}" },
+      { text: "Beide Lösungen", tex: "x_1 = 3,\\quad x_2 = 2" } ] },
+    { typ: "ergebnis", tex: "x \\in \\{2,\\, 3\\}" } ] },
+  { id: "dax", art: "markt", titel: "DAX heute (Beispielwerte)", stand: "12.11.2026 14:05", bausteine: [
+    { typ: "kennzahlen", werte: [
+      { name: "DAX", wert: 19420.5, einheit: "Pkt", aenderung: "+0,8 %", richtung: "auf" },
+      { name: "MDAX", wert: 26110, einheit: "Pkt", aenderung: "-0,3 %", richtung: "ab" },
+      { name: "Euro in Dollar", wert: 1.0721, aenderung: "±0,0 %", richtung: "gleich" } ] },
+    { typ: "diagramm", form: "linie", x_titel: "Uhrzeit", y_titel: "Punkte", reihen: [
+      { name: "DAX", punkte: [["09:00", 19260], ["10:00", 19310], ["11:00", 19280], ["12:00", 19350], ["13:00", 19390], ["14:00", 19420.5]] } ] },
+    { typ: "tabelle", spalten: ["Titel", "Kurs", "Änderung"], zeilen: [["SAP", 231.4, "+1,9 %"], ["Siemens", 188, "+0,6 %"], ["BASF", 44.1, "-1,2 %"]] } ] },
+  { id: "koffein", art: "recherche", titel: "Koffein und Schlaf", bausteine: [
+    { typ: "text", absaetze: ["Kurz: Koffein am Nachmittag kann den Schlaf verkürzen; wie stark, ist von Mensch zu Mensch verschieden."] },
+    { typ: "aussagen", aussagen: [
+      { text: "Koffein wirkt mehrere Stunden nach.", quellen: [1, 2] },
+      { text: "Später Konsum verkürzt bei vielen die Schlafdauer.", quellen: [1, 3] } ] },
+    { typ: "widerspruch", aussagen: [{ text: "Wie viele Stunden Abstand nötig sind, geben die Quellen unterschiedlich an.", quellen: [2, 3] }] },
+    { typ: "quellen", quellen: [
+      { nr: 1, titel: "Übersichtsarbeit (Beispiel)", adresse: "beispiel.org/schlaf" },
+      { nr: 2, titel: "Ratgeber (Beispiel)", adresse: "beispiel.org/koffein" },
+      { nr: 3, titel: "Studie (Beispiel)" } ] } ] },
+  { id: "system", art: "antwort", titel: "Systemzustand", bausteine: [{ typ: "systemzustand" }] },
+];

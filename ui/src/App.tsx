@@ -6,7 +6,9 @@ import { ClaudePanel } from "./components/ClaudePanel";
 import { Dashboard, type DashData } from "./components/Dashboard";
 import { MemoryPanel } from "./components/MemoryPanel";
 import { SecurityPanel, type Overview } from "./components/SecurityPanel";
-import { parseSystem, SystemPanel, type SysData } from "./components/SystemPanel";
+import { parseSystem, type SysData } from "./components/SystemPanel";
+import { ViewCard, ViewTabs } from "./components/stage/ViewCard";
+import { ART_LABEL, hasSystem, parseItem, type View as StageView } from "./lib/stage";
 import { Transcript, type Entry } from "./components/Transcript";
 import { IconHome, IconMemory, IconOverview, IconShield } from "./components/Icons";
 import { HaltedBanner, KillButton } from "./components/KillButton";
@@ -27,11 +29,11 @@ type View = "home" | "dashboard" | "security" | "memory";
 const POLL_MS = 2000;
 const VOICE_POLL_MS = 200;
 const SYSTEM_POLL_MS = 3000;
-// Übergang bis P2 (`zeige`): Eine Frage nach dem Systemzustand lässt kushim die Werte zeigen. Später entscheidet Claude Code.
-const SYSTEM_ASK = /\b(system(zustand|status|auslastung)?|auslastung|cpu|prozessor|arbeitsspeicher|ram|gpu|grafikkarte|festplatte|speicherplatz|akku)\b/i;
+const STAGE_POLL_MS = 1000;
 
-/** Was die Bühne gerade zeigt. Im reinen Gespräch nichts: dann steht nur der Kern groß in der Mitte. */
-type Shown = { kind: "system" } | null;
+/** Welche Ansicht die Bühne gerade zeigt (id). Im reinen Gespräch keine: dann steht nur der Kern groß in der Mitte.
+ *  Was gezeigt wird, entscheidet Claude Code über das Werkzeug `zeige` (stage.get), nie die Oberfläche selbst. */
+type Shown = string | null;
 
 /** Bühnenwechsel mit Animation (View Transitions in WebView2/Chromium); ohne Unterstützung oder bei weniger Bewegung sofort. */
 function staged(change: () => void): void {
@@ -77,6 +79,8 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
   const [sysNo, setSysNo] = useState(false);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [shown, setShown] = useState<Shown>(null);           // Bühne: null = Dialog (nur Kern), sonst Zeige-Modus
+  const [views, setViews] = useState<StageView[]>([]);        // von Claude gezeigt (älteste zuerst, höchstens 20)
+  const stageSeq = useRef(0);
   const lastId = useRef(0);
   const [rated, setRated] = useState<Record<number, 1 | -1>>({});
   const client = useRef<ApiClient | null>(null);
@@ -155,7 +159,6 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
       if (fresh.length === 0) return;
       lastId.current = Math.max(...fresh.map((e) => e.id));
       setEntries((old) => [...old, ...fresh].slice(-20));
-      if (fresh.some((e) => SYSTEM_ASK.test(e.heard))) staged(() => setShown({ kind: "system" }));
     };
     void pull();
     const id = setInterval(pull, 1000);
@@ -190,7 +193,7 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
   }, [connected, view]);
 
   useEffect(() => {                                     // Systemzustand nur abfragen, solange er gezeigt wird und das Fenster sichtbar ist
-    if (!connected || view !== "home" || shown?.kind !== "system") return;
+    if (!connected || view !== "home" || !hasSystem(views.find((v) => v.id === shown))) return;
     let stop = false;
     const pull = async () => {
       if (document.hidden) return;
@@ -202,7 +205,41 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
     void pull();
     const id = setInterval(pull, SYSTEM_POLL_MS);
     return () => { stop = true; clearInterval(id); };
-  }, [connected, view, shown]);
+  }, [connected, view, shown, views]);
+
+  useEffect(() => {                                     // Ansichten von Claude (zeige): neue öffnen die Bühne, schliessen räumt ab
+    if (!connected) return;
+    let stop = false, busy = false;
+    const pull = async () => {
+      if (busy || document.hidden) return;
+      busy = true;
+      const r = await client.current?.call("stage.get", { since: stageSeq.current });
+      busy = false;
+      if (stop || !r?.ok || !Array.isArray(r.items)) return;
+      if (typeof r.last === "number") stageSeq.current = Math.max(stageSeq.current, r.last);
+      const items = r.items.map(parseItem).filter((i) => i !== null);
+      if (items.length === 0) return;
+      let open: string | null = null;
+      const closed = new Set<string>();
+      for (const it of items) { if ("schliessen" in it) closed.add(it.id); else open = it.id; }
+      setViews((old) => {
+        let next = [...old];
+        for (const it of items) {
+          next = next.filter((v) => v.id !== it.id);
+          if (!("schliessen" in it)) next.push(it);
+        }
+        return next.slice(-20);
+      });
+      staged(() => setShown((cur) => open ?? (cur && closed.has(cur) ? null : cur)));
+    };
+    void pull();
+    const id = setInterval(pull, STAGE_POLL_MS);
+    return () => { stop = true; clearInterval(id); };
+  }, [connected]);
+
+  useEffect(() => {                                     // Notaus: Bühne abräumen, nichts mehr zeigen
+    if (kill) { setShown(null); setViews([]); }
+  }, [kill]);
 
   const rate = useCallback(async (id: number, rating: 1 | -1) => {
     const r = await client.current?.call("feedback.add", { entry: id, rating });
@@ -254,6 +291,7 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [shown, closeShown]);
 
+  const shownView = views.find((v) => v.id === shown) ?? null;
   const state = resolveState({ connected, killActive: kill, backendState: pending.length > 0 ? "asking" : voice.active ? voice.state : undefined });
   const stateView = STATE_VIEW[state];
 
@@ -295,6 +333,19 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
                   <Transcript entries={entries} rated={rated} onRate={(id, r) => void rate(id, r)} />
                 </section>
               )}
+              {views.length > 0 && (
+                <section className="panel overview-shown" aria-labelledby="shown-h">
+                  <div className="panel-head"><h2 id="shown-h">Gezeigt</h2><span className="label">{views.length} Ansichten</span></div>
+                  <ul className="shown-list">
+                    {[...views].reverse().map((v) => (
+                      <li key={v.id}>
+                        <span><span className="label">{ART_LABEL[v.art]}</span> {v.titel}{v.stand && <small> · Stand: {v.stand}</small>}</span>
+                        <button type="button" onClick={() => { setView("home"); staged(() => setShown(v.id)); }}>Zeigen</button>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
               <aside className="overview-claude" aria-label="Claude">
                 <ClaudePanel client={client} connected={connected} />
               </aside>
@@ -303,9 +354,9 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
           )}
           {view === "security" && <SecurityPanel overview={overview} />}
           {view === "home" && (
-            <section className="stage" aria-label="Gespräch" data-state={state} data-mode={shown ? "zeige" : "dialog"}>
+            <section className="stage" aria-label="Gespräch" data-state={state} data-mode={shownView ? "zeige" : "dialog"}>
               <div className="stage-core">
-                <Core3D state={state} size={shown ? coreSmall(box) : avatarSize(box)} level={voice.level} />
+                <Core3D state={state} size={shownView ? coreSmall(box) : avatarSize(box)} level={voice.level} />
                 <p className="line">{stateView.label}</p>
                 {connected && !voice.active && state === "idle" && (
                   <p className="hint">Der Sprachdienst läuft nicht. Starte ihn mit „kushim talk“.</p>
@@ -315,8 +366,11 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
                   <button type="button" className="primary" onClick={() => void connect()}>Erneut versuchen</button>
                 )}
               </div>
-              {shown?.kind === "system" && (
-                <div className="stage-content"><SystemPanel data={sys} unavailable={sysNo} onClose={closeShown} /></div>
+              {shownView && (
+                <div className="stage-content">
+                  <ViewTabs views={views} active={shownView.id} onPick={(id) => staged(() => setShown(id))} />
+                  <ViewCard key={shownView.id} view={shownView} sys={sys} sysNo={sysNo} onClose={closeShown} />
+                </div>
               )}
             </section>
           )}

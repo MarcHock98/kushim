@@ -14,7 +14,9 @@ from pathlib import Path
 from typing import Any, Callable
 
 from ..net import loopback
-from .server import MAX_PERMS, MAX_QUEUE, MAX_SPOKEN, MAX_WAIT, clean_text
+from ..stage import schema as stage_schema
+from ..stage.store import ViewStore
+from .server import MAX_PERMS, MAX_QUEUE, MAX_SPOKEN, MAX_VIEWS, MAX_WAIT, clean_text
 
 INFO = Path("run") / "channel.json"
 MAX_INFO_BYTES = 4096
@@ -73,6 +75,7 @@ class Bridge:
         self.root, self.request = root, request
         self.permissions: deque[Permission] = deque(maxlen=MAX_PERMS)    # abgeholte, noch nicht beantwortete Freigabe-Anfragen
         self._perm_lock = threading.Lock()      # Sprach-Thread hängt an, API-Threads lesen und entfernen
+        self.stage = ViewStore()                # Ansichten von Claude (zeige) für die Oberfläche (stage.get)
 
     def pending(self) -> list[Permission]:
         """Kopie der offenen Freigabe-Anfragen (thread-sicher)."""
@@ -132,6 +135,12 @@ class Bridge:
             if perm is not None:
                 with self._perm_lock:
                     self.permissions.append(perm)
+        views = data.get("views", [])
+        for v in views[:MAX_VIEWS] if isinstance(views, list) else []:
+            try:
+                self.stage.put(stage_schema.validate(v))     # zweite Prüfung: der Channel ist Eingabe von außen
+            except stage_schema.ViewError:
+                continue
         clean = [clean_text(t)[:MAX_SPOKEN] for t in texts[:MAX_QUEUE] if isinstance(t, str)]
         return "ok", [t for t in clean if t]
 

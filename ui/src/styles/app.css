@@ -172,6 +172,67 @@ h2, h3 { font-family: var(--font-display); font-weight: 600; letter-spacing: .04
 .ghost-icon { min-width: var(--hit); padding: 0; display: inline-grid; place-items: center; background: transparent; border-color: var(--line); color: var(--text-muted); }
 ::view-transition-group(*) { animation-duration: var(--t-slow); animation-timing-function: var(--ease); }
 
+/* Ansichten von Claude (zeige): ruhige Lesespalten, Rechenweg nummeriert, Kennzahlen mit Pfeil und Wort, Quellen als Text */
+.view { position: relative; display: grid; gap: var(--s-4); padding: var(--s-4) var(--s-5); background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--r-lg); }
+.view::before, .view::after { content: ""; position: absolute; width: var(--bracket); height: var(--bracket); border: 2px solid var(--line-strong); pointer-events: none; }
+.view::before { top: -1px; left: -1px; border-right: 0; border-bottom: 0; border-top-left-radius: var(--r-lg); }
+.view::after { bottom: -1px; right: -1px; border-left: 0; border-top: 0; border-bottom-right-radius: var(--r-lg); }
+.view .panel-head h2 { flex: 1 1 auto; }
+.view-body { display: grid; gap: var(--s-5); }
+.view-main { display: grid; gap: var(--s-4); align-content: start; min-width: 0; }
+.view-aside { min-width: 0; }
+.view-tabs { display: flex; flex-wrap: wrap; gap: var(--s-1); margin-bottom: var(--s-3); }
+.view-tabs .tab { min-height: var(--hit); background: transparent; border-color: transparent; border-radius: var(--r-sm); color: var(--text-muted); font-family: var(--font-mono); font-size: var(--fs-xs); letter-spacing: .08em; text-transform: uppercase; }
+.view-tabs .tab.active { background: var(--bg-3); border-color: var(--line-strong); color: var(--text); }
+.v-text p { margin: 0 0 var(--s-3); max-width: 70ch; font-size: var(--fs-lg); line-height: 1.55; }
+.view-antwort .v-text p { font-size: 18px; }
+.v-text p:last-child { margin-bottom: 0; }
+.v-list { margin: 0; padding-left: var(--s-5); display: grid; gap: var(--s-2); max-width: 70ch; }
+.v-formula { overflow-x: auto; padding: var(--s-2) 0; }
+.tex-block { display: block; overflow-x: auto; }
+.tex-bad { color: var(--warn); font-size: var(--fs-sm); }
+.v-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-3); counter-reset: none; }
+.v-steps li { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: var(--s-3); align-items: start; padding: var(--s-3); background: var(--bg-3); border-radius: var(--r-md); }
+.v-steps p { margin: 0 0 var(--s-1); }
+.v-step-n { display: grid; place-items: center; width: 28px; height: 28px; border: 1px solid var(--arc); border-radius: 50%; color: var(--arc); font-family: var(--font-mono); font-size: var(--fs-sm); }
+.v-result { display: grid; gap: var(--s-2); padding: var(--s-4); border: 1px solid var(--arc); border-radius: var(--r-md); box-shadow: var(--glow-arc); color: var(--arc); font-size: var(--fs-xl); }
+.v-result p { margin: 0; font-family: var(--font-display); font-weight: 600; }
+.v-result .label { color: var(--arc); }
+.v-figures { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr)); gap: var(--s-3); }
+.v-figure { display: grid; gap: var(--s-1); padding: var(--s-3); background: var(--bg-3); border-radius: var(--r-md); }
+.v-figure-val { font-family: var(--font-mono); font-size: 32px; line-height: 1.1; font-weight: 500; }
+.v-figure-val small { font-size: var(--fs-sm); color: var(--text-muted); }
+.v-figure-chg { font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-muted); }
+.dir-auf .v-figure-chg { color: var(--arc); }
+.dir-ab .v-figure-chg { color: var(--amber); }
+.v-table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--r-md); }
+.v-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+.v-table th, .v-table td { padding: var(--s-2) var(--s-3); border-bottom: 1px solid var(--line); text-align: left; }
+.v-table th { font-family: var(--font-mono); font-size: var(--fs-xs); font-weight: 500; letter-spacing: var(--track-label); text-transform: uppercase; color: var(--text-muted); background: var(--bg-3); }
+.v-table td.num { text-align: right; font-family: var(--font-mono); }
+.v-table tr:last-child td { border-bottom: 0; }
+.chart { margin: 0; display: grid; gap: var(--s-2); }
+.chart svg { width: 100%; height: auto; max-height: 360px; }
+.chart-grid { stroke: var(--line); stroke-width: 1; }
+.chart-axis { stroke: var(--line-strong); stroke-width: 1; }
+.chart-tick, .chart-title { fill: var(--text-muted); font-family: var(--font-mono); font-size: 12px; }
+.chart-legend { display: flex; flex-wrap: wrap; gap: var(--s-4); font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-muted); }
+.chart-key { display: inline-flex; align-items: center; gap: var(--s-2); }
+.v-claims { margin: 0; padding-left: var(--s-5); display: grid; gap: var(--s-2); max-width: 70ch; }
+.cite { margin-left: 2px; color: var(--arc); font-family: var(--font-mono); font-size: var(--fs-xs); }
+.v-conflict { display: grid; gap: var(--s-2); padding: var(--s-3) var(--s-4); border: 1px solid var(--warn); border-radius: var(--r-md); }
+.v-conflict .label { color: var(--warn); }
+.v-sources { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--s-2); font-size: var(--fs-sm); }
+.v-sources li { padding-bottom: var(--s-2); border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.v-sources code { display: block; margin-top: 2px; color: var(--text-muted); font-size: var(--fs-xs); }
+.v-src-nr { color: var(--arc); font-family: var(--font-mono); }
+.v-note { margin: 0; color: var(--text-muted); font-size: var(--fs-sm); }
+.shown-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-2); }
+.shown-list li { display: flex; justify-content: space-between; align-items: center; gap: var(--s-3); padding: var(--s-2) 0; border-bottom: 1px solid var(--line); }
+.shown-list li:last-child { border-bottom: 0; }
+.view .sys-panel { padding: 0; border: 0; background: transparent; }
+.view .sys-panel::before, .view .sys-panel::after { display: none; }
+
 /* ===== Responsive Layout =====
    < 800 px:     Leiste unten (vier gleich große Felder), Inhalt darüber
    800 bis 1099: Seitenleiste 72 px, Beschriftung unter dem Symbol
@@ -215,6 +276,7 @@ h2, h3 { font-family: var(--font-display); font-weight: 600; letter-spacing: .04
 
 @media (min-width: 1000px) {
   .stage[data-mode="zeige"] { grid-template-columns: minmax(200px, 0.3fr) minmax(0, 1fr); }
+  .view-recherche .view-body { grid-template-columns: minmax(0, 1fr) minmax(220px, 0.4fr); }
 }
 
 @media (min-width: 1100px) {

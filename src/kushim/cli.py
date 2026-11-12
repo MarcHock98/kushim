@@ -678,6 +678,8 @@ def _main(argv: list[str] | None = None) -> int:
                     if bridge is not None:                      # Freigaben von Claude Code (C0), protokolliert wie per Stimme (C5)
                         from .api.approvals_api import register_approvals
                         register_approvals(core, bridge, root, on_decision=_approval_log(cfg))
+                        from .api.stage_api import register_stage       # Ansichten von Claude (zeige) für die Bühne
+                        register_stage(core, bridge.stage, root)
                 api = _api_start(cfg, root, extra)
             loop = TalkLoop(mic, pipeline, kill, wake=lambda f: det.process(f) is not None, ack=ack,
                             flush=mic.flush, new_collector=lambda: utter(wait_ms),

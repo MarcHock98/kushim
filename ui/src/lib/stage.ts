@@ -1,0 +1,40 @@
+// Ansichten, die Claude Code über `zeige` schickt (Plan docs/ui-p2-plan.md). Das Backend prüft sie zweimal
+// (src/kushim/stage/schema.py); hier nur eine leichte Formprüfung, damit die Oberfläche nie an Fremdem zerbricht.
+// Alles bleibt Text: kein HTML, keine Links, keine Bilder.
+
+export type Art = "antwort" | "rechnung" | "markt" | "recherche";
+type Cell = string | number;
+export type Block =
+  | { typ: "text"; absaetze: string[] }
+  | { typ: "liste"; punkte: string[]; nummeriert: boolean }
+  | { typ: "formel"; tex: string }
+  | { typ: "schritte"; schritte: { text: string; tex: string }[] }
+  | { typ: "ergebnis"; text: string; tex: string }
+  | { typ: "kennzahlen"; werte: { name: string; wert: Cell; einheit: string; aenderung: string; richtung: "" | "auf" | "ab" | "gleich" }[] }
+  | { typ: "tabelle"; spalten: string[]; zeilen: Cell[][] }
+  | { typ: "diagramm"; form: "linie" | "balken"; x_titel: string; y_titel: string; reihen: { name: string; punkte: [Cell, number][] }[] }
+  | { typ: "aussagen" | "widerspruch"; aussagen: { text: string; quellen: number[] }[] }
+  | { typ: "quellen"; quellen: { nr: number; titel: string; adresse: string }[] }
+  | { typ: "hinweis"; text: string }
+  | { typ: "systemzustand" };
+
+export interface View { seq: number; id: string; art: Art; titel: string; stand: string; bausteine: Block[] }
+export type StageItem = View | { seq: number; id: string; schliessen: true };
+
+const ARTEN = ["antwort", "rechnung", "markt", "recherche"];
+const TYPEN = ["text", "liste", "formel", "schritte", "ergebnis", "kennzahlen", "tabelle", "diagramm", "aussagen", "widerspruch",
+  "quellen", "hinweis", "systemzustand"];
+const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+
+/** Ein Eintrag aus `stage.get`; `null`, wenn er nicht passt (dann wird er übergangen). */
+export function parseItem(raw: unknown): StageItem | null {
+  if (!isObj(raw) || typeof raw.seq !== "number" || typeof raw.id !== "string" || raw.id.length > 40) return null;
+  if (raw.schliessen === true) return { seq: raw.seq, id: raw.id, schliessen: true };
+  if (typeof raw.art !== "string" || !ARTEN.includes(raw.art) || typeof raw.titel !== "string" || !Array.isArray(raw.bausteine)) return null;
+  const bausteine = raw.bausteine.filter((b): b is Block => isObj(b) && typeof b.typ === "string" && TYPEN.includes(b.typ)).slice(0, 12);
+  return { seq: raw.seq, id: raw.id, art: raw.art as Art, titel: raw.titel.slice(0, 120),
+    stand: typeof raw.stand === "string" ? raw.stand.slice(0, 40) : "", bausteine };
+}
+
+export const ART_LABEL: Record<Art, string> = { antwort: "Antwort", rechnung: "Rechnung", markt: "Markt", recherche: "Recherche" };
+export const hasSystem = (v: View | null | undefined) => !!v?.bausteine.some((b) => b.typ === "systemzustand");

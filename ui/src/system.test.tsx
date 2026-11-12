@@ -21,7 +21,7 @@ async function open(system: Record<string, unknown> | null | undefined = undefin
   });
   render(<App load={loader} />);
   await waitFor(() => screen.getAllByText(STATE_VIEW.idle.label));
-  sock.current!.entries.push({ id: 1, heard: "Wie ist die Systemauslastung?", reply: "Gleich.", outcome: "spoken" });   // kushim soll es zeigen
+  sock.current!.show({ id: "system", art: "antwort", titel: "System", bausteine: [{ typ: "systemzustand" }] });   // Claude zeigt es (zeige)
   await waitFor(() => panel(), { timeout: 3000 });
   return sock;
 }

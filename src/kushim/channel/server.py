@@ -3,7 +3,8 @@
 Claude Code startet diesen Prozess selbst (`claude --dangerously-load-development-channels server:kushim`). Er meldet die
 Fähigkeit `claude/channel` an und schiebt Text, den kushim per `POST /message` schickt, als `notifications/claude/channel`
 in die laufende Sitzung. Antworten für die Stimme gibt Claude über das Werkzeug `sprich`; kushim holt sie per
-`GET /reply?wait=…` ab (kushim bleibt reiner Client, kein zweiter Port). Format laut der in Claude Code 2.1.310 eingebauten Vorlage (ohne das npm-SDK: MCP über stdio ist
+`GET /reply?wait=…` ab (kushim bleibt reiner Client, kein zweiter Port). Ansichten für das Fenster gibt Claude über das
+Werkzeug `zeige` (geprüft in stage/schema.py); sie kommen im selben Abruf als `views` mit. Format laut der in Claude Code 2.1.310 eingebauten Vorlage (ohne das npm-SDK: MCP über stdio ist
 zeilenweises JSON-RPC, die Standardbibliothek reicht).
 
 Sicherheit:
@@ -30,6 +31,7 @@ from typing import Any, Callable, TextIO
 from urllib.parse import parse_qs, urlsplit
 
 from ..safety import killswitch
+from ..stage import schema as stage_schema
 
 BIND_HOST = "127.0.0.1"
 NAME = "kushim"
@@ -50,8 +52,12 @@ INSTRUCTIONS = (
     "(ohne Markdown, ohne Code, ohne Pfade und Listen, höchstens drei Sätze). Bei einer Rückfrage stell sie in `sprich`. "
     'Eine Nachricht mit kind="cancel" heißt: Der Nutzer hat per Stimme abgebrochen. Den laufenden Auftrag nicht fortsetzen, '
     'nichts Neues beginnen, kurz per `sprich` bestätigen. Eine Nachricht mit kind="kill" ist der NOTAUS: sofort aufhören, keine '
-    "Werkzeuge mehr benutzen, nichts mehr vorlesen lassen und auf den Nutzer im Terminal warten."
+    "Werkzeuge mehr benutzen, nichts mehr vorlesen lassen und auf den Nutzer im Terminal warten. "
+    "Wenn Sehen hilft (Rechenweg, Zahlen, Kurse, Tabellen, mehrere Quellen, Systemzustand), rufe zusätzlich das Werkzeug "
+    "`zeige` auf: Es zeigt die Ansicht im kushim-Fenster. `sprich` bleibt trotzdem kurz. Für ein reines Gespräch kein `zeige`. "
+    "Bei Kursen und Preisen immer `stand` angeben und nur wiedergeben, was die Quellen sagen; keine Anlageempfehlung."
 )
+MAX_VIEWS = 10                   # nicht abgeholte Ansichten (zeige); ältere fallen weg
 CANCEL_TEXT = "Abbruch per Stimme: den laufenden Auftrag nicht fortsetzen und nichts Neues beginnen."
 KILL_TEXT = "NOTAUS vom Nutzer: sofort aufhören, keine Werkzeuge mehr benutzen, auf den Nutzer im Terminal warten."
 SPRICH_TOOL = {
@@ -60,6 +66,29 @@ SPRICH_TOOL = {
                     f"keine Codeblöcke, höchstens {MAX_SPOKEN} Zeichen."),
     "inputSchema": {"type": "object", "properties": {"text": {"type": "string", "description": "Der vorzulesende Text"}},
                     "required": ["text"]},
+}
+_TEXT = {"type": "string"}
+ZEIGE_TOOL = {
+    "name": "zeige",
+    "description": ("Zeigt dem Nutzer eine Ansicht im kushim-Fenster (zusätzlich zu `sprich`). Arten: antwort (Text), rechnung "
+                    "(Rechenweg: schritte mit tex, ergebnis), markt (kennzahlen, diagramm, tabelle; `stand` Pflicht), recherche "
+                    "(text, aussagen mit Quellennummern, widerspruch, quellen). Nur Text, kein HTML/Markdown; Formeln als "
+                    "KaTeX-TeX in `tex`; Adressen nur als Text. Dieselbe id aktualisiert die Ansicht, schliessen=true räumt ab. "
+                    "Baustein {\"typ\":\"systemzustand\"} zeigt kushims eigene Systemwerte (CPU, RAM, GPU ...)."),
+    "inputSchema": {"type": "object", "required": ["id"], "additionalProperties": False, "properties": {
+        "id": {"type": "string", "pattern": "^[a-z0-9-]{1,40}$"},
+        "art": {"type": "string", "enum": list(stage_schema.ARTEN)},
+        "titel": {"type": "string", "maxLength": 120},
+        "stand": {"type": "string", "maxLength": 40, "description": "Zeitpunkt der Daten, z. B. 2026-11-12 14:05"},
+        "schliessen": {"type": "boolean"},
+        "bausteine": {"type": "array", "maxItems": stage_schema.MAX_BLOCKS, "description": (
+            "Je Baustein ein Objekt mit typ: text{absaetze:[str]}, liste{punkte:[str],nummeriert}, formel{tex}, "
+            "schritte{schritte:[{text,tex?}]}, ergebnis{text?,tex?}, kennzahlen{werte:[{name,wert,einheit?,aenderung?,"
+            "richtung?:auf|ab|gleich}]}, tabelle{spalten:[str],zeilen:[[str|zahl]]}, diagramm{form:linie|balken,x_titel?,"
+            "y_titel?,reihen:[{name,punkte:[[x,y]]}]}, aussagen{aussagen:[{text,quellen:[nr]}]}, widerspruch{aussagen:"
+            "[{text,quellen:[nr]}]}, quellen{quellen:[{nr,titel,adresse?}]}, hinweis{text}, systemzustand{}"),
+            "items": {"type": "object", "required": ["typ"], "properties": {"typ": {"type": "string", "enum": list(stage_schema.BLOCKS)}}}},
+    }},
 }
 _LINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")
 _CODE = re.compile(r"```.*?```", re.S)
@@ -88,6 +117,7 @@ class Channel:
         self._cond = threading.Condition()
         self._perms: dict[str, dict[str, Any]] = {}      # offene Freigabe-Anfragen von Claude (C1), älteste zuerst
         self._fresh: deque[str] = deque()                 # davon noch nicht an kushim gegeben
+        self._views: deque[dict[str, Any]] = deque(maxlen=MAX_VIEWS)   # geprüfte Ansichten (zeige), noch nicht abgeholt
 
     def say(self, text: str) -> None:
         with self._cond:
@@ -102,8 +132,8 @@ class Channel:
         """(Antworten, neue Freigabe-Anfragen); wartet bis `wait` Sekunden, falls noch nichts da ist."""
         with self._cond:
             self._expire()
-            if not self._replies and not self._fresh and wait > 0:
-                self._cond.wait_for(lambda: bool(self._replies or self._fresh), timeout=min(wait, MAX_WAIT))
+            if not self._replies and not self._fresh and not self._views and wait > 0:
+                self._cond.wait_for(lambda: bool(self._replies or self._fresh or self._views), timeout=min(wait, MAX_WAIT))
                 self._expire()
             texts = list(self._replies)
             self._replies.clear()
@@ -155,9 +185,29 @@ class Channel:
             ids = list(self._perms)
         return sum(self.answer(rid, "deny") for rid in ids)
 
+    def take_views(self) -> list[dict[str, Any]]:
+        """Alle wartenden Ansichten (älteste zuerst), danach ist die Liste leer."""
+        with self._cond:
+            views = list(self._views)
+            self._views.clear()
+            return views
+
+    def show(self, raw: Any) -> dict[str, Any]:
+        """Werkzeug `zeige`: prüfen, ablegen, kurze Rückmeldung an Claude (bei Fehlern nur ein fester Code)."""
+        try:
+            view = stage_schema.validate(raw)
+        except stage_schema.ViewError as e:
+            return {"content": [{"type": "text", "text": f"Ansicht abgelehnt ({e.code}). Bitte Format prüfen."}], "isError": True}
+        with self._cond:
+            self._views.append(view)
+            self._cond.notify_all()
+        return {"content": [{"type": "text", "text": "Wird abgeräumt." if view["schliessen"] else "Wird gezeigt."}]}
+
     def _call_tool(self, params: Any) -> dict[str, Any]:
         params = params if isinstance(params, dict) else {}
         args = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
+        if params.get("name") == "zeige":
+            return self.show(args)
         if params.get("name") != "sprich":
             return {"content": [{"type": "text", "text": "Unbekanntes Werkzeug."}], "isError": True}
         text = spoken_text(args.get("text")) if isinstance(args.get("text"), str) else ""
@@ -195,7 +245,7 @@ class Channel:
         elif method == "notifications/claude/channel/permission_request":
             self.permission_request(msg.get("params"))
         elif method == "tools/list":
-            self._send({"jsonrpc": "2.0", "id": mid, "result": {"tools": [SPRICH_TOOL]}})
+            self._send({"jsonrpc": "2.0", "id": mid, "result": {"tools": [SPRICH_TOOL, ZEIGE_TOOL]}})
         elif method == "tools/call":
             self._send({"jsonrpc": "2.0", "id": mid, "result": self._call_tool(msg.get("params"))})
         elif method == "ping":
@@ -265,9 +315,10 @@ def make_http(channel: Channel, root: Path, token: str, port: int = 0) -> Thread
             if killswitch.is_triggered(root):
                 return self._reply(423, {"error": "kill_switch"})
             texts, perms = channel.take_events(max(0.0, min(wait, MAX_WAIT)) if wait == wait else 0.0)     # NaN wird 0
-            if (texts or perms) and killswitch.is_triggered(root):     # Notaus während des Wartens: nichts mehr weitergeben
+            views = channel.take_views()
+            if (texts or perms or views) and killswitch.is_triggered(root):     # Notaus während des Wartens: nichts mehr weitergeben
                 return self._reply(423, {"error": "kill_switch"})
-            self._reply(200, {"texts": texts, "permissions": perms})
+            self._reply(200, {"texts": texts, "permissions": perms, "views": views})
 
         def do_POST(self) -> None:
             if not self._allowed():

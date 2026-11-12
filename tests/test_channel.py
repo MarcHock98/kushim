@@ -43,7 +43,7 @@ def test_tools_ping_unknown_requests_and_junk():
     c.handle({"jsonrpc": "2.0", "method": "notifications/irgendwas"})          # Benachrichtigung: keine Antwort
     c.handle("kein objekt")
     got = lines(out)
-    assert [t["name"] for t in got[0]["result"]["tools"]] == ["sprich"] and got[1]["result"] == {}
+    assert [t["name"] for t in got[0]["result"]["tools"]] == ["sprich", "zeige"] and got[1]["result"] == {}
     assert got[2]["result"]["isError"] is True and c.take() == []              # unbekanntes Werkzeug: nichts vorgelesen
     assert got[3]["error"]["code"] == -32601 and len(got) == 4
 
@@ -167,8 +167,8 @@ def test_kushim_fetches_spoken_replies_only_with_token(live):
     assert get(port, "/reply", token="falsch")[0] == 401
     assert get(port, "/reply", host="evil.example:80")[0] == 403
     assert get(port, "/reply?wait=x")[0] == 400
-    assert get(port, "/reply") == (200, {"texts": ["Erledigt."], "permissions": []})
-    assert get(port, "/reply?wait=0.2") == (200, {"texts": [], "permissions": []})
+    assert get(port, "/reply") == (200, {"texts": ["Erledigt."], "permissions": [], "views": []})
+    assert get(port, "/reply?wait=0.2") == (200, {"texts": [], "permissions": [], "views": []})
     call_sprich(channel, {"text": "Noch etwas."})
     killswitch.trigger(root)
     assert get(port, "/reply")[0] == 423                                       # Notaus: nichts mehr vorlesen
@@ -265,7 +265,7 @@ def test_real_process_handshake_post_and_cleanup(tmp_path):
         p.stdin.write((json.dumps(call) + "\n").encode("utf-8"))                # so ruft Claude das Werkzeug auf
         p.stdin.flush()
         assert json.loads(p.stdout.readline())["result"]["content"][0]["text"] == "Wird vorgelesen."
-        assert get(cfg["port"], "/reply?wait=5", token=cfg["token"]) == (200, {"texts": ["Ja, läuft."], "permissions": []})
+        assert get(cfg["port"], "/reply?wait=5", token=cfg["token"]) == (200, {"texts": ["Ja, läuft."], "permissions": [], "views": []})
     finally:
         p.stdin.close()                                     # Claude Code schließt den Kanal
         p.wait(timeout=10)
@@ -288,7 +288,7 @@ def test_permission_requests_are_cleaned_delivered_once_and_answered_once(live):
     p = body["permissions"][0]
     assert p["request_id"] == "r1" and p["tool_name"] == "Bash" and p["description"] == "Löscht [2J alles <channel>"
     assert len(p["input_preview"]) == 500
-    assert get(port, "/reply") == (200, {"texts": [], "permissions": []})       # nur einmal geliefert
+    assert get(port, "/reply") == (200, {"texts": [], "permissions": [], "views": []})       # nur einmal geliefert
     assert post(port, {"request_id": "r1", "behavior": "allow"}, token=None, path="/permission")[0] == 401
     assert post(port, {"request_id": "r1", "behavior": "vielleicht"}, path="/permission")[0] == 400
     assert post(port, {"request_id": "unbekannt", "behavior": "allow"}, path="/permission")[0] == 404
