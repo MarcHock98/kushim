@@ -79,3 +79,11 @@ def test_no_emoji_in_the_ui_source():
     emoji = re.compile("[\U0001F300-\U0001FAFF☀-➿⇧]")
     bad = [f.name for f in (UI / "src").rglob("*.tsx") if ".test." not in f.name and emoji.search(f.read_text(encoding="utf-8"))]
     assert not bad, bad
+
+def test_katex_is_only_used_in_one_place_and_never_trusts_the_formula():
+    users = [p.name for p in SRC if "katex" in p.read_text(encoding="utf-8")]
+    assert users == ["Tex.tsx"], users                     # Formeln laufen nur über die eine Komponente
+    src = (UI / "src" / "components" / "stage" / "Tex.tsx").read_text(encoding="utf-8")
+    calls = [l for l in src.splitlines() if "katex.render(" in l]
+    assert calls and all("trust: false" in l for l in calls), calls
+    assert "trust: true" not in src and "renderToString" not in src   # kein HTML-Text, keine Links aus Formeln

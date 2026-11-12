@@ -79,6 +79,13 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
 - Nächster Schritt: **Stimmklon mit Chatterbox** (vom Nutzer freigegeben, Auflage: beim Klonen nichts nach außen; Loop erst neu starten, wenn der Nutzer es will). Danach Recherche in die Sprach-Pipeline hängen, Claude entwickelt Projekt (Teile 1 bis 4 laut `docs/claude-cli-plan.md`, vorher Entscheidungen des Nutzers: Rechteprofil, Budget/Zeit, Ordner), Modellwechsel Teil 2, UI-Setup Teil 2, Timer/Notizen. Nutzer: Live-Test `kushim research` (echter Claude-Aufruf, bisher nicht gemacht), Zweite-Person-Test der Sprecher-Prüfung
 - Branches bereit zum Push durch den Nutzer: master, routine/p1-wake, routine/p1-stt, routine/p1-speaker, routine/p1-dialog, routine/p1-tts, routine/p2-api-core, routine/p2-approvals, routine/p4-bandit, routine/p2-loopback, routine/p1-llm
 
+- 2026-11-12 Loop: Schalter „Modus C“ entfernt (Commit auf master). **P2-Tests der Oberfläche** (Branch
+  `routine/p2-view-tests`, gemerged, nicht gepusht): 16 Vitest-Tests für die Ansichten antwort, rechnung, markt, recherche,
+  Diagramm, Formprüfung, Live-Update, Reiter, Schließen, Liste „Gezeigt“; Regeltest: KaTeX nur in `Tex.tsx`, nur mit
+  `trust: false` (Gegenprobe mit `trust: true` schlägt an). 552 Python- und 89 UI-Tests grün. Nicht geprüft: Screenshots,
+  echtes Tauri-Fenster, GPU-Last. Nächster Schritt: diese drei Prüfungen (Fenster braucht den Nutzer am Rechner), danach
+  Detailplan P3 zur Freigabe vorlegen.
+
 ## Slack
 - Nutzer-ID / Kanal-ID: nicht verwendet. Verbundenes Slack-Konto hat andere Mail (Arbeits-Workspace) als die Git-/Claude-Mail, Empfänger unsicher, daher nichts gesendet
 
