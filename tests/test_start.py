@@ -143,7 +143,7 @@ def test_start_launches_claude_in_the_only_folder_then_talks(env, capsys):
     env.mp.setattr(pf, "kill_tree", lambda pid: env.window.close())
     assert start(env) == 0
     assert env.launched == [(EXE, env.proj.resolve())]
-    assert env.talked == [["talk", "--ui", "--claude-folder", str(env.proj.resolve())]]   # Standard: mit Oberfläche           # Arbeitsordner für Freigaben (C4)
+    assert env.talked == [["talk", "--ui"]]                                            # Standard: mit Oberfläche
     assert env.stopped == [EXE] and env.window.closed.is_set()                           # kushim endet: Claude und Fenster auch
     out = capsys.readouterr().out
     assert "Entwicklungs-Channel bestätigen" in out and "beendet sich alles" in out
@@ -197,7 +197,7 @@ def test_start_without_ui_on_request(env, capsys):
     import kushim.procflags as pf
     env.mp.setattr(pf, "kill_tree", lambda pid: env.window.close())
     assert start(env, no_ui=True) == 0
-    assert env.talked == [["talk", "--claude-folder", str(env.proj.resolve())]]
+    assert env.talked == [["talk"]]
 
 
 def test_ui_window_opens_once_the_api_is_ready_and_not_after_the_end(tmp_path, capsys):

@@ -9,22 +9,22 @@ from .memory.keys import get_or_create_key, store_key
 from .memory.migrate import backup, migrate
 
 
-HELP = """kushim: persönlicher, lokaler Assistent. Alles läuft auf diesem Rechner.
+HELP = """kushim: Sprachassistent mit Claude Code als Gehirn. Wake Word, Spracherkennung und Stimme laufen lokal.
 
-Täglich
-  kushim start [ordner]        Claude Code mit kushim-Channel im freigegebenen Ordner öffnen und per Wake Word sprechen
-  kushim talk                  Sprechen per Wake Word (Claude Code mit Channel muss schon laufen)
-                               [--mic NAME] [--out NAME] [--wake-words "hey kushim,kushim"]
+Starten
+  kushim                       Alles starten: Claude Code (eigenes Fenster), Zuhören und Oberfläche
+  kushim start [ordner]        Dasselbe in einem bestimmten freigegebenen Ordner [--no-ui] [--mic NAME] [--out NAME]
   kushim kill                  NOTAUS: stoppt alle kushim-Dienste
   kushim resume                Notaus bewusst aufheben
 
 Mikrofon
   kushim voice level           Mikrofonpegel messen, Schwellen vorschlagen [--apply] [--mic NAME]
 
-Oberfläche und Grafikkarte
+Einzelteile (startet `kushim` sonst selbst)
+  kushim talk                  Nur Zuhören (Claude Code mit Channel muss schon laufen) [--wake-words "hey kushim,kushim"]
+  kushim app                   Nur die Oberfläche öffnen (--no-voice: ohne Mikrofon)
+  kushim serve                 Nur die API für die Oberfläche (127.0.0.1, Port/Token in run/api.json)
   kushim gpu                   Grafikkarten zeigen und welche Whisper nutzt
-  kushim app                   Die Oberfläche öffnen (startet Sprache und API selbst; --no-voice nur Oberfläche)
-  kushim serve                 Backend-API für die Oberfläche starten (nur 127.0.0.1, Port/Token in run/api.json)
 
 Gedächtnis und Schlüssel
   kushim memory init           Vault anlegen (erzeugt auch den Schlüssel)
@@ -38,9 +38,9 @@ Prüfen und Hilfe
   kushim claude [check|enable|disable]  Claude CLI und Anmeldung prüfen; Modus C ein/aus
   kushim claude show           Die laufende Claude-Sitzung von kushim wieder in einem Fenster zeigen
   kushim claude folders|add|remove  Sichere Arbeitsordner für Claude verwalten
-  kushim claude approvals           Protokoll der Freigaben (Stimme, Oberfläche)
+  kushim claude approvals           Protokoll der Freigaben (Oberfläche)
   kushim doctor                Prüft, ob alles installiert und eingerichtet ist
-  kushim setup                 Stand der Einrichtung: Systemcheck, Stimme, Wake Words, Notaus
+  kushim setup                 Stand der Einrichtung: Systemcheck, Mikrofon, Wake Words, Notaus
   kushim help                  Diese Übersicht
   kushim <befehl> --help       Optionen eines Befehls
 
@@ -158,7 +158,6 @@ def _start(args, cfg: Config, root) -> int:
     threading.Thread(target=watch_window, daemon=True).start()
     with_ui = not getattr(args, "no_ui", False)       # Standard: mit Oberfläche (Wunsch des Nutzers 2026-11-11)
     talk = ["talk"] + (["--mic", args.mic] if args.mic else []) + (["--out", args.out] if args.out else []) + (["--ui"] if with_ui else [])
-    talk += ["--claude-folder", str(folder)]          # nur darin sind Datei-Freigaben per Stimme möglich (C4)
     ui_proc: list = []
     if with_ui:
         def ui_closed():
@@ -178,25 +177,6 @@ def _start(args, cfg: Config, root) -> int:
         if window.poll() is None:
             kill_tree(window.pid)
         print("Claude-Sitzung beendet (der Verlauf bleibt in Claude Code erhalten).")
-
-
-def _approved_folder(cfg: Config, raw: str | None):
-    """Arbeitsordner für Datei-Freigaben per Stimme: nur ein freigegebener, gültiger Ordner (`kushim claude add`), sonst None
-    (dann sind Datei-Freigaben per Stimme gesperrt)."""
-    from .claude_cli import folders as cfolders
-    if not raw:
-        return None
-    try:
-        path = cfolders.validate_path(raw, cfolders.vault_path(cfg.memory_location))
-    except ValueError:
-        return None
-    known = []
-    for f in cfolders.parse(cfg.claude_folders):
-        try:
-            known.append(cfolders.validate_path(str(f.path), cfolders.vault_path(cfg.memory_location)))
-        except ValueError:
-            pass
-    return path if path in known else None
 
 
 def _open_ui_window(root, done, procs: list, popen=None, wait=None, on_close=None) -> None:
@@ -330,6 +310,10 @@ def _vault(cfg: Config):
 
 
 def _main(argv: list[str] | None = None) -> int:
+    import sys
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if not argv:                                       # einfach `kushim`: alles starten
+        argv = ["start"]
     p = argparse.ArgumentParser(prog="kushim")
     sub = p.add_subparsers(dest="cmd", required=True)
     mem = sub.add_parser("memory", help="Vault anlegen, Info, Backup, Umzug").add_subparsers(dest="sub", required=True)
@@ -356,7 +340,6 @@ def _main(argv: list[str] | None = None) -> int:
     t.add_argument("--out", help="Namensteil des Ausgabegeräts, sonst Systemstandard")
     t.add_argument("--ui", action="store_true", help="Backend-API für die Oberfläche mitstarten (127.0.0.1): Freigabe-Leiste, Zustand, Notaus")
     t.add_argument("--wake-words", help="Komma-getrennt, überschreibt wakewords.toml nur für diesen Start (z. B. \"hey kushim,kushim\")")
-    t.add_argument("--claude-folder", help=argparse.SUPPRESS)   # setzt `kushim start`: Arbeitsordner für Freigaben per Stimme (C4)
     vo = sub.add_parser("voice", help="Mikrofonpegel messen und Schwellen vorschlagen").add_subparsers(dest="sub", required=True)
     lv = vo.add_parser("level", help="Mikrofonpegel messen und Schwellen fürs Sprechen/Unterbrechen vorschlagen")
     lv.add_argument("--mic", help="Namensteil des Mikrofons, sonst Systemstandard")
@@ -533,7 +516,7 @@ def _main(argv: list[str] | None = None) -> int:
             from .voice.talklog import TalkLog
             tasks = TaskRegistry()
             talklog = TalkLog(root / "run" / "talk.log")       # Gesprächsprotokoll zur Fehlersuche (lokal, ohne Audio)
-            talklog.write("start", folder=bool(args.claude_folder))
+            talklog.write("start")
 
             def note(s: str) -> None:
                 print(f"[Hinweis] {s}")
@@ -544,9 +527,7 @@ def _main(argv: list[str] | None = None) -> int:
                                                   on_note=note,
                                                   wake_names=[w.name for w in wcfg.enabled()],
                                                   whisper_device=plan.whisper_device,
-                                                  whisper_index=plan.whisper_index,
-                                                  claude_folder=_approved_folder(cfg, args.claude_folder),
-                                                  approval_log=_approval_log(cfg))
+                                                  whisper_index=plan.whisper_index)
             pipeline.handle = talklog.timed(pipeline.handle)    # jedes Ergebnis mit Dauer ins Protokoll
             raw_ack = ack
 

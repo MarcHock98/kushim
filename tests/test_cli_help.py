@@ -35,3 +35,9 @@ def test_help_names_only_commands_that_exist():
     import re
     named = set(re.findall(r"^  kushim ([a-z]+)", cli.HELP, re.M))
     assert named and named <= top_level_commands(), named - top_level_commands()
+
+
+def test_plain_kushim_starts_everything(monkeypatch):
+    seen = []
+    monkeypatch.setattr(cli, "_start", lambda args, cfg, root: seen.append(args.folder) or 0)
+    assert cli.main([]) == 0 and seen == [None]
