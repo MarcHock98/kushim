@@ -47,7 +47,8 @@ def test_project_mcp_servers_are_local_only():
 
 def test_settings_keep_egress_switches():
     s = json.loads((CLAUDE / "settings.json").read_text(encoding="utf-8"))
-    assert s["env"]["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] == "1"      # keine Telemetrie, Fehlerberichte, Auto-Updates
+    # Telemetrie-Sperre (CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC) steht hier nicht mehr: vom Nutzer am 2026-11-12 entfernt,
+    # damit Remote Control in diesem Projekt geht. `kushim start` setzt sie weiter für die eigene Claude-Sitzung (launch.py).
     assert s.get("enableAllProjectMcpServers") is False
     assert CONNECTORS <= set(s["permissions"]["deny"])
     assert not s["permissions"].get("allow"), "Erlaubnisse gehören nicht in die Projekt-Einstellungen"
