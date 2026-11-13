@@ -45,5 +45,7 @@ Design „Jarvin Cockpit“ (Artifact des Nutzers), Details und Pläne: `docs/ui
 - Zwei Wackler-Tests behoben (nur Tests geändert): Der 413-Test im Channel schickt keinen großen Körper mehr mit (der Server
   schloss mitten im Senden, 1 von 400 Läufen brach ab); der UI-Test zur Knopfsperre prüft im selben Schritt, in dem die
   Leiste erscheint. Beim UI-Test ist die Ursache plausibel, aber nicht nachgestellt.
+- **P3b:** Detailplan `docs/ui-p3b-plan.md` liegt zur Freigabe vor (Weg A ohne Dateizugriff empfohlen). Phase D der Roadmap ist
+  geschlossen (2026-11-13).
 - Nutzerregel: bei UI-Arbeit erst ein Plan, dann die Freigabe, dann der Code.
 - Z3 für den Nutzer: `py scripts\claude_setup.py --project . --statusline --test-hook`.

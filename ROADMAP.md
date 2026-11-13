@@ -156,10 +156,13 @@ den kushim-Channel (lokaler MCP-Server, stdio). kushim (Python) spricht mit dem 
 
 ## Phase D: Modell und Verbrauch
 Claude Code zeigt beides schon selbst (`/model`, `/usage`, Statuszeile). Hier nur die Sprach-Seite:
-- [ ] D1 Statuszeile von Claude Code (`statusLine` in den Benutzer-Einstellungen) zeigt Modell, Kosten der Sitzung und kushim-Zustand
+> **Geschlossen 2026-11-13** (Empfehlung der Routine, der Nutzer sagte „mach weiter“; jederzeit wieder zu öffnen): D1 gilt
+> durch Z4 als erledigt, ohne kushim-Zustand (die Zeile wird nur nach jeder Antwort neu gezeichnet und wäre veraltet).
+> D2 und D3 entfallen: Nach dem Modell kann man Claude fragen, den Verbrauch zeigt die Statuszeile.
+- [x] D1 (durch Z4, ohne kushim-Zustand) Statuszeile von Claude Code (`statusLine` in den Benutzer-Einstellungen) zeigt Modell, Kosten der Sitzung und kushim-Zustand
       (hört / denkt / spricht / gesperrt); Einstellung nur mit Ja des Nutzers schreiben
-- [ ] D2 Sprachbefehle „welches Modell?“, „wie viel Verbrauch?“ werden lokal aus den Statusdaten beantwortet
-- [ ] D3 Modell per Stimme wechseln („nimm Sonnet“): prüfen, ob ein Channel `/model` auslösen darf; sonst nur Hinweis
+- [x] ~~D2~~ (entfällt, siehe oben) Sprachbefehle „welches Modell?“, „wie viel Verbrauch?“ werden lokal aus den Statusdaten beantwortet
+- [x] ~~D3~~ (entfällt, siehe oben) Modell per Stimme wechseln („nimm Sonnet“): prüfen, ob ein Channel `/model` auslösen darf; sonst nur Hinweis
 
 ## Phase E: Eigene Oberfläche (optional, erst nach B–D entscheiden)
 - [x] E1 (2026-11-12: Nutzer entschied „UI bleibt“, Pläne `docs/ui-dynamic-plan.md`, `docs/ui-p2-plan.md`) **Entscheidung (Nutzer):** Reicht Claude Code als Oberfläche plus Statuszeile, oder die vorhandene Tauri-UI (`ui/`)
