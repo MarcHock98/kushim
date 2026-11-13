@@ -49,7 +49,9 @@ Design „Jarvin Cockpit“ (Artifact des Nutzers), Details und Pläne: `docs/ui
   Dateinamen mit Zugangsdaten. kushim liest selbst keine Dateien; „lies mir die Datei und gib eine Übersicht“ erledigt Claude Code
   (Hinweis in `INSTRUCTIONS`). Phase D der Roadmap ist geschlossen (2026-11-13). Offen: echter Aufruf durch Claude Code,
   Tauri-Fenster, nächste UI-Phasen P4 bis P6 (je erst Plan, dann OK).
-- **P4:** Detailplan `docs/ui-p4-plan.md` liegt zur Freigabe vor (P4a ohne Dateizugriff empfohlen: Szene aus einfachen Körpern
-  und Plan aus Linien über `zeige`; P4b mit echten Dateien später und nur auf Wunsch). Sechs Entscheidungen am Ende des Plans.
+- **P4a ist gebaut** (`docs/ui-p4-plan.md`, Abschnitt 8): 3D-Szene aus einfachen Körpern (`szene3d`, art `modell`) mit Drehen,
+  Schnitt, Vorher/Nachher und Objektliste, und Plan aus Linien, Kreisen, Maßen (`plan2d`, art `plan`) mit Ebenen und Zoom.
+  Fehler in einem Baustein leeren das Fenster nicht mehr (`BlockGuard`). Offen: GPU-Last des Betrachters neben Whisper,
+  Tauri-Fenster, echter Aufruf durch Claude Code; P4b (echte `.stl`/`.glb`-Dateien) nur auf Wunsch; P5 und P6 je erst Plan.
 - Nutzerregel: bei UI-Arbeit erst ein Plan, dann die Freigabe, dann der Code.
 - Z3 für den Nutzer: `py scripts\claude_setup.py --project . --statusline --test-hook`.

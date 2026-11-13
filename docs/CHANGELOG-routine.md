@@ -71,3 +71,4 @@ Format: Datum, Datei, Grund (ein Satz).
 - 2026-11-12, `.claude/skills/kushim-routine/SKILL.md`: Fallstricke „tmp_path unter AppData“ und „npm ci nach UI-Merge“ ergänzt (beide kosteten in diesem Durchlauf einen roten Testlauf).
 - 2026-11-12, `.claude/skills/kushim-routine/SKILL.md`: Vorgehen „UI im Browser ansehen“ ergänzt (Demo-Dauer, neu laden, Überlauf messen); `.claude/launch.json` für den Dev-Server angelegt.
 - 2026-11-12, `.claude/skills/kushim-routine/SKILL.md`: Fallstrick „feste Importliste von stage/schema.py“ ergänzt (der Egress-Test schlug beim Countdown an).
+- 2026-11-13, `.claude/skills/kushim-routine/SKILL.md`: Fallstricke „Demodaten wie das Backend“ und „Hex-Farben in der UI“ ergänzt (beide traten beim Bau von P4a auf).

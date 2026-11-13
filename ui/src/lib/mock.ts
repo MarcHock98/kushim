@@ -64,6 +64,8 @@ export class MockSocket implements Socket {
         { typ: "countdown", titel: "Tee zieht", ende: new Date(Date.now() + 4 * 60000).toISOString() }] });
     turn(68000, "Was schreibt Anna, und antworte ihr.", "Hier die Mail und mein Entwurf.", DEMO_VIEWS[5]);
     turn(79000, "Lies mir rechnen.py und gib mir eine Übersicht.", "Zwei Funktionen, neu ist die Prüfung auf leere Eingaben.", DEMO_VIEWS[6]);
+    turn(90000, "Zeig mir das Regal in 3D, vorher und nachher.", "Hier ist das Regal, der neue Boden ist hervorgehoben.", DEMO_VIEWS[7]);
+    turn(101000, "Zeichne den Grundriss vom Wohnzimmer.", "Hier ist der Grundriss mit Maßen.", DEMO_VIEWS[8]);
   }
 
   send(data: string): void {
@@ -195,4 +197,31 @@ export const DEMO_VIEWS: Record<string, unknown>[] = [
       { kopf: "rechne", zeilen: [
         { art: "gleich", text: "def rechne(a, b):" }, { art: "neu", text: "    if a is None or b is None:" },
         { art: "neu", text: "        return 0" }, { art: "weg", text: "    return a + b" }, { art: "neu", text: "    return max(a, b)" } ] } ] } ] },
+  { id: "regal", art: "modell", titel: "Regal, vorher und nachher (Beispiel)", bausteine: [
+    { typ: "szene3d", einheit: "cm", hervorheben: ["Boden 4", "Boden 3"], beschriftungen: [{ objekt: "Boden 4", text: "neu: oberster Boden" }, { objekt: "Rückwand", text: "neu: stabilisiert" }], szenen: [
+      { name: "vorher", objekte: [
+        { form: "box", name: "Seite links", masse: [2, 180, 30], position: [-39, 90, 0], drehung: [0, 0, 0], farbe: "text" },
+        { form: "box", name: "Seite rechts", masse: [2, 180, 30], position: [39, 90, 0], drehung: [0, 0, 0], farbe: "text" },
+        { form: "box", name: "Boden 1", masse: [76, 2, 30], position: [0, 2, 0], drehung: [0, 0, 0], farbe: "amber" },
+        { form: "box", name: "Boden 2", masse: [76, 2, 30], position: [0, 60, 0], drehung: [0, 0, 0], farbe: "amber" },
+        { form: "box", name: "Boden 3", masse: [76, 2, 30], position: [0, 118, 0], drehung: [0, 0, 0], farbe: "amber" } ] },
+      { name: "nachher", objekte: [
+        { form: "box", name: "Seite links", masse: [2, 180, 30], position: [-39, 90, 0], drehung: [0, 0, 0], farbe: "text" },
+        { form: "box", name: "Seite rechts", masse: [2, 180, 30], position: [39, 90, 0], drehung: [0, 0, 0], farbe: "text" },
+        { form: "box", name: "Boden 1", masse: [76, 2, 30], position: [0, 2, 0], drehung: [0, 0, 0], farbe: "amber" },
+        { form: "box", name: "Boden 2", masse: [76, 2, 30], position: [0, 60, 0], drehung: [0, 0, 0], farbe: "amber" },
+        { form: "box", name: "Boden 3", masse: [76, 2, 30], position: [0, 130, 0], drehung: [0, 0, 0], farbe: "amber" },
+        { form: "box", name: "Boden 4", masse: [76, 2, 30], position: [0, 178, 0], drehung: [0, 0, 0], farbe: "arc" },
+        { form: "box", name: "Rückwand", masse: [76, 176, 1], position: [0, 90, -15], drehung: [0, 0, 0], farbe: "gedaempft" } ] } ] } ] },
+  { id: "grundriss", art: "plan", titel: "Grundriss Wohnzimmer (Beispiel)", bausteine: [
+    { typ: "plan2d", einheit: "cm", ebenen: ["Wände", "Möbel", "Maße"], elemente: [
+      { art: "rechteck", ebene: "Wände", x: 0, y: 0, b: 500, h: 400 },
+      { art: "linie", ebene: "Wände", von: [200, 0], bis: [200, 120] },
+      { art: "bogen", ebene: "Wände", x: 200, y: 0, r: 90, von: 0, bis: 90 },
+      { art: "rechteck", ebene: "Möbel", x: 30, y: 250, b: 200, h: 90 },
+      { art: "kreis", ebene: "Möbel", x: 380, y: 200, r: 55 },
+      { art: "text", ebene: "Möbel", x: 60, y: 285, text: "Sofa" },
+      { art: "text", ebene: "Möbel", x: 345, y: 195, text: "Tisch" },
+      { art: "mass", ebene: "Maße", von: [0, -30], bis: [500, -30] },
+      { art: "mass", ebene: "Maße", von: [530, 0], bis: [530, 400], text: "4 m (Wunsch)" } ] } ] },
 ];

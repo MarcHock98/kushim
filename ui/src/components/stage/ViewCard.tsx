@@ -1,14 +1,26 @@
-import type { ReactNode } from "react";
+import { Component, type ReactNode } from "react";
 import { ART_LABEL, type Block, type View } from "../../lib/stage";
 import { IconCross } from "../Icons";
 import { SystemPanel, type SysData } from "../SystemPanel";
 import { Chart } from "./Chart";
 import { Change, Document } from "./Doc";
+import { Model3D } from "./Model3D";
+import { Plan2D } from "./Plan2D";
 import { Countdown, Mail, MailDraft, Progress, Schedule, Tasks } from "./Live";
 import { Tex } from "./Tex";
 
 // Eine Ansicht von Claude auf der Bühne. Layout je Art (antwort, rechnung, markt, recherche, auftrag, mail), Bausteine nur als Text.
 // Quellen-Adressen sind Text, kein Link: nichts öffnet sich, nichts wird nachgeladen.
+
+/** Fängt einen Fehler in einem einzelnen Baustein ab: Er zeigt dann einen Hinweis, der Rest der Oberfläche läuft weiter.
+ *  (Das Backend prüft jede Ansicht, aber ein Darstellungsfehler darf nie das ganze Fenster leeren.) */
+class BlockGuard extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  render() {
+    return this.state.failed ? <p className="v-note" role="alert">Dieser Teil der Ansicht konnte nicht angezeigt werden.</p> : this.props.children;
+  }
+}
 
 const num = (v: string | number) => (typeof v === "number" ? v.toLocaleString("de-DE", { maximumFractionDigits: 2 }) : v);
 const ARROW: Record<string, string> = { auf: "▲ steigt", ab: "▼ fällt", gleich: "► unverändert" };
@@ -76,6 +88,8 @@ function BlockView({ b, sys, sysNo }: { b: Block; sys: SysData | null; sysNo: bo
     case "countdown": return <Countdown b={b} />;
     case "dokument": return <Document b={b} />;
     case "aenderung": return <Change b={b} />;
+    case "szene3d": return <Model3D b={b} />;
+    case "plan2d": return <Plan2D b={b} />;
   }
 }
 
@@ -91,9 +105,9 @@ export function ViewCard({ view, sys, sysNo, onClose }: { view: View; sys: SysDa
       </div>
       {view.art === "markt" && !view.stand && <p className="v-note">Stand: unbekannt</p>}
       <div className="view-body">
-        <div className="view-main">{main.map((b, i) => <BlockView key={i} b={b} sys={sys} sysNo={sysNo} />)}</div>
+        <div className="view-main">{main.map((b, i) => <BlockGuard key={`${i}-${view.seq}`}><BlockView b={b} sys={sys} sysNo={sysNo} /></BlockGuard>)}</div>
         {view.art === "recherche" && sources.length > 0 && (
-          <aside className="view-aside" aria-label="Quellen">{sources.map((b, i) => <BlockView key={i} b={b} sys={sys} sysNo={sysNo} />)}</aside>
+          <aside className="view-aside" aria-label="Quellen">{sources.map((b, i) => <BlockGuard key={`${i}-${view.seq}`}><BlockView b={b} sys={sys} sysNo={sysNo} /></BlockGuard>)}</aside>
         )}
       </div>
       {view.art === "markt" && <p className="v-note">Nur zur Information, keine Anlageberatung.</p>}

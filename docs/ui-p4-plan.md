@@ -1,7 +1,7 @@
 # Plan P4: 3D-Modelle und Pläne ansehen
 
 Stand 2026-11-13. Teil von `docs/ui-dynamic-plan.md`, Fortsetzung von P3 (`docs/ui-p3-plan.md`, `docs/ui-p3b-plan.md`).
-**Noch nicht gebaut, zur Freigabe.** Ziel: Claude Code kann ein Modell oder einen Plan im kushim-Fenster zeigen. Man dreht,
+**P4a ist gebaut (2026-11-13, vom Nutzer freigegeben: „mach einfach mal“); P4b ist offen.** Ziel: Claude Code kann ein Modell oder einen Plan im kushim-Fenster zeigen. Man dreht,
 zoomt, schneidet, schaltet Ebenen und sieht, was sich geändert hat (vorher und nachher).
 
 ## 1. Vorschlag: P4 in zwei Teile schneiden (wie P3)
@@ -113,3 +113,16 @@ Du willst eine echte Datei (`.stl`, `.glb`) ansehen oder die Ansicht soll sich *
    in dem die Szene die ganze Bühne füllt? Empfehlung: erst die Karte, Vollbild später, wenn sie dir zu klein ist.
 5. **Einheiten**: Ohne Angabe von Claude steht „Einheit unbekannt“. Recht so?
 6. **P4b**: Willst du echte CAD-Dateien ansehen? Wenn ja, welche Formate (Empfehlung `.stl` und `.glb`; `.dxf` für Pläne später)?
+
+## 8. Stand nach dem Bau von P4a
+- Der Nutzer antwortete nur „mach einfach mal“: Es gelten alle Empfehlungen aus Abschnitt 7 (erst P4a, Schnitt und Maße dabei,
+  Ansicht in der Karte, „Einheit unbekannt“ ohne Angabe). P4b (echte Dateien) wurde nicht gewünscht und bleibt offen.
+- Gebaut: Arten `modell` und `plan`, Bausteine `szene3d` und `plan2d` (`stage/schema.py`), `ui/src/lib/scene.ts` (Rechenlogik),
+  `Model3D.tsx` (three.js, nur Rendern bei Änderung, Drehen mit Maus/Touch/Tasten/Knöpfen, Schnitt, Überblenden, Vergleich in Worten,
+  Objektliste), `Plan2D.tsx` (eigenes SVG, Ebenen, Zoom und Verschieben, Maßlinien).
+- Abweichungen: höchstens 800 statt 1500 Plan-Elemente (die Ansicht darf höchstens 48 KB groß sein); Beschriftungen stehen in der
+  Objektliste statt im 3D-Bild; die Kamera ist eine eigene kleine Bahn statt `OrbitControls` (Tasten und Knöpfe ohne Zusatzcode).
+- Beim Ansehen im Browser gefunden und behoben: Unvollständige Demodaten ließen die ganze Oberfläche leer werden. Jetzt fängt
+  `BlockGuard` in `ViewCard.tsx` Fehler je Baustein ab (Hinweis statt leerem Fenster), mit Test.
+- Geprüft: 671 Python-Tests, 120 UI-Tests, Mock-Demo im Browser (echtes WebGL: Regal vorher/nachher, Schnitt, Drehen; Plan mit
+  Ebenen) bei 800 und 1440 px, 375 px nur als Bild. Nicht geprüft: GPU-Last neben Whisper, Tauri-Fenster, echter Aufruf durch Claude Code.
