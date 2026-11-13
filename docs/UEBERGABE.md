@@ -53,5 +53,7 @@ Design „Jarvin Cockpit“ (Artifact des Nutzers), Details und Pläne: `docs/ui
   Schnitt, Vorher/Nachher und Objektliste, und Plan aus Linien, Kreisen, Maßen (`plan2d`, art `plan`) mit Ebenen und Zoom.
   Fehler in einem Baustein leeren das Fenster nicht mehr (`BlockGuard`). Offen: GPU-Last des Betrachters neben Whisper,
   Tauri-Fenster, echter Aufruf durch Claude Code; P4b (echte `.stl`/`.glb`-Dateien) nur auf Wunsch; P5 und P6 je erst Plan.
+- **P6:** Detailplan `docs/ui-p6-plan.md` liegt zur Freigabe vor (P6a: Vergleich, Zeitstrahl, Übersetzung, Lernkarten, Quiz, Anleitung;
+  P6b: Diagramme wie Abläufe und Mindmaps mit eigener Anordnung). Sechs Entscheidungen am Ende, u. a. Ton für Timer.
 - Nutzerregel: bei UI-Arbeit erst ein Plan, dann die Freigabe, dann der Code.
 - Z3 für den Nutzer: `py scripts\claude_setup.py --project . --statusline --test-hook`.
