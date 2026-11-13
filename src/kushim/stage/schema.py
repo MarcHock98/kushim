@@ -14,7 +14,7 @@ from typing import Any, Callable
 
 MAX_JSON = 48 * 1024
 ID = re.compile(r"[a-z0-9-]{1,40}")
-ARTEN = ("antwort", "rechnung", "markt", "recherche", "auftrag", "mail")
+ARTEN = ("antwort", "rechnung", "markt", "recherche", "auftrag", "mail", "dokument")
 MAX_BLOCKS = 12
 RICHTUNG = ("auf", "ab", "gleich")
 
@@ -262,12 +262,70 @@ def _countdown(b: dict[str, Any], c: str) -> dict[str, Any]:
     return {"titel": _text(b.get("titel"), 80, c), "ende": raw}
 
 
+SECRET_SEGMENT = re.compile(
+    r"(\.env.*|.*\.(pem|key|pfx|p12|kdbx|keystore|ppk)|id_(rsa|ed25519|ecdsa|dsa).*|credentials.*|.*(secret|password|passwd).*|tokens?(\.(txt|json|env|key|yaml|yml|toml))?|"
+    r"\.netrc|\.npmrc|\.pypirc|channel\.json|api\.json|\.ssh|\.aws|\.gnupg)", re.I)
+MAX_DOC_LINES = 400
+LINE_CHARS = 400
+
+
+def _file_name(v: Any, c: str) -> str:
+    """Beschriftung einer Datei (nur Text, es wird nichts geöffnet). Namen, die nach Zugangsdaten aussehen, werden abgelehnt:
+    ein Netz gegen Versehen, kein Beweis (den Inhalt durchsucht niemand nach Geheimnissen)."""
+    name = _text(v, 200, c)
+    parts = [p for p in re.split(r"[\\/]", name) if p]
+    if any(SECRET_SEGMENT.fullmatch(p) for p in parts):
+        raise ViewError(c)
+    return name
+
+
+def _code_line(v: Any, c: str) -> str:
+    """Eine Zeile Dateitext: Einrückung bleibt (Tabs werden zu vier Leerzeichen), Steuer- und Richtungszeichen werden zu
+    Leerzeichen, Leerzeilen sind erlaubt."""
+    if not isinstance(v, str):
+        raise ViewError(c)
+    line = "".join(ch if ch.isprintable() else " " for ch in v.replace(chr(9), "    ")).rstrip()
+    if len(line) > LINE_CHARS:
+        raise ViewError(c)
+    return line
+
+
+def _dokument(b: dict[str, Any], c: str) -> dict[str, Any]:
+    _fields(b, {"name", "ausschnitt", "zeilen", "gliederung"}, c)
+    lines = [_code_line(z, c) for z in _list(b.get("zeilen"), 1, MAX_DOC_LINES, c)]
+    outline = [_text(g, 120, c) for g in _list(b.get("gliederung", []), 0, 30, c)]
+    return {"name": _file_name(b.get("name"), c), "ausschnitt": _text(b.get("ausschnitt"), 80, c, optional=True),
+            "zeilen": lines, "gliederung": outline}
+
+
+ZEILEN_ART = ("gleich", "neu", "weg")
+
+
+def _aenderung(b: dict[str, Any], c: str) -> dict[str, Any]:
+    _fields(b, {"name", "zusammenfassung", "bloecke"}, c)
+    blocks, total = [], 0
+    for blk in _list(b.get("bloecke"), 1, 20, c):
+        if not isinstance(blk, dict) or set(blk) - {"kopf", "zeilen"}:
+            raise ViewError(c)
+        lines = []
+        for z in _list(blk.get("zeilen"), 1, MAX_DOC_LINES, c):
+            if not isinstance(z, dict) or set(z) - {"art", "text"} or z.get("art") not in ZEILEN_ART:
+                raise ViewError(c)
+            lines.append({"art": z["art"], "text": _code_line(z.get("text", ""), c)})
+        total += len(lines)
+        if total > MAX_DOC_LINES:
+            raise ViewError(c)
+        blocks.append({"kopf": _text(blk.get("kopf"), 120, c, optional=True), "zeilen": lines})
+    return {"name": _file_name(b.get("name"), c), "zusammenfassung": _text(b.get("zusammenfassung"), 400, c, optional=True),
+            "bloecke": blocks}
+
+
 BLOCKS: dict[str, Callable[[dict[str, Any], str], dict[str, Any]]] = {
     "text": _text_block, "liste": _liste, "formel": _formel, "schritte": _schritte, "ergebnis": _ergebnis,
     "kennzahlen": _kennzahlen, "tabelle": _tabelle, "diagramm": _diagramm, "aussagen": _aussagen,
     "widerspruch": _aussagen, "quellen": _quellen, "hinweis": _hinweis, "systemzustand": _systemzustand,
     "fortschritt": _fortschritt, "aufgaben": _aufgaben, "zeitplan": _zeitplan, "mail": _mail,
-    "mail-entwurf": _mail_entwurf, "countdown": _countdown,
+    "mail-entwurf": _mail_entwurf, "countdown": _countdown, "dokument": _dokument, "aenderung": _aenderung,
 }
 
 

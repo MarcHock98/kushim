@@ -114,13 +114,16 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
 - 2026-11-13 Loop: Nutzer sagte „mach weiter“ ohne Wahl zu Phase D: nach Empfehlung geschlossen (nur Roadmap, umkehrbar).
   Detailplan P3b geschrieben (`docs/ui-p3b-plan.md`), wartet auf Freigabe. Offen ohne Nutzer: nichts.
 
+- 2026-11-13 Loop: Nutzer wählte Weg A für P3b und wünschte „kushim liest auf Anfrage Dateien und gibt eine Übersicht“. **P3b gebaut**
+  (Branch `routine/p3b-docs`, gemerged, nicht gepusht): Schema `dokument`/`aenderung` mit Namenssperre, `Doc.tsx`, Mock-Demo,
+  Tests (628 Python, 101 UI), im Browser in drei Breiten gesehen. Der Leswunsch läuft über Claude Code (kein neuer Dateizugriff
+  von kushim, nur ein Satz in `INSTRUCTIONS`). Nicht geprüft: echter Aufruf, Tauri-Fenster. Nächster Schritt: P4 bis P6 laut
+  `docs/ui-dynamic-plan.md` je mit eigenem Plan und OK; sonst nichts Unabhängiges offen.
+
 ## Slack
 - Nutzer-ID / Kanal-ID: nicht verwendet. Verbundenes Slack-Konto hat andere Mail (Arbeits-Workspace) als die Git-/Claude-Mail, Empfänger unsicher, daher nichts gesendet
 
 ## Offene Fragen an den Nutzer
-- 2026-11-13 **P3b der Oberfläche** (`docs/ui-p3b-plan.md`): (1) Weg A (Claude schickt Text und Diff über `zeige`,
-  Empfehlung) oder Weg B (kushim liest Dateien, mit Audit)? (2) Sperre für Dateinamen mit Zugangsdaten? Empfehlung ja.
-  (3) Reichen 400 Zeilen je Ansicht? Bis zur Antwort: kein Code für P3b.
 - Keine offenen Fragen. (C7 am 2026-11-11 beantwortet, siehe Entscheidungen.)
 
 ## Blockiert

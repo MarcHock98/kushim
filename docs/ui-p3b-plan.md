@@ -1,6 +1,6 @@
 # Plan P3b: Dokumente und Änderungen aus Dateien zeigen
 
-Stand 2026-11-13. Teil von `docs/ui-dynamic-plan.md`, Fortsetzung von `docs/ui-p3-plan.md`. **Noch nicht gebaut, zur Freigabe.**
+Stand 2026-11-13. Teil von `docs/ui-dynamic-plan.md`, Fortsetzung von `docs/ui-p3-plan.md`. **Weg A ist gebaut (2026-11-13, vom Nutzer gewählt); Weg B entfällt.**
 Ziel: Wenn Claude Code an einer Datei arbeitet, sieht man im kushim-Fenster den Text und was sich geändert hat.
 
 ## 1. Zwei Wege, einer davon ohne neuen Dateizugriff
@@ -69,3 +69,16 @@ Neuer API-Typ `file.read` im Backend, nur für Ordner aus `claude_folders`:
 1. **Weg A** (Claude schickt Text und Diff; Empfehlung) oder **Weg B** (kushim liest Dateien, mit Audit)?
 2. Sperre für Dateinamen mit Zugangsdaten wie in Abschnitt 3 beschrieben? Empfehlung: ja.
 3. Reichen 400 Zeilen je Ansicht? Mehr geht nur, wenn die Grenze von 48 KB je Ansicht angehoben wird.
+
+## 8. Stand nach dem Bau
+- **Entscheidung des Nutzers:** Weg A, dazu der Wunsch, kushim solle auf Anfrage Dateien lesen und eine Übersicht geben.
+  Das läuft ohne Dateizugriff von kushim: Der Nutzer fragt („lies mir rechnen.py vor und gib mir eine Übersicht“), Claude Code
+  liest mit seinen eigenen Werkzeugen und den üblichen Freigaben, sagt per `sprich` eine kurze Übersicht und zeigt
+  Gliederung und Ausschnitt als `dokument` (ein Satz in `INSTRUCTIONS`). kushim bleibt Anzeige und Sprache.
+- Übernommen, weil nicht ausdrücklich beantwortet: Sperre für Dateinamen mit Zugangsdaten (ja), 400 Zeilen je Ansicht.
+- Umgesetzt: Art `dokument`, Bausteine `dokument` und `aenderung` (`stage/schema.py`), `ui/src/components/stage/Doc.tsx`.
+  Die Namenssperre lässt `tokens.css` und `token-plan.md` durch, sperrt aber `.env*`, Schlüsseldateien, `id_rsa*`,
+  `credentials*`, Namen mit secret/password, `token(s).txt|json|…`, `run/channel.json`, `run/api.json`, `.ssh`, `.aws`.
+  Einrückung bleibt erhalten, Tabs werden zu vier Leerzeichen, Steuer- und Richtungszeichen werden zu Leerzeichen.
+- Geprüft: 628 Python-Tests, 101 UI-Tests, Mock-Demo im Browser bei 375, 800 und 1440 px. Nicht geprüft: echter Aufruf
+  durch Claude Code, Tauri-Fenster. Grenze der Sperre: Der Inhalt wird nicht nach Geheimnissen durchsucht.

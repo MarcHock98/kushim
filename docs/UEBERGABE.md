@@ -45,7 +45,9 @@ Design „Jarvin Cockpit“ (Artifact des Nutzers), Details und Pläne: `docs/ui
 - Zwei Wackler-Tests behoben (nur Tests geändert): Der 413-Test im Channel schickt keinen großen Körper mehr mit (der Server
   schloss mitten im Senden, 1 von 400 Läufen brach ab); der UI-Test zur Knopfsperre prüft im selben Schritt, in dem die
   Leiste erscheint. Beim UI-Test ist die Ursache plausibel, aber nicht nachgestellt.
-- **P3b:** Detailplan `docs/ui-p3b-plan.md` liegt zur Freigabe vor (Weg A ohne Dateizugriff empfohlen). Phase D der Roadmap ist
-  geschlossen (2026-11-13).
+- **P3b ist gebaut** (`docs/ui-p3b-plan.md`, Abschnitt 8): Art `dokument`, Bausteine `dokument` und `aenderung`, Sperre für
+  Dateinamen mit Zugangsdaten. kushim liest selbst keine Dateien; „lies mir die Datei und gib eine Übersicht“ erledigt Claude Code
+  (Hinweis in `INSTRUCTIONS`). Phase D der Roadmap ist geschlossen (2026-11-13). Offen: echter Aufruf durch Claude Code,
+  Tauri-Fenster, nächste UI-Phasen P4 bis P6 (je erst Plan, dann OK).
 - Nutzerregel: bei UI-Arbeit erst ein Plan, dann die Freigabe, dann der Code.
 - Z3 für den Nutzer: `py scripts\claude_setup.py --project . --statusline --test-hook`.

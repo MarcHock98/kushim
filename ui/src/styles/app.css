@@ -214,6 +214,26 @@ h2, h3 { font-family: var(--font-display); font-weight: 600; letter-spacing: .04
 .v-sources code { display: block; margin-top: 2px; color: var(--text-muted); font-size: var(--fs-xs); }
 .v-src-nr { color: var(--arc); font-family: var(--font-mono); }
 .v-note { margin: 0; color: var(--text-muted); font-size: var(--fs-sm); }
+/* ----- Dateitext und Änderungen (P3b): Zeilen mit Nummern, Diff mit Zeichen und Farbe ----- */
+.v-doc { display: grid; gap: var(--s-3); min-width: 0; }
+.d-name { margin: 0; overflow-wrap: anywhere; }
+.d-name code { font-family: var(--font-mono); color: var(--arc); }
+.d-name small { color: var(--text-muted); }
+.d-sum { margin: 0; max-width: 70ch; }
+.d-layout { display: grid; gap: var(--s-3); min-width: 0; }
+.d-outline { display: grid; gap: var(--s-2); padding: var(--s-3); background: var(--bg-3); border-radius: var(--r-md); align-content: start; }
+.d-outline ol { margin: 0; padding-left: var(--s-5); display: grid; gap: var(--s-1); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.d-code { margin: 0; padding: var(--s-3); max-height: 420px; overflow: auto; min-width: 0; background: var(--bg-0); border: 1px solid var(--line); border-radius: var(--r-md);
+          font-family: var(--font-mono); font-size: var(--fs-sm); line-height: 1.5; tab-size: 4; }
+.d-line { display: block; white-space: pre; }
+.d-no { display: inline-block; margin-right: var(--s-3); color: var(--text-faint); user-select: none; }
+.d-hunk { display: grid; gap: var(--s-1); min-width: 0; }
+.d-head { margin: 0; font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text-muted); }
+.d-mark { display: inline-block; width: 2ch; margin-right: var(--s-1); font-weight: 600; user-select: none; }
+.d-neu { background: rgb(95 211 154 / .12); }
+.d-neu .d-mark { color: var(--ok); }
+.d-weg { background: rgb(255 107 107 / .12); text-decoration: line-through; text-decoration-color: rgb(255 107 107 / .5); }
+.d-weg .d-mark { color: var(--alarm); text-decoration: none; }
 /* ----- Live-Arbeit (P3a): Fortschritt, Aufgaben, Zeitplan, Mail, Countdown ----- */
 .v-progress, .v-schedule { display: grid; gap: var(--s-3); }
 .p-count { margin: 0; }

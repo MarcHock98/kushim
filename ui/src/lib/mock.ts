@@ -63,6 +63,7 @@ export class MockSocket implements Socket {
       ...DEMO_VIEWS[4], bausteine: [...(DEMO_VIEWS[4].bausteine as unknown[]),
         { typ: "countdown", titel: "Tee zieht", ende: new Date(Date.now() + 4 * 60000).toISOString() }] });
     turn(68000, "Was schreibt Anna, und antworte ihr.", "Hier die Mail und mein Entwurf.", DEMO_VIEWS[5]);
+    turn(79000, "Lies mir rechnen.py und gib mir eine Übersicht.", "Zwei Funktionen, neu ist die Prüfung auf leere Eingaben.", DEMO_VIEWS[6]);
   }
 
   send(data: string): void {
@@ -185,4 +186,13 @@ export const DEMO_VIEWS: Record<string, unknown>[] = [
       absaetze: ["Hallo,", "passt dir Dienstag um 13 Uhr für die Projektplanung? Ich würde den Raum buchen.", "Viele Grüße, Anna"] },
     { typ: "mail-entwurf", an: "anna@beispiel.org", cc: "", betreff: "Re: Treffen am Dienstag",
       absaetze: ["Hallo Anna,", "Dienstag um 13 Uhr passt. Bitte buch den Raum.", "Viele Grüße"] } ] },
+  { id: "datei", art: "dokument", titel: "Übersicht: rechnen.py (Beispiel)", bausteine: [
+    { typ: "text", absaetze: ["Die Datei hat zwei Funktionen: eine rechnet, eine formatiert. Neu gegenüber gestern ist nur die Prüfung auf leere Eingaben."] },
+    { typ: "dokument", name: "src/rechnen.py", ausschnitt: "Zeilen 1 bis 12", gliederung: ["rechne(a, b)", "formatiere(wert)"], zeilen: [
+      "def rechne(a, b):", "    if a is None or b is None:", "        return 0", "    return max(a, b)", "",
+      "def formatiere(wert):", "    return f\"{wert:.2f}\"", "", "if __name__ == \"__main__\":", "    print(formatiere(rechne(2, 3)))" ] },
+    { typ: "aenderung", name: "src/rechnen.py", zusammenfassung: "Leere Eingaben liefern jetzt 0 statt eines Fehlers.", bloecke: [
+      { kopf: "rechne", zeilen: [
+        { art: "gleich", text: "def rechne(a, b):" }, { art: "neu", text: "    if a is None or b is None:" },
+        { art: "neu", text: "        return 0" }, { art: "weg", text: "    return a + b" }, { art: "neu", text: "    return max(a, b)" } ] } ] } ] },
 ];
