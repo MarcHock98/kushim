@@ -214,6 +214,24 @@ h2, h3 { font-family: var(--font-display); font-weight: 600; letter-spacing: .04
 .v-sources code { display: block; margin-top: 2px; color: var(--text-muted); font-size: var(--fs-xs); }
 .v-src-nr { color: var(--arc); font-family: var(--font-mono); }
 .v-note { margin: 0; color: var(--text-muted); font-size: var(--fs-sm); }
+/* ----- 3D-Szene und Plan (P4a) ----- */
+.v-model, .v-plan { display: grid; gap: var(--s-3); min-width: 0; }
+.m-stage, .p-frame { position: relative; min-width: 0; background: var(--bg-0); border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; }
+.m-stage:focus-visible, .p-frame:focus-visible { box-shadow: var(--focus-ring); outline: none; }
+.m-canvas { display: block; width: 100%; height: clamp(240px, 45vh, 440px); touch-action: none; cursor: grab; }
+.p-svg { display: block; width: 100%; height: clamp(240px, 45vh, 440px); touch-action: none; cursor: grab; }
+.p-text { font-family: var(--font-mono); user-select: none; }
+.m-controls { display: grid; gap: var(--s-3); }
+.m-row { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+.m-scenes, .m-cut { margin: 0; padding: var(--s-3); border: 1px solid var(--line); border-radius: var(--r-md); display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3) var(--s-4); min-width: 0; }
+.m-scenes legend, .m-cut legend { padding: 0 var(--s-2); font-family: var(--font-mono); font-size: var(--fs-xs); letter-spacing: var(--track-label); text-transform: uppercase; color: var(--text-muted); }
+.m-radio { display: inline-flex; align-items: center; gap: var(--s-2); min-height: var(--hit); }
+.m-radio input { width: 20px; height: 20px; accent-color: var(--arc); }
+.m-slider { display: inline-flex; align-items: center; gap: var(--s-2); min-height: var(--hit); color: var(--text-muted); }
+.m-slider input[type="range"] { accent-color: var(--arc); min-width: 120px; }
+.m-slider select { min-height: var(--hit); background: var(--bg-3); color: var(--text); border: 1px solid var(--line-strong); border-radius: var(--r-md); padding: 0 var(--s-3); font: inherit; }
+.m-diff { margin: 0; padding-left: var(--s-5); display: grid; gap: var(--s-1); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.m-list summary { cursor: pointer; min-height: var(--hit); display: flex; align-items: center; font-family: var(--font-mono); font-size: var(--fs-xs); letter-spacing: var(--track-label); text-transform: uppercase; color: var(--text-muted); }
 /* ----- Dateitext und Änderungen (P3b): Zeilen mit Nummern, Diff mit Zeichen und Farbe ----- */
 .v-doc { display: grid; gap: var(--s-3); min-width: 0; }
 .d-name { margin: 0; overflow-wrap: anywhere; }

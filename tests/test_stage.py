@@ -339,3 +339,121 @@ def test_zeige_tool_names_the_document_blocks_and_tells_claude_how_to_read_on_re
     assert {"dokument", "aenderung"} <= set(kinds)
     assert "eigenen Werkzeugen" in ch.INSTRUCTIONS and "Zugangsdaten" in ch.INSTRUCTIONS
     assert "liest selbst keine Dateien" in ch.ZEIGE_TOOL["description"]
+
+
+# --- P4a: 3D-Szene und Plan (docs/ui-p4-plan.md) -----------------------------------------------------
+
+BOX = {"form": "box", "name": "Boden 1", "masse": [80, 2, 30], "position": [0, 10, 0], "farbe": "amber"}
+
+
+def scene(*scenes, **extra):
+    return {"id": "m", "art": "modell", "titel": "T", "bausteine": [
+        {"typ": "szene3d", "einheit": "cm", "szenen": list(scenes) or [{"name": "jetzt", "objekte": [BOX]}], **extra}]}
+
+
+def plan(elements, **extra):
+    return {"id": "p", "art": "plan", "titel": "T", "bausteine": [{"typ": "plan2d", "elemente": elements, **extra}]}
+
+
+def test_p4a_scene_passes_and_gets_a_fixed_shape():
+    objs = [BOX, {"form": "kugel", "name": "Ball", "masse": [5]}, {"form": "zylinder", "masse": [2, 10], "drehung": [90, 0, 0]},
+            {"form": "kegel", "masse": [2, 4]}, {"form": "torus", "masse": [5, 1]}, {"form": "ebene", "masse": [10, 10]},
+            {"form": "linie", "name": "Achse", "punkte": [[0, 0, 0], [0, 100, 0]], "farbe": "gedaempft"}]
+    b = schema.validate(scene({"name": "vorher", "objekte": objs}, {"name": "nachher", "objekte": [BOX]},
+                              hervorheben=["Boden 1"], beschriftungen=[{"objekt": "Ball", "text": "Spielzeug"}]))["bausteine"][0]
+    first = b["szenen"][0]["objekte"]
+    assert first[1] == {"form": "kugel", "name": "Ball", "farbe": "arc", "masse": [5], "position": [0, 0, 0], "drehung": [0, 0, 0]}
+    assert first[2]["name"] == "" and first[2]["drehung"] == [90, 0, 0] and first[6]["punkte"] == [[0, 0, 0], [0, 100, 0]]
+    assert b["einheit"] == "cm" and b["hervorheben"] == ["Boden 1"] and b["beschriftungen"][0]["text"] == "Spielzeug"
+
+
+def test_p4a_plan_passes_and_gets_a_fixed_shape():
+    els = [{"art": "linie", "von": [0, 0], "bis": [10, 0], "ebene": "Wände"}, {"art": "polylinie", "punkte": [[0, 0], [5, 5], [0, 5]], "geschlossen": True},
+           {"art": "rechteck", "x": 1, "y": 1, "b": 3, "h": 2}, {"art": "kreis", "x": 5, "y": 5, "r": 1}, {"art": "bogen", "x": 0, "y": 0, "r": 2, "von": 0, "bis": 90},
+           {"art": "text", "x": 1, "y": 1, "text": "Küche"}, {"art": "mass", "von": [0, -2], "bis": [10, -2], "ebene": "Maße"}]
+    b = schema.validate(plan(els, einheit="m", ebenen=["Wände", "Maße"]))["bausteine"][0]
+    assert b["ebenen"] == ["Wände", "Maße"] and b["einheit"] == "m"
+    assert b["elemente"][0] == {"art": "linie", "ebene": "Wände", "von": [0, 0], "bis": [10, 0]}
+    assert b["elemente"][1]["geschlossen"] is True and b["elemente"][1]["ebene"] == ""
+    assert b["elemente"][5]["groesse"] == 0 and b["elemente"][6]["text"] == "" and b["elemente"][6]["ebene"] == "Maße"
+
+
+def objs(n):
+    return [{"form": "box", "name": f"o{i}", "masse": [1, 1, 1]} for i in range(n)]
+
+
+@pytest.mark.parametrize("change", [
+    {"farbe": "#ff0000"}, {"farbe": "rot"}, {"farbe": 5}, {"form": "dodekaeder"}, {"form": "skript"}, {"masse": [80, 2]},
+    {"masse": [80, 2, 0]}, {"masse": [80, -2, 30]}, {"masse": [80, 2, float("inf")]}, {"masse": [80, 2, float("nan")]},
+    {"masse": [80, 2, 1_000_001]}, {"masse": [True, 2, 3]}, {"masse": ["80", 2, 3]}, {"position": [0, 0]}, {"position": [0, 0, 2_000_000]},
+    {"position": [0, 0, None]}, {"drehung": [1, 2, 3, 4]}, {"name": "x" * 41}, {"name": 5}, {"url": "https://boese.example"}, {"material": "x"},
+])
+def test_p4a_scene_rejections_for_objects(change):
+    with pytest.raises(schema.ViewError) as e:
+        schema.validate(scene({"name": "s", "objekte": [{**BOX, **change}]}))
+    assert e.value.code == "bad_block_1"
+
+
+@pytest.mark.parametrize("make", [
+    lambda: scene(),                                                                                  # gültig als Gegenprobe wird unten geprüft
+    lambda: scene({"name": "s", "objekte": []}),
+    lambda: scene({"name": "s", "objekte": objs(151)}),
+    lambda: scene(*[{"name": f"s{i}", "objekte": objs(1)} for i in range(4)]),
+    lambda: scene(*[{"name": f"s{i}", "objekte": objs(101)} for i in range(3)]),                   # zusammen 303, über 300
+    lambda: scene({"name": "s", "objekte": [BOX, BOX]}),                                              # doppelter Name
+    lambda: scene({"name": "s", "objekte": [BOX], "stil": "x"}),
+    lambda: scene({"name": "", "objekte": [BOX]}),
+    lambda: scene({"name": "s", "objekte": [BOX]}, hervorheben=["Gibt es nicht"]),
+    lambda: scene({"name": "s", "objekte": [BOX]}, beschriftungen=[{"objekt": "Gibt es nicht", "text": "x"}]),
+    lambda: scene({"name": "s", "objekte": [BOX]}, beschriftungen=[{"objekt": "Boden 1", "text": "x", "html": "<b>"}]),
+    lambda: scene({"name": "s", "objekte": [BOX]}, hervorheben=["Boden 1"] * 21),
+    lambda: scene({"name": "s", "objekte": [{"form": "linie", "punkte": [[0, 0, 0]]}]}),
+    lambda: scene({"name": "s", "objekte": [{"form": "linie", "punkte": [[0, 0]] * 2}]}),
+    lambda: scene({"name": "s", "objekte": [{"form": "linie", "punkte": [[0, 0, 0]] * 51}]}),
+    lambda: scene({"name": "s", "objekte": [{"form": "linie", "punkte": [[0, 0, 0]] * 2, "position": [0, 0, 0]}]}),
+    lambda: scene({"name": "s", "objekte": [BOX]}, einheit="x" * 9),
+])
+def test_p4a_scene_rejections(make):
+    view = make()
+    if view["bausteine"][0]["szenen"] == [{"name": "jetzt", "objekte": [BOX]}] and "hervorheben" not in view["bausteine"][0]:
+        assert schema.validate(view)["bausteine"][0]["szenen"][0]["name"] == "jetzt"                 # Gegenprobe: der Standardfall ist gültig
+        return
+    with pytest.raises(schema.ViewError) as e:
+        schema.validate(view)
+    assert e.value.code == "bad_block_1"
+
+
+def test_p4a_plan_rejections():
+    ok = {"art": "linie", "von": [0, 0], "bis": [1, 1]}
+    bad = [
+        plan([]), plan([ok] * 801), plan([{**ok, "art": "spline"}]), plan([{**ok, "ebene": "Wände"}]),                  # Ebene nicht benannt
+        plan([{**ok, "ebene": "Zaun"}], ebenen=["Wände"]), plan([ok], ebenen=["a"] * 2), plan([ok], ebenen=[f"e{i}" for i in range(11)]),
+        plan([{**ok, "von": [0]}]), plan([{**ok, "bis": [0, 0, 0]}]), plan([{**ok, "bis": [0, float("nan")]}]), plan([{**ok, "bis": [0, 2_000_000]}]),
+        plan([{**ok, "farbe": "rot"}]), plan([{"art": "rechteck", "x": 0, "y": 0, "b": 0, "h": 1}]),
+        plan([{"art": "kreis", "x": 0, "y": 0, "r": -1}]), plan([{"art": "bogen", "x": 0, "y": 0, "r": 1, "von": 0, "bis": 4000}]),
+        plan([{"art": "polylinie", "punkte": [[0, 0]]}]), plan([{"art": "polylinie", "punkte": [[0, 0]] * 201}]),
+        plan([{"art": "polylinie", "punkte": [[0, 0], [1, 1]], "geschlossen": "ja"}]),
+        plan([{"art": "text", "x": 0, "y": 0, "text": ""}]), plan([{"art": "text", "x": 0, "y": 0, "text": "x" * 81}]),
+        plan([{"art": "text", "x": 0, "y": 0, "text": "x", "groesse": -1}]), plan([{"art": "mass", "von": [0, 0], "bis": [1, 1], "svg": "<svg onload=x>"}]),
+        plan([ok], einheit="x" * 9),
+    ]
+    for view in bad:
+        with pytest.raises(schema.ViewError) as e:
+            schema.validate(view)
+        assert e.value.code == "bad_block_1"
+
+
+def test_p4a_text_in_scene_and_plan_loses_control_characters():
+    tricky = "Küche" + chr(0x202e) + "xx" + chr(0) + chr(27)
+    p = schema.validate(plan([{"art": "text", "x": 0, "y": 0, "text": tricky}]))["bausteine"][0]["elemente"][0]["text"]
+    s = schema.validate(scene({"name": "s", "objekte": [{**BOX, "name": tricky}]}))["bausteine"][0]["szenen"][0]["objekte"][0]["name"]
+    for text in (p, s):
+        assert text.startswith("Küche") and all(ch.isprintable() for ch in text) and chr(0x202e) not in text
+
+
+def test_zeige_tool_names_the_scene_and_plan_blocks():
+    props = ch.ZEIGE_TOOL["inputSchema"]["properties"]
+    assert {"modell", "plan"} <= set(props["art"]["enum"])
+    assert {"szene3d", "plan2d"} <= set(props["bausteine"]["items"]["properties"]["typ"]["enum"])
+    assert "szene3d" in props["bausteine"]["description"] and "plan2d" in props["bausteine"]["description"]
+    assert "3D" in ch.INSTRUCTIONS and "Grundriss" in ch.INSTRUCTIONS and "Einheit" in ch.INSTRUCTIONS

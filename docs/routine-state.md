@@ -124,14 +124,16 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
   `routine/p4-plan`, gemerged). Wartet auf Freigabe und sechs Entscheidungen. Kein Code. Nicht messbar ohne den Nutzer:
   GPU-Last des Betrachters neben Whisper.
 
+- 2026-11-13 Loop: Nutzer sagte „mach einfach mal“ zu P4: nach den Empfehlungen des Plans **P4a gebaut** (Branch `routine/p4a-3d`,
+  gemerged, nicht gepusht). Schema `szene3d`/`plan2d`, `scene.ts`, `Model3D.tsx`, `Plan2D.tsx`, Mock-Demo, 671 Python- und
+  120 UI-Tests; im Browser mit echtem WebGL gesehen. Dabei einen Fehler gefunden und behoben (unvollständige Demodaten ließen das
+  ganze Fenster leer werden; jetzt `BlockGuard`). Nicht messbar ohne den Nutzer: GPU-Last neben Whisper, Tauri-Fenster.
+  Nächster Schritt: P5 (Teilchen, Simulation) oder P6 (Quiz, Anleitung, Zeitstrahl, Vergleich) je erst mit Plan und OK.
+
 ## Slack
 - Nutzer-ID / Kanal-ID: nicht verwendet. Verbundenes Slack-Konto hat andere Mail (Arbeits-Workspace) als die Git-/Claude-Mail, Empfänger unsicher, daher nichts gesendet
 
 ## Offene Fragen an den Nutzer
-- 2026-11-13 **P4 der Oberfläche** (`docs/ui-p4-plan.md`): (1) erst P4a (Körper und Plan über `zeige`), P4b (echte
-  Dateien) später? (2) Körper und Plan-Elemente ausreichend? (3) Schnitt-Regler und Maße mitbauen? (4) Ansicht in der
-  Karte oder Vollbild? (5) „Einheit unbekannt“ ohne Angabe? (6) Echte CAD-Formate gewünscht? Empfehlungen stehen im Plan.
-  Bis zur Antwort: kein Code für P4.
 - Keine offenen Fragen. (C7 am 2026-11-11 beantwortet, siehe Entscheidungen.)
 
 ## Blockiert

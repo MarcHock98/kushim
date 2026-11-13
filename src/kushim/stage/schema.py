@@ -14,7 +14,7 @@ from typing import Any, Callable
 
 MAX_JSON = 48 * 1024
 ID = re.compile(r"[a-z0-9-]{1,40}")
-ARTEN = ("antwort", "rechnung", "markt", "recherche", "auftrag", "mail", "dokument")
+ARTEN = ("antwort", "rechnung", "markt", "recherche", "auftrag", "mail", "dokument", "modell", "plan")
 MAX_BLOCKS = 12
 RICHTUNG = ("auf", "ab", "gleich")
 
@@ -320,12 +320,127 @@ def _aenderung(b: dict[str, Any], c: str) -> dict[str, Any]:
             "bloecke": blocks}
 
 
+PALETTE = ("arc", "amber", "ok", "warn", "alarm", "text", "gedaempft")
+FORMEN = {"box": 3, "kugel": 1, "zylinder": 2, "kegel": 2, "torus": 2, "ebene": 2}      # Zahl der Maße je Körper
+COORD_MAX = 1_000_000
+MAX_SCENES, MAX_OBJECTS, MAX_OBJECTS_TOTAL = 3, 150, 300
+MAX_PLAN_ELEMENTS, MAX_LAYERS = 800, 10
+
+
+def _coord(v: Any, c: str, positive: bool = False) -> float | int:
+    n = _num(v, c)
+    if abs(n) > COORD_MAX or (positive and n <= 0):
+        raise ViewError(c)
+    return n
+
+
+def _point(v: Any, dims: int, c: str) -> list[float | int]:
+    return [_coord(x, c) for x in _list(v, dims, dims, c)]
+
+
+def _object3d(o: Any, c: str) -> dict[str, Any]:
+    if not isinstance(o, dict):
+        raise ViewError(c)
+    form = o.get("form")
+    if form == "linie":
+        _fields(o, {"form", "name", "punkte", "farbe"}, c)
+        extra: dict[str, Any] = {"punkte": [_point(p, 3, c) for p in _list(o.get("punkte"), 2, 50, c)]}
+    elif form in FORMEN:
+        _fields(o, {"form", "name", "masse", "position", "drehung", "farbe"}, c)
+        n = FORMEN[form]
+        extra = {"masse": [_coord(x, c, positive=True) for x in _list(o.get("masse"), n, n, c)],
+                 "position": _point(o.get("position", [0, 0, 0]), 3, c), "drehung": _point(o.get("drehung", [0, 0, 0]), 3, c)}
+    else:
+        raise ViewError(c)
+    farbe = o.get("farbe", "arc")
+    if farbe not in PALETTE:
+        raise ViewError(c)
+    return {"form": form, "name": _text(o.get("name"), 40, c, optional=True), "farbe": farbe, **extra}
+
+
+def _szene3d(b: dict[str, Any], c: str) -> dict[str, Any]:
+    _fields(b, {"einheit", "szenen", "hervorheben", "beschriftungen"}, c)
+    scenes, total, names = [], 0, set()
+    for sz in _list(b.get("szenen"), 1, MAX_SCENES, c):
+        if not isinstance(sz, dict) or set(sz) - {"name", "objekte"}:
+            raise ViewError(c)
+        objs = [_object3d(o, c) for o in _list(sz.get("objekte"), 1, MAX_OBJECTS, c)]
+        own = [o["name"] for o in objs if o["name"]]
+        if len(own) != len(set(own)):                    # Namen sind die Schlüssel für Hervorheben und Vergleich
+            raise ViewError(c)
+        names.update(own)
+        total += len(objs)
+        scenes.append({"name": _text(sz.get("name"), 40, c), "objekte": objs})
+    if total > MAX_OBJECTS_TOTAL:
+        raise ViewError(c)
+    highlight = [_text(n, 40, c) for n in _list(b.get("hervorheben", []), 0, 20, c)]
+    labels = []
+    for lb in _list(b.get("beschriftungen", []), 0, 20, c):
+        if not isinstance(lb, dict) or set(lb) - {"objekt", "text"}:
+            raise ViewError(c)
+        labels.append({"objekt": _text(lb.get("objekt"), 40, c), "text": _text(lb.get("text"), 60, c)})
+    if any(n not in names for n in highlight) or any(lb["objekt"] not in names for lb in labels):
+        raise ViewError(c)
+    return {"einheit": _text(b.get("einheit"), 8, c, optional=True), "szenen": scenes, "hervorheben": highlight,
+            "beschriftungen": labels}
+
+
+def _plan_element(e: Any, layers: set[str], c: str) -> dict[str, Any]:
+    if not isinstance(e, dict):
+        raise ViewError(c)
+    art = e.get("art")
+    ebene = _text(e.get("ebene"), 30, c, optional=True)
+    if ebene and ebene not in layers:
+        raise ViewError(c)
+    if art == "linie" or art == "mass":
+        _fields(e, {"art", "ebene", "von", "bis"} | ({"text"} if art == "mass" else set()), c)
+        out = {"von": _point(e.get("von"), 2, c), "bis": _point(e.get("bis"), 2, c)}
+        if art == "mass":
+            out["text"] = _text(e.get("text"), 40, c, optional=True)
+    elif art == "polylinie":
+        _fields(e, {"art", "ebene", "punkte", "geschlossen"}, c)
+        closed = e.get("geschlossen", False)
+        if not isinstance(closed, bool):
+            raise ViewError(c)
+        out = {"punkte": [_point(p, 2, c) for p in _list(e.get("punkte"), 2, 200, c)], "geschlossen": closed}
+    elif art == "rechteck":
+        _fields(e, {"art", "ebene", "x", "y", "b", "h"}, c)
+        out = {"x": _coord(e.get("x"), c), "y": _coord(e.get("y"), c), "b": _coord(e.get("b"), c, True), "h": _coord(e.get("h"), c, True)}
+    elif art == "kreis":
+        _fields(e, {"art", "ebene", "x", "y", "r"}, c)
+        out = {"x": _coord(e.get("x"), c), "y": _coord(e.get("y"), c), "r": _coord(e.get("r"), c, True)}
+    elif art == "bogen":
+        _fields(e, {"art", "ebene", "x", "y", "r", "von", "bis"}, c)
+        out = {"x": _coord(e.get("x"), c), "y": _coord(e.get("y"), c), "r": _coord(e.get("r"), c, True),
+               "von": _coord(e.get("von"), c), "bis": _coord(e.get("bis"), c)}
+        if abs(out["von"]) > 3600 or abs(out["bis"]) > 3600:
+            raise ViewError(c)
+    elif art == "text":
+        _fields(e, {"art", "ebene", "x", "y", "text", "groesse"}, c)
+        size = e.get("groesse", 0)
+        out = {"x": _coord(e.get("x"), c), "y": _coord(e.get("y"), c), "text": _text(e.get("text"), 80, c),
+               "groesse": 0 if size == 0 else _coord(size, c, True)}
+    else:
+        raise ViewError(c)
+    return {"art": art, "ebene": ebene, **out}
+
+
+def _plan2d(b: dict[str, Any], c: str) -> dict[str, Any]:
+    _fields(b, {"einheit", "ebenen", "elemente"}, c)
+    layers = [_text(n, 30, c) for n in _list(b.get("ebenen", []), 0, MAX_LAYERS, c)]
+    if len(layers) != len(set(layers)):
+        raise ViewError(c)
+    elems = [_plan_element(e, set(layers), c) for e in _list(b.get("elemente"), 1, MAX_PLAN_ELEMENTS, c)]
+    return {"einheit": _text(b.get("einheit"), 8, c, optional=True), "ebenen": layers, "elemente": elems}
+
+
 BLOCKS: dict[str, Callable[[dict[str, Any], str], dict[str, Any]]] = {
     "text": _text_block, "liste": _liste, "formel": _formel, "schritte": _schritte, "ergebnis": _ergebnis,
     "kennzahlen": _kennzahlen, "tabelle": _tabelle, "diagramm": _diagramm, "aussagen": _aussagen,
     "widerspruch": _aussagen, "quellen": _quellen, "hinweis": _hinweis, "systemzustand": _systemzustand,
     "fortschritt": _fortschritt, "aufgaben": _aufgaben, "zeitplan": _zeitplan, "mail": _mail,
     "mail-entwurf": _mail_entwurf, "countdown": _countdown, "dokument": _dokument, "aenderung": _aenderung,
+    "szene3d": _szene3d, "plan2d": _plan2d,
 }
 
 

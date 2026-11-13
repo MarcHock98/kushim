@@ -153,3 +153,8 @@ Am Ende jedes Durchlaufs eine kurze Rückschau: Was hat gehakt? Was wurde wieder
   (`scrollWidth` gegen `clientWidth`), nicht nur am Bild schätzen.
 - **`stage/schema.py` hat eine feste Importliste** (`test_no_egress.py`: `__future__`, `json`, `math`, `re`, `typing`). Neue
   Prüfungen dort ohne weitere Module bauen (z. B. Zeiten per Muster statt `datetime`); die Liste ändert nur der Nutzer.
+- **Demodaten wie das Backend:** Das Mock der Oberfläche umgeht `stage/schema.py` und damit die ergänzten Standardwerte. Fehlt dort ein Feld,
+  das das Backend immer füllt, stürzt die Darstellung ab. Demodaten vollständig schreiben (oder durch das Schema schicken) und
+  einen Baustein-Fehler nie das ganze Fenster leeren lassen (`BlockGuard`).
+- **Farben in der UI:** `test_ui_rules.py` verbietet Hex-Farben im Quelltext; für three.js die CSS-Variable lesen und höchstens
+  `|| "#888"` als Ersatz nehmen.
