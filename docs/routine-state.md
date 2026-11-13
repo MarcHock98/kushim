@@ -111,17 +111,16 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
 - 2026-11-13 Loop: Phase D geprüft, nichts gebaut; Entscheidung des Nutzers nötig (Offene Fragen). Unabhängige Arbeit ist
   aufgebraucht: offen sind nur Punkte für den Nutzer (Z3, C6, Phase D, P3b-Plan, Tauri-Fenster prüfen).
 
+- 2026-11-13 Loop: Nutzer sagte „mach weiter“ ohne Wahl zu Phase D: nach Empfehlung geschlossen (nur Roadmap, umkehrbar).
+  Detailplan P3b geschrieben (`docs/ui-p3b-plan.md`), wartet auf Freigabe. Offen ohne Nutzer: nichts.
+
 ## Slack
 - Nutzer-ID / Kanal-ID: nicht verwendet. Verbundenes Slack-Konto hat andere Mail (Arbeits-Workspace) als die Git-/Claude-Mail, Empfänger unsicher, daher nichts gesendet
 
 ## Offene Fragen an den Nutzer
-- 2026-11-13 **Phase D (Modell und Verbrauch per Stimme):** D1 ist durch Z4 fast erfüllt (Statuszeile zeigt Modell, Kontext,
-  Abo-Grenzen, Kosten); der kushim-Zustand fehlt, wäre dort aber meist veraltet (die Zeile wird nur nach jeder Antwort neu
-  gezeichnet). D2 braucht die Statusdaten in kushim: Dafür müsste `scripts/statusline.py` eine kleine Datei schreiben
-  (`run/claude-status.json`, nur für die kushim-Sitzung). Heute sichert ein Test zu, dass das Skript keine Dateien schreibt.
-  Optionen: (A) Phase D schließen: D1 gilt als erledigt ohne kushim-Zustand, D2 und D3 streichen; nach dem Modell kann man
-  Claude selbst fragen, den Verbrauch zeigt die Statuszeile (Empfehlung, am einfachsten). (B) D2 bauen: Statuszeile schreibt
-  die Datei, kushim beantwortet „welches Modell?“ und „wie viel Verbrauch?“ lokal. Bis zur Antwort: nichts an Phase D.
+- 2026-11-13 **P3b der Oberfläche** (`docs/ui-p3b-plan.md`): (1) Weg A (Claude schickt Text und Diff über `zeige`,
+  Empfehlung) oder Weg B (kushim liest Dateien, mit Audit)? (2) Sperre für Dateinamen mit Zugangsdaten? Empfehlung ja.
+  (3) Reichen 400 Zeilen je Ansicht? Bis zur Antwort: kein Code für P3b.
 - Keine offenen Fragen. (C7 am 2026-11-11 beantwortet, siehe Entscheidungen.)
 
 ## Blockiert
