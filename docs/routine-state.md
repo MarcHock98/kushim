@@ -120,10 +120,18 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
   von kushim, nur ein Satz in `INSTRUCTIONS`). Nicht geprüft: echter Aufruf, Tauri-Fenster. Nächster Schritt: P4 bis P6 laut
   `docs/ui-dynamic-plan.md` je mit eigenem Plan und OK; sonst nichts Unabhängiges offen.
 
+- 2026-11-13 Loop: Nutzer bat um die Planung von P4. **Detailplan P4 geschrieben** (`docs/ui-p4-plan.md`, Branch
+  `routine/p4-plan`, gemerged). Wartet auf Freigabe und sechs Entscheidungen. Kein Code. Nicht messbar ohne den Nutzer:
+  GPU-Last des Betrachters neben Whisper.
+
 ## Slack
 - Nutzer-ID / Kanal-ID: nicht verwendet. Verbundenes Slack-Konto hat andere Mail (Arbeits-Workspace) als die Git-/Claude-Mail, Empfänger unsicher, daher nichts gesendet
 
 ## Offene Fragen an den Nutzer
+- 2026-11-13 **P4 der Oberfläche** (`docs/ui-p4-plan.md`): (1) erst P4a (Körper und Plan über `zeige`), P4b (echte
+  Dateien) später? (2) Körper und Plan-Elemente ausreichend? (3) Schnitt-Regler und Maße mitbauen? (4) Ansicht in der
+  Karte oder Vollbild? (5) „Einheit unbekannt“ ohne Angabe? (6) Echte CAD-Formate gewünscht? Empfehlungen stehen im Plan.
+  Bis zur Antwort: kein Code für P4.
 - Keine offenen Fragen. (C7 am 2026-11-11 beantwortet, siehe Entscheidungen.)
 
 ## Blockiert
