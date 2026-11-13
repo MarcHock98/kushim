@@ -3,6 +3,7 @@ import { ART_LABEL, type Block, type View } from "../../lib/stage";
 import { IconCross } from "../Icons";
 import { SystemPanel, type SysData } from "../SystemPanel";
 import { Chart } from "./Chart";
+import { Change, Document } from "./Doc";
 import { Countdown, Mail, MailDraft, Progress, Schedule, Tasks } from "./Live";
 import { Tex } from "./Tex";
 
@@ -73,6 +74,8 @@ function BlockView({ b, sys, sysNo }: { b: Block; sys: SysData | null; sysNo: bo
     case "mail": return <Mail b={b} />;
     case "mail-entwurf": return <MailDraft b={b} />;
     case "countdown": return <Countdown b={b} />;
+    case "dokument": return <Document b={b} />;
+    case "aenderung": return <Change b={b} />;
   }
 }
 

@@ -263,3 +263,79 @@ def test_p3a_views_travel_through_the_real_channel_into_the_bridge_store(channel
     assert b.fetch() == ("ok", ["Ich fange an."])
     got = b.stage.since(0)[0]
     assert got[0]["art"] == "auftrag" and got[0]["bausteine"][0]["schritte"][1]["zustand"] == "laeuft"
+
+
+# --- P3b: Dokumente und Änderungen (docs/ui-p3b-plan.md) ----------------------------------------------
+
+CODE = ["def rechne(a, b):", "    if a > b:", chr(9) + "return a", "", "    return b"]
+DIFF = [{"kopf": "rechne", "zeilen": [{"art": "gleich", "text": "def rechne(a, b):"}, {"art": "weg", "text": "    return a"},
+                                     {"art": "neu", "text": "    return max(a, b)"}]}]
+
+
+def doc(typ, **fields):
+    return {"id": "d", "art": "dokument", "titel": "T", "bausteine": [{"typ": typ, **fields}]}
+
+
+def test_p3b_blocks_pass_and_keep_indentation():
+    b = schema.validate(doc("dokument", name="src/app.py", ausschnitt="Zeilen 1 bis 5", zeilen=CODE,
+                            gliederung=["rechne"]))["bausteine"][0]
+    assert b["zeilen"] == ["def rechne(a, b):", "    if a > b:", "    return a", "", "    return b"]
+    assert b["gliederung"] == ["rechne"] and b["ausschnitt"] == "Zeilen 1 bis 5"
+    b = schema.validate(doc("aenderung", name="src/app.py", zusammenfassung="max statt a", bloecke=DIFF))["bausteine"][0]
+    assert [z["art"] for z in b["bloecke"][0]["zeilen"]] == ["gleich", "weg", "neu"] and b["bloecke"][0]["zeilen"][1]["text"] == "    return a"
+
+
+def test_p3b_lines_lose_control_and_direction_characters_but_keep_blank_lines():
+    tricky = "x = 1" + chr(0x202e) + "# gedreht" + chr(0) + chr(27) + "[31m"
+    b = schema.validate(doc("dokument", name="a.py", zeilen=[tricky, "", "   "]))["bausteine"][0]
+    assert all(ch.isprintable() for line in b["zeilen"] for ch in line) and b["zeilen"][1:] == ["", ""]
+    assert chr(0x202e) not in b["zeilen"][0] and b["zeilen"][0].startswith("x = 1")
+
+
+@pytest.mark.parametrize("name", [".env", ".env.local", "config/.env.prod", "server.pem", "my.key", "id_rsa", "id_ed25519.pub",
+                                  "C:" + chr(92) + "Users" + chr(92) + "x" + chr(92) + ".ssh" + chr(92) + "config", "a/.aws/credentials",
+                                  "credentials.json", "secrets.yaml", "Passwords.md", "token.txt", "tokens.json", "run/channel.json",
+                                  "run/api.json", ".npmrc", ".netrc"])
+def test_p3b_names_that_look_like_credentials_are_rejected(name):
+    with pytest.raises(schema.ViewError) as e:
+        schema.validate(doc("dokument", name=name, zeilen=["x"]))
+    assert e.value.code == "bad_block_1"
+    with pytest.raises(schema.ViewError):
+        schema.validate(doc("aenderung", name=name, bloecke=DIFF))
+
+
+@pytest.mark.parametrize("name", ["src/app.py", "README.md", "ui/src/styles/tokens.css", "docs/token-plan.md", "keyboard.ts"])
+def test_p3b_ordinary_names_pass(name):
+    assert schema.validate(doc("dokument", name=name, zeilen=["x"]))["bausteine"][0]["name"] == name
+
+
+@pytest.mark.parametrize("typ,fields", [
+    ("dokument", dict(name="a.py", zeilen=[])),
+    ("dokument", dict(name="a.py", zeilen=["x"] * 401)),
+    ("dokument", dict(name="a.py", zeilen=["x" * 401])),
+    ("dokument", dict(name="a.py", zeilen=[5])),
+    ("dokument", dict(name="", zeilen=["x"])),
+    ("dokument", dict(name="a.py", zeilen=["x"], gliederung=["g"] * 31)),
+    ("dokument", dict(name="a.py", zeilen=["x"], pfad="C:/geheim")),
+    ("dokument", dict(name="a.py", zeilen=["x"], html="<b>")),
+    ("aenderung", dict(name="a.py", bloecke=[])),
+    ("aenderung", dict(name="a.py", bloecke=[{"zeilen": [{"art": "kaputt", "text": "x"}]}])),
+    ("aenderung", dict(name="a.py", bloecke=[{"zeilen": [{"art": "neu", "text": "x", "stil": "fett"}]}])),
+    ("aenderung", dict(name="a.py", bloecke=[{"zeilen": ["x"]}])),
+    ("aenderung", dict(name="a.py", bloecke=[{"zeilen": []}])),
+    ("aenderung", dict(name="a.py", bloecke=[{"zeilen": [{"art": "neu", "text": "x"}] * 300}] * 2)),     # zusammen über 400
+    ("aenderung", dict(name="a.py", bloecke=[{"zeilen": [{"art": "neu", "text": "x"}]}] * 21)),
+    ("aenderung", dict(name="a.py", bloecke=DIFF, befehl="git apply")),
+])
+def test_p3b_rejections(typ, fields):
+    with pytest.raises(schema.ViewError) as e:
+        schema.validate(doc(typ, **fields))
+    assert e.value.code == "bad_block_1"
+
+
+def test_zeige_tool_names_the_document_blocks_and_tells_claude_how_to_read_on_request():
+    assert "dokument" in ch.ZEIGE_TOOL["inputSchema"]["properties"]["art"]["enum"]
+    kinds = ch.ZEIGE_TOOL["inputSchema"]["properties"]["bausteine"]["items"]["properties"]["typ"]["enum"]
+    assert {"dokument", "aenderung"} <= set(kinds)
+    assert "eigenen Werkzeugen" in ch.INSTRUCTIONS and "Zugangsdaten" in ch.INSTRUCTIONS
+    assert "liest selbst keine Dateien" in ch.ZEIGE_TOOL["description"]

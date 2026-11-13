@@ -2,7 +2,7 @@
 // (src/kushim/stage/schema.py); hier nur eine leichte Formprüfung, damit die Oberfläche nie an Fremdem zerbricht.
 // Alles bleibt Text: kein HTML, keine Links, keine Bilder.
 
-export type Art = "antwort" | "rechnung" | "markt" | "recherche" | "auftrag" | "mail";
+export type Art = "antwort" | "rechnung" | "markt" | "recherche" | "auftrag" | "mail" | "dokument";
 type Cell = string | number;
 export type Block =
   | { typ: "text"; absaetze: string[] }
@@ -22,14 +22,16 @@ export type Block =
   | { typ: "zeitplan"; tag: string; termine: { von: string; bis: string; titel: string; ort: string }[] }
   | { typ: "mail"; von: string; an: string; betreff: string; datum: string; zusammenfassung: string; absaetze: string[] }
   | { typ: "mail-entwurf"; an: string; cc: string; betreff: string; absaetze: string[] }
-  | { typ: "countdown"; titel: string; ende: string };
+  | { typ: "countdown"; titel: string; ende: string }
+  | { typ: "dokument"; name: string; ausschnitt: string; zeilen: string[]; gliederung: string[] }
+  | { typ: "aenderung"; name: string; zusammenfassung: string; bloecke: { kopf: string; zeilen: { art: "gleich" | "neu" | "weg"; text: string }[] }[] };
 
 export interface View { seq: number; id: string; art: Art; titel: string; stand: string; bausteine: Block[] }
 export type StageItem = View | { seq: number; id: string; schliessen: true };
 
-const ARTEN = ["antwort", "rechnung", "markt", "recherche", "auftrag", "mail"];
+const ARTEN = ["antwort", "rechnung", "markt", "recherche", "auftrag", "mail", "dokument"];
 const TYPEN = ["text", "liste", "formel", "schritte", "ergebnis", "kennzahlen", "tabelle", "diagramm", "aussagen", "widerspruch",
-  "quellen", "hinweis", "systemzustand", "fortschritt", "aufgaben", "zeitplan", "mail", "mail-entwurf", "countdown"];
+  "quellen", "hinweis", "systemzustand", "fortschritt", "aufgaben", "zeitplan", "mail", "mail-entwurf", "countdown", "dokument", "aenderung"];
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 
 /** Ein Eintrag aus `stage.get`; `null`, wenn er nicht passt (dann wird er übergangen). */
@@ -43,5 +45,5 @@ export function parseItem(raw: unknown): StageItem | null {
 }
 
 export const ART_LABEL: Record<Art, string> = { antwort: "Antwort", rechnung: "Rechnung", markt: "Markt", recherche: "Recherche",
-  auftrag: "Auftrag", mail: "Mail" };
+  auftrag: "Auftrag", mail: "Mail", dokument: "Datei" };
 export const hasSystem = (v: View | null | undefined) => !!v?.bausteine.some((b) => b.typ === "systemzustand");
