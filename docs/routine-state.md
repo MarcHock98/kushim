@@ -130,10 +130,17 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
   ganze Fenster leer werden; jetzt `BlockGuard`). Nicht messbar ohne den Nutzer: GPU-Last neben Whisper, Tauri-Fenster.
   Nächster Schritt: P5 (Teilchen, Simulation) oder P6 (Quiz, Anleitung, Zeitstrahl, Vergleich) je erst mit Plan und OK.
 
+- 2026-11-13 Loop: Nutzer bat um die Planung von P6. **Detailplan P6 geschrieben** (`docs/ui-p6-plan.md`, Branch `routine/p6-plan`,
+  gemerged). Wartet auf Freigabe und sechs Entscheidungen. Kein Code. Neu gegenüber P3 bis P4: erste Bausteine mit Bedienelementen
+  (nur Anzeigezustand, nichts wird gesendet oder gespeichert).
+
 ## Slack
 - Nutzer-ID / Kanal-ID: nicht verwendet. Verbundenes Slack-Konto hat andere Mail (Arbeits-Workspace) als die Git-/Claude-Mail, Empfänger unsicher, daher nichts gesendet
 
 ## Offene Fragen an den Nutzer
+- 2026-11-13 **P6 der Oberfläche** (`docs/ui-p6-plan.md`): (1) erst P6a, dann P6b? (2) Lernen mit Klicks im Fenster (Lösungen in den Daten)?
+  (3) Timer ohne Ton oder neue Fähigkeit „Klang abspielen“? (4) Diagramme: eigene Anordnung oder `elkjs`? (5) Übersetzung: nur die
+  deutsche Seite vorlesen? (6) Lernstand nicht speichern? Empfehlungen stehen im Plan. Bis zur Antwort: kein Code für P6.
 - Keine offenen Fragen. (C7 am 2026-11-11 beantwortet, siehe Entscheidungen.)
 
 ## Blockiert
