@@ -781,6 +781,140 @@ def test_p6_text_loses_control_and_direction_characters():
         schema.validate(p6("lernkarten", karten=[{"frage": chr(0x202e) + chr(0), "antwort": "a"}]))
 
 
+# --- Härtung: jede Eingabe endet als Ansicht oder ViewError, nie als anderer Fehler -----------------------
+
+def _view(typ, art="antwort", **fields):
+    return {"id": "h", "art": art, "titel": "T", "bausteine": [{"typ": typ, **fields}]}
+
+
+def test_auditor_inputs_are_view_errors():
+    for view in (_view("vergleich", optionen=["a", "b"], kriterien=[{"name": "k", "werte": [10**400, 1]}]),
+                 _view("x") | {"bausteine": [{"typ": [1]}]},_view("x") | {"bausteine": [{"typ": {"a": 1}}]}):
+        with pytest.raises(schema.ViewError) as e:
+            schema.validate(view)
+        assert e.value.code == "bad_block_1"
+
+
+HUGE_FIELDS = [
+    lambda n: _view("kennzahlen", werte=[{"name": "a", "wert": n}]),
+    lambda n: _view("tabelle", spalten=["a"], zeilen=[[n]]),
+    lambda n: _view("diagramm", form="linie", reihen=[{"name": "a", "punkte": [[n, 1]]}]),
+    lambda n: _view("diagramm", form="linie", reihen=[{"name": "a", "punkte": [[1, n]]}]),
+    lambda n: _view("aussagen", aussagen=[{"text": "a", "quellen": [n]}]),
+    lambda n: _view("quellen", quellen=[{"nr": n, "titel": "a"}]),
+    lambda n: _view("szene3d", art="modell", szenen=[{"name": "s", "objekte": [{**BOX, "masse": [n, 1, 1]}]}]),
+    lambda n: _view("szene3d", art="modell", szenen=[{"name": "s", "objekte": [{**BOX, "position": [n, 0, 0]}]}]),
+    lambda n: _view("szene3d", art="modell", szenen=[{"name": "s", "objekte": [{**BOX, "drehung": [0, n, 0]}]}]),
+    lambda n: _view("szene3d", art="modell", szenen=[{"name": "s", "objekte": [{"form": "linie", "punkte": [[0, 0, n], [1, 1, 1]]}]}]),
+    lambda n: _view("plan2d", art="plan", elemente=[{"art": "linie", "von": [n, 0], "bis": [1, 1]}]),
+    lambda n: _view("plan2d", art="plan", elemente=[{"art": "rechteck", "x": 0, "y": n, "b": 1, "h": 1}]),
+    lambda n: _view("plan2d", art="plan", elemente=[{"art": "rechteck", "x": 0, "y": 0, "b": n, "h": 1}]),
+    lambda n: _view("plan2d", art="plan", elemente=[{"art": "kreis", "x": 0, "y": 0, "r": n}]),
+    lambda n: _view("plan2d", art="plan", elemente=[{"art": "bogen", "x": 0, "y": 0, "r": 1, "von": n, "bis": 1}]),
+    lambda n: _view("plan2d", art="plan", elemente=[{"art": "polylinie", "punkte": [[0, 0], [n, 1]]}]),
+    lambda n: _view("plan2d", art="plan", elemente=[{"art": "text", "x": 0, "y": 0, "text": "a", "groesse": n}]),
+    lambda n: _view("plan2d", art="plan", elemente=[{"art": "mass", "von": [0, 0], "bis": [1, n]}]),
+    lambda n: _view("vergleich", optionen=["a", "b"], kriterien=[{"name": "k", "werte": [1, n]}]),
+    lambda n: _view("quiz", art="lernen", fragen=[{**Q, "richtig": n}]),
+    lambda n: _view("anleitung", art="lernen", schritte=[{**S, "sekunden": n}]),
+    lambda n: _view("anleitung", art="lernen", schritte=[S], aktuell=n),
+]
+
+
+@pytest.mark.parametrize("n", [10**400, -10**400])
+@pytest.mark.parametrize("make", HUGE_FIELDS)
+def test_huge_integers_in_every_numeric_field_are_rejected(make, n):
+    with pytest.raises(schema.ViewError) as e:
+        schema.validate(make(n))
+    assert e.value.code.startswith("bad_")
+
+
+ENUM_FIELDS = [
+    lambda v: {"id": "h", "art": v, "titel": "T", "bausteine": [{"typ": "text", "absaetze": ["a"]}]},
+    lambda v: {"id": v, "art": "antwort", "titel": "T", "bausteine": [{"typ": "text", "absaetze": ["a"]}]},
+    lambda v: {"id": "h", "schliessen": v},
+    lambda v: _view(v),
+    lambda v: _view("liste", punkte=["a"], nummeriert=v),
+    lambda v: _view("kennzahlen", werte=[{"name": "a", "wert": 1, "richtung": v}]),
+    lambda v: _view("diagramm", form=v, reihen=[{"name": "a", "punkte": [[1, 1]]}]),
+    lambda v: _view("fortschritt", schritte=[{"text": "a", "zustand": v}]),
+    lambda v: _view("aufgaben", punkte=[{"text": "a", "erledigt": v}]),
+    lambda v: _view("zeitplan", termine=[{"von": v, "bis": "11:00", "titel": "a"}]),
+    lambda v: _view("countdown", titel="a", ende=v),
+    lambda v: _view("aenderung", name="a.py", bloecke=[{"zeilen": [{"art": v, "text": "x"}]}]),
+    lambda v: _view("szene3d", art="modell", szenen=[{"name": "s", "objekte": [{**BOX, "form": v}]}]),
+    lambda v: _view("szene3d", art="modell", szenen=[{"name": "s", "objekte": [{**BOX, "farbe": v}]}]),
+    lambda v: _view("szene3d", art="modell", szenen=[{"name": "s", "objekte": [BOX]}], hervorheben=[v]),
+    lambda v: _view("plan2d", art="plan", elemente=[{"art": v, "von": [0, 0], "bis": [1, 1]}]),
+    lambda v: _view("plan2d", art="plan", elemente=[{"art": "linie", "von": [0, 0], "bis": [1, 1], "ebene": v}], ebenen=["a"]),
+    lambda v: _view("plan2d", art="plan", elemente=[{"art": "polylinie", "punkte": [[0, 0], [1, 1]], "geschlossen": v}]),
+    lambda v: _view("netz", art="netz", form=v, knoten=K2),
+    lambda v: _view("netz", art="netz", form="ablauf", knoten=[{"id": "a", "text": "A", "art": v}]),
+    lambda v: _view("netz", art="netz", form="ablauf", knoten=[{"id": v, "text": "A"}]),
+    lambda v: _view("netz", art="netz", form="ablauf", knoten=K2, kanten=[{"von": v, "bis": "b"}]),
+    lambda v: _view("netz", art="netz", form="baum", knoten=K2, kanten=[{"von": "a", "bis": v}]),
+]
+
+
+@pytest.mark.parametrize("value", [[1], {"a": 1}, ["auf"], {"linie": 1}])
+@pytest.mark.parametrize("make", ENUM_FIELDS)
+def test_unhashable_values_in_enum_like_fields_are_view_errors(make, value):
+    with pytest.raises(schema.ViewError):
+        schema.validate(make(value))
+
+
+def _fuzz_examples():
+    els = [{"art": "linie", "von": [0, 0], "bis": [10, 0], "ebene": "W"}, {"art": "polylinie", "punkte": [[0, 0], [5, 5]], "geschlossen": True},
+           {"art": "rechteck", "x": 1, "y": 1, "b": 3, "h": 2}, {"art": "kreis", "x": 5, "y": 5, "r": 1},
+           {"art": "bogen", "x": 0, "y": 0, "r": 2, "von": 0, "bis": 90}, {"art": "text", "x": 1, "y": 1, "text": "K", "groesse": 2},
+           {"art": "mass", "von": [0, -2], "bis": [10, -2], "text": "10"}]
+    return [MATHE, MARKT, RECHERCHE, p3("fortschritt", schritte=STEPS), p3("aufgaben", punkte=[{"text": "M", "erledigt": True}]),
+            p3("zeitplan", termine=[{"von": "09:30", "bis": "10:00", "titel": "A", "ort": "B"}]), p3("mail", art="mail", **MAIL),
+            p3("mail-entwurf", art="mail", **DRAFT), p3("countdown", titel="Tee", ende="2026-11-12T12:00"),
+            doc("dokument", name="a.py", zeilen=CODE, gliederung=["g"]), doc("aenderung", name="a.py", bloecke=DIFF),
+            scene({"name": "v", "objekte": [BOX, {"form": "linie", "name": "L", "punkte": [[0, 0, 0], [1, 1, 1]]}]},
+                  hervorheben=["Boden 1"], beschriftungen=[{"objekt": "L", "text": "x"}]),
+            plan(els, einheit="m", ebenen=["W"]), p6("vergleich", "antwort", **VERGLEICH), p6("zeitstrahl", "antwort", **ZEITSTRAHL),
+            p6("gegenueber", "antwort", **GEGENUEBER), p6("lernkarten", **KARTEN), p6("quiz", **QUIZ), p6("anleitung", aktuell=1, **ANLEITUNG),
+            p6("netz", "netz", form="baum", knoten=KNOTEN, kanten=KANTEN)]
+
+
+def _paths(v, path=()):
+    yield path
+    if isinstance(v, dict):
+        for k, x in v.items():
+            yield from _paths(x, path + (k,))
+    elif isinstance(v, list):
+        for i, x in enumerate(v):
+            yield from _paths(x, path + (i,))
+
+
+def test_seeded_fuzz_only_returns_views_or_raises_view_errors():
+    import copy
+    import random
+    rnd = random.Random(6)
+    junk = [None, True, False, 0, -1, 1.5, float("nan"), float("inf"), float("-inf"), 10**400, -10**400, 2**63, "", "x" * 2000,
+            "\ud800", "a\udfffb", chr(0x202e), [], [None], [[1]], {}, {"a": 1}, {"typ": [1]}, ["auf"], "linie", "baum", "a", "n0"]
+    examples = _fuzz_examples()
+    for _ in range(3000):
+        view = copy.deepcopy(rnd.choice(examples))
+        for _ in range(rnd.randint(1, 3)):
+            path = rnd.choice(list(_paths(view))[1:])
+            parent = view
+            for key in path[:-1]:
+                parent = parent[key]
+            if rnd.random() < 0.15 and isinstance(parent, dict):
+                parent.pop(path[-1])
+                break
+            parent[path[-1]] = copy.deepcopy(rnd.choice(junk))
+        try:
+            got = schema.validate(view)
+        except schema.ViewError as e:
+            assert isinstance(e.code, str) and len(e.code) <= 20
+            continue
+        assert schema.validate(got) == got
+
+
 def test_zeige_tool_names_the_p6_kinds_and_blocks():
     props = ch.ZEIGE_TOOL["inputSchema"]["properties"]
     assert {"lernen", "netz"} <= set(props["art"]["enum"])

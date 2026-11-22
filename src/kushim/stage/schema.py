@@ -41,7 +41,13 @@ def _text(v: Any, limit: int, code: str, optional: bool = False) -> str:
 
 
 def _num(v: Any, code: str) -> float | int:
-    if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        raise ViewError(code)
+    try:
+        finite = math.isfinite(v)
+    except OverflowError:                                  # ganze Zahl, die keine endliche Kommazahl mehr ist (z. B. 10**400)
+        finite = False
+    if not finite:
         raise ViewError(code)
     return v
 
@@ -342,6 +348,8 @@ def _object3d(o: Any, c: str) -> dict[str, Any]:
     if not isinstance(o, dict):
         raise ViewError(c)
     form = o.get("form")
+    if not isinstance(form, str):
+        raise ViewError(c)
     if form == "linie":
         _fields(o, {"form", "name", "punkte", "farbe"}, c)
         extra: dict[str, Any] = {"punkte": [_point(p, 3, c) for p in _list(o.get("punkte"), 2, 50, c)]}
@@ -575,7 +583,17 @@ BLOCKS: dict[str, Callable[[dict[str, Any], str], dict[str, Any]]] = {
 
 
 def validate(raw: Any) -> dict[str, Any]:
-    """Gibt die geprüfte Ansicht zurück oder wirft ViewError. Eine Ansicht mit `schliessen: true` braucht nur die `id`."""
+    """Gibt die geprüfte Ansicht zurück oder wirft ViewError. Eine Ansicht mit `schliessen: true` braucht nur die `id`.
+    Letzte Sicherung: Jeder andere Fehler wird zu ViewError("bad_view"), damit keine Eingabe den Channel oder die Bridge beendet."""
+    try:
+        return _validate(raw)
+    except ViewError:
+        raise
+    except Exception:
+        raise ViewError("bad_view") from None
+
+
+def _validate(raw: Any) -> dict[str, Any]:
     if not isinstance(raw, dict):
         raise ViewError("bad_view")
     try:
@@ -605,7 +623,7 @@ def validate(raw: Any) -> dict[str, Any]:
     blocks = []
     for i, b in enumerate(_list(raw.get("bausteine"), 1, MAX_BLOCKS, "bad_blocks")):
         code = f"bad_block_{i + 1}"
-        if not isinstance(b, dict) or b.get("typ") not in BLOCKS:
+        if not isinstance(b, dict) or not isinstance(b.get("typ"), str) or b["typ"] not in BLOCKS:
             raise ViewError(code)
         blocks.append({"typ": b["typ"], **BLOCKS[b["typ"]](b, code)})
     nrs = {q["nr"] for b in blocks if b["typ"] == "quellen" for q in b["quellen"]}
