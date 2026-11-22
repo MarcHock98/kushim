@@ -376,7 +376,9 @@ function atomNorm(src: Obj, fix: string[]): AtomConfig {
   const rohS = own(src, "schalen");
   if (rohS === undefined) {
     schalen = schalenRegel(Math.max(0, elektronen));
-    if (elektronen > 20) { fix.push("schalen"); ungueltig = true; }      // über 20 Elektronen ist `schalen` Pflicht
+    // Die Regel 2, 8, 8, 2 stimmt nur bis Ordnungszahl 20 (ab Scandium füllt sich die dritte Schale weiter, auch bei Ionen
+    // wie Sc³⁺ mit 18 Elektronen). Darum gilt sie nur bei Z ≤ 20 und Z − ladung ≤ 20, sonst ist `schalen` Pflicht.
+    if (z > 20 || elektronen > 20) { fix.push("schalen"); ungueltig = true; }
   } else if (!Array.isArray(rohS)) {
     fix.push("schalen"); ungueltig = true; schalen = schalenRegel(Math.max(0, Math.min(elektronen, 20)));
   } else {

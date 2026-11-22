@@ -248,6 +248,31 @@ describe("Atom (Schalenmodell)", () => {
     expect(normalizeTeilchen({ form: "atom", element: "Fe" }).ungueltig).toBe(true);
     expect(atomModell(atom("Na", 12, 0, [2, 8, 1, 0, 0])).schalen).toEqual([2, 8, 1]);
   });
+
+  it("Schalen werden nur bei Z ≤ 20 und Z − ladung ≤ 20 abgeleitet", () => {
+    const ohne = (element: string, ladung: number) => normalizeTeilchen({ form: "atom", element, ladung }) as AtomConfig;
+    for (const [el, q] of [["Sc", 1], ["Sc", 2], ["Sc", 3], ["Ti", 2], ["Ti", 3], ["V", 3], ["Fe", 0]] as const) {
+      const c = ohne(el, q);
+      expect([el, q, c.ungueltig]).toEqual([el, q, true]);
+      expect(c.angepasst).toContain("schalen");
+    }
+    expect(ohne("K", -1)).toMatchObject({ schalen: [2, 8, 8, 2], ungueltig: false, angepasst: [] });
+    expect(ohne("Ca", 0)).toMatchObject({ schalen: [2, 8, 8, 2], ungueltig: false });
+    expect(ohne("Na", 0)).toMatchObject({ schalen: [2, 8, 1], ungueltig: false });
+    expect(ohne("H", 1)).toMatchObject({ schalen: [], ungueltig: false });
+    expect(ohne("Ca", -1).ungueltig).toBe(true);                         // 21 Elektronen
+    expect(atom("Sc", 24, 3, [2, 8, 8]).ungueltig).toBe(false);          // mit Schalen gültig
+  });
+
+  it("Schalen mit Nullen in der Mitte und eine einzige Schale", () => {
+    const a = atomModell(atom("Na", -1, 0, [2, 0, 9]));
+    expect([a.ungueltig, a.schalen]).toEqual([false, [2, 0, 9]]);
+    expect(a.text).toBe("Natrium, 11 Protonen, 11 Elektronen in den Schalen 2, 0, 9. Vereinfachtes Schalenmodell.");
+    const b = atomModell(atom("Na", -1, 0, [11]));
+    expect([b.ungueltig, b.schalen]).toEqual([false, [11]]);
+    expect(b.text).toBe("Natrium, 11 Protonen, 11 Elektronen in einer Schale. Vereinfachtes Schalenmodell.");
+    expect(atomModell(atom("Na", -1, 0, [11, 0, 0])).schalen).toEqual([11]);
+  });
 });
 
 describe("Orbital-Wolke", () => {
@@ -259,6 +284,17 @@ describe("Orbital-Wolke", () => {
     expect(Array.from(a.positionen)).toEqual(Array.from(b.positionen));
     expect(Array.from(a.phasen)).toEqual(Array.from(b.phasen));
     expect(Array.from(a.positionen)).not.toEqual(Array.from(c.positionen));
+  });
+
+  it("Startwert 0 lässt den Generator nicht entarten", () => {
+    const w = orbitalPunkte(orbital("2p_z", 2500, 0));
+    expect(w.anzahl).toBe(2500);
+    const lagen = new Set<string>();
+    for (let i = 0; i < w.anzahl; i++) lagen.add(`${w.positionen[3 * i]},${w.positionen[3 * i + 1]},${w.positionen[3 * i + 2]}`);
+    expect(lagen.size).toBe(2500);                                        // keine zwei Punkte gleich, keine feste Folge
+    expect(w.plus).toBeGreaterThan(1000);
+    expect(w.minus).toBeGreaterThan(1000);
+    expect(Array.from(w.positionen)).not.toEqual(Array.from(orbitalPunkte(orbital("2p_z", 2500, 1)).positionen));
   });
 
   it("5000 Punkte je Orbital, alle endlich, innerhalb der Versuchsgrenze; Zeit gemessen", () => {
