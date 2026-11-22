@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { formatFest, isFiniteSnapshot, mulberry32, type SimSnapshot } from "./lib/physics";
-import { createSimLoop, MAX_KOERPER_SCHRITTE, PHYSIK, statusWort, type LoopState, type SimEngine } from "./lib/simLoop";
+import { createSimLoop, MAX_KOERPER_SCHRITTE, PHYSIK, statusWort, TEMPO_FAKTOREN, tempoFaktor, type LoopState, type SimEngine } from "./lib/simLoop";
 
 // Taktschleife (Plan docs/ui-p5-plan.md, Abschnitte 5, 6 und 10) mit falscher Uhr und falschem Bildtakt.
 
@@ -432,5 +432,92 @@ describe("simLoop: Zeitlupe", () => {
     expect(worte(a.states)).toEqual(["läuft", ZEITLUPE, "pausiert", "läuft", ZEITLUPE, "angehalten nach 5 s"]);
     expect(a.loop.pending()).toBe(0);
     expect(a.wartend()).toBe(0);
+  });
+});
+
+describe("simLoop: Tempo halb, normal, doppelt (P5b)", () => {
+  it("snaps every number to 0.5, 1 or 2", () => {
+    expect(TEMPO_FAKTOREN).toEqual([0.5, 1, 2]);
+    const faelle: [unknown, number][] = [[0.5, 0.5], [1, 1], [2, 2], [3, 2], [Infinity, 2], [1.5, 2], [1.4, 1], [0.8, 1], [0.7, 0.5], [0.1, 0.5], [-1, 0.5], [-Infinity, 0.5], [NaN, 1], ["2", 1], [undefined, 1]];
+    for (const [f, soll] of faelle) expect(tempoFaktor(f), String(f)).toBe(soll);
+    const a = aufbau(pendel());
+    expect(a.loop.getTempoFaktor!()).toBe(1);
+    expect(a.loop.getState().tempoFaktor).toBe(1);
+    a.loop.setTempoFaktor!(7);
+    expect(a.loop.getTempoFaktor!()).toBe(2);
+    expect(a.loop.getState().tempoFaktor).toBe(2);
+  });
+
+  it("changes the model time per real second by the factor", () => {
+    const laeufe = TEMPO_FAKTOREN.map((f) => { const a = aufbau(pendel({ laufzeit: 60 })); a.loop.setTempoFaktor!(f); a.lauf(4, 60); return a; });
+    const sim = laeufe[1].loop.getSim(), z = laeufe.map((a) => a.loop.getState().simZeit);
+    expect(z[1]).toBeGreaterThan(3.9 * sim.tempo);
+    expect(Math.abs(z[0] - 0.5 * z[1])).toBeLessThanOrEqual(2 * sim.dt);
+    expect(Math.abs(z[2] - 2 * z[1])).toBeLessThanOrEqual(2 * sim.dt);
+    for (const a of laeufe) {
+      expect(a.loop.getState().laufzeit).toBeCloseTo(laeufe[1].loop.getState().laufzeit, 9);   // die echte Laufzeit bleibt gleich
+      expect(a.loop.getState().status).toBe("laeuft");
+    }
+  });
+
+  it("switches from the next frame on without a jump in the picture and keeps the factor after a restart", () => {
+    const a = aufbau(pendel({ laufzeit: 60 }));
+    a.lauf(1);
+    const tempo = a.loop.getSim().tempo, dt = a.loop.getSim().dt, n = a.frames.length, z0 = a.loop.getState().simZeit;
+    a.loop.setTempoFaktor!(2);
+    expect(a.frames).toHaveLength(n);                                    // kein Bild beim Umschalten
+    expect(a.loop.getState().simZeit).toBe(z0);
+    a.lauf(1);
+    const f = a.frames.slice(n - 1);
+    for (let i = 1; i < f.length; i++) {
+      const d = f[i].snap.zeit - f[i - 1].snap.zeit;
+      expect(d).toBeGreaterThanOrEqual(0);
+      expect(d).toBeLessThanOrEqual((2 * tempo * 1.05) / 30 + dt);        // ein Bild: höchstens doppeltes Tempo, kein Sprung
+      const p = f[i].snap.koerper[0], q = f[i - 1].snap.koerper[0];
+      expect(Math.hypot(p.x - q.x, p.y - q.y)).toBeLessThan(0.2);        // Pendel 1 m: der Körper springt nicht
+    }
+    expect(a.loop.getState().simZeit - z0).toBeGreaterThan(1.9 * tempo);
+    a.loop.restart();
+    expect(a.loop.getTempoFaktor!()).toBe(2);
+    expect(a.loop.getState().simZeit).toBe(0);
+  });
+
+  it("never exceeds 4000 body-steps per frame at double tempo: then „Zeitlupe“", () => {
+    const a = aufbau(schnellesGas());
+    a.loop.setTempoFaktor!(2);
+    let max = 0;
+    a.lauf(3, 60, () => { max = Math.max(max, a.loop.getState().koerperSchritte); });
+    expect(max).toBeLessThanOrEqual(MAX_KOERPER_SCHRITTE);
+    expect(a.loop.getState().status).toBe("zeitlupe");
+    for (const input of [{ ...basis, modell: "doppelpendel", parameter: { laenge1: 1, laenge2: 1, masse1: 1000, masse2: 0.01, winkel1: 180, winkel2: 0, g: 9.81, daempfung: 0 } }]) {
+      const b = aufbau(input);
+      b.loop.setTempoFaktor!(2);
+      let m = 0;
+      b.lauf(2, 60, () => { m = Math.max(m, b.loop.getState().koerperSchritte); });
+      expect(m).toBeLessThanOrEqual(MAX_KOERPER_SCHRITTE);
+      expect(b.frames.every((x) => isFiniteSnapshot(x.snap))).toBe(true);
+    }
+  });
+
+  it("runs the new models: double pendulum, waves, orbits with attraction", () => {
+    const eingaben = [
+      { ...basis, modell: "doppelpendel", parameter: { laenge1: 1, laenge2: 1, masse1: 1, masse2: 1, winkel1: 120, winkel2: -30, g: 9.81, daempfung: 0 } },
+      { ...basis, modell: "welle", parameter: { wellen: [{ amplitude: 1, wellenlaenge: 2, frequenz: 0.5, phase: 0, richtung: "rechts" }, { amplitude: 1, wellenlaenge: 2, frequenz: 0.5, phase: 0, richtung: "links" }], bereich: 0 } },
+      { ...basis, modell: "umlauf", parameter: { zentralmasse: 1, anziehung: true, koerper: [
+        { name: "A", abstand: 1, exzentrizitaet: 0.1, phase: 0, farbe: "arc", masse: 0.01 }, { name: "B", abstand: 1.6, exzentrizitaet: 0.2, phase: 180, farbe: "ok", masse: 0.01 }] } },
+    ];
+    for (const input of eingaben) {
+      const a = aufbau(input);
+      let max = 0;
+      a.lauf(3, 60, () => { max = Math.max(max, a.loop.getState().koerperSchritte); });
+      expect(a.loop.getState().status, input.modell).toBe("laeuft");
+      expect(max).toBeGreaterThan(0);
+      expect(max).toBeLessThanOrEqual(MAX_KOERPER_SCHRITTE);
+      expect(a.frames.length).toBeGreaterThanOrEqual(89);
+      expect(a.frames.every((f) => isFiniteSnapshot(f.snap))).toBe(true);
+      expect(a.loop.getState().simZeit).toBeGreaterThan(2.9 * a.loop.getSim().tempo);
+      if (input.modell === "welle") expect(a.frames[a.frames.length - 1].snap.kurve).toHaveLength(400);
+      if (input.modell === "umlauf") expect(a.loop.getSim().anziehung).toBe(true);
+    }
   });
 });
