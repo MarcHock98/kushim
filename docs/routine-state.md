@@ -186,6 +186,8 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
 
 ## Offene Fragen an den Nutzer
 - 2026-11-23: keine offene Entscheidung zu P5. Zu prüfen: P5b im Browser (Bereich war ausgeblendet).
+- 2026-11-23 **E2/E3** (`docs/ui-e2e3-plan.md`): neun Entscheidungen (kompakter Modus, immer im Vordergrund, Hotkey, Freigabe im kleinen
+  Fenster, Verbrauch über statusline.py, Mikrofon merken, Vault, Notaus im Setup, Schnitt). Empfehlungen im Plan. Bis zur Antwort: kein Code.
 - 2026-11-22 P6, nach Empfehlung entschieden, jederzeit änderbar: doppelte Antwortoptionen im Quiz erlaubt; eine Aktualisierung
   derselben Ansicht setzt Quiz-, Karten- und Timerstand zurück; ein gestarteter Timer läuft beim Schrittwechsel in Echtzeit weiter.
 - Keine offenen Fragen. (C7 am 2026-11-11 beantwortet, siehe Entscheidungen.)
