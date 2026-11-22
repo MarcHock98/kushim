@@ -781,6 +781,273 @@ def test_p6_text_loses_control_and_direction_characters():
         schema.validate(p6("lernkarten", karten=[{"frage": chr(0x202e) + chr(0), "antwort": "a"}]))
 
 
+# --- P5a: Simulation mit festen Modellen (docs/ui-p5-plan.md) ------------------------------------------
+
+SIM_MIN = {
+    "pendel": {"laenge": 1, "winkel": 30},
+    "feder": {"masse": 1, "federkonstante": 10, "auslenkung": 0.2},
+    "wurf": {"geschwindigkeit": 20, "winkel": 45},
+    "umlauf": {"zentralmasse": 1, "koerper": [{"name": "Erde", "abstand": 1}]},
+    "gas": {"anzahl": 50, "kasten": [100, 60], "radius": 1, "geschwindigkeit": 0.5},
+}
+SIM_FILLED = {                                                                    # was die Oberfläche aus SIM_MIN bekommt
+    "pendel": {"laenge": 1, "winkel": 30, "anfangsgeschwindigkeit": 0, "daempfung": 0, "g": 9.81},
+    "feder": {"masse": 1, "federkonstante": 10, "auslenkung": 0.2, "daempfung": 0},
+    "wurf": {"geschwindigkeit": 20, "winkel": 45, "hoehe": 0, "g": 9.81, "luftwiderstand": 0},
+    "umlauf": {"zentralmasse": 1, "koerper": [{"name": "Erde", "abstand": 1, "exzentrizitaet": 0, "phase": 0, "farbe": "arc"}]},
+    "gas": {"anzahl": 50, "kasten": [100, 60], "radius": 1, "geschwindigkeit": 0.5, "schwerkraft": 0, "stoesse": True, "startwert": 1},
+}
+SIM_FULL = {
+    "pendel": {"laenge": 2.5, "winkel": -45, "anfangsgeschwindigkeit": 90, "daempfung": 0.2, "g": 1.62},
+    "feder": {"masse": 0.5, "federkonstante": 200, "auslenkung": -0.1, "daempfung": 1.5},
+    "wurf": {"geschwindigkeit": 30, "winkel": -10, "hoehe": 50, "g": 9.81, "luftwiderstand": 0.01},
+    "umlauf": {"zentralmasse": 1, "koerper": [{"name": "Merkur", "abstand": 0.39, "exzentrizitaet": 0.21, "phase": 10, "farbe": "amber"},
+                                               {"name": "Erde", "abstand": 1, "exzentrizitaet": 0.017, "phase": 200, "farbe": "ok"},
+                                               {"name": "Mars", "abstand": 1.52, "exzentrizitaet": 0.09, "phase": 359.5, "farbe": "alarm"}]},
+    "gas": {"anzahl": 120, "kasten": [200, 100], "radius": 1.5, "geschwindigkeit": 2, "schwerkraft": 9.81, "stoesse": False,
+            "startwert": 42},
+}
+
+
+def sim(modell, parameter, art="simulation", **extra):
+    return {"id": "sim", "art": art, "titel": "T", "bausteine": [{"typ": "simulation", "modell": modell, "parameter": parameter, **extra}]}
+
+
+def sim_block(modell, parameter, **extra):
+    return schema.validate(sim(modell, parameter, **extra))["bausteine"][0]
+
+
+def sim_bad(modell, parameter, **extra):
+    with pytest.raises(schema.ViewError) as e:
+        schema.validate(sim(modell, parameter, **extra))
+    assert e.value.code == "bad_block_1"
+
+
+@pytest.mark.parametrize("modell", list(SIM_MIN))
+def test_p5a_minimal_simulation_gets_every_default(modell):
+    assert sim_block(modell, SIM_MIN[modell]) == {"typ": "simulation", "modell": modell, "parameter": SIM_FILLED[modell],
+                                                  "laufzeit": 30, "tempo": 0, "spur": True, "beschreibung": ""}
+
+
+@pytest.mark.parametrize("modell", list(SIM_FULL))
+def test_p5a_full_simulation_keeps_every_value(modell):
+    b = sim_block(modell, SIM_FULL[modell], laufzeit=60, tempo=2.5, spur=False, beschreibung="Ohne Reibung.")
+    assert b == {"typ": "simulation", "modell": modell, "parameter": SIM_FULL[modell], "laufzeit": 60, "tempo": 2.5, "spur": False,
+                 "beschreibung": "Ohne Reibung."}
+
+
+@pytest.mark.parametrize("art", ["antwort", "lernen", "recherche", "modell"])
+def test_p5a_simulation_block_works_in_every_kind(art):
+    assert schema.validate(sim("pendel", SIM_MIN["pendel"], art=art))["bausteine"][0]["modell"] == "pendel"
+
+
+@pytest.mark.parametrize("modell", list(SIM_MIN))
+@pytest.mark.parametrize("extra", [{}, {"laufzeit": 5, "tempo": 100, "spur": False, "beschreibung": "x" * 400}])
+def test_p5a_checked_simulations_pass_the_second_check_unchanged(modell, extra):
+    for params in (SIM_MIN[modell], SIM_FULL[modell]):
+        once = schema.validate(sim(modell, params, **extra))
+        assert schema.validate(once) == once
+
+
+SIM_EDGES = [  # (modell, Änderung gegenüber SIM_MIN, gültig)
+    ("pendel", {"laenge": 0.05}, True), ("pendel", {"laenge": 100}, True), ("pendel", {"laenge": 0.0499}, False), ("pendel", {"laenge": 100.01}, False),
+    ("pendel", {"winkel": -170}, True), ("pendel", {"winkel": 170}, True), ("pendel", {"winkel": -170.01}, False), ("pendel", {"winkel": 170.01}, False),
+    ("pendel", {"anfangsgeschwindigkeit": -720}, True), ("pendel", {"anfangsgeschwindigkeit": 720}, True),
+    ("pendel", {"anfangsgeschwindigkeit": -720.1}, False), ("pendel", {"anfangsgeschwindigkeit": 720.1}, False),
+    ("pendel", {"daempfung": 0}, True), ("pendel", {"daempfung": 5}, True), ("pendel", {"daempfung": -0.001}, False), ("pendel", {"daempfung": 5.001}, False),
+    ("pendel", {"g": 0.1}, True), ("pendel", {"g": 100}, True), ("pendel", {"g": 0.099}, False), ("pendel", {"g": 100.1}, False),
+    ("feder", {"masse": 0.001}, True), ("feder", {"masse": 1000}, True), ("feder", {"masse": 0.00099}, False), ("feder", {"masse": 1000.1}, False),
+    ("feder", {"federkonstante": 0.001}, True), ("feder", {"federkonstante": 1_000_000, "masse": 1000}, True),
+    ("feder", {"federkonstante": 0.00099}, False), ("feder", {"federkonstante": 1_000_001, "masse": 1000}, False),
+    ("feder", {"auslenkung": -10}, True), ("feder", {"auslenkung": 10}, True), ("feder", {"auslenkung": -10.01}, False), ("feder", {"auslenkung": 10.01}, False),
+    ("feder", {"daempfung": 0}, True), ("feder", {"daempfung": 10_000}, True), ("feder", {"daempfung": -0.1}, False), ("feder", {"daempfung": 10_000.1}, False),
+    ("feder", {"masse": 0.001, "federkonstante": 15}, True),                       # Schwingungsdauer 0,0513 s
+    ("feder", {"masse": 0.001, "federkonstante": 16}, False),                      # 0,0497 s: zu kurz
+    ("feder", {"masse": 0.001, "federkonstante": 1_000_000}, False),               # 0,0002 s
+    ("feder", {"masse": 1000, "federkonstante": 0.04}, True),                      # 993 s
+    ("feder", {"masse": 1000, "federkonstante": 0.039}, False),                    # 1006 s: zu lang
+    ("feder", {"masse": 1000, "federkonstante": 0.001}, False),                    # 6283 s
+    ("wurf", {"geschwindigkeit": 0.1}, True), ("wurf", {"geschwindigkeit": 1000}, True),
+    ("wurf", {"geschwindigkeit": 0.099}, False), ("wurf", {"geschwindigkeit": 1000.1}, False),
+    ("wurf", {"winkel": 90}, True), ("wurf", {"winkel": -90, "hoehe": 10}, True), ("wurf", {"winkel": 90.1}, False),
+    ("wurf", {"winkel": -90.1, "hoehe": 10}, False),
+    ("wurf", {"hoehe": 10_000}, True), ("wurf", {"hoehe": -0.1}, False), ("wurf", {"hoehe": 10_000.1}, False),
+    ("wurf", {"g": 0.1}, True), ("wurf", {"g": 100}, True), ("wurf", {"g": 0.099}, False), ("wurf", {"g": 100.1}, False),
+    ("wurf", {"luftwiderstand": 0}, True), ("wurf", {"luftwiderstand": 1}, True), ("wurf", {"luftwiderstand": -0.01}, False),
+    ("wurf", {"luftwiderstand": 1.01}, False),
+    ("wurf", {"hoehe": 0, "winkel": 0.001}, True), ("wurf", {"hoehe": 0, "winkel": 0}, False), ("wurf", {"hoehe": 0, "winkel": -10}, False),
+    ("wurf", {"hoehe": 0.0, "winkel": 0.0}, False), ("wurf", {"winkel": -1}, False),                     # ohne hoehe gilt 0
+    ("wurf", {"hoehe": 0.5, "winkel": 0}, True), ("wurf", {"hoehe": 0.5, "winkel": -90}, True),
+    ("umlauf", {"zentralmasse": 0.01}, True), ("umlauf", {"zentralmasse": 100}, True), ("umlauf", {"zentralmasse": 0.0099}, False),
+    ("umlauf", {"zentralmasse": 100.1}, False),
+    ("umlauf", {"koerper": [{"name": "a", "abstand": 0.01}]}, True), ("umlauf", {"koerper": [{"name": "a", "abstand": 1000}]}, True),
+    ("umlauf", {"koerper": [{"name": "a", "abstand": 0.0099}]}, False), ("umlauf", {"koerper": [{"name": "a", "abstand": 1000.1}]}, False),
+    ("umlauf", {"koerper": [{"name": "a", "abstand": 1, "exzentrizitaet": 0.95}]}, True),
+    ("umlauf", {"koerper": [{"name": "a", "abstand": 1, "exzentrizitaet": 0.951}]}, False),
+    ("umlauf", {"koerper": [{"name": "a", "abstand": 1, "exzentrizitaet": -0.01}]}, False),
+    ("umlauf", {"koerper": [{"name": "a", "abstand": 1, "phase": 360}]}, True),
+    ("umlauf", {"koerper": [{"name": "a", "abstand": 1, "phase": 360.1}]}, False),
+    ("umlauf", {"koerper": [{"name": "a", "abstand": 1, "phase": -0.1}]}, False),
+    ("umlauf", {"koerper": [{"name": "x" * 30, "abstand": 1}]}, True), ("umlauf", {"koerper": [{"name": "x" * 31, "abstand": 1}]}, False),
+    ("umlauf", {"koerper": [{"name": "", "abstand": 1}]}, False), ("umlauf", {"koerper": [{"name": chr(0x202e), "abstand": 1}]}, False),
+    ("umlauf", {"koerper": [{"abstand": 1}]}, False), ("umlauf", {"koerper": [{"name": "a"}]}, False),
+    ("umlauf", {"koerper": [{"name": "a", "abstand": 1}, {"name": "b", "abstand": 100}]}, True),          # Verhältnis genau 100
+    ("umlauf", {"koerper": [{"name": "a", "abstand": 0.01}, {"name": "b", "abstand": 1}]}, True),
+    ("umlauf", {"koerper": [{"name": "a", "abstand": 1}, {"name": "b", "abstand": 100.1}]}, False),
+    ("umlauf", {"koerper": [{"name": "a", "abstand": 0.01}, {"name": "b", "abstand": 1000}]}, False),
+    ("umlauf", {"koerper": [{"name": f"k{i}", "abstand": 1 + i} for i in range(8)]}, True),
+    ("umlauf", {"koerper": [{"name": f"k{i}", "abstand": 1 + i} for i in range(9)]}, False),
+    ("umlauf", {"koerper": []}, False), ("umlauf", {"koerper": {"name": "a", "abstand": 1}}, False), ("umlauf", {"koerper": ["Erde"]}, False),
+    ("umlauf", {"koerper": [{"name": "Erde", "abstand": 1}, {"name": "Erde", "abstand": 2}]}, False),
+    ("umlauf", {"koerper": [{"name": "Erde", "abstand": 1}, {"name": " Erde" + chr(10), "abstand": 2}]}, False),   # gleich nach dem Säubern
+    ("umlauf", {"koerper": [{"name": "Neuer Mond", "abstand": 1}, {"name": "Neuer" + chr(9) + " Mond", "abstand": 2}]}, False),
+    ("umlauf", {"koerper": [{"name": "Erde", "abstand": 1}, {"name": "erde", "abstand": 2}]}, True),
+    ("umlauf", {"koerper": [{"name": "a", "abstand": 1, "masse": 5}]}, False),
+    ("gas", {"anzahl": 2}, True), ("gas", {"anzahl": 300}, True), ("gas", {"anzahl": 1}, False), ("gas", {"anzahl": 301}, False),
+    ("gas", {"anzahl": 50.0}, False), ("gas", {"anzahl": True}, False), ("gas", {"anzahl": "50"}, False),
+    ("gas", {"kasten": [1, 1], "radius": 0.05, "anzahl": 2}, True), ("gas", {"kasten": [1000, 1000]}, True),
+    ("gas", {"kasten": [0.99, 1], "radius": 0.01}, False), ("gas", {"kasten": [1000.1, 1000]}, False),
+    ("gas", {"kasten": [100, 1000]}, True), ("gas", {"kasten": [1000, 100]}, True),                         # Seitenverhältnis genau 10
+    ("gas", {"kasten": [99.9, 1000]}, False), ("gas", {"kasten": [10, 101], "radius": 0.1}, False),        # über 10
+    ("gas", {"kasten": [100]}, False), ("gas", {"kasten": [100, 60, 10]}, False), ("gas", {"kasten": "100x60"}, False),
+    ("gas", {"kasten": [100, "60"]}, False),
+    ("gas", {"radius": 3}, True), ("gas", {"radius": 3.01}, False), ("gas", {"radius": 0}, False), ("gas", {"radius": -1}, False),   # 5 % von 60 = 3
+    ("gas", {"radius": 0.0001}, True),
+    ("gas", {"anzahl": 63, "radius": 3}, True),                                    # 1781 von 1800 Flächeneinheiten
+    ("gas", {"anzahl": 64, "radius": 3}, False),                                   # 1810: Kasten zu voll
+    ("gas", {"anzahl": 300, "radius": 3}, False),
+    ("gas", {"geschwindigkeit": 10}, True), ("gas", {"geschwindigkeit": 0.001}, True), ("gas", {"geschwindigkeit": 0}, False),
+    ("gas", {"geschwindigkeit": 10.01}, False), ("gas", {"geschwindigkeit": -1}, False),
+    ("gas", {"schwerkraft": 0}, True), ("gas", {"schwerkraft": 100}, True), ("gas", {"schwerkraft": -0.1}, False), ("gas", {"schwerkraft": 100.1}, False),
+    ("gas", {"stoesse": False}, True), ("gas", {"stoesse": "ja"}, False), ("gas", {"stoesse": 1}, False), ("gas", {"stoesse": None}, False),
+    ("gas", {"startwert": 0}, True), ("gas", {"startwert": 2_147_483_647}, True), ("gas", {"startwert": -1}, False),
+    ("gas", {"startwert": 2_147_483_648}, False), ("gas", {"startwert": 1.0}, False), ("gas", {"startwert": True}, False),
+    ("gas", {"startwert": "1"}, False),
+]
+
+
+@pytest.mark.parametrize("modell,change,ok", SIM_EDGES)
+def test_p5a_limits_just_inside_pass_and_just_outside_are_rejected(modell, change, ok):
+    params = {**SIM_MIN[modell], **change}
+    if ok:
+        got = sim_block(modell, params)["parameter"]
+        if modell != "umlauf":
+            assert got == {**SIM_FILLED[modell], **change}
+        else:
+            assert len(got["koerper"]) == len(params["koerper"]) and got["zentralmasse"] == params["zentralmasse"]
+    else:
+        sim_bad(modell, params)
+
+
+@pytest.mark.parametrize("extra,ok", [
+    ({"laufzeit": 5}, True), ({"laufzeit": 60}, True), ({"laufzeit": 4.9}, False), ({"laufzeit": 60.1}, False), ({"laufzeit": "30"}, False),
+    ({"tempo": 0}, True), ({"tempo": 0.0}, True), ({"tempo": 0.1}, True), ({"tempo": 100}, True), ({"tempo": 0.05}, False),
+    ({"tempo": 100.1}, False), ({"tempo": -1}, False), ({"tempo": None}, False),
+    ({"spur": False}, True), ({"spur": "ja"}, False), ({"spur": 0}, False),
+    ({"beschreibung": "x" * 400}, True), ({"beschreibung": "x" * 401}, False), ({"beschreibung": 5}, False),
+    ({"formel": "sin(x)"}, False), ({"code": "while(1){}"}, False), ({"regler": ["laenge"]}, False),
+])
+def test_p5a_block_fields_have_limits(extra, ok):
+    if ok:
+        assert sim_block("pendel", SIM_MIN["pendel"], **extra)["modell"] == "pendel"
+    else:
+        sim_bad("pendel", SIM_MIN["pendel"], **extra)
+
+
+@pytest.mark.parametrize("modell", ["doppelpendel", "welle", "teilchen", "Pendel", "", None, 5, True, ["pendel"], {"pendel": 1}])
+def test_p5a_unknown_models_are_rejected(modell):
+    sim_bad(modell, SIM_MIN["pendel"])
+
+
+@pytest.mark.parametrize("parameter", [None, [], ["laenge", 1], "laenge=1", 1, True])
+def test_p5a_parameter_must_be_an_object(parameter):
+    sim_bad("pendel", parameter)
+    with pytest.raises(schema.ViewError):
+        schema.validate({"id": "s", "art": "simulation", "titel": "T", "bausteine": [{"typ": "simulation", "modell": "pendel"}]})
+
+
+@pytest.mark.parametrize("modell", list(SIM_MIN))
+@pytest.mark.parametrize("extra", [{"formel": "sin(x)"}, {"code": "x"}, {"Laenge": 1}, {"masse_2": 1}])
+def test_p5a_unknown_parameters_are_rejected(modell, extra):
+    sim_bad(modell, {**SIM_MIN[modell], **extra})
+
+
+@pytest.mark.parametrize("modell,field", [(m, f) for m, p in SIM_MIN.items() for f in p])
+def test_p5a_missing_required_parameters_are_rejected(modell, field):
+    sim_bad(modell, {k: v for k, v in SIM_MIN[modell].items() if k != field})
+    sim_bad(modell, {**SIM_MIN[modell], field: None})
+
+
+def _sim_numeric_fields():
+    for m, spec in schema.SIM_ZAHLEN.items():
+        for f in spec:
+            yield lambda v, m=m, f=f: sim(m, {**SIM_MIN[m], f: v})
+    for f in schema.SIM_KOERPER:
+        yield lambda v, f=f: sim("umlauf", {"zentralmasse": 1, "koerper": [{"name": "a", "abstand": 1, f: v}]})
+    for f in ("anzahl", "radius", "geschwindigkeit", "schwerkraft", "startwert"):
+        yield lambda v, f=f: sim("gas", {**SIM_MIN["gas"], f: v})
+    yield lambda v: sim("gas", {**SIM_MIN["gas"], "kasten": [v, 60]})
+    yield lambda v: sim("pendel", SIM_MIN["pendel"], laufzeit=v)
+    yield lambda v: sim("pendel", SIM_MIN["pendel"], tempo=v)
+
+
+SIM_NUMERIC = list(_sim_numeric_fields())
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf"), 10**400, -10**400, True, False, "1", None, [1]])
+@pytest.mark.parametrize("make", SIM_NUMERIC)
+def test_p5a_non_finite_and_non_numbers_are_rejected_everywhere(make, value):
+    with pytest.raises(schema.ViewError) as e:
+        schema.validate(make(value))
+    assert e.value.code == "bad_block_1"
+
+
+@pytest.mark.parametrize("farbe", list(schema.PALETTE))
+def test_p5a_every_palette_colour_passes(farbe):
+    assert sim_block("umlauf", {"zentralmasse": 1, "koerper": [{"name": "a", "abstand": 1, "farbe": farbe}]})["parameter"]["koerper"][0]["farbe"] == farbe
+
+
+@pytest.mark.parametrize("farbe", ["rot", "#ff0000", "", None, 5, True, ["arc"], {"arc": 1}, "ARC"])
+def test_p5a_bad_colours_are_rejected(farbe):
+    sim_bad("umlauf", {"zentralmasse": 1, "koerper": [{"name": "a", "abstand": 1, "farbe": farbe}]})
+
+
+def test_p5a_body_names_lose_control_characters():
+    b = sim_block("umlauf", {"zentralmasse": 1, "koerper": [{"name": "Erde" + chr(0x202e) + chr(0) + "x", "abstand": 1}]})
+    name = b["parameter"]["koerper"][0]["name"]
+    assert name.startswith("Erde") and all(ch.isprintable() for ch in name) and chr(0x202e) not in name
+
+
+def test_zeige_tool_names_the_simulation_kind_block_and_models():
+    props = ch.ZEIGE_TOOL["inputSchema"]["properties"]
+    assert "simulation" in props["art"]["enum"] and "simulation" in props["bausteine"]["items"]["properties"]["typ"]["enum"]
+    desc = props["bausteine"]["description"]
+    for name in ("pendel", "feder", "wurf", "umlauf", "gas", "laenge", "federkonstante", "auslenkung", "geschwindigkeit", "zentralmasse",
+                 "koerper", "abstand", "exzentrizitaet", "kasten", "radius", "stoesse", "startwert", "laufzeit", "tempo", "spur"):
+        assert name in desc
+    assert "keine Formeln" in desc and "keine Formeln" in ch.ZEIGE_TOOL["description"] and "keine Messung" in ch.ZEIGE_TOOL["description"]
+    assert all(m in ch.INSTRUCTIONS for m in ("simulation", "pendel", "feder", "wurf", "umlauf", "gas"))
+    assert "nie Formeln oder Code" in ch.INSTRUCTIONS and "keine Messung" in ch.INSTRUCTIONS
+
+
+def test_p5a_simulation_is_listed_by_tools_list_and_travels_through_the_real_channel_into_the_bridge_store(channel):
+    c, out, root = channel
+    c.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+    zeige = {t["name"]: t for t in json.loads(out.getvalue().splitlines()[-1])["result"]["tools"]}["zeige"]
+    assert "simulation" in zeige["inputSchema"]["properties"]["art"]["enum"]
+    assert "simulation" in zeige["inputSchema"]["properties"]["bausteine"]["items"]["properties"]["typ"]["enum"]
+    assert all(m in zeige["inputSchema"]["properties"]["bausteine"]["description"] for m in SIM_MIN)
+    b = br.Bridge(root)
+    assert call(c, out, sim("gas", SIM_MIN["gas"]))["content"][0]["text"] == "Wird gezeigt."
+    r = call(c, out, {**sim("pendel", {"laenge": 1, "winkel": 30, "formel": "sin(x)"}), "id": "kaputt"})
+    assert r["isError"] is True and "bad_block_1" in r["content"][0]["text"] and "sin" not in r["content"][0]["text"]
+    c.say("Hier das Gas.")
+    assert b.fetch() == ("ok", ["Hier das Gas."])
+    got = {i["id"]: i for i in b.stage.since(0)[0]}
+    assert set(got) == {"sim"} and got["sim"]["art"] == "simulation"
+    assert got["sim"]["bausteine"][0]["parameter"] == SIM_FILLED["gas"] and got["sim"]["bausteine"][0]["tempo"] == 0
+
+
 # --- Härtung: jede Eingabe endet als Ansicht oder ViewError, nie als anderer Fehler -----------------------
 
 def _view(typ, art="antwort", **fields):
@@ -818,6 +1085,7 @@ HUGE_FIELDS = [
     lambda n: _view("quiz", art="lernen", fragen=[{**Q, "richtig": n}]),
     lambda n: _view("anleitung", art="lernen", schritte=[{**S, "sekunden": n}]),
     lambda n: _view("anleitung", art="lernen", schritte=[S], aktuell=n),
+    *SIM_NUMERIC,
 ]
 
 
@@ -853,6 +1121,11 @@ ENUM_FIELDS = [
     lambda v: _view("netz", art="netz", form="ablauf", knoten=[{"id": v, "text": "A"}]),
     lambda v: _view("netz", art="netz", form="ablauf", knoten=K2, kanten=[{"von": v, "bis": "b"}]),
     lambda v: _view("netz", art="netz", form="baum", knoten=K2, kanten=[{"von": "a", "bis": v}]),
+    lambda v: sim(v, SIM_MIN["pendel"]),
+    lambda v: sim("pendel", SIM_MIN["pendel"], spur=v),
+    lambda v: sim("gas", {**SIM_MIN["gas"], "stoesse": v}),
+    lambda v: sim("umlauf", {"zentralmasse": 1, "koerper": [{"name": "a", "abstand": 1, "farbe": v}]}),
+    lambda v: sim("umlauf", {"zentralmasse": 1, "koerper": [{"name": v, "abstand": 1}]}),
 ]
 
 
@@ -876,7 +1149,9 @@ def _fuzz_examples():
                   hervorheben=["Boden 1"], beschriftungen=[{"objekt": "L", "text": "x"}]),
             plan(els, einheit="m", ebenen=["W"]), p6("vergleich", "antwort", **VERGLEICH), p6("zeitstrahl", "antwort", **ZEITSTRAHL),
             p6("gegenueber", "antwort", **GEGENUEBER), p6("lernkarten", **KARTEN), p6("quiz", **QUIZ), p6("anleitung", aktuell=1, **ANLEITUNG),
-            p6("netz", "netz", form="baum", knoten=KNOTEN, kanten=KANTEN)]
+            p6("netz", "netz", form="baum", knoten=KNOTEN, kanten=KANTEN),
+            *[sim(m, SIM_FULL[m], laufzeit=45, tempo=3, spur=False, beschreibung="b") for m in SIM_FULL],
+            *[sim(m, SIM_MIN[m]) for m in SIM_MIN]]
 
 
 def _paths(v, path=()):
@@ -894,7 +1169,8 @@ def test_seeded_fuzz_only_returns_views_or_raises_view_errors():
     import random
     rnd = random.Random(6)
     junk = [None, True, False, 0, -1, 1.5, float("nan"), float("inf"), float("-inf"), 10**400, -10**400, 2**63, "", "x" * 2000,
-            "\ud800", "a\udfffb", chr(0x202e), [], [None], [[1]], {}, {"a": 1}, {"typ": [1]}, ["auf"], "linie", "baum", "a", "n0"]
+            "\ud800", "a\udfffb", chr(0x202e), [], [None], [[1]], {}, {"a": 1}, {"typ": [1]}, ["auf"], "linie", "baum", "a", "n0",
+            "gas", "pendel", "umlauf", 0.05, 1000, 100.0]
     examples = _fuzz_examples()
     for _ in range(3000):
         view = copy.deepcopy(rnd.choice(examples))

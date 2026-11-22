@@ -72,7 +72,10 @@ INSTRUCTIONS = (
     "Grundrisse einen `plan2d` (art plan). Gib die Einheit an, wenn du sie kennst (`einheit`), sonst nenne keine Maße als gewiss. "
     "Zum Abwägen, für Abläufe in der Zeit und für Übersetzungen nimm `vergleich`, `zeitstrahl` und `gegenueber` (art antwort oder "
     "recherche), zum Lernen `lernkarten`, `quiz` und `anleitung` (art lernen; `richtig` und `aktuell` zählen ab 0, ein Klick im "
-    "Fenster erreicht dich nicht), für Ablaufdiagramme, Bäume und Mindmaps `netz` (art netz)."
+    "Fenster erreicht dich nicht), für Ablaufdiagramme, Bäume und Mindmaps `netz` (art netz). "
+    "Für Bewegung zeige eine `simulation` (art simulation) mit einem eingebauten Modell (pendel, feder, wurf, umlauf, gas): "
+    "schick nur den Modellnamen und Zahlen in den festen Einheiten, nie Formeln oder Code, und sag dazu, dass es eine Simulation "
+    "ist, keine Messung."
 )
 MAX_VIEWS = 10                   # nicht abgeholte Ansichten (zeige); ältere fallen weg
 CANCEL_TEXT = "Abbruch per Stimme: den laufenden Auftrag nicht fortsetzen und nichts Neues beginnen."
@@ -96,7 +99,9 @@ ZEIGE_TOOL = {
                     "(mail, mail-entwurf; reine Anzeige, gesendet wird damit nichts), dokument (dokument: Dateitext mit Zeilennummern und Gliederung, "
                     "aenderung: Diff; kushim liest selbst keine Dateien, du schickst nur Text, höchstens 400 Zeilen), modell (szene3d: einfache Körper, drehbar, "
                     "auch vorher/nachher), plan (plan2d: Linien, Kreise, Maße, Ebenen), lernen (lernkarten, quiz, anleitung; "
-                    "Knöpfe ändern nur die Anzeige), netz (netz: ablauf, baum, mindmap); vergleich, zeitstrahl und gegenueber passen "
+                    "Knöpfe ändern nur die Anzeige), netz (netz: ablauf, baum, mindmap), simulation (simulation: eingebautes Modell "
+                    "pendel, feder, wurf, umlauf oder gas, nur Parameter, keine Formeln; eine Simulation, keine Messung); "
+                    "vergleich, zeitstrahl und gegenueber passen "
                     "zu antwort und recherche. Nur Text, kein HTML/Markdown; Formeln als "
                     "KaTeX-TeX in `tex`; Adressen nur als Text. Dieselbe id aktualisiert die Ansicht, schliessen=true räumt ab. "
                     "Baustein {\"typ\":\"systemzustand\"} zeigt kushims eigene Systemwerte (CPU, RAM, GPU ...)."),
@@ -126,7 +131,13 @@ ZEIGE_TOOL = {
             "paare:[{original,uebersetzung}]}, lernkarten{karten:[{frage,antwort}]}, quiz{fragen:[{frage,optionen:[str] (2 bis 5),"
             "richtig:Index ab 0,erklaerung?}]}, anleitung{schritte:[{titel,text,sekunden?}],aktuell?:Index ab 0} (art lernen; "
             "Timer nur Anzeige ohne Ton), netz{form:ablauf|baum|mindmap,knoten:[{id:[a-z0-9_-],text,art?:start|ende|entscheidung|"
-            "schritt}],kanten:[{von,bis,text?}]} (art netz; baum und mindmap: genau eine Wurzel, je Knoten eine Kante hinein)"),
+            "schritt}],kanten:[{von,bis,text?}]} (art netz; baum und mindmap: genau eine Wurzel, je Knoten eine Kante hinein), "
+            "simulation{modell:pendel|feder|wurf|umlauf|gas,parameter:{...},laufzeit?:5 bis 60 s (30),tempo?:Zeitraffer 0,1 bis 100 "
+            "(ohne: wählt das Fenster),spur?,beschreibung?} (art simulation; nur Parameter, keine Formeln; parameter je modell: "
+            "pendel{laenge m,winkel Grad,anfangsgeschwindigkeit? Grad/s,daempfung? 1/s,g? m/s²}, feder{masse kg,federkonstante N/m,"
+            "auslenkung m,daempfung? kg/s}, wurf{geschwindigkeit m/s,winkel Grad,hoehe? m,g? m/s²,luftwiderstand? 1/m}, "
+            "umlauf{zentralmasse Sonnenmassen,koerper:[{name,abstand AE,exzentrizitaet?,phase? Grad,farbe?}] (1 bis 8)}, "
+            "gas{anzahl (2 bis 300),kasten:[b,h],radius,geschwindigkeit Kastenbreiten/s,schwerkraft?,stoesse?,startwert?})"),
             "items": {"type": "object", "required": ["typ"], "properties": {"typ": {"type": "string", "enum": list(stage_schema.BLOCKS)}}}},
     }},
 }
