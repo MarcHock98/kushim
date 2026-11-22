@@ -7,7 +7,7 @@ import { ApiClient } from "./lib/api";
 import { STATE_VIEW } from "./lib/avatarState";
 import { DEMO_VIEWS, MockSocket } from "./lib/mock";
 import {
-  createSim, formatFest, formatZahl, GRENZEN, mitWert, MODELLE, normalizeSim, snapshot, standbild, type SimModell, type SimSnapshot,
+  createSim, formatFest, formatZahl, GRENZEN, mitWert, MODELLE, normalizeSim, snapshot, standbild, type NKoerperKern, type SimModell, type SimSnapshot,
 } from "./lib/physics";
 import { createSimLoop } from "./lib/simLoop";
 import { ART_LABEL, parseItem, type Block, type SimBlock, type View } from "./lib/stage";
@@ -927,22 +927,48 @@ describe("P5b: neue Modelle zeichnen", () => {
     expect(screen.queryByText("Die Körper ziehen sich gegenseitig an.")).toBeNull();
   });
 
-  it("Körper außerhalb des Bildausschnitts und die Energieabweichung stehen in Worten da", () => {
+  it("Körper außerhalb des Bildausschnitts (Rechenkern zählt) stehen in Worten da", () => {
     recordingCtx(); const f = fakeFrames();
-    const real = vi.mocked(snapshot).getMockImplementation()!;
-    vi.mocked(snapshot).mockImplementation((st) => {
-      const s = real(st);
-      return { ...s, ausserhalb: 2, kennwerte: [...s.kennwerte, { id: "energieAbweichung", name: "Abweichung", wert: 0.1, einheit: "%", text: "0,1 %" }] } as SimSnapshot;
-    });
-    try {
-      card(simB("anziehung"));
-      f.run(0.6);
-      click("Pause");
-      expect(screen.getByText("2 Körper außerhalb des Bildausschnitts.")).toBeInTheDocument();
-      expect(row("Energieabweichung")).toBe("0,1 %");
-    } finally {
-      vi.mocked(snapshot).mockImplementation(real);
-    }
+    card(simB("anziehung", { laufzeit: 60 }));
+    f.run(0.6);
+    expect(screen.queryByText(/außerhalb des Bildausschnitts/)).toBeNull();
+    const loop = vi.mocked(createSimLoop).mock.results.at(-1)!.value as ReturnType<typeof createSimLoop>;
+    const s = loop.getSim(), k = s.kern as NKoerperKern;
+    k.x[0] = s.ausschnitt.maxX + 5; k.y[2] = s.ausschnitt.minY - 5;                     // zwei Körper weit draußen (wie nach einer Streuung)
+    expect(snapshot(s).ausserhalb).toBe(2);
+    f.frame(); f.frame();
+    click("Pause");                                                                       // beim Anhalten stehen die letzten Zahlen da
+    expect(screen.getByText("2 Körper außerhalb des Bildausschnitts.")).toBeInTheDocument();
+    expect(screen.getAllByText(/außerhalb des Bildausschnitts/)).toHaveLength(1);
+  });
+
+  it("Energie: mit Anziehung die Energieabweichung, beim Doppelpendel Prozent des Starts, ohne Anziehung keine", () => {
+    recordingCtx(); const f = fakeFrames();
+    const has = (name: string) => [...document.querySelectorAll(".s-figures th")].some((th) => th.textContent === name);
+    let v = card(simB("anziehung", { laufzeit: 60 }));
+    f.run(1); click("Pause");
+    expect(row("Energieabweichung")).toMatch(/^-?\d+,\d+ %$/);
+    expect(Math.abs(num(row("Energieabweichung")))).toBeLessThan(1);
+    expect(has("Gesamtenergie in Prozent des Starts")).toBe(false);
+    expect(has("Energie in Prozent des Starts")).toBe(false);
+    v.unmount();
+    v = card(simB("anziehung", { parameter: { ...(P5B.anziehung.parameter as object), anziehung: false } }));
+    expect(has("Energieabweichung")).toBe(false);
+    v.unmount();
+    card(simB("doppelpendel"));
+    expect(has("Energie in Prozent des Starts")).toBe(true);
+    expect(has("Energieabweichung")).toBe(false);
+  });
+
+  it("Welle über mehr als 50 kürzeste Wellenlängen: der Bereich wird gekürzt, Hinweis, Satz in der Textfassung und Achse in Worten", () => {
+    recordingCtx(); fakeFrames();
+    const b = simB("welle", { parameter: { bereich: 10000, wellen: [{ amplitude: 1, wellenlaenge: 0.01, frequenz: 0.5, phase: 0, richtung: "rechts" }] } });
+    expect(normalizeSim(b).angepasst).toContain("parameter.bereich");
+    card(b);
+    expect(screen.getByText("Einige Angaben fehlten oder lagen außerhalb der Grenzen und wurden angepasst.")).toBeInTheDocument();
+    expect(screen.getByText(/Der gezeigte Bereich wurde auf 0,5 m gekürzt \(50 kürzeste Wellenlängen\), damit die Welle richtig dargestellt wird\./)).toBeInTheDocument();
+    expect(screen.getByText(/^Waagerecht: Ort von 0 bis 0,5 m\./)).toBeInTheDocument();
+    expect(word()).toBe("läuft");
   });
 });
 
@@ -1047,7 +1073,7 @@ describe("P5b: Regler", () => {
           for (const [key, dir] of [["ArrowLeft", -1], ["ArrowRight", 1]] as const) {
             const v = card(start);
             vi.mocked(mitWert).mockClear();
-            const vor = (start.parameter as Record<string, unknown>);
+            const vor = start.parameter as unknown as Record<string, unknown>;
             const alt = g.feld.split(".").reduce<unknown>((o, t) => (o as Record<string, unknown>)[t], vor) as number;
             tippe(slider(g.name), key);
             const call = lastCall() as [string, number] | undefined;

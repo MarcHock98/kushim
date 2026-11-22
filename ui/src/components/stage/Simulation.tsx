@@ -59,7 +59,7 @@ const prefersReduced = (): boolean => {
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 const dprNow = () => Math.min(typeof window !== "undefined" && window.devicePixelRatio > 0 ? window.devicePixelRatio : 1, DPR_MAX);
 const ausserhalbOf = (s: SimSnapshot): number => {
-  const n = (s as { ausserhalb?: unknown }).ausserhalb;
+  const n = s.ausserhalb;                                              // nur Umlauf mit Anziehung; sonst fehlt das Feld
   return typeof n === "number" && Number.isFinite(n) && n > 0 ? Math.round(n) : 0;
 };
 const figOf = (s: SimSnapshot): Figures => ({ zeit: s.zeit, einheit: s.einheit, kennwerte: s.kennwerte, ausserhalb: ausserhalbOf(s) });
@@ -705,9 +705,7 @@ export function Simulation({ b }: { b: SimBlock }) {
             <caption className="label">{still || noCtx ? "Kennwerte am Start" : "Kennwerte"}</caption>
             <tbody>
               {playing && <tr><th scope="row">Zeit in der Simulation</th><td className="num">{formatWert(fig.zeit)} {fig.einheit}</td></tr>}
-              {fig.kennwerte.map((k) => (
-                <tr key={k.id}><th scope="row">{k.id === "energieAbweichung" ? "Energieabweichung" : k.name}</th><td className="num">{k.text}</td></tr>
-              ))}
+              {fig.kennwerte.map((k) => <tr key={k.id}><th scope="row">{k.name}</th><td className="num">{k.text}</td></tr>)}
             </tbody>
           </table>
         </div>
