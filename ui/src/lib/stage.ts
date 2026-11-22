@@ -43,7 +43,7 @@ export type Block =
       kanten: { von: string; bis: string; text: string }[] }
   // P5a (docs/ui-p5-plan.md): Simulation mit festem Modell und Zahlen. Das Backend füllt alle Vorgaben (laufzeit, tempo 0 = automatisch,
   // spur, beschreibung "" und jeden Parameter); die Oberfläche begrenzt trotzdem noch einmal selbst (lib/physics.ts).
-  | ({ typ: "simulation" } & SimInput);
+  | ({ typ: "simulation" } & (SimInput | import("./physics").SimInputAlle));
 export type NetBlock = Extract<Block, { typ: "netz" }>;
 export type SimBlock = Extract<Block, { typ: "simulation" }>;
 

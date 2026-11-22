@@ -77,6 +77,11 @@ export class MockSocket implements Socket {
     turn(200000, "Zeig mir, wie ein Pendel schwingt.", "Hier ein Pendel mit einem Meter Länge.", DEMO_VIEWS[17]);
     turn(211000, "Wie fliegt ein schräg geworfener Ball?", "Hier der Wurf unter 45 Grad.", DEMO_VIEWS[18]);
     turn(222000, "Wie bewegen sich Teilchen in einem Gas?", "Hier ein Gas mit 60 Teilchen.", DEMO_VIEWS[19]);
+    // P5b-Simulationen über ihre id (die Liste wächst an anderer Stelle mit)
+    const sim = (id: string) => DEMO_VIEWS.find((v) => v.id === id);
+    turn(233000, "Zeig mir ein Doppelpendel.", "Hier ein Doppelpendel, das chaotisch schwingt.", sim("doppelpendel"));
+    turn(244000, "Wie entsteht eine stehende Welle?", "Hier zwei Wellen, die gegeneinander laufen.", sim("welle"));
+    turn(255000, "Was passiert, wenn sich Planeten gegenseitig anziehen?", "Hier drei Planeten, die sich gegenseitig stören.", sim("anziehung"));
   }
 
   send(data: string): void {
@@ -318,4 +323,22 @@ export const DEMO_VIEWS: Record<string, unknown>[] = [
     { typ: "simulation", modell: "gas",
       parameter: { anzahl: 60, kasten: [100, 60], radius: 1.5, geschwindigkeit: 0.5, schwerkraft: 0, stoesse: true, startwert: 7 },
       laufzeit: 30, tempo: 0, spur: true, beschreibung: "60 gleich schnelle Teilchen stoßen sich; die Geschwindigkeiten verteilen sich mit der Zeit." } ] },
+  // P5b: Doppelpendel, stehende Welle, Umlauf mit Anziehung; genau wie nach der Backend-Prüfung (routine/p5b-schema, validate(view) == view)
+  { id: "doppelpendel", art: "simulation", titel: "Doppelpendel (Beispiel)", stand: "", schliessen: false, bausteine: [
+    { typ: "simulation", modell: "doppelpendel",
+      parameter: { laenge1: 1, laenge2: 1, masse1: 1, masse2: 1, winkel1: 120, winkel2: -10, g: 9.81, daempfung: 0 },
+      laufzeit: 30, tempo: 0, spur: true, beschreibung: "Zwei gleich lange Arme mit gleichen Massen, oben bei 120 Grad und unten bei -10 Grad losgelassen, ohne Reibung." } ] },
+  { id: "welle", art: "simulation", titel: "Stehende Welle (Beispiel)", stand: "", schliessen: false, bausteine: [
+    { typ: "simulation", modell: "welle",
+      parameter: { wellen: [
+        { amplitude: 1, wellenlaenge: 2, frequenz: 0.5, phase: 0, richtung: "rechts" },
+        { amplitude: 1, wellenlaenge: 2, frequenz: 0.5, phase: 0, richtung: "links" } ], bereich: 0 },
+      laufzeit: 30, tempo: 0, spur: true, beschreibung: "Zwei gleiche Wellen laufen gegeneinander. Zusammen entsteht eine stehende Welle: Manche Stellen bewegen sich nie." } ] },
+  { id: "anziehung", art: "simulation", titel: "Drei Planeten, die sich anziehen (Beispiel)", stand: "", schliessen: false, bausteine: [
+    { typ: "simulation", modell: "umlauf",
+      parameter: { zentralmasse: 1, koerper: [
+        { name: "Innen", abstand: 1, exzentrizitaet: 0, phase: 0, masse: 0.001, farbe: "arc" },
+        { name: "Mitte", abstand: 1.6, exzentrizitaet: 0.05, phase: 120, masse: 0.003, farbe: "amber" },
+        { name: "Außen", abstand: 2.5, exzentrizitaet: 0.1, phase: 240, masse: 0.001, farbe: "ok" } ], anziehung: true },
+      laufzeit: 30, tempo: 0, spur: true, beschreibung: "Ein sonnenähnlicher Stern in der Mitte und drei Planeten mit einigen Jupitermassen. Die Planeten stören ihre Bahnen gegenseitig." } ] },
 ];

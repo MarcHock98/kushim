@@ -505,3 +505,12 @@ h2, h3 { font-family: var(--font-display); font-weight: 600; letter-spacing: .04
 @media (max-width: 380px) {
   .rail-label { letter-spacing: 0; font-size: 11px; }
 }
+
+/* P5b Simulation: Tempo und Regler (nur Anzeige; der gedrückte Knopf hat zusätzlich das Wort „Tempo: …“) */
+.s-tempo, .s-regler { align-items: center; gap: var(--s-2) var(--s-4); }
+.s-tempo button[aria-pressed="true"] { border-color: var(--arc); color: var(--arc); }
+.s-tempo-wort { margin: 0; font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-muted); }
+.s-slider label { color: var(--text); }
+.s-slider .num { font-family: var(--font-mono); font-size: var(--fs-sm); }
+.s-regler button[aria-disabled="true"] { opacity: .5; cursor: default; }
+.s-regler button[aria-disabled="true"]:hover { border-color: var(--line-strong); }
