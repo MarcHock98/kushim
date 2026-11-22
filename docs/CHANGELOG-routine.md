@@ -78,3 +78,4 @@ Format: Datum, Datei, Grund (ein Satz).
 - 2026-11-22, `.claude/skills/kushim-ui-check/SKILL.md`: neuer Skill: Oberfläche im Browser ansehen (Demo, drei Breiten, Überlauf messen), kam in P6 mehrfach vor.
 - 2026-11-22, `.claude/agents/stage-schema-dev.md`: neuer Agent für die Python-Seite neuer Bausteine (Regeln aus den Audits von P6 und P5a).
 - 2026-11-22, `.claude/agents/ui-builder.md`: Arbeitsweise im Worktree und Regeln für Bausteine der Bühne ergänzt (keine Rechte erweitert).
+- 2026-11-22, `.claude/skills/kushim-manager/SKILL.md`: Regel „nie `git stash`“ (Stash gilt für alle Worktrees, zwei Agenten kamen sich in die Quere) und Opus für alle Agenten (Nutzerwunsch); Proben gehören in jeden Testmanager-Auftrag.
