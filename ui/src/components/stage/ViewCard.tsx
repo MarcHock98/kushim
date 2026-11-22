@@ -11,12 +11,16 @@ import { Net } from "./Net";
 import { Plan2D } from "./Plan2D";
 import { Simulation } from "./Simulation";
 import { Countdown, Mail, MailDraft, Progress, Schedule, Tasks } from "./Live";
+import { AtomShells } from "./AtomShells";
+import { Molecule3D } from "./Molecule3D";
+import { Orbital3D } from "./Orbital3D";
 import { Tex } from "./Tex";
 
 // Eine Ansicht von Claude auf der Bühne. Layout je Art (antwort, rechnung, markt, recherche, auftrag, mail, lernen), Bausteine nur als Text.
 // Quellen-Adressen sind Text, kein Link: nichts öffnet sich, nichts wird nachgeladen. Knöpfe in Lernkarten, Quiz und Anleitung
 // ändern nur die Anzeige im Fenster, sie senden nichts. Ebenso Zoom und Verschieben im Diagramm (netz) und Pause, Weiter und
-// Neu starten der Simulation.
+// Neu starten der Simulation. Last: höchstens 2 Simulationen und höchstens 2 WebGL-Bausteine (szene3d, teilchen als Molekül oder
+// Orbital) je Ansicht; das Backend lehnt mehr ab, hier gilt dieselbe Grenze ein zweites Mal (darüber nur ein kurzer Hinweis).
 
 /** Fängt einen Fehler in einem einzelnen Baustein ab: Er zeigt dann einen Hinweis, der Rest der Oberfläche läuft weiter.
  *  (Das Backend prüft jede Ansicht, aber ein Darstellungsfehler darf nie das ganze Fenster leeren.) */
@@ -104,12 +108,36 @@ function BlockView({ b, sys, sysNo }: { b: Block; sys: SysData | null; sysNo: bo
     case "anleitung": return <Guide b={b} />;
     case "netz": return <Net b={b} />;
     case "simulation": return <Simulation b={b} />;
+    case "teilchen": {
+      const form = (b as { form?: unknown }).form;                     // unbekannte Form: das Schalenmodell sagt „kann nicht gezeigt werden“
+      return form === "molekuel" ? <Molecule3D b={b} /> : form === "orbital" ? <Orbital3D b={b} /> : <AtomShells b={b} />;
+    }
   }
 }
+
+export const SIM_MAX = 2;
+export const WEBGL_MAX = 2;
+const usesWebGL = (b: Block) => b.typ === "szene3d"
+  || (b.typ === "teilchen" && ((b as { form?: unknown }).form === "molekuel" || (b as { form?: unknown }).form === "orbital"));
+
+/** Je Baustein: "" (zeigen), "sim" oder "webgl" (über der Grenze, nur Hinweis). Gezählt wird in der Reihenfolge der Ansicht. */
+export function overLimit(blocks: Block[]): ("" | "sim" | "webgl")[] {
+  let sims = 0, gl = 0;
+  return blocks.map((b) => {
+    if (b.typ === "simulation") return ++sims > SIM_MAX ? "sim" : "";
+    if (usesWebGL(b)) return ++gl > WEBGL_MAX ? "webgl" : "";
+    return "";
+  });
+}
+const LIMIT_NOTE = {
+  sim: `Weitere Simulation nicht gezeigt: höchstens ${SIM_MAX} je Ansicht.`,
+  webgl: `Weitere 3D-Ansicht nicht gezeigt: höchstens ${WEBGL_MAX} je Ansicht.`,
+};
 
 export function ViewCard({ view, sys, sysNo, onClose }: { view: View; sys: SysData | null; sysNo: boolean; onClose: () => void }) {
   const sources = view.bausteine.filter((b) => b.typ === "quellen");
   const main = view.art === "recherche" ? view.bausteine.filter((b) => b.typ !== "quellen") : view.bausteine;
+  const over = overLimit(main);
   return (
     <article className={`view-card view-${view.art}`} aria-labelledby={`v-${view.id}`}>
       <div className="panel-head">
@@ -119,7 +147,10 @@ export function ViewCard({ view, sys, sysNo, onClose }: { view: View; sys: SysDa
       </div>
       {view.art === "markt" && !view.stand && <p className="v-note">Stand: unbekannt</p>}
       <div className="view-body">
-        <div className="view-main">{main.map((b, i) => <BlockGuard key={`${i}-${view.seq}`}><BlockView b={b} sys={sys} sysNo={sysNo} /></BlockGuard>)}</div>
+        <div className="view-main">{main.map((b, i) => {
+          const o = over[i];
+          return <BlockGuard key={`${i}-${view.seq}`}>{o ? <p className="v-note" role="note">{LIMIT_NOTE[o]}</p> : <BlockView b={b} sys={sys} sysNo={sysNo} />}</BlockGuard>;
+        })}</div>
         {view.art === "recherche" && sources.length > 0 && (
           <aside className="view-aside" aria-label="Quellen">{sources.map((b, i) => <BlockGuard key={`${i}-${view.seq}`}><BlockView b={b} sys={sys} sysNo={sysNo} /></BlockGuard>)}</aside>
         )}

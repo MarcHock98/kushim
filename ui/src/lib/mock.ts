@@ -77,6 +77,10 @@ export class MockSocket implements Socket {
     turn(200000, "Zeig mir, wie ein Pendel schwingt.", "Hier ein Pendel mit einem Meter Länge.", DEMO_VIEWS[17]);
     turn(211000, "Wie fliegt ein schräg geworfener Ball?", "Hier der Wurf unter 45 Grad.", DEMO_VIEWS[18]);
     turn(222000, "Wie bewegen sich Teilchen in einem Gas?", "Hier ein Gas mit 60 Teilchen.", DEMO_VIEWS[19]);
+    turn(233000, "Wie sieht ein Wassermolekül aus?", "Hier Wasser, gewinkelt mit zwei Bindungen.", TEILCHEN_DEMOS[0]);
+    turn(244000, "Zeig mir Ethanol.", "Hier Ethanol; die Bindungen sind aus den Abständen berechnet.", TEILCHEN_DEMOS[1]);
+    turn(255000, "Wie ist ein Natriumatom aufgebaut?", "Hier das Schalenmodell von Natrium.", TEILCHEN_DEMOS[2]);
+    turn(266000, "Wie sieht ein 2p-Orbital aus?", "Hier das 2p_z-Orbital als Wolke.", TEILCHEN_DEMOS[3]);
   }
 
   send(data: string): void {
@@ -318,4 +322,33 @@ export const DEMO_VIEWS: Record<string, unknown>[] = [
     { typ: "simulation", modell: "gas",
       parameter: { anzahl: 60, kasten: [100, 60], radius: 1.5, geschwindigkeit: 0.5, schwerkraft: 0, stoesse: true, startwert: 7 },
       laufzeit: 30, tempo: 0, spur: true, beschreibung: "60 gleich schnelle Teilchen stoßen sich; die Geschwindigkeiten verteilen sich mit der Zeit." } ] },
+];
+
+/** P5b: Teilchen (Wasser mit Bindungen, Ethanol ohne Bindungen, Natrium-Atom, Orbital 2p_z), genau wie nach der Backend-Prüfung:
+ *  alle Felder mit Standardwerten, stand "" und schliessen false. Eigene Liste, damit die Zählung der übrigen Beispiele gleich bleibt;
+ *  die Vorführung zeigt sie nach den übrigen Beispielen. Lagen in Ångström. */
+export const TEILCHEN_DEMOS: Record<string, unknown>[] = [
+  { id: "wasser", art: "teilchen", titel: "Wasser (Beispiel)", stand: "", schliessen: false, bausteine: [
+    { typ: "teilchen", form: "molekuel", name: "Wasser", atome: [
+      { element: "O", position: [0, 0, 0.1173] },
+      { element: "H", position: [0, 0.7572, -0.4692] },
+      { element: "H", position: [0, -0.7572, -0.4692] } ],
+      bindungen: [{ von: 0, bis: 1, ordnung: 1 }, { von: 0, bis: 2, ordnung: 1 }],
+      beschriftungen: [{ atom: 0, text: "Sauerstoff, leicht negativ" }], darstellung: "kugel-stab" } ] },
+  { id: "ethanol", art: "teilchen", titel: "Ethanol (Beispiel)", stand: "", schliessen: false, bausteine: [
+    { typ: "teilchen", form: "molekuel", name: "Ethanol", atome: [
+      { element: "C", position: [1.1879, -0.3829, 0] },
+      { element: "C", position: [0, 0.5526, 0] },
+      { element: "O", position: [-1.1867, -0.2472, 0] },
+      { element: "H", position: [2.0939, 0.2191, 0] },
+      { element: "H", position: [1.1757, -1.0213, 0.8812] },
+      { element: "H", position: [1.1757, -1.0213, -0.8812] },
+      { element: "H", position: [0.0258, 1.1997, 0.8794] },
+      { element: "H", position: [0.0258, 1.1997, -0.8794] },
+      { element: "H", position: [-1.9447, 0.3544, 0] } ],
+      bindungen: [], beschriftungen: [], darstellung: "kugel-stab" } ] },
+  { id: "natrium", art: "teilchen", titel: "Natrium-Atom (Beispiel)", stand: "", schliessen: false, bausteine: [
+    { typ: "teilchen", form: "atom", element: "Na", neutronen: 12, ladung: 0, schalen: [2, 8, 1] } ] },
+  { id: "orbital-2pz", art: "teilchen", titel: "Orbital 2p_z (Beispiel)", stand: "", schliessen: false, bausteine: [
+    { typ: "teilchen", form: "orbital", orbital: "2p_z", punkte: 2500, startwert: 1 } ] },
 ];

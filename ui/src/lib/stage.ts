@@ -2,9 +2,11 @@
 // (src/kushim/stage/schema.py); hier nur eine leichte Formprüfung, damit die Oberfläche nie an Fremdem zerbricht.
 // Alles bleibt Text: kein HTML, keine Links, keine Bilder.
 
+import type { TeilchenInput } from "./chem";
 import type { SimInput } from "./physics";
 
-export type Art = "antwort" | "rechnung" | "markt" | "recherche" | "auftrag" | "mail" | "dokument" | "modell" | "plan" | "lernen" | "netz" | "simulation";
+export type Art = "antwort" | "rechnung" | "markt" | "recherche" | "auftrag" | "mail" | "dokument" | "modell" | "plan" | "lernen" | "netz" | "simulation"
+  | "teilchen";
 type Cell = string | number;
 export type Block =
   | { typ: "text"; absaetze: string[] }
@@ -43,17 +45,21 @@ export type Block =
       kanten: { von: string; bis: string; text: string }[] }
   // P5a (docs/ui-p5-plan.md): Simulation mit festem Modell und Zahlen. Das Backend füllt alle Vorgaben (laufzeit, tempo 0 = automatisch,
   // spur, beschreibung "" und jeden Parameter); die Oberfläche begrenzt trotzdem noch einmal selbst (lib/physics.ts).
-  | ({ typ: "simulation" } & SimInput);
+  | ({ typ: "simulation" } & SimInput)
+  // P5b: Molekül, Schalenmodell oder Orbital-Wolke. Das Backend füllt alle Vorgaben (name "", bindungen [] = aus Abständen,
+  // beschriftungen [], darstellung; neutronen -1 = nicht angegeben, ladung 0, schalen; punkte 2500, startwert 1); lib/chem.ts begrenzt noch einmal.
+  | ({ typ: "teilchen" } & TeilchenInput);
 export type NetBlock = Extract<Block, { typ: "netz" }>;
 export type SimBlock = Extract<Block, { typ: "simulation" }>;
+export type TeilchenBlock = Extract<Block, { typ: "teilchen" }>;
 
 export interface View { seq: number; id: string; art: Art; titel: string; stand: string; bausteine: Block[] }
 export type StageItem = View | { seq: number; id: string; schliessen: true };
 
-const ARTEN = ["antwort", "rechnung", "markt", "recherche", "auftrag", "mail", "dokument", "modell", "plan", "lernen", "netz", "simulation"];
+const ARTEN = ["antwort", "rechnung", "markt", "recherche", "auftrag", "mail", "dokument", "modell", "plan", "lernen", "netz", "simulation", "teilchen"];
 const TYPEN = ["text", "liste", "formel", "schritte", "ergebnis", "kennzahlen", "tabelle", "diagramm", "aussagen", "widerspruch",
   "quellen", "hinweis", "systemzustand", "fortschritt", "aufgaben", "zeitplan", "mail", "mail-entwurf", "countdown", "dokument", "aenderung", "szene3d", "plan2d",
-  "vergleich", "zeitstrahl", "gegenueber", "lernkarten", "quiz", "anleitung", "netz", "simulation"];
+  "vergleich", "zeitstrahl", "gegenueber", "lernkarten", "quiz", "anleitung", "netz", "simulation", "teilchen"];
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 
 /** Ein Eintrag aus `stage.get`; `null`, wenn er nicht passt (dann wird er übergangen). */
@@ -67,5 +73,6 @@ export function parseItem(raw: unknown): StageItem | null {
 }
 
 export const ART_LABEL: Record<Art, string> = { antwort: "Antwort", rechnung: "Rechnung", markt: "Markt", recherche: "Recherche",
-  auftrag: "Auftrag", mail: "Mail", dokument: "Datei", modell: "3D-Modell", plan: "Plan", lernen: "Lernen", netz: "Diagramm", simulation: "Simulation" };
+  auftrag: "Auftrag", mail: "Mail", dokument: "Datei", modell: "3D-Modell", plan: "Plan", lernen: "Lernen", netz: "Diagramm", simulation: "Simulation",
+  teilchen: "Teilchen" };
 export const hasSystem = (v: View | null | undefined) => !!v?.bausteine.some((b) => b.typ === "systemzustand");
