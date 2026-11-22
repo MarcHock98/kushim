@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   addToTrail, advance, createSim, createTrail, formatFest, formatWert, formatZahl, isFiniteSnapshot, mulberry32, normalizeSim, snapshot,
-  solveKepler, standbild, trailPoints, VORAUS_BUDGET, type SimSnapshot, type SimState, type Standbild,
+  solveKepler, standbild, trailPoints, VORAUS_BUDGET, type FederKern, type GasKern, type SimSnapshot, type SimState, type Standbild,
 } from "./lib/physics";
 
 // Rechenkern für `simulation` (Plan docs/ui-p5-plan.md, Abschnitt 10): reine Zahlen, kein DOM, keine Uhr.
@@ -276,6 +276,12 @@ describe("Grenzen und feindliche Eingaben", () => {
       expect(bildEndlich(standbild(pruefe(feder(p))))).toBe(true);
     }
     for (const p of ecken({ geschwindigkeit: [0.1, 1000], winkel: [-90, 90], hoehe: [0, 10000], g: [0.1, 100], luftwiderstand: [0, 1] })) {
+      if (p.hoehe === 0 && p.winkel <= 0) {                   // wie im Schema abgelehnt: ungültig, läuft nicht, Bild trotzdem endlich
+        const u = createSim(wurf(p));
+        expect(u.config.ungueltig && u.phase === "instabil", JSON.stringify(p)).toBe(true);
+        expect(bildEndlich(standbild(u))).toBe(true);
+        continue;
+      }
       const s = pruefe(wurf(p), true);
       expect(bildEndlich(standbild(s))).toBe(true);
       expect(s.vorausSchritte).toBeLessThanOrEqual(VORAUS_BUDGET);
@@ -481,5 +487,277 @@ describe("Vorausrechnung, Standbild, Tempo und Spur", () => {
 
   it("normalizes valid input without changes", () => {
     for (const input of [pendel(), feder(), wurf(), umlauf(), gas()]) expect(normalizeSim(input).angepasst).toEqual([]);
+  });
+});
+
+describe("Gas: Raster, Zeit und Energie", () => {
+  it("gas with few particles and a tiny radius stays in the time budget; the grid grows with the particle count", () => {
+    for (const anzahl of [2, 3, 5, 10, 300]) {
+      const input = gas({ anzahl, kasten: [100, 100], radius: 0.01, geschwindigkeit: 10, schwerkraft: 100, stoesse: true });
+      const s = createSim(input), k = s.kern as GasKern;
+      advance(s, 1 / 30, 4000);                                    // Aufwärmen
+      let t = performance.now();
+      for (let i = 0; i < 30; i++) { advance(s, 1 / 30, 4000); snapshot(s); }
+      const bild = (performance.now() - t) / 30;
+      const frisch = createSim(input);
+      t = performance.now();
+      standbild(frisch);
+      const still = performance.now() - t;
+      console.info(`[physics] gas ${anzahl} particles, radius 0.01: frame ${bild.toFixed(3)} ms, standbild ${still.toFixed(1)} ms`);
+      expect(k.nx * k.ny, `${anzahl} Teilchen`).toBeLessThanOrEqual(4 * k.N + 16);
+      expect(k.b / k.nx).toBeGreaterThanOrEqual(2 * k.r);         // Zelle ≥ Durchmesser: kein Stoß geht verloren
+      expect(k.h / k.ny).toBeGreaterThanOrEqual(2 * k.r);
+      expect(bild, `${anzahl} Teilchen`).toBeLessThan(5);
+      expect(still, `${anzahl} Teilchen`).toBeLessThan(200);
+      expect(frisch.vorausSchritte).toBeLessThanOrEqual(VORAUS_BUDGET);
+    }
+  });
+
+  /** Zwei Teilchen von Hand gesetzt (Lagen und Geschwindigkeiten), danach `sekunden` Modellzeit gerechnet. */
+  function zwei(radius: number, a: [number, number, number, number], b: [number, number, number, number], sekunden: number, stoesse = true) {
+    const s = createSim(gas({ anzahl: 2, radius, geschwindigkeit: 0.1, stoesse }));
+    const k = s.kern as GasKern;
+    [k.px[0], k.py[0], k.vx[0], k.vy[0]] = a;
+    [k.px[1], k.py[1], k.vx[1], k.vy[1]] = b;
+    advance(s, sekunden);
+    return k;
+  }
+
+  it("still finds collisions after the grid change: head-on and oblique, momentum and energy conserved", () => {
+    for (const radius of [0.5, 0.01]) {
+      // Frontal über eine Zellgrenze hinweg (Raster 4 x 4, Grenze bei 50): die Geschwindigkeiten tauschen sich.
+      const d = 2 * radius;
+      const k = zwei(radius, [45, 50, 10, 0], [55, 50, -10, 0], 0.7);
+      expect(k.vx[0]).toBeCloseTo(-10, 9);
+      expect(k.vx[1]).toBeCloseTo(10, 9);
+      expect(k.vy[0]).toBeCloseTo(0, 12);
+      expect(k.px[1] - k.px[0]).toBeGreaterThanOrEqual(d * (1 - 1e-9));
+      // Schräg: Versatz 0,6 Durchmesser quer zur Bahn.
+      const o = zwei(radius, [40, 50, 10, 0], [60, 50 + 0.6 * d, -10, 0], 1.5);
+      expect(o.vx[0] + o.vx[1]).toBeCloseTo(0, 9);
+      expect(o.vy[0] + o.vy[1]).toBeCloseTo(0, 9);
+      expect(0.5 * (o.vx[0] ** 2 + o.vy[0] ** 2 + o.vx[1] ** 2 + o.vy[1] ** 2)).toBeCloseTo(100, 6);
+      expect(Math.abs(o.vy[0])).toBeGreaterThan(1);                // abgelenkt, also wirklich gestoßen
+      // Ohne Stöße fliegen sie durcheinander hindurch.
+      const durch = zwei(radius, [45, 50, 10, 0], [55, 50, -10, 0], 0.7, false);
+      expect(durch.vx[0]).toBe(10);
+    }
+  });
+
+  it("without collisions all speeds stay in one histogram bin", () => {
+    const s = createSim(gas({ anzahl: 300, radius: 1, geschwindigkeit: 3, stoesse: false }));
+    for (let i = 0; i < 60; i++) advance(s, 1 / 30);
+    expect(snapshot(s).verteilung!.anzahl.filter((n) => n > 0)).toHaveLength(1);
+  });
+
+  it("gas with gravity 100 keeps its total energy within 0.1 % and nobody leaves the box", () => {
+    for (const p of [{ anzahl: 100, radius: 1, geschwindigkeit: 1 }, { anzahl: 2, radius: 0.5, geschwindigkeit: 0.3 }, { anzahl: 300, radius: 1.5, geschwindigkeit: 0.5 }]) {
+      const s = createSim(gas({ ...p, schwerkraft: 100 })), k = s.kern as GasKern;
+      const energie = () => { let e = 0; for (let i = 0; i < k.N; i++) e += 0.5 * (k.vx[i] ** 2 + k.vy[i] ** 2) + k.g * k.py[i]; return e / k.N; };
+      const e0 = energie();
+      let summe = 0, n = 0, maxAbw = 0;
+      for (let i = 0; i < 300; i++) {
+        advance(s, 1 / 30);
+        const e = energie();
+        summe += e; n++; maxAbw = Math.max(maxAbw, relativ(e, e0));
+        for (let j = 0; j < k.N; j++) expect(k.px[j] >= k.r && k.px[j] <= k.b - k.r && k.py[j] >= k.r && k.py[j] <= k.h - k.r).toBe(true);
+      }
+      expect(relativ(summe / n, e0), JSON.stringify(p)).toBeLessThan(0.001);
+      expect(maxAbw, JSON.stringify(p)).toBeLessThan(0.001);
+    }
+  });
+});
+
+describe("Wurf mit Luftwiderstand gegen eine unabhängige Rechnung", () => {
+  /** Runge-Kutta vierter Ordnung, quadratischer Luftwiderstand a = −k·|v|·v − g·ŷ, kleiner Schritt (an die Bremsung angepasst). */
+  function rk4(v: number, winkel: number, h: number, g: number, k: number) {
+    const a = (winkel * Math.PI) / 180;
+    let x = 0, y = h, vx = v * Math.cos(a), vy = v * Math.sin(a), t = 0, gipfel = h;
+    const f = (ux: number, uy: number): [number, number] => { const s = Math.hypot(ux, uy); return [-k * s * ux, -g - k * s * uy]; };
+    for (let i = 0; i < 5e7; i++) {
+      const dt = Math.min(2e-4, 1e-3 / (k * Math.hypot(vx, vy) + 1e-12));
+      const [a1x, a1y] = f(vx, vy);
+      const [a2x, a2y] = f(vx + 0.5 * dt * a1x, vy + 0.5 * dt * a1y);
+      const [a3x, a3y] = f(vx + 0.5 * dt * a2x, vy + 0.5 * dt * a2y);
+      const [a4x, a4y] = f(vx + dt * a3x, vy + dt * a3y);
+      const nx = x + (dt / 6) * (vx + 2 * (vx + 0.5 * dt * a1x) + 2 * (vx + 0.5 * dt * a2x) + (vx + dt * a3x));
+      const ny = y + (dt / 6) * (vy + 2 * (vy + 0.5 * dt * a1y) + 2 * (vy + 0.5 * dt * a2y) + (vy + dt * a3y));
+      vx += (dt / 6) * (a1x + 2 * a2x + 2 * a3x + a4x);
+      vy += (dt / 6) * (a1y + 2 * a2y + 2 * a3y + a4y);
+      if (ny < 0) { const q = y / (y - ny); return { flugzeit: t + q * dt, reichweite: x + q * (nx - x), gipfel }; }
+      x = nx; y = ny; t += dt; gipfel = Math.max(gipfel, y);
+    }
+    throw new Error("RK4 landet nicht");
+  }
+
+  it("range, peak and flight time agree with RK4 within 0.5 %", () => {
+    for (const [v, a, h, k] of [[20, 45, 0, 0.01], [50, 70, 100, 0.2], [300, 30, 0, 0.001], [10, -20, 50, 0.5], [100, 45, 0, 0.05]]) {
+      const s = createSim(wurf({ geschwindigkeit: v, winkel: a, hoehe: h, luftwiderstand: k })), soll = rk4(v, a, h, 9.81, k);
+      const fall = JSON.stringify([v, a, h, k]);
+      expect(relativ(wert(s, "flugzeit"), soll.flugzeit), fall).toBeLessThan(0.005);
+      expect(relativ(wert(s, "reichweite"), soll.reichweite), fall).toBeLessThan(0.005);
+      expect(relativ(wert(s, "gipfelhoehe"), soll.gipfel), fall).toBeLessThan(0.005);
+    }
+  });
+});
+
+describe("Gleiche Ergebnisse für jede Bildrate", () => {
+  it("gives identical results for fixed chunks of 1/24, 1/30, 1/60 and 1/144 s", () => {
+    for (const input of [pendel({ winkel: 120, daempfung: 0.1 }), gas({ anzahl: 60, schwerkraft: 30 }), wurf({ luftwiderstand: 0.05, hoehe: 20 })]) {
+      const bilder = [1 / 24, 1 / 30, 1 / 60, 1 / 144].map((c) => {
+        const s = createSim(input), T = Math.round((2 * s.tempo) / s.dt) * s.dt;
+        while (s.phase === "laeuft" && s.soll + c * s.tempo <= T) advance(s, c * s.tempo);
+        if (T - s.soll > 0) advance(s, T - s.soll);
+        expect(s.phase, input.modell).toBe("laeuft");
+        return snapshot(s);
+      });
+      for (const b of bilder) expect(b, input.modell).toEqual(bilder[0]);
+    }
+  });
+});
+
+describe("Zahlen in der Textfassung", () => {
+  it("keeps the decimals of a parameter without float tails", () => {
+    expect(formatZahl(120.5)).toBe("120,5");
+    expect(formatZahl(1234.5)).toBe("1234,5");
+    expect(formatZahl(12345.5)).toBe("12 345,5");
+    expect(formatZahl(1e6)).toBe("1 000 000");
+    expect(formatZahl(0.1 + 0.2)).toBe("0,3");
+    expect(formatZahl(100)).toBe("100");
+    expect(formatZahl(999.25)).toBe("999,25");
+    expect(formatZahl(-0.25)).toBe("-0,25");
+    expect(formatZahl(2 / 3)).toBe("0,666667");
+    expect(formatZahl(1.5e-7)).toBe("0,00000015");
+    expect(formatZahl(1e-13)).toBe("0");
+    expect(formatZahl(-1e-13)).toBe("0");
+    expect(formatZahl(Infinity)).toBe("–");
+    expect(createSim(gas({ kasten: [120.5, 100] })).text).toContain("Kasten 120,5 mal 100 Einheiten");
+    expect(createSim(wurf({ geschwindigkeit: 250.75 })).text).toContain("Wurf mit 250,75 m/s");
+  });
+});
+
+describe("Starke Dämpfung", () => {
+  it("a strongly damped spring creeps back at the wanted tempo and its energy never rises", () => {
+    for (const input of [feder({ masse: 0.001, federkonstante: 1e6, auslenkung: 10, daempfung: 10000 }), feder({ daempfung: 10000 }),
+      feder({ masse: 0.001, federkonstante: 20, daempfung: 3 })]) {
+      const s = createSim(input), soll = s.tempo / 30, k = s.kern as FederKern;
+      let e = wert(s, "energie"), x = k.x;
+      for (let i = 0; i < 300; i++) {
+        const z = s.zeit, res = advance(s, soll, 4000);
+        expect(res.begrenzt).toBe(false);
+        expect(s.zeit - z, JSON.stringify(input.parameter)).toBeGreaterThanOrEqual(0.5 * soll);
+        const en = wert(s, "energie");
+        expect(en).toBeLessThanOrEqual(e + 1e-9);
+        e = en;
+        if (k.zeta >= 1) { expect(k.x).toBeGreaterThanOrEqual(0); expect(k.x).toBeLessThanOrEqual(x); }
+        x = k.x;
+      }
+    }
+  });
+
+  it("an overdamped spring returns to rest without oscillating and follows the closed-form solution", () => {
+    for (const daempfung of [50, 2 * Math.sqrt(10), 7, 1e4]) {
+      const s = createSim(feder({ masse: 1, federkonstante: 10, auslenkung: 0.5, daempfung })), k = s.kern as FederKern;
+      const w0 = Math.sqrt(10), a = daempfung / 2, q = Math.sqrt(Math.max(0, a * a - w0 * w0));
+      const exakt = (t: number) => q > 1e-9 * a
+        ? (0.5 / (2 * q)) * ((q + a) * Math.exp((-a + q) * t) + (q - a) * Math.exp((-a - q) * t))
+        : 0.5 * (1 + w0 * t) * Math.exp(-w0 * t);
+      let prev = k.x;
+      while (s.zeit < 10 * s.periode) {
+        schritte(s, 7);
+        expect(k.x).toBeGreaterThanOrEqual(0);
+        expect(k.x).toBeLessThanOrEqual(prev);
+        expect(Math.abs(k.x - exakt(s.zeit))).toBeLessThan(1e-9 + 1e-6 * exakt(s.zeit));
+        prev = k.x;
+      }
+      expect(k.x).toBeLessThan(1e-3 * 0.5);
+    }
+  });
+
+  it("a strongly damped long pendulum creeps at the wanted tempo and its energy never rises", () => {
+    const s = createSim(pendel({ laenge: 100, g: 0.1, daempfung: 5, winkel: 30 })), soll = s.tempo / 30;
+    let e = wert(s, "energie"), th = (s.kern as { th: number }).th;
+    for (let i = 0; i < 300; i++) {
+      const z = s.zeit;
+      expect(advance(s, soll, 4000).begrenzt).toBe(false);
+      expect(s.zeit - z).toBeGreaterThanOrEqual(0.5 * soll);
+      const en = wert(s, "energie"), t = (s.kern as { th: number }).th;
+      expect(en).toBeLessThanOrEqual(e + 1e-9);
+      expect(t).toBeGreaterThan(0);
+      expect(t).toBeLessThanOrEqual(th);
+      e = en; th = t;
+    }
+  });
+});
+
+describe("Eingabe wie im Python-Schema", () => {
+  it("rejects a throw from height 0 that does not go upwards, and orbits with a semi-major axis ratio above 100", () => {
+    for (const winkel of [0, -30, -90]) {
+      const s = createSim(wurf({ hoehe: 0, winkel }));
+      expect(s.config.ungueltig).toBe(true);
+      expect(s.phase).toBe("instabil");
+    }
+    expect(createSim(wurf({ hoehe: 0, winkel: 0.5 })).config.ungueltig).toBe(false);
+    expect(createSim(wurf({ hoehe: 1, winkel: -30 })).config.ungueltig).toBe(false);
+    const weit = createSim(umlauf({ koerper: [koerper(0.5), koerper(60, 0, 0, "Mars")] }));
+    expect(weit.config.ungueltig).toBe(true);
+    expect(weit.phase).toBe("instabil");
+    expect(createSim(umlauf({ koerper: [koerper(1), koerper(100, 0, 0, "Mars")] })).config.ungueltig).toBe(false);
+    expect(createSim(umlauf({ koerper: [koerper(1), koerper(1, 0, 0, "Erde")] })).config.ungueltig).toBe(false);   // gleiche Namen erlaubt
+  });
+
+  it("names every replaced or clamped field in angepasst", () => {
+    const faelle: Record<string, unknown>[] = [
+      pendel({ laenge: 500, winkel: "30", g: 0 }),
+      feder({ masse: 0.001, federkonstante: 1e6, daempfung: -1 }),
+      wurf({ geschwindigkeit: 0, luftwiderstand: 2, hoehe: 20000 }),
+      umlauf({ zentralmasse: 1000, koerper: [{ name: "x".repeat(40), abstand: 2000, exzentrizitaet: 1, phase: 30, farbe: "rot" },
+        { abstand: 1, exzentrizitaet: 0, phase: 0, farbe: "ok" }, { name: "a‮b", abstand: 5, exzentrizitaet: 0, phase: 400, farbe: "ok" }] }),
+      gas({ anzahl: 2.7, startwert: 3.5, kasten: [5000, 10], radius: 50, geschwindigkeit: 20, schwerkraft: -1, stoesse: "ja" }),
+      gas({ anzahl: 299.5, kasten: [1, 1], radius: 0 }),
+      { ...pendel(), laufzeit: 1, tempo: 0.01, spur: "ja", beschreibung: "a\u0000b" },
+      { ...pendel(), beschreibung: "x".repeat(500), tempo: 1000 },
+    ];
+    for (const input of faelle) {
+      const cfg = normalizeSim(input) as unknown as Record<string, unknown>;
+      const genannt = (pfad: string) => cfg.angepasst instanceof Array && cfg.angepasst.some((a: string) => pfad === a || pfad.startsWith(a + "."));
+      for (const key of ["laufzeit", "tempo", "spur", "beschreibung"]) {
+        if (cfg[key] !== input[key]) expect(genannt(key), `${key} in ${JSON.stringify(input)}`).toBe(true);
+      }
+      const roh = input.parameter as Record<string, unknown>, neu = cfg.parameter as Record<string, unknown>;
+      for (const key of Object.keys(neu)) {
+        if (key === "koerper") {
+          (neu.koerper as Record<string, unknown>[]).forEach((kn, i) => {
+            const kr = (roh.koerper as Record<string, unknown>[])[i];
+            for (const f of Object.keys(kn)) if (kn[f] !== kr[f]) expect(genannt(`parameter.koerper.${i}.${f}`), `koerper.${i}.${f}`).toBe(true);
+          });
+        } else if (JSON.stringify(neu[key]) !== JSON.stringify(roh[key])) {
+          expect(genannt(`parameter.${key}`), `${key} in ${JSON.stringify(roh)}`).toBe(true);
+        }
+      }
+    }
+  });
+
+  it("treats __proto__ as an ordinary own key and survives a throwing getter", () => {
+    const roh = JSON.parse('{"modell":"pendel","__proto__":{"modell":"gas"},"parameter":{"__proto__":{"laenge":50},"laenge":2,"winkel":10}}');
+    expect(Object.prototype.hasOwnProperty.call(roh, "__proto__")).toBe(true);
+    const s = createSim(roh);
+    expect(s.modell).toBe("pendel");
+    expect((s.config.parameter as { laenge: number }).laenge).toBe(2);
+    expect(({} as Record<string, unknown>).laenge).toBeUndefined();
+    expect(({} as Record<string, unknown>).modell).toBeUndefined();
+    const nur = createSim(JSON.parse('{"__proto__":{"modell":"gas","parameter":{"anzahl":5}}}'));
+    expect(nur.config.ungueltig).toBe(true);
+    expect(nur.phase).toBe("instabil");
+    const u = createSim(JSON.parse('{"modell":"umlauf","parameter":{"koerper":[{"__proto__":{"abstand":50},"abstand":2,"name":"__proto__","farbe":"ok","phase":0,"exzentrizitaet":0}]}}'));
+    expect(u.phase).toBe("laeuft");
+    expect((u.config.parameter as { koerper: { abstand: number; name: string }[] }).koerper[0]).toMatchObject({ abstand: 2, name: "__proto__" });
+    const wirft = { modell: "pendel", parameter: { get laenge(): number { throw new Error("böse"); } } };
+    let w: SimState | undefined;
+    expect(() => { w = createSim(wirft); }).not.toThrow();
+    expect(() => advance(w!, 1, 4000)).not.toThrow();
+    expect(() => standbild(w!)).not.toThrow();
+    expect(w!.phase === "instabil" || isFiniteSnapshot(snapshot(w!))).toBe(true);
+    expect(w!.config.angepasst.length).toBeGreaterThan(0);
   });
 });

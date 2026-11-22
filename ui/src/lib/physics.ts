@@ -4,9 +4,11 @@
 // bestimmt nur, wie viele Teilschritte je Bild gerechnet werden. Das Backend prüft die Eingabe; hier wird trotzdem alles noch
 // einmal begrenzt (die Mock-Demo umgeht das Backend). Nichts wirft, keine Schleife läuft ohne Grenze, und jede Zahl, die das
 // Modul verlässt, ist endlich, sonst steht der Zustand auf „instabil“.
-// Verfahren: Pendel und Feder mit Geschwindigkeits-Verlet, Dämpfung exakt als Faktor vor und nach dem Schritt (die Energie fällt
-// dann nur); Wurf ohne Luftwiderstand geschlossen, mit Luftwiderstand fester Schritt (Schwerkraft und Bremsung je exakt, im
-// Wechsel); Umlauf geschlossen über die Kepler-Gleichung; Gas mit festem Schritt, elastischen Stößen über ein Raster und Wänden.
+// Verfahren: Pendel mit Geschwindigkeits-Verlet, die halben Stöße mit Dämpfung exakt gelöst (der Schritt kommt nur aus der
+// Schwingung); Feder geschlossen über die exakte Übergangsmatrix des gedämpften Schwingers (jede Dämpfung, auch überdämpft; die
+// Energie fällt nur); Wurf ohne Luftwiderstand geschlossen, mit Luftwiderstand fester Schritt (Schwerkraft und Bremsung je exakt,
+// im Wechsel); Umlauf geschlossen über die Kepler-Gleichung; Gas mit festem Schritt, elastischen Stößen über ein Raster (Zellen
+// ≤ 4·N + 16) und energieerhaltenden Wänden.
 
 export type SimModell = "pendel" | "feder" | "wurf" | "umlauf" | "gas";
 export type Farbe = "arc" | "amber" | "ok" | "warn" | "alarm" | "text" | "gedaempft";
@@ -30,7 +32,9 @@ export type SimInput = Gemeinsam & (
   | { modell: "wurf"; parameter: WurfParameter }
   | { modell: "umlauf"; parameter: UmlaufParameter }
   | { modell: "gas"; parameter: GasParameter });
-/** Begrenzte Eingabe. `angepasst` nennt jedes Feld, das fehlte, kaputt war oder begrenzt wurde; `ungueltig`: Modell unbekannt. */
+/** Begrenzte Eingabe. `angepasst` nennt jedes Feld, das fehlte, kaputt war, ersetzt, gerundet oder begrenzt wurde; `ungueltig`:
+ *  Modell unbekannt oder eine Kombination, die das Backend ablehnt (Wurf aus Höhe 0 nicht nach oben, Umlauf mit größter durch
+ *  kleinste Halbachse über 100). Eine ungültige Eingabe läuft nicht (Phase „instabil“). */
 export type SimConfig = SimInput & { angepasst: string[]; ungueltig: boolean };
 
 /** Bildausschnitt in Modelleinheiten (y nach oben), einmal vorab gerechnet, damit das Bild nicht springt. */
@@ -73,6 +77,8 @@ export interface PendelKern {
 }
 export interface FederKern {
   art: "feder"; m: number; k: number; w2: number; c: number; damp: number; x: number; v: number; a: number; E0: number; T: number; S: number; zeta: number;
+  /** Übergangsmatrix über einen Teilschritt (geschlossene Lösung): x' = pxx·x + pxv·v, v' = pvx·x + pvv·v. Fehlt sie, wird sie gerechnet. */
+  pxx?: number; pxv?: number; pvx?: number; pvv?: number;
 }
 export interface WurfKern {
   art: "wurf"; g: number; kd: number; geschlossen: boolean; v0x: number; v0y: number; h: number;
@@ -148,12 +154,13 @@ export function formatFest(x: number, stellen: number): string {
   return deutsch(x, clamp(Math.round(stellen) || 0, 0, 12), false);
 }
 
-/** Parameterzahl ohne überflüssige Nullen: 1 → „1“, 9.81 → „9,81“, 0.017 → „0,017“. */
+/** Parameterzahl ohne überflüssige Nullen, bis zu 6 gültige Ziffern (die Textfassung nennt den Parameter, nicht eine Rundung):
+ *  1 → „1“, 9.81 → „9,81“, 120.5 → „120,5“, 0.1 + 0.2 → „0,3“, 12345.5 → „12 345,5“. */
 export function formatZahl(x: number): string {
   if (!fin(x) || Math.abs(x) >= 1e15) return "–";
   const a = Math.abs(x);
   if (a < 1e-12) return "0";
-  const st = a >= 100 ? 0 : a >= 10 ? 1 : a >= 1 ? 2 : Math.min(12, 2 - Math.floor(Math.log10(a)));
+  const st = clamp(5 - Math.floor(Math.log10(a)), 0, 12);
   return deutsch(x, st, true);
 }
 
@@ -224,7 +231,9 @@ function normalisiere(input: unknown): SimConfig {
   let tempo = zahl(src, "tempo", 0, 0, 100, fix, "");
   if (tempo > 0 && tempo < 0.1) { tempo = 0.1; fix.push("tempo"); }
   const spur = bool(src, "spur", true, fix, "");
-  const basis = { laufzeit, tempo, spur, beschreibung: text(own(src, "beschreibung"), 400), angepasst: fix, ungueltig: !bekannt };
+  const rohB = own(src, "beschreibung"), beschreibung = text(rohB, 400);
+  if (rohB !== undefined && rohB !== beschreibung) fix.push("beschreibung");   // gekürzt, Steuerzeichen entfernt oder kein Text
+  const basis = { laufzeit, tempo, spur, beschreibung, angepasst: fix, ungueltig: !bekannt };
   const P = "parameter.";
   switch (bekannt ? (m as SimModell) : "pendel") {
     case "pendel":
@@ -246,14 +255,16 @@ function normalisiere(input: unknown): SimConfig {
       }
       return { ...basis, modell: "feder", parameter: { masse, federkonstante, auslenkung, daempfung } };
     }
-    case "wurf":
-      return {
-        ...basis, modell: "wurf", parameter: {
-          geschwindigkeit: zahl(p, "geschwindigkeit", 20, 0.1, 1000, fix, P), winkel: zahl(p, "winkel", 45, -90, 90, fix, P),
-          hoehe: zahl(p, "hoehe", 0, 0, 10000, fix, P), g: zahl(p, "g", 9.81, 0.1, 100, fix, P),
-          luftwiderstand: zahl(p, "luftwiderstand", 0, 0, 1, fix, P),
-        },
+    case "wurf": {
+      const parameter: WurfParameter = {
+        geschwindigkeit: zahl(p, "geschwindigkeit", 20, 0.1, 1000, fix, P), winkel: zahl(p, "winkel", 45, -90, 90, fix, P),
+        hoehe: zahl(p, "hoehe", 0, 0, 10000, fix, P), g: zahl(p, "g", 9.81, 0.1, 100, fix, P),
+        luftwiderstand: zahl(p, "luftwiderstand", 0, 0, 1, fix, P),
       };
+      // Wie im Schema: aus Höhe 0 muss der Winkel > 0 sein, sonst landet der Körper sofort (keine Bewegung zu zeigen).
+      const ungueltig = basis.ungueltig || (parameter.hoehe <= 0 && parameter.winkel <= 0);
+      return { ...basis, ungueltig, modell: "wurf", parameter };
+    }
     case "umlauf": {
       const zentralmasse = zahl(p, "zentralmasse", 1, 0.01, 100, fix, P);
       const roh = own(p, "koerper");
@@ -267,18 +278,24 @@ function normalisiere(input: unknown): SimConfig {
         if (typeof ph !== "number" || !fin(ph) || ph < 0 || ph > 360) fix.push(pf + "phase");
         const f = own(k, "farbe");
         if (!(FARBEN as readonly unknown[]).includes(f)) fix.push(pf + "farbe");
+        const rn = own(k, "name"), name = text(rn, 30);
+        if (!name || name !== rn) fix.push(pf + "name");                // fehlt, leer, gekürzt oder Steuerzeichen entfernt
         koerper.push({
-          name: text(own(k, "name"), 30) || `Körper ${i + 1}`, abstand: zahl(k, "abstand", 1, 0.01, 1000, fix, pf),
+          name: name || `Körper ${i + 1}`, abstand: zahl(k, "abstand", 1, 0.01, 1000, fix, pf),
           exzentrizitaet: zahl(k, "exzentrizitaet", 0, 0, 0.95, fix, pf),
           phase: typeof ph === "number" && fin(ph) ? ((ph % 360) + 360) % 360 : 0,
           farbe: (FARBEN as readonly unknown[]).includes(f) ? (f as Farbe) : "arc",
         });
       });
       if (!koerper.length) koerper.push({ name: "Körper 1", abstand: 1, exzentrizitaet: 0, phase: 0, farbe: "arc" });
-      return { ...basis, modell: "umlauf", parameter: { zentralmasse, koerper } };
+      // Wie im Schema: größte durch kleinste Halbachse ≤ 100 (sonst ist der innere Körper im Bild nicht zu sehen).
+      const halbachsen = koerper.map((q) => q.abstand);
+      const ungueltig = basis.ungueltig || Math.max(...halbachsen) > 100 * Math.min(...halbachsen);
+      return { ...basis, ungueltig, modell: "umlauf", parameter: { zentralmasse, koerper } };
     }
     case "gas": {
-      const anzahl = Math.round(zahl(p, "anzahl", 100, 2, GAS_MAX, fix, P));
+      const rohA = zahl(p, "anzahl", 100, 2, GAS_MAX, fix, P), anzahl = Math.round(rohA);
+      if (anzahl !== rohA && !fix.includes(P + "anzahl")) fix.push(P + "anzahl");   // keine ganze Zahl: gerundet
       const kr = own(p, "kasten");
       let b = 100, h = 100;
       if (Array.isArray(kr) && kr.length === 2 && typeof kr[0] === "number" && typeof kr[1] === "number" && fin(kr[0]) && fin(kr[1])) {
@@ -296,13 +313,10 @@ function normalisiere(input: unknown): SimConfig {
       let geschwindigkeit = 1;
       if (typeof gv === "number" && fin(gv) && gv > 0) geschwindigkeit = Math.min(gv, 10); else fix.push(P + "geschwindigkeit");
       if (typeof gv === "number" && gv > 10) fix.push(P + "geschwindigkeit");
-      return {
-        ...basis, modell: "gas", parameter: {
-          anzahl, kasten: [b, h], radius, geschwindigkeit,
-          schwerkraft: zahl(p, "schwerkraft", 0, 0, 100, fix, P), stoesse: bool(p, "stoesse", true, fix, P),
-          startwert: Math.floor(zahl(p, "startwert", 1, 0, 2147483647, fix, P)),
-        },
-      };
+      const schwerkraft = zahl(p, "schwerkraft", 0, 0, 100, fix, P), stoesse = bool(p, "stoesse", true, fix, P);
+      const rohS = zahl(p, "startwert", 1, 0, 2147483647, fix, P), startwert = Math.floor(rohS);
+      if (startwert !== rohS && !fix.includes(P + "startwert")) fix.push(P + "startwert");
+      return { ...basis, modell: "gas", parameter: { anzahl, kasten: [b, h], radius, geschwindigkeit, schwerkraft, stoesse, startwert } };
     }
   }
 }
@@ -348,14 +362,16 @@ function pendelEnergie(k: PendelKern, dt: number): number {
   return 0.5 * om * om + w2 * (1 - c) + dt * dt * ((w2 * c * om * om) / 12 - (w2 * w2 * s * s) / 24);
 }
 
+/** Verlet; mit Dämpfung ist jeder halbe Stoß die exakte Lösung von ω' = a − c·ω bei festem a (ω·e^(−c·dt/2) + a·(1 − e^(−c·dt/2))/c).
+ *  Damit braucht der Schritt keine Grenze aus der Dämpfung: bei starker Dämpfung kriecht das Pendel mit der richtigen Rate
+ *  (ω → a/c), statt dass ein kleiner Schritt die Zeit auf Zeitlupe bremst. Ohne Dämpfung genau das ungedämpfte Verlet. */
 function pendelSchritt(k: PendelKern, dt: number): void {
-  k.om *= k.damp;
-  k.om += 0.5 * dt * k.a;
+  const h = 0.5 * dt, g = k.c > 0 ? -Math.expm1(-k.c * h) / k.c : h;
+  k.om = k.damp * k.om + g * k.a;
   k.th += dt * k.om;
   if (k.th > Math.PI || k.th < -Math.PI) k.th -= TAU * Math.round(k.th / TAU);
   k.a = -k.w2 * Math.sin(k.th);
-  k.om += 0.5 * dt * k.a;
-  k.om *= k.damp;
+  k.om = k.damp * k.om + g * k.a;
 }
 
 interface Teile { kern: SimKern; dt: number; periode: number; ausschnitt: Ausschnitt; text: string; koerper: number; einheit: "s" | "Jahre"; voraus: number }
@@ -364,9 +380,8 @@ function pendelTeile(p: PendelParameter): Teile {
   const L = p.laenge, w2 = p.g / L, w0 = Math.sqrt(w2), T0 = TAU / w0, c = p.daempfung;
   const th = p.winkel * RAD, om = p.anfangsgeschwindigkeit * RAD;
   const E = 0.5 * om * om + w2 * (1 - Math.cos(th)), wb = Math.sqrt(2 * E);
-  let dt = T0 / 1000;
+  let dt = T0 / 1000;                                                // Schritt nur aus der Schwingung; die Dämpfung ist exakt
   if (wb > 0) dt = Math.min(dt, TAU / (1000 * wb));
-  if (c > 0) dt = Math.min(dt, 0.02 / c);
   const rotiert = E >= 2 * w2;
   const thMax = rotiert ? Math.PI : Math.acos(clamp(1 - E / w2, -1, 1));
   let Tm = rotiert ? (2 * TAU) / (wb + Math.sqrt(Math.max(0, 2 * E - 4 * w2))) : T0 / agm(1, Math.cos(thMax / 2));
@@ -390,25 +405,49 @@ function pendelTeile(p: PendelParameter): Teile {
 
 // --- Feder -------------------------------------------------------------------------------------------------------------
 
-/** Für Verlet am harmonischen Schwinger exakt erhaltene Energie: ½mv² + ½kx²(1 − ω²dt²/4). */
-const federEnergie = (k: FederKern, dt: number): number => 0.5 * k.m * k.v * k.v + 0.5 * k.k * k.x * k.x * (1 - (k.w2 * dt * dt) / 4);
+/** Energie ½mv² + ½kx²; der exakte Schritt erhält sie ohne Dämpfung und lässt sie mit Dämpfung nur fallen. */
+const federEnergie = (k: FederKern): number => 0.5 * k.m * k.v * k.v + 0.5 * k.k * k.x * k.x;
+
+/** Exakter Übergang des gedämpften Schwingers x'' = −ω0²x − c·x' über dt, für jede Dämpfung ohne Überlauf und ohne Auslöschung:
+ *  e^(−a·dt)·[[C + a·S, S], [−ω0²·S, C − a·S]] mit a = c/2, C = cos/cosh, S = sin/sinh geteilt durch die Kreisfrequenz. Stark
+ *  überdämpft über die beiden reinen Abklingraten (langsam e^(−ω0²/(a+κ)·dt), schnell e^(−(a+κ)·dt)). */
+function federMatrix(w0: number, c: number, dt: number): [number, number, number, number] {
+  const a = c / 2, w2 = w0 * w0, ed = Math.exp(-a * dt);
+  let C: number, S: number;
+  if (a < w0) {                                                      // schwingt (ohne Dämpfung: reine Drehung)
+    const q = Math.sqrt((w0 - a) * (w0 + a)), z = q * dt;
+    C = ed * Math.cos(z); S = ed * (z > 1e-8 ? Math.sin(z) / q : dt);
+  } else {
+    const kap = Math.sqrt((a - w0) * (a + w0)), z = kap * dt;
+    if (z < 1) { C = ed * Math.cosh(z); S = ed * (z > 1e-8 ? Math.sinh(z) / kap : dt); }
+    else {
+      const e1 = Math.exp((-w2 / (a + kap)) * dt), e2 = Math.exp(-(a + kap) * dt), d = -w2 / (a + kap);   // d = κ − a ohne Auslöschung
+      return [(e1 * (kap + a) + e2 * d) / (2 * kap), (e1 - e2) / (2 * kap), (-w2 * (e1 - e2)) / (2 * kap), (e1 * d + e2 * (kap + a)) / (2 * kap)];
+    }
+  }
+  return [C + a * S, S, -w2 * S, C - a * S];
+}
 
 function federSchritt(k: FederKern, dt: number): void {
-  k.v *= k.damp;
-  k.v += 0.5 * dt * k.a;
-  k.x += dt * k.v;
-  k.a = -k.w2 * k.x;
-  k.v += 0.5 * dt * k.a;
-  k.v *= k.damp;
+  if (k.pxx === undefined || k.pxv === undefined || k.pvx === undefined || k.pvv === undefined) {
+    [k.pxx, k.pxv, k.pvx, k.pvv] = federMatrix(Math.sqrt(k.w2), k.c, dt);
+  }
+  const x = k.x, v = k.v;
+  k.x = k.pxx * x + k.pxv * v;
+  k.v = k.pvx * x + k.pvv * v;
+  k.a = -k.w2 * k.x - k.c * k.v;
 }
 
 function federTeile(p: FederParameter): Teile {
   const m = p.masse, kk = p.federkonstante, w2 = kk / m, w0 = Math.sqrt(w2), T = TAU / w0, c = p.daempfung / m, A = p.auslenkung;
-  let dt = T / 1000;
-  if (c > 0) dt = Math.min(dt, 0.02 / c);
   const zeta = c / (2 * w0), S = Math.abs(A) > 0 ? Math.abs(A) : 1;
-  const kern: FederKern = { art: "feder", m, k: kk, w2, c, damp: Math.exp((-c * dt) / 2), x: A, v: 0, a: -w2 * A, E0: 0, T, S, zeta };
-  kern.E0 = federEnergie(kern, dt);
+  // Schritt aus der Bewegung allein: eine Schwingung, überdämpft das langsame Zurückkriechen; die Dämpfung steckt exakt im Schritt.
+  const dt = (zeta < 1 ? T : Math.max(T, 2 / langsam(w0, zeta))) / 1000;
+  const [pxx, pxv, pvx, pvv] = federMatrix(w0, c, dt);
+  const kern: FederKern = {
+    art: "feder", m, k: kk, w2, c, damp: Math.exp((-c * dt) / 2), x: A, v: 0, a: -w2 * A, E0: 0, T, S, zeta, pxx, pxv, pvx, pvv,
+  };
+  kern.E0 = federEnergie(kern);
   let satz = `Federpendel, Masse ${formatZahl(m)} kg, Federkonstante ${formatZahl(kk)} N/m, Auslenkung ${formatZahl(A)} m, `
     + `${p.daempfung > 0 ? `Dämpfung ${formatZahl(p.daempfung)} kg/s` : "ohne Dämpfung"}. `
     + `Schwingungsdauer${p.daempfung > 0 ? " ohne Dämpfung" : ""} etwa ${formatWert(T)} s.`;
@@ -544,17 +583,32 @@ function umlaufTeile(p: UmlaufParameter): Teile {
 
 // --- Gas ---------------------------------------------------------------------------------------------------------------
 
+/** Spiegelt an den Wänden. Mit Schwerkraft wird die senkrechte Geschwindigkeit so gesetzt, dass ½v² + g·y gleich bleibt (die
+ *  gespiegelte Lage liegt höher oder tiefer als die durchgerechnete; ohne Ausgleich gewönne jedes Teilchen bei jedem Bodenstoß
+ *  Energie). Reicht die Energie am Boden nicht für die Spiegelung, steigt das Teilchen nur so hoch, wie die Energie trägt. */
 function gasWand(k: GasKern, i: number): void {
-  const r = k.r, bx = k.b - r, by = k.h - r;
+  const r = k.r, bx = k.b - r, by = k.h - r, g = k.g;
   let x = k.px[i], y = k.py[i];
   if (x < r) { x = Math.min(2 * r - x, bx); k.vx[i] = Math.abs(k.vx[i]); }
   else if (x > bx) { x = Math.max(2 * bx - x, r); k.vx[i] = -Math.abs(k.vx[i]); }
-  if (y < r) { y = Math.min(2 * r - y, by); k.vy[i] = Math.abs(k.vy[i]); }
-  else if (y > by) { y = Math.max(2 * by - y, r); k.vy[i] = -Math.abs(k.vy[i]); }
+  if (y < r) {
+    const vy = k.vy[i], yn = Math.min(2 * r - y, by);
+    if (g > 0) {
+      const q = vy * vy - 2 * g * (yn - y);
+      if (q >= 0) { k.vy[i] = Math.sqrt(q); y = yn; }
+      else { y = Math.min(Math.max(r, y + (vy * vy) / (2 * g)), by); k.vy[i] = 0; }
+    } else { y = yn; k.vy[i] = Math.abs(vy); }
+  } else if (y > by) {
+    const vy = k.vy[i], yn = Math.max(2 * by - y, r);
+    k.vy[i] = g > 0 ? -Math.sqrt(vy * vy + 2 * g * (y - yn)) : -Math.abs(vy);
+    y = yn;
+  }
   k.px[i] = x; k.py[i] = y;
 }
 
-/** Elastische Stöße gleicher Massen, gefunden über ein gleichmäßiges Raster (Zelle ≥ Durchmesser, halbe Nachbarschaft). */
+/** Elastische Stöße gleicher Massen, gefunden über ein gleichmäßiges Raster (Zelle ≥ Durchmesser, halbe Nachbarschaft). Die Arbeit
+ *  je Teilschritt ist O(N + Zellen), die Zellenzahl ist ≤ 4·N + 16 (siehe `gasKern`); besucht werden nur Zellen mit Teilchen, in
+ *  derselben Reihenfolge wie ein Lauf über alle Zellen. */
 function gasStoesse(k: GasKern): void {
   const { N, nx, ny, px, py, vx, vy, zelle, zaehler, zeiger, folge } = k;
   const cw = k.b / nx, ch = k.h / ny, nZ = nx * ny, d2 = 4 * k.r * k.r, dd = 2 * k.r;
@@ -582,13 +636,10 @@ function gasStoesse(k: GasKern): void {
     const z = cx + cy * nx;
     for (let b = zaehler[z]; b < zaehler[z + 1]; b++) paar(i, folge[b]);
   };
-  for (let cy = 0; cy < ny; cy++) for (let cx = 0; cx < nx; cx++) {
-    const z = cx + cy * nx, s1 = zaehler[z + 1];
-    for (let a = zaehler[z]; a < s1; a++) {
-      const i = folge[a];
-      for (let b = a + 1; b < s1; b++) paar(i, folge[b]);
-      mitZelle(i, cx + 1, cy); mitZelle(i, cx - 1, cy + 1); mitZelle(i, cx, cy + 1); mitZelle(i, cx + 1, cy + 1);
-    }
+  for (let a = 0; a < N; a++) {                                     // `folge` ist nach Zellen sortiert
+    const i = folge[a], z = zelle[i], s1 = zaehler[z + 1], cy = Math.floor(z / nx), cx = z - cy * nx;
+    for (let b = a + 1; b < s1; b++) paar(i, folge[b]);
+    mitZelle(i, cx + 1, cy); mitZelle(i, cx - 1, cy + 1); mitZelle(i, cx, cy + 1); mitZelle(i, cx + 1, cy + 1);
   }
 }
 
@@ -624,7 +675,10 @@ function gasKern(p: GasParameter): GasKern {
   const v0 = p.geschwindigkeit * b;
   for (let i = 0; i < N; i++) { const w = TAU * rng(); vx[i] = v0 * Math.cos(w); vy[i] = v0 * Math.sin(w); }
   const g = p.schwerkraft, vref = Math.sqrt(v0 * v0 + 2 * g * Math.max(0, h - 2 * r));
-  const nx = clamp(Math.floor(b / (2 * r)), 1, 64), ny = clamp(Math.floor(h / (2 * r)), 1, 64);
+  // Raster: Zelle ≥ Durchmesser (kein Stoß geht verloren) und höchstens 4·N + 16 Zellen, damit Leeren und Aufsummieren je
+  // Teilschritt mit der Teilchenzahl wächst (sonst kosten 2 Teilchen mit winzigem Radius 64 x 64 Zellen je Teilschritt).
+  const seite = Math.max(2 * r, Math.sqrt((b * h) / (4 * N + 16)));
+  const nx = clamp(Math.floor(b / seite), 1, 64), ny = clamp(Math.floor(h / seite), 1, 64);
   const start = new Float64Array(4 * N);
   start.set(px, 0); start.set(py, N); start.set(vx, 2 * N); start.set(vy, 3 * N);
   return {
@@ -797,7 +851,7 @@ export function snapshot(state: SimState): SimSnapshot {
         return {
           ...basis, koerper: [{ x: k.x, y: 0, r: 0, farbe: "arc", name: "Masse" }], anker: [-2 * k.S, 0],
           kennwerte: [kw("schwingungsdauer", "Schwingungsdauer", k.T, "s"), kw("auslenkung", "Auslenkung jetzt", k.x, "m"),
-            kw("energie", "Energie in Prozent des Starts", prozent(federEnergie(k, state.dt), k.E0), "%")],
+            kw("energie", "Energie in Prozent des Starts", prozent(federEnergie(k), k.E0), "%")],
           verteilung: null,
         };
       case "wurf":

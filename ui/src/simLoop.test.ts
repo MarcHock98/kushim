@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatFest, isFiniteSnapshot, type SimSnapshot } from "./lib/physics";
+import { formatFest, isFiniteSnapshot, mulberry32, type SimSnapshot } from "./lib/physics";
 import { createSimLoop, MAX_KOERPER_SCHRITTE, PHYSIK, statusWort, type LoopState, type SimEngine } from "./lib/simLoop";
 
 // Taktschleife (Plan docs/ui-p5-plan.md, Abschnitte 5, 6 und 10) mit falscher Uhr und falschem Bildtakt.
@@ -14,29 +14,60 @@ const schnellesGas = (extra: object = {}) => ({
   parameter: { anzahl: 300, kasten: [1000, 100], radius: 5, geschwindigkeit: 10, schwerkraft: 0, stoesse: true, startwert: 1 }, ...extra,
 });
 
-function aufbau(input: unknown, engine?: SimEngine) {
-  let t = 0, id = 0, hidden = false;
+/** Eingriffe für die Tests: werfende Rückrufe, eine andere Uhr, ein anderer Zeitstempel im Bildtakt. */
+interface Extra {
+  onFrame?: (snap: SimSnapshot) => void;
+  onState?: (s: LoopState) => void;
+  /** `now()` aus der echten Zeit t. */
+  now?: (t: number) => number;
+  /** Zeitstempel, den der Bildtakt übergibt (Standard: t). */
+  stempel?: (t: number) => number;
+  /** Läuft bei jeder Bestellung (n = laufende Nummer), darf werfen. */
+  requestFrame?: (n: number) => void;
+}
+
+function aufbau(input: unknown, engine?: SimEngine, extra: Extra = {}) {
+  let t = 0, id = 0, hidden = false, anfragen = 0;
   const queue = new Map<number, (ts: number) => void>();
   const scheduler = {
-    now: () => t,
-    requestFrame: (cb: (ts: number) => void) => { queue.set(++id, cb); return id; },
+    now: () => (extra.now ? extra.now(t) : t),
+    requestFrame: (cb: (ts: number) => void) => { extra.requestFrame?.(++anfragen); queue.set(++id, cb); return id; },
     cancelFrame: (i: number) => { queue.delete(i); },
   };
   const frames: { t: number; snap: SimSnapshot }[] = [], states: LoopState[] = [];
   const loop = createSimLoop({
     input, scheduler, engine, isHidden: () => hidden,
-    onFrame: (snap) => frames.push({ t, snap }), onState: (s) => states.push(s),
+    onFrame: (snap) => { frames.push({ t, snap }); extra.onFrame?.(snap); },
+    onState: (s) => { states.push(s); extra.onState?.(s); },
   });
+  /** Ein angebotenes Bild zur echten Zeit `abs` (ms). */
+  const bildBei = (abs: number) => {
+    t = abs;
+    const cbs = [...queue.values()];
+    queue.clear();
+    for (const cb of cbs) cb(extra.stempel ? extra.stempel(t) : t);
+  };
   /** Ein angebotenes Bild nach `ms` Millisekunden. */
-  const bild = (ms: number) => { t += ms; const cbs = [...queue.values()]; queue.clear(); for (const cb of cbs) cb(t); };
+  const bild = (ms: number) => bildBei(t + ms);
   /** `sekunden` lang Bilder mit `hz` anbieten; `jedes` läuft nach jedem angebotenen Bild. */
   const lauf = (sekunden: number, hz = 60, jedes?: () => void) => {
     for (let i = 0, n = Math.round(sekunden * hz); i < n; i++) { bild(1000 / hz); jedes?.(); }
   };
-  return { loop, frames, states, bild, lauf, wartend: () => queue.size, verstecke: (v: boolean) => { hidden = v; } };
+  return { loop, frames, states, bild, bildBei, lauf, jetzt: () => t, wartend: () => queue.size, verstecke: (v: boolean) => { hidden = v; } };
 }
 
 const worte = (states: LoopState[]) => states.map((s) => s.wort);
+/** Größte Zahl von Bildern in einem Fenster von 1000 ms. */
+function maxImFenster(ts: number[]): number {
+  let m = 0;
+  for (let i = 0, j = 0; i < ts.length; i++) {
+    while (ts[i] - ts[j] > 1000) j++;
+    m = Math.max(m, i - j + 1);
+  }
+  return m;
+}
+const INSTABIL = "Simulation instabil, angehalten";
+const ZEITLUPE = "Zeitlupe, Rechengrenze erreicht";
 
 describe("simLoop", () => {
   it("delivers a start picture at once and says „läuft“", () => {
@@ -236,5 +267,170 @@ describe("simLoop", () => {
     expect(statusWort("gelandet", 4.23)).toBe("gelandet nach 4,2 s");
     expect(statusWort("zeitlupe")).toBe("Zeitlupe, Rechengrenze erreicht");
     expect(statusWort("instabil")).toBe("Simulation instabil, angehalten");
+  });
+});
+
+describe("simLoop: Bildtakt mit Zittern", () => {
+  it("keeps about 30 fps under timer jitter and never more than 31 frames in any 1000 ms", () => {
+    // 60 und 120 Hz erlauben genau 30 Bilder, 144 Hz mit jedem fünften Bild 28,8; 75 Hz ohne ungleiche Abstände nur 25.
+    for (const [hz, zittern, mindest] of [[60, 1, 28], [60, 2, 28], [120, 2, 28], [144, 1, 28], [144, 2, 28], [75, 1, 24], [75, 2, 24]]) {
+      const a = aufbau(pendel({ laufzeit: 60 })), r = mulberry32(hz * 10 + zittern);
+      for (let i = 1; i <= 20 * hz; i++) a.bildBei((i * 1000) / hz + zittern * (2 * r() - 1));
+      const ts = a.frames.map((f) => f.t), fall = `${hz} Hz ±${zittern} ms`;
+      expect(maxImFenster(ts), fall).toBeLessThanOrEqual(31);
+      const fps = (ts.length - 1) / ((ts[ts.length - 1] - ts[0]) / 1000);
+      expect(fps, fall).toBeGreaterThanOrEqual(mindest);
+      expect(fps, fall).toBeLessThanOrEqual(30.5);
+      expect(a.loop.getState().status, fall).toBe("laeuft");
+    }
+  });
+
+  it("uses the timestamp of the frame callback, not a jittering now()", () => {
+    const r = mulberry32(5);
+    const a = aufbau(pendel({ laufzeit: 60 }), undefined, { now: (t) => t + 3 * (2 * r() - 1) });   // Uhr zittert ±3 ms, Takt nicht
+    a.lauf(10, 60);
+    const ts = a.frames.map((f) => f.t);
+    expect(ts.length).toBeGreaterThanOrEqual(298);
+    expect(maxImFenster(ts)).toBeLessThanOrEqual(31);
+  });
+
+  it("the same real duration at 60, 120 and 144 Hz gives the same model time within one frame", () => {
+    const laeufe = [60, 120, 144].map((hz) => { const a = aufbau(pendel({ laufzeit: 60 })); a.lauf(10, hz); return a; });
+    const sim = laeufe[0].loop.getSim(), z0 = laeufe[0].loop.getState().simZeit;
+    for (const a of laeufe) expect(Math.abs(a.loop.getState().simZeit - z0)).toBeLessThanOrEqual(sim.tempo / 28 + sim.dt);
+    expect(z0).toBeGreaterThan(9.9 * sim.tempo);
+  });
+
+  it("survives now() going backwards: re-references, never steps backwards, keeps running", () => {
+    let zurueck = 0;
+    const a = aufbau(pendel({ laufzeit: 60 }), undefined, { now: (t) => t - zurueck, stempel: () => NaN });
+    a.lauf(2);
+    zurueck = 500;                                           // Uhr eine halbe Sekunde zurückgestellt
+    let lz = a.loop.getState().laufzeit, z = a.loop.getState().simZeit;
+    a.lauf(2, 60, () => {
+      const st = a.loop.getState();
+      expect(st.laufzeit).toBeGreaterThanOrEqual(lz);
+      expect(st.laufzeit - lz).toBeLessThanOrEqual(0.1 + 1e-9);
+      expect(st.simZeit).toBeGreaterThanOrEqual(z);
+      lz = st.laufzeit; z = st.simZeit;
+    });
+    expect(a.loop.getState().status).toBe("laeuft");
+    expect(a.loop.getState().laufzeit).toBeGreaterThan(3.8);
+    expect(a.loop.getState().laufzeit).toBeLessThanOrEqual(4 + 1e-9);
+    // Zittert die Uhr ständig rückwärts, bleibt es endlich und monoton.
+    let n = 0;
+    const b = aufbau(pendel({ laufzeit: 60 }), undefined, { now: (t) => (++n % 7 === 0 ? t - 200 : t), stempel: () => NaN });
+    let blz = 0;
+    b.lauf(3, 60, () => { const st = b.loop.getState(); expect(st.laufzeit).toBeGreaterThanOrEqual(blz); blz = st.laufzeit; });
+    expect(b.loop.getState().status).toBe("laeuft");
+    expect(b.frames.length).toBeGreaterThan(30);
+    expect(b.frames.every((f) => isFiniteSnapshot(f.snap))).toBe(true);
+  });
+
+  it("survives now() returning NaN: waits without load; uses the frame timestamp when that is finite", () => {
+    const a = aufbau(pendel({ laufzeit: 60 }), undefined, { now: () => NaN, stempel: () => NaN });
+    expect(() => a.lauf(1)).not.toThrow();
+    expect(a.frames).toHaveLength(1);                        // nur das Startbild
+    expect(a.loop.getState().laufzeit).toBe(0);
+    expect(a.loop.getState().status).toBe("laeuft");
+    expect(a.loop.pending()).toBe(1);
+    const b = aufbau(pendel({ laufzeit: 60 }), undefined, { now: () => NaN });
+    b.lauf(2);
+    expect(b.frames.length).toBeGreaterThanOrEqual(59);
+    expect(b.loop.getState().laufzeit).toBeGreaterThan(1.9);
+  });
+});
+
+describe("simLoop: werfende Rückrufe und Bildtakt", () => {
+  it("stops with „instabil“ when onFrame throws, and the constructor never throws", () => {
+    let n = 0;
+    const a = aufbau(pendel(), undefined, { onFrame: () => { if (++n === 5) throw new Error("Zeichnen kaputt"); } });
+    expect(() => a.lauf(1)).not.toThrow();
+    expect(a.loop.getState().status).toBe("instabil");
+    expect(a.loop.getState().wort).toBe(INSTABIL);
+    expect(worte(a.states)).toEqual(["läuft", INSTABIL]);
+    expect(a.frames).toHaveLength(5);
+    expect(a.loop.pending()).toBe(0);
+    expect(a.wartend()).toBe(0);
+    let b: ReturnType<typeof aufbau> | undefined;
+    expect(() => { b = aufbau(pendel(), undefined, { onFrame: () => { throw new Error("sofort"); } }); }).not.toThrow();
+    expect(b!.loop.getState().wort).toBe(INSTABIL);
+    expect(b!.wartend()).toBe(0);
+    b!.lauf(1);
+    expect(b!.frames).toHaveLength(1);
+  });
+
+  it("stops with „instabil“ when onState throws, also in the constructor", () => {
+    let a: ReturnType<typeof aufbau> | undefined;
+    expect(() => { a = aufbau(pendel(), undefined, { onState: (s) => { if (s.status === "laeuft") throw new Error("Ansage kaputt"); } }); }).not.toThrow();
+    expect(a!.loop.getState().status).toBe("instabil");
+    expect(a!.loop.getState().wort).toBe(INSTABIL);
+    expect(a!.loop.pending()).toBe(0);
+    expect(a!.wartend()).toBe(0);
+    const immer = aufbau(pendel(), undefined, { onState: () => { throw new Error("immer"); } });
+    expect(immer.loop.getState().status).toBe("instabil");
+    expect(immer.wartend()).toBe(0);
+    const spaeter = aufbau(schnellesGas(), undefined, { onState: (s) => { if (s.status === "zeitlupe") throw new Error("später"); } });
+    expect(() => spaeter.lauf(1)).not.toThrow();
+    expect(spaeter.loop.getState().status).toBe("instabil");
+    expect(worte(spaeter.states)).toEqual(["läuft", ZEITLUPE, INSTABIL]);
+    expect(spaeter.loop.pending()).toBe(0);
+    expect(spaeter.wartend()).toBe(0);
+  });
+
+  it("stops with „instabil“ when requestFrame throws, without throwing itself", () => {
+    let a: ReturnType<typeof aufbau> | undefined;
+    expect(() => { a = aufbau(pendel(), undefined, { requestFrame: () => { throw new Error("kein Takt"); } }); }).not.toThrow();
+    expect(a!.loop.getState().wort).toBe(INSTABIL);
+    expect(a!.loop.pending()).toBe(0);
+    const b = aufbau(pendel(), undefined, { requestFrame: (n) => { if (n >= 20) throw new Error("Takt weg"); } });
+    expect(() => b.lauf(2)).not.toThrow();
+    expect(b.loop.getState().status).toBe("instabil");
+    expect(b.loop.pending()).toBe(0);
+    expect(b.wartend()).toBe(0);
+    const n = b.frames.length;
+    b.lauf(1);
+    expect(b.frames).toHaveLength(n);
+  });
+});
+
+describe("simLoop: Zeitlupe", () => {
+  it("goes back from „Zeitlupe“ to „läuft“ once the load drops (after a second without the limit)", () => {
+    let schwer = true;
+    const eng: SimEngine = { ...PHYSIK, advance: (s, sec, max) => { const r = PHYSIK.advance(s, sec, max); return schwer ? { ...r, begrenzt: true } : r; } };
+    const a = aufbau(pendel({ laufzeit: 60 }), eng);
+    a.lauf(1);
+    expect(a.loop.getState().status).toBe("zeitlupe");
+    schwer = false;
+    a.lauf(0.5);
+    expect(a.loop.getState().status).toBe("zeitlupe");      // kein Flackern: erst nach 30 ruhigen Bildern
+    a.lauf(1.5);
+    expect(a.loop.getState().status).toBe("laeuft");
+    expect(worte(a.states)).toEqual(["läuft", ZEITLUPE, "läuft"]);
+    expect(a.loop.pending()).toBe(1);
+  });
+
+  it("pauses while in „Zeitlupe“ and still stops after the run time", () => {
+    const a = aufbau(schnellesGas({ laufzeit: 5 }));
+    a.lauf(1);
+    expect(a.loop.getState().status).toBe("zeitlupe");
+    a.loop.pause();
+    expect(a.loop.getState().wort).toBe("pausiert");
+    expect(a.loop.pending()).toBe(0);
+    expect(a.wartend()).toBe(0);
+    const lz = a.loop.getState().laufzeit, z = a.loop.getState().simZeit;
+    a.lauf(2);
+    expect(a.loop.getState().laufzeit).toBe(lz);
+    expect(a.loop.getState().simZeit).toBe(z);
+    a.loop.resume();
+    expect(a.loop.getState().wort).toBe("läuft");
+    a.lauf(6);
+    const st = a.loop.getState();
+    expect(st.status).toBe("angehalten");
+    expect(st.wort).toBe("angehalten nach 5 s");
+    expect(st.laufzeit).toBeCloseTo(5, 9);
+    expect(worte(a.states)).toEqual(["läuft", ZEITLUPE, "pausiert", "läuft", ZEITLUPE, "angehalten nach 5 s"]);
+    expect(a.loop.pending()).toBe(0);
+    expect(a.wartend()).toBe(0);
   });
 });
