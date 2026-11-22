@@ -71,6 +71,9 @@ export class MockSocket implements Socket {
     turn(134000, "Übersetze mir ein paar Sätze ins Arabische.", "Hier sind die Sätze.", DEMO_VIEWS[11]);
     turn(145000, "Ich will Hauptstädte üben.", "Hier sind Karten und ein kurzes Quiz.", DEMO_VIEWS[12]);
     turn(156000, "Wie backe ich Pfannkuchen?", "Hier die Anleitung Schritt für Schritt.", DEMO_VIEWS[13]);
+    turn(167000, "Wie läuft eine Bestellung ab?", "Hier der Ablauf.", DEMO_VIEWS[14]);
+    turn(178000, "Zeig mir den Aufbau der Firma.", "Hier das Organigramm.", DEMO_VIEWS[15]);
+    turn(189000, "Sammle Ideen für den Urlaub.", "Hier die Mindmap.", DEMO_VIEWS[16]);
   }
 
   send(data: string): void {
@@ -264,4 +267,41 @@ export const DEMO_VIEWS: Record<string, unknown>[] = [
       { titel: "Teig rühren", text: "Alles glatt rühren, bis keine Klümpchen mehr da sind.", sekunden: 0 },
       { titel: "Teig ruhen lassen", text: "Den Teig abgedeckt ruhen lassen.", sekunden: 300 },
       { titel: "Ausbacken", text: "Wenig Fett in die Pfanne, je Seite etwa eine Minute.", sekunden: 60 } ] } ] },
+  // P6b: Diagramme (Ablauf mit Entscheidung und Rückweg, Organigramm, Mindmap), vollständig wie nach der Backend-Prüfung
+  { id: "ablauf", art: "netz", titel: "Bestellung bearbeiten (Beispiel)", bausteine: [
+    { typ: "netz", form: "ablauf", knoten: [
+      { id: "s", text: "Bestellung eingegangen", art: "start" },
+      { id: "p", text: "Ware auf Lager?", art: "entscheidung" },
+      { id: "v", text: "Ware versenden", art: "schritt" },
+      { id: "n", text: "Ware nachbestellen", art: "schritt" },
+      { id: "w", text: "Lieferung abwarten", art: "" },
+      { id: "r", text: "Rechnung schicken", art: "schritt" },
+      { id: "e", text: "Fertig", art: "ende" } ],
+    kanten: [
+      { von: "s", bis: "p", text: "" }, { von: "p", bis: "v", text: "ja" }, { von: "p", bis: "n", text: "nein" },
+      { von: "n", bis: "w", text: "" }, { von: "w", bis: "p", text: "erneut prüfen" },
+      { von: "v", bis: "r", text: "" }, { von: "r", bis: "e", text: "" } ] } ] },
+  { id: "organigramm", art: "netz", titel: "Aufbau der Firma (Beispiel)", bausteine: [
+    { typ: "netz", form: "baum", knoten: [
+      { id: "gf", text: "Geschäftsführung", art: "" }, { id: "ve", text: "Vertrieb", art: "" }, { id: "en", text: "Entwicklung", art: "" },
+      { id: "vw", text: "Verwaltung", art: "" }, { id: "in", text: "Innendienst", art: "" }, { id: "au", text: "Außendienst", art: "" },
+      { id: "so", text: "Software", art: "" }, { id: "hw", text: "Hardware", art: "" }, { id: "te", text: "Test und Qualität", art: "" },
+      { id: "pe", text: "Personal", art: "" }, { id: "bu", text: "Buchhaltung", art: "" } ],
+    kanten: [
+      { von: "gf", bis: "ve", text: "" }, { von: "gf", bis: "en", text: "" }, { von: "gf", bis: "vw", text: "" },
+      { von: "ve", bis: "in", text: "" }, { von: "ve", bis: "au", text: "" },
+      { von: "en", bis: "so", text: "" }, { von: "en", bis: "hw", text: "" }, { von: "en", bis: "te", text: "" },
+      { von: "vw", bis: "pe", text: "" }, { von: "vw", bis: "bu", text: "" } ] } ] },
+  { id: "mindmap", art: "netz", titel: "Urlaub planen (Beispiel)", bausteine: [
+    { typ: "netz", form: "mindmap", knoten: [
+      { id: "u", text: "Urlaub planen", art: "" },
+      { id: "z", text: "Reiseziel", art: "" }, { id: "z1", text: "Strand", art: "" }, { id: "z2", text: "Berge", art: "" },
+      { id: "b", text: "Budget", art: "" }, { id: "b1", text: "Flug", art: "" }, { id: "b2", text: "Unterkunft", art: "" },
+      { id: "p", text: "Packliste", art: "" }, { id: "p1", text: "Kleidung", art: "" }, { id: "p2", text: "Ausweis und Karten", art: "" },
+      { id: "t", text: "Termine", art: "" }, { id: "t1", text: "Urlaubsantrag", art: "" } ],
+    kanten: [
+      { von: "u", bis: "z", text: "" }, { von: "z", bis: "z1", text: "" }, { von: "z", bis: "z2", text: "" },
+      { von: "u", bis: "b", text: "" }, { von: "b", bis: "b1", text: "" }, { von: "b", bis: "b2", text: "" },
+      { von: "u", bis: "p", text: "" }, { von: "p", bis: "p1", text: "" }, { von: "p", bis: "p2", text: "" },
+      { von: "u", bis: "t", text: "" }, { von: "t", bis: "t1", text: "" } ] } ] },
 ];

@@ -374,6 +374,30 @@ h2, h3 { font-family: var(--font-display); font-weight: 600; letter-spacing: .04
 .a-list small { color: var(--text-muted); }
 .a-now { color: var(--arc); }
 .a-now .q-tag { color: var(--arc); }
+/* ----- Diagramm netz (P6b): eigenes SVG, Form zeigt die Art (Kapsel, doppelte Kapsel, Raute, Kasten), Rückwärtskante gestrichelt;
+   Zoom und Verschieben ohne Übergang (keine Animation, auch nicht bei „weniger Bewegung“) ----- */
+.v-net { display: grid; gap: var(--s-3); min-width: 0; }
+.n-frame { position: relative; min-width: 0; background: var(--bg-0); border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; touch-action: none; cursor: grab; }
+.n-frame:focus-visible { box-shadow: var(--focus-ring); outline: none; border-radius: var(--r-md); }
+.n-svg { position: absolute; top: 0; left: 0; display: block; max-width: none; transform-origin: 0 0; user-select: none; }
+.n-shape { fill: var(--bg-3); stroke: var(--line-strong); stroke-width: 1.5; }
+.n-inner { fill: none; stroke: var(--arc); stroke-width: 1.5; }
+.n-start .n-shape, .n-ende .n-shape, .n-entscheidung .n-shape, .n-root .n-shape { stroke: var(--arc); }
+.n-text { fill: var(--text); font-family: var(--font-mono); font-size: 12px; }
+.n-root .n-text { font-weight: 600; }
+.n-edge { fill: none; stroke: var(--text-muted); stroke-width: 1.5; }
+.n-back { stroke-dasharray: 6 4; }
+.n-arrow { fill: var(--text-muted); }
+.n-label-bg { fill: var(--bg-0); stroke: var(--line); stroke-width: 1; }
+.n-label { fill: var(--text-muted); font-family: var(--font-mono); font-size: 12px; }
+.n-row { align-items: center; }
+.n-row button[aria-disabled="true"] { opacity: .5; cursor: default; }
+.n-row button[aria-disabled="true"]:hover { border-color: var(--line-strong); }
+.n-scale { margin-left: auto; }
+.n-flat, .n-tree, .n-tree ul { margin: var(--s-2) 0 0; padding-left: var(--s-5); display: grid; gap: var(--s-1); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.n-tree ul { margin-top: var(--s-1); }
+.n-name { color: var(--text); }
+.n-art { color: var(--text-muted); }
 
 /* ===== Responsive Layout =====
    < 800 px:     Leiste unten (vier gleich große Felder), Inhalt darüber

@@ -35,7 +35,11 @@ export type Block =
   | { typ: "gegenueber"; sprachen: [string, string]; paare: { original: string; uebersetzung: string }[] }
   | { typ: "lernkarten"; karten: { frage: string; antwort: string }[] }
   | { typ: "quiz"; fragen: { frage: string; optionen: string[]; richtig: number; erklaerung: string }[] }
-  | { typ: "anleitung"; schritte: { titel: string; text: string; sekunden: number }[]; aktuell: number };
+  | { typ: "anleitung"; schritte: { titel: string; text: string; sekunden: number }[]; aktuell: number }
+  // P6b: Diagramm aus Knoten und Kanten. `art: ""` heißt „nicht angegeben“ (Schritt), `text: ""` an einer Kante heißt ohne Beschriftung.
+  | { typ: "netz"; form: "ablauf" | "baum" | "mindmap"; knoten: { id: string; text: string; art: "" | "start" | "ende" | "entscheidung" | "schritt" }[];
+      kanten: { von: string; bis: string; text: string }[] };
+export type NetBlock = Extract<Block, { typ: "netz" }>;
 
 export interface View { seq: number; id: string; art: Art; titel: string; stand: string; bausteine: Block[] }
 export type StageItem = View | { seq: number; id: string; schliessen: true };
@@ -43,7 +47,7 @@ export type StageItem = View | { seq: number; id: string; schliessen: true };
 const ARTEN = ["antwort", "rechnung", "markt", "recherche", "auftrag", "mail", "dokument", "modell", "plan", "lernen", "netz"];
 const TYPEN = ["text", "liste", "formel", "schritte", "ergebnis", "kennzahlen", "tabelle", "diagramm", "aussagen", "widerspruch",
   "quellen", "hinweis", "systemzustand", "fortschritt", "aufgaben", "zeitplan", "mail", "mail-entwurf", "countdown", "dokument", "aenderung", "szene3d", "plan2d",
-  "vergleich", "zeitstrahl", "gegenueber", "lernkarten", "quiz", "anleitung"];
+  "vergleich", "zeitstrahl", "gegenueber", "lernkarten", "quiz", "anleitung", "netz"];
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 
 /** Ein Eintrag aus `stage.get`; `null`, wenn er nicht passt (dann wird er übergangen). */
