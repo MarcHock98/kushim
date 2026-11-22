@@ -72,3 +72,5 @@ Format: Datum, Datei, Grund (ein Satz).
 - 2026-11-12, `.claude/skills/kushim-routine/SKILL.md`: Vorgehen „UI im Browser ansehen“ ergänzt (Demo-Dauer, neu laden, Überlauf messen); `.claude/launch.json` für den Dev-Server angelegt.
 - 2026-11-12, `.claude/skills/kushim-routine/SKILL.md`: Fallstrick „feste Importliste von stage/schema.py“ ergänzt (der Egress-Test schlug beim Countdown an).
 - 2026-11-13, `.claude/skills/kushim-routine/SKILL.md`: Fallstricke „Demodaten wie das Backend“ und „Hex-Farben in der UI“ ergänzt (beide traten beim Bau von P4a auf).
+- 2026-11-22, `.claude/agents/test-manager.md`: neuer nur lesender Agent (Wunsch des Nutzers): leitet Testfälle aus Plan und Diff ab, gleicht ab, verteilt.
+- 2026-11-22, `.claude/skills/kushim-routine/SKILL.md`: Arbeitsweise „Manager mit Agenten“ und Fallstricke (Worktrees, `PYTHONPATH=src`, Dev-Server vor `npm ci` stoppen, Vertrag vorgeben) ergänzt.

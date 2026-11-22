@@ -134,13 +134,30 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
   gemerged). Wartet auf Freigabe und sechs Entscheidungen. Kein Code. Neu gegenüber P3 bis P4: erste Bausteine mit Bedienelementen
   (nur Anzeigezustand, nichts wird gesendet oder gespeichert).
 
+- 2026-11-22 Loop (Manager mit Agenten): Nutzer sagte „mach weiter, entscheide“: **P6a und P6b gebaut** nach den Empfehlungen des
+  Plans (Branches `routine/p6-schema`, `routine/p6a-ui`, `routine/p6b-layout`, `routine/p6b-net`, zusammengeführt in `routine/p6-ui`,
+  gemerged, nicht gepusht). Schema mit sieben Bausteinen und zwei Arten, `Compare.tsx`, `Learn.tsx`, `Net.tsx`, `lib/layout.ts`,
+  Mock-Demo. 986 Python- und 223 UI-Tests grün, Typcheck und Build sauber. Safety-Auditor: Schema Runde 1 nicht freigegeben
+  (riesige Ganzzahl und Liste als `typ` ließen den Channel abstürzen, beides alte Zeilen, schon auf master auslösbar), behoben samt
+  dritter Stelle (`form` bei `szene3d`) und Sicherheitsnetz in `validate`, Runde 2 freigegeben; Oberfläche freigegeben. Die
+  Kantenführung in `layout.ts` (Umwege um Kästen, Beschriftungen nie auf Kästen) kam nach dem Audit dazu (reine Geometrie, getestet).
+  Neuer Agent `test-manager` (Testfälle ableiten, abgleichen, verteilen): drei Läufe, fand Lücken und über die Nacharbeit drei echte
+  Fehler (Timer nach Rückkehr und bei Uhrsprung, `sprachen` als Text). Im Browser bei 375, 800 und 1440 px gesehen; dabei zwei Fehler
+  behoben (Rückkante und Beschriftung lagen auf einem Knoten; Vergleichstabelle brach Wörter mitten im Wort). **Detailplan P5**
+  geschrieben (`docs/ui-p5-plan.md`), wartet auf Freigabe. Nicht geprüft: echtes Tauri-Fenster, Vorleser, echter Aufruf durch Claude
+  Code, arabische Demo-Sätze. Bekannte Grenzen: Umwege mehrerer Kanten können aufeinander liegen; im Baum und in der Mindmap werden
+  Linien nicht umgeleitet; Text in der Raute kann bei drei Zeilen überstehen. Wirkt erst nach neuem `kushim start`.
+  Nächster Schritt: P5a nach Freigabe; sonst E2/E3 der Roadmap prüfen.
+
 ## Slack
 - Nutzer-ID / Kanal-ID: nicht verwendet. Verbundenes Slack-Konto hat andere Mail (Arbeits-Workspace) als die Git-/Claude-Mail, Empfänger unsicher, daher nichts gesendet
 
 ## Offene Fragen an den Nutzer
-- 2026-11-13 **P6 der Oberfläche** (`docs/ui-p6-plan.md`): (1) erst P6a, dann P6b? (2) Lernen mit Klicks im Fenster (Lösungen in den Daten)?
-  (3) Timer ohne Ton oder neue Fähigkeit „Klang abspielen“? (4) Diagramme: eigene Anordnung oder `elkjs`? (5) Übersetzung: nur die
-  deutsche Seite vorlesen? (6) Lernstand nicht speichern? Empfehlungen stehen im Plan. Bis zur Antwort: kein Code für P6.
+- 2026-11-22 **P5 der Oberfläche** (`docs/ui-p5-plan.md`): acht Entscheidungen (Schnitt P5a/P5b, Modelle, Hauptthread statt
+  Worker, Canvas 2D, Start und Stopp nach 30 s, weniger Bewegung, kein Paket, Atomfarben). Empfehlungen stehen im Plan.
+  Bis zur Antwort: kein Code für P5.
+- 2026-11-22 P6, nach Empfehlung entschieden, jederzeit änderbar: doppelte Antwortoptionen im Quiz erlaubt; eine Aktualisierung
+  derselben Ansicht setzt Quiz-, Karten- und Timerstand zurück; ein gestarteter Timer läuft beim Schrittwechsel in Echtzeit weiter.
 - Keine offenen Fragen. (C7 am 2026-11-11 beantwortet, siehe Entscheidungen.)
 
 ## Blockiert
