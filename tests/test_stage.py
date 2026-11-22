@@ -541,6 +541,8 @@ K3 = K2 + [{"id": "c", "text": "C"}]
     ("vergleich", {**VERGLEICH, "kriterien": [{"name": "k", "werte": [1, 2, 3]}]}),
     ("vergleich", {**VERGLEICH, "kriterien": [{"name": "k", "werte": ["x" * 201, 2]}]}),
     ("vergleich", {**VERGLEICH, "kriterien": [{"name": "k", "werte": [float("inf"), 2]}]}),
+    ("vergleich", {**VERGLEICH, "kriterien": [{"name": "k", "werte": [float("-inf"), 2]}]}),
+    ("vergleich", {**VERGLEICH, "kriterien": [{"name": "k", "werte": [1, float("nan")]}]}),
     ("vergleich", {**VERGLEICH, "kriterien": [{"name": "k", "werte": [True, 2]}]}),
     ("vergleich", {**VERGLEICH, "kriterien": [{"name": "k", "werte": [None, 2]}]}),
     ("vergleich", {**VERGLEICH, "kriterien": [{"name": "k", "werte": [1, 2], "farbe": "rot"}]}),
@@ -617,6 +619,10 @@ K3 = K2 + [{"id": "c", "text": "C"}]
     ("anleitung", {"schritte": [{**S, "sekunden": False}]}),
     ("anleitung", {"schritte": [{**S, "sekunden": "60"}]}),
     ("anleitung", {"schritte": [{**S, "sekunden": float("nan")}]}),
+    ("anleitung", {"schritte": [{**S, "sekunden": None}]}),
+    ("anleitung", {"schritte": [{**S, "sekunden": 10**400}]}),
+    ("anleitung", {"schritte": [{**S, "sekunden": 0.0}]}),                                               # nur echte ganze Zahlen
+    ("anleitung", {"schritte": [{**S, "sekunden": 60.0}]}),
     ("anleitung", {"schritte": [{**S, "ton": "gong"}]}),
     ("anleitung", {"schritte": [S, S], "aktuell": 2}),                                                   # kein dritter Schritt
     ("anleitung", {"schritte": [S], "aktuell": -1}),
@@ -639,6 +645,9 @@ K3 = K2 + [{"id": "c", "text": "C"}]
     ("netz", {"form": "ablauf", "knoten": [{"id": "a", "text": ""}]}),
     ("netz", {"form": "ablauf", "knoten": [{"id": "a", "text": "x", "art": "raute"}]}),
     ("netz", {"form": "ablauf", "knoten": [{"id": "a", "text": "x", "farbe": "rot"}]}),
+    ("netz", {"form": "ablauf", "knoten": [{"id": "a", "text": "x", "art": None}]}),
+    ("netz", {"form": "ablauf", "knoten": [{"id": "a", "text": "x", "art": []}]}),
+    ("netz", {"form": "ablauf", "knoten": K2, "kanten": None}),
     ("netz", {"form": "ablauf", "knoten": K2, "kanten": [{"von": "a", "bis": "z"}]}),                    # Kante ins Leere
     ("netz", {"form": "ablauf", "knoten": K2, "kanten": [{"von": "z", "bis": "a"}]}),
     ("netz", {"form": "ablauf", "knoten": K2, "kanten": [{"von": ["a"], "bis": "b"}]}),
@@ -676,9 +685,84 @@ def test_p6_rejections(typ, fields):
     ("netz", {"form": "ablauf", "knoten": [{"id": f"k{i:022d}", "text": "x" * 80} for i in range(60)],
               "kanten": [{"von": f"k{i % 60:022d}", "bis": f"k{(i + 1) % 60:022d}", "text": "x" * 40} for i in range(120)]}),
     ("netz", _tree(60)),
+    ("gegenueber", {"sprachen": ["de", "en"], "paare": [{"original": "Hallo", "uebersetzung": "Hello"}] * 40}),
+    ("netz", {"form": "ablauf", "knoten": [{"id": "a", "text": "x", "art": ""}]}),
+    ("netz", {"form": "ablauf", "knoten": K2}),                                                          # ohne kanten
 ])
 def test_p6_limits_are_inclusive(typ, fields):
     assert schema.validate(p6(typ, **fields))["bausteine"][0]["typ"] == typ
+
+
+def test_p6_forty_long_pairs_are_too_large_for_one_view():
+    with pytest.raises(schema.ViewError) as e:
+        schema.validate(p6("gegenueber", sprachen=["de", "en"], paare=[{"original": "x" * 600, "uebersetzung": "y" * 600}] * 40))
+    assert e.value.code == "too_large"
+
+
+def test_p6_empty_or_control_only_cells_in_werte_become_empty_like_in_tabelle():
+    werte = p6_block("vergleich", "antwort", optionen=["a", "b"], kriterien=[{"name": "k", "werte": ["", chr(0x202e) + chr(0)]}])["kriterien"][0]["werte"]
+    assert werte == ["", ""]
+    assert p6_block("tabelle", "antwort", spalten=["a", "b"], zeilen=[["", chr(0x202e) + chr(0)]])["zeilen"][0] == ["", ""]
+
+
+JUNK = chr(0x202e) + chr(0) + chr(27) + chr(0x2066) + chr(10)
+V2 = dict(optionen=["a", "b"], kriterien=[{"name": "k", "werte": [1, 2]}])
+
+
+@pytest.mark.parametrize("typ,fields", [
+    ("vergleich", {**V2, "optionen": [JUNK, "b"]}),
+    ("vergleich", {**V2, "kriterien": [{"name": JUNK, "werte": [1, 2]}]}),
+    ("vergleich", {**V2, "vorteile": [[JUNK], []]}),
+    ("zeitstrahl", {"ereignisse": [{"zeit": JUNK, "titel": "t"}]}),
+    ("zeitstrahl", {"ereignisse": [{"zeit": "1", "titel": JUNK}]}),
+    ("gegenueber", {"sprachen": [JUNK, "b"], "paare": [{"original": "a", "uebersetzung": "b"}]}),
+    ("gegenueber", {"sprachen": ["a", "b"], "paare": [{"original": JUNK, "uebersetzung": "b"}]}),
+    ("gegenueber", {"sprachen": ["a", "b"], "paare": [{"original": "a", "uebersetzung": JUNK}]}),
+    ("lernkarten", {"karten": [{"frage": JUNK, "antwort": "a"}]}),
+    ("lernkarten", {"karten": [{"frage": "f", "antwort": JUNK}]}),
+    ("quiz", {"fragen": [{**Q, "frage": JUNK}]}),
+    ("quiz", {"fragen": [{**Q, "optionen": ["a", JUNK]}]}),
+    ("anleitung", {"schritte": [{"titel": JUNK, "text": "x"}]}),
+    ("anleitung", {"schritte": [{"titel": "t", "text": JUNK}]}),
+    ("netz", {"form": "ablauf", "knoten": [{"id": "a", "text": JUNK}]}),
+])
+def test_p6_required_text_of_only_control_or_direction_characters_is_rejected(typ, fields):
+    with pytest.raises(schema.ViewError) as e:
+        schema.validate(p6(typ, **fields))
+    assert e.value.code == "bad_block_1"
+
+
+def _deep(n=5000):
+    v: list = []
+    for _ in range(n):
+        v = [v]
+    return v
+
+
+@pytest.mark.parametrize("view", [
+    lambda: p6("text", "antwort", absaetze=_deep()),
+    lambda: p6("quiz", fragen=_deep()),
+    lambda: {**p6("netz", "netz", form="ablauf", knoten=K2), "bausteine": _deep()},
+    lambda: {"id": "x", "art": "antwort", "titel": "T", "bausteine": [{"typ": "text", "absaetze": ["a"]}], "tief": _deep()},
+])
+def test_deeply_nested_input_is_a_view_error_not_a_crash(view):
+    with pytest.raises(schema.ViewError) as e:
+        schema.validate(view())
+    assert e.value.code == "too_large"
+
+
+@pytest.mark.parametrize("fields", [
+    _tree(60),                                                                                           # Stern
+    dict(form="baum", knoten=[{"id": f"n{i}", "text": "x"} for i in range(60)], kanten=[{"von": f"n{i}", "bis": f"n{i + 1}"} for i in range(59)]),
+    dict(form="ablauf", knoten=[{"id": f"n{i}", "text": "x"} for i in range(60)],
+         kanten=[{"von": f"n{i % 60}", "bis": f"n{(i * 7 + 1) % 60}"} for i in range(120) if i % 60 != (i * 7 + 1) % 60]),
+])
+def test_p6_netz_checks_stay_fast(fields):
+    import time
+    start = time.perf_counter()
+    for _ in range(10):
+        schema.validate(p6("netz", "netz", **fields))
+    assert time.perf_counter() - start < 0.5
 
 
 def test_p6_text_loses_control_and_direction_characters():

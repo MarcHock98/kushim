@@ -519,9 +519,8 @@ def _anleitung(b: dict[str, Any], c: str) -> dict[str, Any]:
     out = []
     for s in _list(b.get("schritte"), 1, 30, c):
         s = _item(s, {"titel", "text", "sekunden"}, c)
-        sek = s.get("sekunden", 0)                            # 0: kein Timer (nur Anzeige, ohne Ton)
         out.append({"titel": _text(s.get("titel"), 120, c), "text": _text(s.get("text"), 600, c),
-                    "sekunden": 0 if sek == 0 and not isinstance(sek, bool) else _int(sek, 1, 86400, c)})
+                    "sekunden": _int(s.get("sekunden", 0), 0, 86400, c)})    # 0: kein Timer (nur Anzeige, ohne Ton)
     return {"schritte": out, "aktuell": _int(b.get("aktuell", 0), 0, len(out) - 1, c)}    # Index ab 0
 
 
@@ -583,6 +582,8 @@ def validate(raw: Any) -> dict[str, Any]:
         size = len(json.dumps(raw, ensure_ascii=False).encode("utf-8"))
     except (TypeError, ValueError):
         raise ViewError("bad_view") from None
+    except RecursionError:                                 # sehr tief verschachtelt: wie zu groß behandeln, nie ein Absturz
+        raise ViewError("too_large") from None
     if size > MAX_JSON:
         raise ViewError("too_large")
     if set(raw) - {"id", "art", "titel", "bausteine", "stand", "schliessen"}:
