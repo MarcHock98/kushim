@@ -1,6 +1,7 @@
 """Bühne (P2): Schema der Ansichten, Werkzeug `zeige` im Channel, Weg über die Bridge, API `stage.get`, Notaus."""
 import io
 import json
+import math
 import threading
 
 import pytest
@@ -1016,6 +1017,53 @@ def test_p5a_body_names_lose_control_characters():
     b = sim_block("umlauf", {"zentralmasse": 1, "koerper": [{"name": "Erde" + chr(0x202e) + chr(0) + "x", "abstand": 1}]})
     name = b["parameter"]["koerper"][0]["name"]
     assert name.startswith("Erde") and all(ch.isprintable() for ch in name) and chr(0x202e) not in name
+
+
+def test_p5a_description_loses_control_characters_and_collapses_whitespace():
+    text = "Ohne" + chr(0x202e) + chr(0) + chr(10) + "Reibung" + chr(9) + "  und   mehr."
+    got = sim_block("pendel", SIM_MIN["pendel"], beschreibung="  " + text + chr(10))["beschreibung"]
+    assert got == "Ohne Reibung und mehr."
+    assert all(ch.isprintable() for ch in got) and chr(0x202e) not in got and chr(0) not in got and chr(10) not in got
+
+
+def test_p5a_description_limit_counts_after_cleaning():
+    assert len(sim_block("pendel", SIM_MIN["pendel"], beschreibung=" " * 50 + "x" * 400 + chr(10) * 50)["beschreibung"]) == 400
+    assert len(sim_block("pendel", SIM_MIN["pendel"], beschreibung="x" * 200 + " " * 5 + "x" * 199)["beschreibung"]) == 400   # 405 roh, 400 gesäubert
+    sim_bad("pendel", SIM_MIN["pendel"], beschreibung="x" * 200 + chr(0x202e) + "x" * 200)                       # das Zeichen wird zum Leerzeichen: 401
+    sim_bad("pendel", SIM_MIN["pendel"], beschreibung=chr(10) + "x" * 401)
+
+
+def test_p5a_bridge_drops_invalid_simulations_that_got_past_the_channel(channel):
+    c, out, root = channel
+    b = br.Bridge(root)
+    c.show(sim("gas", SIM_MIN["gas"]))
+    c._views.append({**sim("pendel", {"laenge": 1, "winkel": 30, "formel": "sin(x)"}), "id": "unbekannt"})          # unbekannter Parameter
+    c._views.append({**sim("pendel", {"laenge": 1000, "winkel": 30}), "id": "zu-gross"})                           # außerhalb der Grenzen
+    c.say("Hier das Gas.")
+    assert b.fetch() == ("ok", ["Hier das Gas."])
+    assert [i["id"] for i in b.stage.since(0)[0]] == ["sim"]
+
+
+GAS_AREA_RADIUS = math.sqrt(30 / (300 * math.pi))                                  # 300 Teilchen füllen genau 30 % von 10 x 10
+
+
+@pytest.mark.parametrize("factor,ok", [(0.999, True), (1.001, False)])
+def test_p5a_gas_area_near_thirty_percent(factor, ok):
+    params = {"anzahl": 300, "kasten": [10, 10], "radius": factor * GAS_AREA_RADIUS, "geschwindigkeit": 1}
+    assert GAS_AREA_RADIUS < 0.05 * 10                                             # die 5-%-Regel greift hier nicht
+    if ok:
+        assert sim_block("gas", params)["parameter"]["radius"] == params["radius"]
+    else:
+        sim_bad("gas", params)
+
+
+@pytest.mark.parametrize("kasten", [[100, float("nan")], [float("nan"), 100], [100, 10**400], [10**400, 100]])
+def test_p5a_gas_box_rejects_nan_and_huge_integers(kasten):
+    sim_bad("gas", {**SIM_MIN["gas"], "kasten": kasten})
+
+
+def test_p5a_gas_box_short_side_first_passes():
+    assert sim_block("gas", {**SIM_MIN["gas"], "kasten": [60, 100]})["parameter"]["kasten"] == [60, 100]
 
 
 def test_zeige_tool_names_the_simulation_kind_block_and_models():
