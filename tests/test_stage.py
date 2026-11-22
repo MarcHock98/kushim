@@ -790,23 +790,35 @@ SIM_MIN = {
     "wurf": {"geschwindigkeit": 20, "winkel": 45},
     "umlauf": {"zentralmasse": 1, "koerper": [{"name": "Erde", "abstand": 1}]},
     "gas": {"anzahl": 50, "kasten": [100, 60], "radius": 1, "geschwindigkeit": 0.5},
+    "doppelpendel": {"laenge1": 1, "laenge2": 1, "winkel1": 120, "winkel2": -10},
+    "welle": {"wellen": [{"amplitude": 1, "wellenlaenge": 2, "frequenz": 0.5}]},
 }
 SIM_FILLED = {                                                                    # was die Oberfläche aus SIM_MIN bekommt
     "pendel": {"laenge": 1, "winkel": 30, "anfangsgeschwindigkeit": 0, "daempfung": 0, "g": 9.81},
     "feder": {"masse": 1, "federkonstante": 10, "auslenkung": 0.2, "daempfung": 0},
     "wurf": {"geschwindigkeit": 20, "winkel": 45, "hoehe": 0, "g": 9.81, "luftwiderstand": 0},
-    "umlauf": {"zentralmasse": 1, "koerper": [{"name": "Erde", "abstand": 1, "exzentrizitaet": 0, "phase": 0, "farbe": "arc"}]},
+    "umlauf": {"zentralmasse": 1, "koerper": [{"name": "Erde", "abstand": 1, "exzentrizitaet": 0, "phase": 0, "masse": 0, "farbe": "arc"}],
+               "anziehung": False},
     "gas": {"anzahl": 50, "kasten": [100, 60], "radius": 1, "geschwindigkeit": 0.5, "schwerkraft": 0, "stoesse": True, "startwert": 1},
+    "doppelpendel": {"laenge1": 1, "laenge2": 1, "masse1": 1, "masse2": 1, "winkel1": 120, "winkel2": -10, "g": 9.81, "daempfung": 0},
+    "welle": {"wellen": [{"amplitude": 1, "wellenlaenge": 2, "frequenz": 0.5, "phase": 0, "richtung": "rechts"}], "bereich": 0},
 }
 SIM_FULL = {
     "pendel": {"laenge": 2.5, "winkel": -45, "anfangsgeschwindigkeit": 90, "daempfung": 0.2, "g": 1.62},
     "feder": {"masse": 0.5, "federkonstante": 200, "auslenkung": -0.1, "daempfung": 1.5},
     "wurf": {"geschwindigkeit": 30, "winkel": -10, "hoehe": 50, "g": 9.81, "luftwiderstand": 0.01},
-    "umlauf": {"zentralmasse": 1, "koerper": [{"name": "Merkur", "abstand": 0.39, "exzentrizitaet": 0.21, "phase": 10, "farbe": "amber"},
-                                               {"name": "Erde", "abstand": 1, "exzentrizitaet": 0.017, "phase": 200, "farbe": "ok"},
-                                               {"name": "Mars", "abstand": 1.52, "exzentrizitaet": 0.09, "phase": 359.5, "farbe": "alarm"}]},
+    "umlauf": {"zentralmasse": 1, "koerper": [{"name": "Merkur", "abstand": 0.39, "exzentrizitaet": 0.21, "phase": 10, "masse": 1.7e-7,
+                                                "farbe": "amber"},
+                                               {"name": "Erde", "abstand": 1, "exzentrizitaet": 0.017, "phase": 200, "masse": 3e-6, "farbe": "ok"},
+                                               {"name": "Mars", "abstand": 1.52, "exzentrizitaet": 0.09, "phase": 359.5, "masse": 0.01,
+                                                "farbe": "alarm"}],
+               "anziehung": True},
     "gas": {"anzahl": 120, "kasten": [200, 100], "radius": 1.5, "geschwindigkeit": 2, "schwerkraft": 9.81, "stoesse": False,
             "startwert": 42},
+    "doppelpendel": {"laenge1": 1.5, "laenge2": 0.5, "masse1": 2, "masse2": 0.5, "winkel1": 180, "winkel2": -90, "g": 1.62, "daempfung": 0.1},
+    "welle": {"wellen": [{"amplitude": 0.5, "wellenlaenge": 4, "frequenz": 1, "phase": 90, "richtung": "links"},
+                         {"amplitude": 0.5, "wellenlaenge": 4, "frequenz": 1, "phase": 0, "richtung": "rechts"},
+                         {"amplitude": 0.1, "wellenlaenge": 1.5, "frequenz": 3, "phase": 360, "richtung": "rechts"}], "bereich": 20},
 }
 
 
@@ -924,6 +936,25 @@ SIM_EDGES = [  # (modell, Änderung gegenüber SIM_MIN, gültig)
     ("gas", {"startwert": 0}, True), ("gas", {"startwert": 2_147_483_647}, True), ("gas", {"startwert": -1}, False),
     ("gas", {"startwert": 2_147_483_648}, False), ("gas", {"startwert": 1.0}, False), ("gas", {"startwert": True}, False),
     ("gas", {"startwert": "1"}, False),
+    # P5b: Doppelpendel
+    ("doppelpendel", {"laenge1": 0.05}, True), ("doppelpendel", {"laenge1": 100}, True),
+    ("doppelpendel", {"laenge1": 0.0499}, False), ("doppelpendel", {"laenge1": 100.01}, False),
+    ("doppelpendel", {"laenge2": 0.05}, True), ("doppelpendel", {"laenge2": 100}, True),
+    ("doppelpendel", {"laenge2": 0.0499}, False), ("doppelpendel", {"laenge2": 100.01}, False),
+    ("doppelpendel", {"masse1": 0.01}, True), ("doppelpendel", {"masse1": 1000}, True),
+    ("doppelpendel", {"masse1": 0.0099}, False), ("doppelpendel", {"masse1": 1000.1}, False), ("doppelpendel", {"masse1": 0}, False),
+    ("doppelpendel", {"masse2": 0.01}, True), ("doppelpendel", {"masse2": 1000}, True),
+    ("doppelpendel", {"masse2": 0.0099}, False), ("doppelpendel", {"masse2": 1000.1}, False),
+    ("doppelpendel", {"winkel1": -180}, True), ("doppelpendel", {"winkel1": 180}, True),
+    ("doppelpendel", {"winkel1": -180.01}, False), ("doppelpendel", {"winkel1": 180.01}, False),
+    ("doppelpendel", {"winkel2": -180}, True), ("doppelpendel", {"winkel2": 180}, True),
+    ("doppelpendel", {"winkel2": -180.01}, False), ("doppelpendel", {"winkel2": 180.01}, False),
+    ("doppelpendel", {"winkel1": 0, "winkel2": 0}, True),                          # Ruhelage: gültig, die Oberfläche zeigt Stillstand
+    ("doppelpendel", {"g": 0.1}, True), ("doppelpendel", {"g": 100}, True), ("doppelpendel", {"g": 0.099}, False),
+    ("doppelpendel", {"g": 100.1}, False),
+    ("doppelpendel", {"daempfung": 0}, True), ("doppelpendel", {"daempfung": 5}, True),
+    ("doppelpendel", {"daempfung": -0.001}, False), ("doppelpendel", {"daempfung": 5.001}, False),
+    ("doppelpendel", {"laenge": 1}, False), ("doppelpendel", {"masse3": 1}, False), ("doppelpendel", {"winkel": 10}, False),
 ]
 
 
@@ -955,9 +986,17 @@ def test_p5a_block_fields_have_limits(extra, ok):
         sim_bad("pendel", SIM_MIN["pendel"], **extra)
 
 
-@pytest.mark.parametrize("modell", ["doppelpendel", "welle", "teilchen", "Pendel", "", None, 5, True, ["pendel"], {"pendel": 1}])
+@pytest.mark.parametrize("modell", ["Doppelpendel", "Welle", "wellen", "doppel-pendel", "teilchen", "molekuel", "Pendel", "", None, 5, True,
+                                    ["pendel"], {"pendel": 1}])
 def test_p5a_unknown_models_are_rejected(modell):
     sim_bad(modell, SIM_MIN["pendel"])
+
+
+@pytest.mark.parametrize("modell", list(SIM_MIN))
+def test_p5b_parameters_of_another_model_are_rejected(modell):                  # P5b: doppelpendel und welle sind jetzt Modelle
+    for other in SIM_MIN:
+        if other != modell:
+            sim_bad(modell, SIM_MIN[other])
 
 
 @pytest.mark.parametrize("parameter", [None, [], ["laenge", 1], "laenge=1", 1, True])
@@ -988,6 +1027,9 @@ def _sim_numeric_fields():
     for f in ("anzahl", "radius", "geschwindigkeit", "schwerkraft", "startwert"):
         yield lambda v, f=f: sim("gas", {**SIM_MIN["gas"], f: v})
     yield lambda v: sim("gas", {**SIM_MIN["gas"], "kasten": [v, 60]})
+    for f in schema.SIM_WELLE:                                                     # P5b
+        yield lambda v, f=f: sim("welle", {"wellen": [{**SIM_MIN["welle"]["wellen"][0], f: v}]})
+    yield lambda v: sim("welle", {**SIM_MIN["welle"], "bereich": v})
     yield lambda v: sim("pendel", SIM_MIN["pendel"], laufzeit=v)
     yield lambda v: sim("pendel", SIM_MIN["pendel"], tempo=v)
 
@@ -1096,6 +1138,521 @@ def test_p5a_simulation_is_listed_by_tools_list_and_travels_through_the_real_cha
     assert got["sim"]["bausteine"][0]["parameter"] == SIM_FILLED["gas"] and got["sim"]["bausteine"][0]["tempo"] == 0
 
 
+# --- P5b: Ergänzungen der Simulation (welle, umlauf mit Anziehung; docs/ui-p5-plan.md Abschnitt 7) -----------
+
+W1 = SIM_MIN["welle"]["wellen"][0]
+
+
+@pytest.mark.parametrize("change,ok", [
+    ({"amplitude": 0.001}, True), ({"amplitude": 100}, True), ({"amplitude": 0.00099}, False), ({"amplitude": 100.01}, False),
+    ({"amplitude": 0}, False), ({"amplitude": -1}, False),
+    ({"wellenlaenge": 0.01}, True), ({"wellenlaenge": 1000}, True), ({"wellenlaenge": 0.0099}, False), ({"wellenlaenge": 1000.1}, False),
+    ({"wellenlaenge": 0}, False),
+    ({"frequenz": 0.01}, True), ({"frequenz": 100}, True), ({"frequenz": 0.0099}, False), ({"frequenz": 100.01}, False), ({"frequenz": 0}, False),
+    ({"phase": 0}, True), ({"phase": 360}, True), ({"phase": -0.01}, False), ({"phase": 360.01}, False),
+    ({"richtung": "rechts"}, True), ({"richtung": "links"}, True), ({"richtung": "Links"}, False), ({"richtung": "oben"}, False),
+    ({"richtung": ""}, False), ({"richtung": None}, False), ({"richtung": 1}, False), ({"richtung": True}, False),
+    ({"richtung": ["links"]}, False), ({"richtung": {"links": 1}}, False),
+    ({"formel": "sin(x)"}, False), ({"funktion": "cos"}, False), ({"geschwindigkeit": 1}, False),
+])
+def test_p5b_wave_limits_just_inside_pass_and_just_outside_are_rejected(change, ok):
+    params = {"wellen": [{**W1, **change}]}
+    if ok:
+        got = sim_block("welle", params)["parameter"]
+        assert got == {"wellen": [{**SIM_FILLED["welle"]["wellen"][0], **change}], "bereich": 0}
+        assert schema.validate(sim("welle", got)) == schema.validate(sim("welle", params))
+    else:
+        sim_bad("welle", params)
+
+
+@pytest.mark.parametrize("field", ["amplitude", "wellenlaenge", "frequenz"])
+def test_p5b_wave_required_fields(field):
+    sim_bad("welle", {"wellen": [{k: v for k, v in W1.items() if k != field}]})
+    sim_bad("welle", {"wellen": [{**W1, field: None}]})
+
+
+@pytest.mark.parametrize("params,ok", [
+    ({"wellen": [W1]}, True), ({"wellen": [W1, W1]}, True), ({"wellen": [W1, W1, W1]}, True), ({"wellen": [W1] * 4}, False),
+    ({"wellen": []}, False), ({"wellen": W1}, False), ({"wellen": "sin"}, False), ({"wellen": [None]}, False), ({"wellen": [[1, 2, 3]]}, False),
+    ({}, False), ({"wellen": None}, False),
+    ({"wellen": [W1], "bereich": 0}, True), ({"wellen": [W1], "bereich": 0.0}, True), ({"wellen": [W1], "bereich": 0.01}, True),
+    ({"wellen": [W1], "bereich": 10_000}, True), ({"wellen": [W1], "bereich": 0.0099}, False), ({"wellen": [W1], "bereich": 0.005}, False),
+    ({"wellen": [W1], "bereich": 1e-300}, False), ({"wellen": [W1], "bereich": 10_000.1}, False), ({"wellen": [W1], "bereich": -1}, False),
+    ({"wellen": [W1], "bereich": -0.01}, False), ({"wellen": [W1], "bereich": None}, False), ({"wellen": [W1], "bereich": "auto"}, False),
+    ({"wellen": [W1], "skript": "x"}, False),
+])
+def test_p5b_wave_list_and_range(params, ok):
+    if ok:
+        got = sim_block("welle", params)["parameter"]
+        assert len(got["wellen"]) == len(params["wellen"]) and got["bereich"] == params.get("bereich", 0)
+        assert schema.validate(sim("welle", got))["bausteine"][0]["parameter"] == got
+    else:
+        sim_bad("welle", params)
+
+
+ERDE = {"name": "Erde", "abstand": 1}
+
+
+@pytest.mark.parametrize("params,ok", [
+    ({"zentralmasse": 1, "koerper": [ERDE], "anziehung": True}, True), ({"zentralmasse": 1, "koerper": [ERDE], "anziehung": False}, True),
+    ({"zentralmasse": 1, "koerper": [ERDE], "anziehung": 1}, False), ({"zentralmasse": 1, "koerper": [ERDE], "anziehung": "ja"}, False),
+    ({"zentralmasse": 1, "koerper": [ERDE], "anziehung": None}, False), ({"zentralmasse": 1, "koerper": [ERDE], "anziehung": [True]}, False),
+    ({"zentralmasse": 1, "koerper": [{**ERDE, "masse": 0}]}, True), ({"zentralmasse": 1, "koerper": [{**ERDE, "masse": 0.01}]}, True),
+    ({"zentralmasse": 1, "koerper": [{**ERDE, "masse": 3e-6}]}, True), ({"zentralmasse": 1, "koerper": [{**ERDE, "masse": 0.0101}]}, False),
+    ({"zentralmasse": 1, "koerper": [{**ERDE, "masse": -1e-9}]}, False), ({"zentralmasse": 1, "koerper": [{**ERDE, "masse": "0"}]}, False),
+    ({"zentralmasse": 1, "anziehung": True, "koerper": [{"name": f"k{i}", "abstand": 1 + i, "masse": 0.01} for i in range(8)]}, True),
+    ({"zentralmasse": 1, "anziehung": True, "koerper": [{"name": f"k{i}", "abstand": 1 + i} for i in range(9)]}, False),
+    ({"zentralmasse": 1, "anziehung": True, "koerper": [ERDE, {"name": "b", "abstand": 100.1}]}, False),   # alte Regeln gelten weiter
+    ({"zentralmasse": 1, "anziehung": True, "koerper": [ERDE, ERDE]}, False),
+    ({"zentralmasse": 1, "koerper": [ERDE], "gravitation": True}, False), ({"zentralmasse": 1, "koerper": [{**ERDE, "masse2": 0}]}, False),
+])
+def test_p5b_orbit_attraction_and_body_masses(params, ok):
+    if ok:
+        got = sim_block("umlauf", params)["parameter"]
+        assert got["anziehung"] is params.get("anziehung", False)
+        assert [k["masse"] for k in got["koerper"]] == [k.get("masse", 0) for k in params["koerper"]]
+        assert schema.validate(sim("umlauf", got))["bausteine"][0]["parameter"] == got
+    else:
+        sim_bad("umlauf", params)
+
+
+# --- P5b: Baustein teilchen (Molekül, Atom, Orbital) ---------------------------------------------------------
+
+WASSER = [{"element": "O", "position": [0, 0, 0]}, {"element": "H", "position": [0.757, 0.586, 0]},
+          {"element": "H", "position": [-0.757, 0.586, 0]}]
+T_MIN = {
+    "molekuel": {"atome": [{"element": "H", "position": [0, 0, 0]}]},
+    "atom": {"element": "Na"},
+    "orbital": {"orbital": "2p_z"},
+}
+T_FILLED = {                                                                      # was die Oberfläche aus T_MIN bekommt
+    "molekuel": {"name": "", "atome": [{"element": "H", "position": [0, 0, 0]}], "bindungen": [], "beschriftungen": [],
+                 "darstellung": "kugel-stab"},
+    "atom": {"element": "Na", "neutronen": -1, "ladung": 0, "schalen": [2, 8, 1]},
+    "orbital": {"orbital": "2p_z", "punkte": 2500, "startwert": 1},
+}
+T_FULL = {
+    "molekuel": {"name": "Wasser", "atome": WASSER, "bindungen": [{"von": 0, "bis": 1, "ordnung": 1}, {"von": 2, "bis": 0, "ordnung": 2}],
+                 "beschriftungen": [{"atom": 0, "text": "Sauerstoff"}, {"atom": 2, "text": "H"}], "darstellung": "kalotte"},
+    "atom": {"element": "Fe", "neutronen": 30, "ladung": 2, "schalen": [2, 8, 14]},
+    "orbital": {"orbital": "3d_x2-y2", "punkte": 5000, "startwert": 2_147_483_647},
+}
+
+
+def teil(form, fields, art="teilchen"):
+    return {"id": "t", "art": art, "titel": "T", "bausteine": [{"typ": "teilchen", "form": form, **fields}]}
+
+
+def teil_block(form, fields):
+    return schema.validate(teil(form, fields))["bausteine"][0]
+
+
+def teil_bad(form, fields):
+    with pytest.raises(schema.ViewError) as e:
+        schema.validate(teil(form, fields))
+    assert e.value.code == "bad_block_1"
+
+
+def atoms(n):
+    return [{"element": "C", "position": [i % 10, (i // 10) % 10, i // 100]} for i in range(n)]
+
+
+@pytest.mark.parametrize("form", list(T_MIN))
+def test_p5b_minimal_teilchen_gets_every_default(form):
+    assert teil_block(form, T_MIN[form]) == {"typ": "teilchen", "form": form, **T_FILLED[form]}
+
+
+@pytest.mark.parametrize("form", list(T_FULL))
+def test_p5b_full_teilchen_keeps_every_value(form):
+    assert teil_block(form, T_FULL[form]) == {"typ": "teilchen", "form": form, **T_FULL[form]}
+
+
+@pytest.mark.parametrize("form", list(T_MIN))
+@pytest.mark.parametrize("art", ["teilchen", "antwort", "lernen", "recherche"])
+def test_p5b_teilchen_works_in_every_kind_and_passes_the_second_check_unchanged(form, art):
+    for fields in (T_MIN[form], T_FULL[form]):
+        once = schema.validate(teil(form, fields, art=art))
+        assert schema.validate(once) == once and once["art"] == art
+
+
+def test_p5b_element_table_has_118_unique_symbols_and_atomic_numbers():
+    assert len(schema.ELEMENTE) == 118 and len(set(schema.ELEMENTE)) == 118 and isinstance(schema.ELEMENTE, tuple)
+    assert all(isinstance(s, str) and 1 <= len(s) <= 2 and s.isascii() and s[0].isupper() and (len(s) == 1 or s[1].islower())
+               for s in schema.ELEMENTE)
+    for sym, z in {"H": 1, "He": 2, "C": 6, "N": 7, "O": 8, "Na": 11, "Cl": 17, "Ca": 20, "Sc": 21, "Fe": 26, "Br": 35, "Ag": 47, "I": 53,
+                   "Xe": 54, "Au": 79, "Hg": 80, "Pb": 82, "U": 92, "Pu": 94, "Fl": 114, "Og": 118}.items():
+        assert schema.ORDNUNGSZAHL[sym] == z and schema.ELEMENTE[z - 1] == sym
+
+
+def _schalen_for(z):
+    return [min(32, z - 32 * i) for i in range((z + 31) // 32)] or []
+
+
+@pytest.mark.parametrize("sym", list(schema.ELEMENTE))
+def test_p5b_every_element_passes_in_molecule_and_atom(sym):
+    assert teil_block("molekuel", {"atome": [{"element": sym, "position": [0, 0, 0]}]})["atome"][0]["element"] == sym
+    z = schema.ORDNUNGSZAHL[sym]
+    got = teil_block("atom", {"element": sym, "schalen": _schalen_for(z)})
+    assert got["element"] == sym and sum(got["schalen"]) == z
+
+
+@pytest.mark.parametrize("element", ["h", "HE", "he", "hE", "Xx", "Uue", "D", "T", "", " H", "H ", "H" + chr(0), "Na+", None, 1, 1.0, True,
+                                     ["H"], {"H": 1}, ("H",)])
+def test_p5b_unknown_elements_and_wrong_case_are_rejected(element):
+    teil_bad("molekuel", {"atome": [{"element": element, "position": [0, 0, 0]}]})
+    teil_bad("atom", {"element": element})
+
+
+@pytest.mark.parametrize("element,ladung,schalen", [
+    ("H", 0, [1]), ("He", 0, [2]), ("Li", 0, [2, 1]), ("C", 0, [2, 4]), ("Ne", 0, [2, 8]), ("Na", 0, [2, 8, 1]), ("Ar", 0, [2, 8, 8]),
+    ("K", 0, [2, 8, 8, 1]), ("Ca", 0, [2, 8, 8, 2]), ("H", 1, []), ("Li", 3, []), ("Na", 1, [2, 8]), ("Cl", -1, [2, 8, 8]),
+    ("K", -1, [2, 8, 8, 2]), ("Sc", 1, [2, 8, 8, 2]), ("Ti", 3, [2, 8, 8, 1]), ("O", -2, [2, 8]), ("N", -3, [2, 8]),
+])
+def test_p5b_missing_shells_are_filled_by_the_simple_rule(element, ladung, schalen):
+    got = teil_block("atom", {"element": element, "ladung": ladung})
+    assert got == {"typ": "teilchen", "form": "atom", "element": element, "neutronen": -1, "ladung": ladung, "schalen": schalen}
+    assert schema.validate(teil("atom", got)) == schema.validate(teil("atom", {"element": element, "ladung": ladung}))
+
+
+@pytest.mark.parametrize("element,ladung", [("Sc", 0), ("Ca", -1), ("K", -3), ("Fe", 0), ("Og", 0), ("Ti", 1), ("V", 2)])
+def test_p5b_shells_are_required_above_twenty_electrons(element, ladung):
+    teil_bad("atom", {"element": element, "ladung": ladung})
+
+
+@pytest.mark.parametrize("fields,ok", [
+    ({"element": "Ti", "ladung": 2, "schalen": [2, 8, 10]}, True), ({"element": "Sc", "schalen": [2, 8, 9, 2]}, True),
+    ({"element": "Og", "schalen": [2, 8, 18, 32, 32, 18, 8]}, True), ({"element": "Og", "schalen": [2, 8, 18, 32, 32, 18, 7, 1]}, False),
+    ({"element": "Og", "schalen": [2, 8, 18, 32, 33, 17, 8]}, False),                                    # über 32 in einer Schale
+    ({"element": "Na", "schalen": [2, 8, 1]}, True), ({"element": "Na", "schalen": [2, 8, 2]}, False), ({"element": "Na", "schalen": [2, 8]}, False),
+    ({"element": "Na", "schalen": [2, 0, 9]}, True), ({"element": "Na", "schalen": [11]}, True), ({"element": "Na", "schalen": [1, 8, 1]}, False),
+    ({"element": "Na", "ladung": 1, "schalen": [2, 8]}, True), ({"element": "Na", "ladung": 1, "schalen": [2, 8, 1]}, False),
+    ({"element": "Cl", "ladung": -1, "schalen": [2, 8, 8]}, True), ({"element": "Cl", "ladung": -1, "schalen": [2, 8, 7]}, False),
+    ({"element": "H", "ladung": 1, "schalen": []}, True), ({"element": "H", "schalen": []}, False),
+    ({"element": "H", "ladung": 2}, False), ({"element": "H", "ladung": 2, "schalen": []}, False),        # weniger als null Elektronen
+    ({"element": "He", "ladung": 3}, False), ({"element": "Li", "ladung": 3}, True),
+    ({"element": "Na", "schalen": [2, 8, -1, 2]}, False), ({"element": "Na", "schalen": [2, 8, 1.0]}, False),
+    ({"element": "Na", "schalen": [2, 8, True]}, False), ({"element": "Na", "schalen": [2, 8, "1"]}, False),
+    ({"element": "Na", "schalen": None}, False), ({"element": "Na", "schalen": "2,8,1"}, False), ({"element": "Na", "schalen": {"1": 2}}, False),
+    ({"element": "Na", "schalen": [[2], 8, 1]}, False),
+    ({"element": "Na", "neutronen": -1}, True), ({"element": "Na", "neutronen": 0}, True), ({"element": "Na", "neutronen": 12}, True),
+    ({"element": "Na", "neutronen": 200}, True), ({"element": "Na", "neutronen": 201}, False), ({"element": "Na", "neutronen": -2}, False),
+    ({"element": "Na", "neutronen": 12.0}, False), ({"element": "Na", "neutronen": True}, False), ({"element": "Na", "neutronen": None}, False),
+    ({"element": "Na", "ladung": -3}, True), ({"element": "Na", "ladung": 3}, True), ({"element": "Na", "ladung": -4}, False),
+    ({"element": "Na", "ladung": 4}, False), ({"element": "Na", "ladung": 1.0}, False), ({"element": "Na", "ladung": False}, False),
+])
+def test_p5b_atom_shells_neutrons_and_charge(fields, ok):
+    if ok:
+        got = teil_block("atom", fields)
+        assert got["element"] == fields["element"] and got["neutronen"] == fields.get("neutronen", -1)
+        assert got["ladung"] == fields.get("ladung", 0) and sum(got["schalen"]) == schema.ORDNUNGSZAHL[fields["element"]] - got["ladung"]
+        if "schalen" in fields:
+            assert got["schalen"] == fields["schalen"]
+    else:
+        teil_bad("atom", fields)
+
+
+def test_p5b_atom_without_element_is_rejected():
+    teil_bad("atom", {})
+    teil_bad("atom", {"schalen": [1]})
+
+
+def _bonds(n):                                                                     # die ersten n Paare (i, j) mit i < j
+    pairs = [(i, j) for i in range(30) for j in range(i + 1, 30)]
+    return [{"von": i, "bis": j} for i, j in pairs[:n]]
+
+
+@pytest.mark.parametrize("fields,ok", [
+    ({"atome": atoms(1)}, True), ({"atome": atoms(300)}, True), ({"atome": atoms(301)}, False), ({"atome": []}, False),
+    ({"atome": WASSER[0]}, False), ({"atome": "H2O"}, False), ({"atome": None}, False), ({}, False), ({"atome": [None]}, False),
+    ({"atome": [["H", [0, 0, 0]]]}, False),
+    ({"atome": [{"element": "H", "position": [200, -200, 200]}]}, True), ({"atome": [{"element": "H", "position": [-200, 0, 0]}]}, True),
+    ({"atome": [{"element": "H", "position": [200.001, 0, 0]}]}, False), ({"atome": [{"element": "H", "position": [0, -200.001, 0]}]}, False),
+    ({"atome": [{"element": "H", "position": [0, 0, 1e9]}]}, False), ({"atome": [{"element": "H", "position": [0.5, -1.25, 3]}]}, True),
+    ({"atome": [{"element": "H", "position": [0, 0]}]}, False), ({"atome": [{"element": "H", "position": [0, 0, 0, 0]}]}, False),
+    ({"atome": [{"element": "H", "position": []}]}, False), ({"atome": [{"element": "H", "position": "0,0,0"}]}, False),
+    ({"atome": [{"element": "H", "position": {"x": 0, "y": 0, "z": 0}}]}, False), ({"atome": [{"element": "H"}]}, False),
+    ({"atome": [{"position": [0, 0, 0]}]}, False), ({"atome": [{"element": "H", "position": [0, 0, 0], "farbe": "arc"}]}, False),
+    ({"atome": [{"element": "H", "position": [0, 0, 0], "ladung": 1}]}, False),
+    ({"atome": WASSER, "bindungen": []}, True), ({"atome": WASSER, "bindungen": [{"von": 0, "bis": 2}]}, True),
+    ({"atome": WASSER, "bindungen": [{"von": 0, "bis": 3}]}, False), ({"atome": WASSER, "bindungen": [{"von": 3, "bis": 0}]}, False),   # ins Leere
+    ({"atome": WASSER, "bindungen": [{"von": -1, "bis": 0}]}, False), ({"atome": WASSER, "bindungen": [{"von": 0, "bis": -3}]}, False),
+    ({"atome": WASSER, "bindungen": [{"von": 1, "bis": 1}]}, False),                                     # auf sich selbst
+    ({"atome": WASSER, "bindungen": [{"von": 0, "bis": 1}, {"von": 0, "bis": 1}]}, False),                # doppelt
+    ({"atome": WASSER, "bindungen": [{"von": 0, "bis": 1}, {"von": 1, "bis": 0}]}, False),                # doppelt, umgekehrt
+    ({"atome": WASSER, "bindungen": [{"von": 0, "bis": 1, "ordnung": 1}, {"von": 1, "bis": 0, "ordnung": 2}]}, False),
+    ({"atome": WASSER, "bindungen": [{"von": 0, "bis": 1}, {"von": 0, "bis": 2}, {"von": 1, "bis": 2}]}, True),
+    ({"atome": WASSER, "bindungen": [{"von": 0, "bis": 1, "ordnung": 3}]}, True), ({"atome": WASSER, "bindungen": [{"von": 0, "bis": 1, "ordnung": 0}]}, False),
+    ({"atome": WASSER, "bindungen": [{"von": 0, "bis": 1, "ordnung": 4}]}, False),
+    ({"atome": WASSER, "bindungen": [{"von": 0, "bis": 1, "ordnung": 1.5}]}, False),
+    ({"atome": WASSER, "bindungen": [{"von": 0, "bis": 1, "ordnung": "2"}]}, False),
+    ({"atome": WASSER, "bindungen": [{"von": "0", "bis": 1}]}, False), ({"atome": WASSER, "bindungen": [{"von": 0}]}, False),
+    ({"atome": WASSER, "bindungen": [{"bis": 1}]}, False), ({"atome": WASSER, "bindungen": [[0, 1]]}, False),
+    ({"atome": WASSER, "bindungen": [{"von": 0, "bis": 1, "laenge": 1}]}, False), ({"atome": WASSER, "bindungen": {"von": 0, "bis": 1}}, False),
+    ({"atome": WASSER, "bindungen": None}, False),
+    ({"atome": atoms(30), "bindungen": _bonds(400)}, True), ({"atome": atoms(30), "bindungen": _bonds(401)}, False),
+    ({"atome": WASSER, "beschriftungen": [{"atom": 2, "text": "H"}]}, True), ({"atome": WASSER, "beschriftungen": [{"atom": 3, "text": "H"}]}, False),
+    ({"atome": WASSER, "beschriftungen": [{"atom": -1, "text": "H"}]}, False), ({"atome": WASSER, "beschriftungen": [{"atom": 0}]}, False),
+    ({"atome": WASSER, "beschriftungen": [{"text": "O"}]}, False), ({"atome": WASSER, "beschriftungen": [{"atom": 0, "text": ""}]}, False),
+    ({"atome": WASSER, "beschriftungen": [{"atom": 0, "text": "x" * 40}]}, True),
+    ({"atome": WASSER, "beschriftungen": [{"atom": 0, "text": "x" * 41}]}, False),
+    ({"atome": WASSER, "beschriftungen": [{"atom": 0, "text": "O", "farbe": "ok"}]}, False),
+    ({"atome": WASSER, "beschriftungen": [{"atom": i % 3, "text": "a"} for i in range(20)]}, True),
+    ({"atome": WASSER, "beschriftungen": [{"atom": i % 3, "text": "a"} for i in range(21)]}, False),
+    ({"atome": WASSER, "beschriftungen": None}, False), ({"atome": WASSER, "beschriftungen": "O"}, False),
+    ({"atome": WASSER, "darstellung": "kugel-stab"}, True), ({"atome": WASSER, "darstellung": "kalotte"}, True),
+    ({"atome": WASSER, "darstellung": "Kalotte"}, False), ({"atome": WASSER, "darstellung": "stab"}, False),
+    ({"atome": WASSER, "darstellung": ""}, False), ({"atome": WASSER, "darstellung": None}, False),
+    ({"atome": WASSER, "name": "x" * 60}, True), ({"atome": WASSER, "name": "x" * 61}, False), ({"atome": WASSER, "name": 5}, False),
+    ({"atome": WASSER, "name": ["Wasser"]}, False),
+])
+def test_p5b_molecule_limits(fields, ok):
+    if ok:
+        got = teil_block("molekuel", fields)
+        assert len(got["atome"]) == len(fields["atome"]) and len(got["bindungen"]) == len(fields.get("bindungen", []))
+        assert all(b["ordnung"] in (1, 2, 3) for b in got["bindungen"]) and got["darstellung"] == fields.get("darstellung", "kugel-stab")
+        assert schema.validate(teil("molekuel", {k: v for k, v in got.items() if k not in ("typ", "form")}))["bausteine"][0] == got
+    else:
+        teil_bad("molekuel", fields)
+
+
+def test_p5b_molecule_bonds_get_order_one_and_keep_their_direction():
+    got = teil_block("molekuel", {"atome": WASSER, "bindungen": [{"von": 1, "bis": 0}, {"von": 0, "bis": 2, "ordnung": 2}]})
+    assert got["bindungen"] == [{"von": 1, "bis": 0, "ordnung": 1}, {"von": 0, "bis": 2, "ordnung": 2}]
+
+
+@pytest.mark.parametrize("orbital", list(schema.ORBITALE))
+def test_p5b_every_orbital_passes(orbital):
+    assert teil_block("orbital", {"orbital": orbital}) == {"typ": "teilchen", "form": "orbital", "orbital": orbital, "punkte": 2500,
+                                                            "startwert": 1}
+
+
+def test_p5b_orbital_list_is_fixed():
+    assert schema.ORBITALE == ("1s", "2s", "2p_x", "2p_y", "2p_z", "3s", "3p_x", "3p_y", "3p_z", "3d_xy", "3d_xz", "3d_yz", "3d_x2-y2", "3d_z2")
+
+
+@pytest.mark.parametrize("fields,ok", [
+    ({"orbital": "1s", "punkte": 500}, True), ({"orbital": "1s", "punkte": 5000}, True), ({"orbital": "1s", "punkte": 499}, False),
+    ({"orbital": "1s", "punkte": 5001}, False), ({"orbital": "1s", "punkte": 2500.0}, False), ({"orbital": "1s", "punkte": True}, False),
+    ({"orbital": "1s", "startwert": 0}, True), ({"orbital": "1s", "startwert": 2_147_483_647}, True),
+    ({"orbital": "1s", "startwert": -1}, False), ({"orbital": "1s", "startwert": 2_147_483_648}, False),
+    ({"orbital": "1s", "startwert": 1.0}, False), ({"orbital": "1s", "startwert": "1"}, False),
+    ({"orbital": "2p"}, False), ({"orbital": "2P_z"}, False), ({"orbital": "2pz"}, False), ({"orbital": "4s"}, False), ({"orbital": "3d_x2y2"}, False),
+    ({"orbital": "3d_x2-y2 "}, False), ({"orbital": ""}, False), ({"orbital": None}, False), ({"orbital": 1}, False), ({"orbital": True}, False),
+    ({"orbital": ["1s"]}, False), ({"orbital": {"1s": 1}}, False), ({}, False), ({"punkte": 500}, False),
+    ({"orbital": "1s", "formel": "exp(-r)"}, False), ({"orbital": "1s", "shader": "void main(){}"}, False),
+])
+def test_p5b_orbital_limits(fields, ok):
+    if ok:
+        got = teil_block("orbital", fields)
+        assert got == {"typ": "teilchen", "form": "orbital", "orbital": "1s", "punkte": fields.get("punkte", 2500),
+                       "startwert": fields.get("startwert", 1)}
+    else:
+        teil_bad("orbital", fields)
+
+
+@pytest.mark.parametrize("form", ["Molekuel", "molekül", "atome", "Orbital", "", None, 1, True, ["atom"], {"atom": 1}])
+def test_p5b_unknown_forms_are_rejected(form):
+    teil_bad(form, T_MIN["atom"])
+
+
+def test_p5b_teilchen_without_form_is_rejected():
+    with pytest.raises(schema.ViewError) as e:
+        schema.validate({"id": "t", "art": "teilchen", "titel": "T", "bausteine": [{"typ": "teilchen", **T_MIN["molekuel"]}]})
+    assert e.value.code == "bad_block_1"
+
+
+@pytest.mark.parametrize("form", list(T_MIN))
+@pytest.mark.parametrize("extra", [{"formel": "x"}, {"skript": "x"}, {"html": "<b>"}, {"adresse": "https://example.org"}, {"pfad": "C:/x"},
+                                   {"datei": "x.pdb"}, {"Name": "x"}])
+def test_p5b_unknown_fields_are_rejected_per_form(form, extra):
+    teil_bad(form, {**T_MIN[form], **extra})
+
+
+@pytest.mark.parametrize("form,other", [("molekuel", {"element": "H"}), ("molekuel", {"orbital": "1s"}), ("atom", {"atome": WASSER}),
+                                        ("atom", {"punkte": 500}), ("orbital", {"element": "H"}), ("orbital", {"darstellung": "kalotte"}),
+                                        ("orbital", {"schalen": [1]})])
+def test_p5b_fields_of_another_form_are_rejected(form, other):
+    teil_bad(form, {**T_MIN[form], **other})
+
+
+def _teilchen_numeric_fields():
+    for i in range(3):
+        yield lambda v, i=i: teil("molekuel", {"atome": [{"element": "H", "position": [v if j == i else 0 for j in range(3)]}]})
+    yield lambda v: teil("molekuel", {"atome": WASSER, "bindungen": [{"von": v, "bis": 1}]})
+    yield lambda v: teil("molekuel", {"atome": WASSER, "bindungen": [{"von": 0, "bis": v}]})
+    yield lambda v: teil("molekuel", {"atome": WASSER, "bindungen": [{"von": 0, "bis": 1, "ordnung": v}]})
+    yield lambda v: teil("molekuel", {"atome": WASSER, "beschriftungen": [{"atom": v, "text": "x"}]})
+    yield lambda v: teil("atom", {"element": "Na", "neutronen": v})
+    yield lambda v: teil("atom", {"element": "Na", "ladung": v})
+    yield lambda v: teil("atom", {"element": "Na", "schalen": [2, 8, v]})
+    yield lambda v: teil("orbital", {"orbital": "1s", "punkte": v})
+    yield lambda v: teil("orbital", {"orbital": "1s", "startwert": v})
+
+
+TEILCHEN_NUMERIC = list(_teilchen_numeric_fields())
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf"), 10**400, -10**400, True, False, "1", None, [1], {"a": 1}])
+@pytest.mark.parametrize("make", TEILCHEN_NUMERIC)
+def test_p5b_non_finite_and_non_numbers_are_rejected_everywhere(make, value):
+    with pytest.raises(schema.ViewError) as e:
+        schema.validate(make(value))
+    assert e.value.code == "bad_block_1"
+
+
+@pytest.mark.parametrize("make,valid", [(TEILCHEN_NUMERIC[3], 0), (TEILCHEN_NUMERIC[4], 2), (TEILCHEN_NUMERIC[5], 2), (TEILCHEN_NUMERIC[6], 1),
+                                        (TEILCHEN_NUMERIC[7], 12), (TEILCHEN_NUMERIC[8], 0), (TEILCHEN_NUMERIC[9], 1),
+                                        (TEILCHEN_NUMERIC[10], 2500), (TEILCHEN_NUMERIC[11], 7)])
+def test_p5b_integer_fields_take_only_real_integers(make, valid):
+    once = schema.validate(make(valid))                                           # als ganze Zahl gültig ...
+    assert schema.validate(once) == once
+    with pytest.raises(schema.ViewError) as e:                                    # ... als Kommazahl mit gleichem Wert abgelehnt
+        schema.validate(make(float(valid)))
+    assert e.value.code == "bad_block_1"
+
+
+def test_p5b_text_in_teilchen_loses_control_characters_and_control_only_label_is_rejected():
+    got = teil_block("molekuel", {"atome": WASSER, "name": JUNK + "Wasser" + chr(0x202e) + chr(0) + "  H2O" + JUNK,
+                                  "beschriftungen": [{"atom": 0, "text": "Sauer" + chr(0x2066) + "stoff" + chr(10)}]})
+    assert got["name"] == "Wasser H2O" and got["beschriftungen"][0]["text"] == "Sauer stoff"
+    assert teil_block("molekuel", {"atome": WASSER, "name": JUNK})["name"] == ""               # name ist frei: leer
+    teil_bad("molekuel", {"atome": WASSER, "beschriftungen": [{"atom": 0, "text": JUNK}]})     # Beschriftung braucht Text
+    teil_bad("molekuel", {"atome": WASSER, "beschriftungen": [{"atom": 0, "text": "x" * 20 + chr(0x202e) + "x" * 20}]})   # 41 nach dem Säubern
+
+
+def _big_molecule():
+    pos = -199.12345678901234                                                      # lange Kommazahlen in jeder Lage
+    return {"name": "N" * 60, "atome": [{"element": "He", "position": [pos, pos, pos]} for _ in range(300)],
+            "beschriftungen": [{"atom": 299 - i, "text": "x" * 40} for i in range(20)], "darstellung": "kalotte"}
+
+
+def test_p5b_three_hundred_atoms_with_full_positions_stay_under_the_view_size_limit():
+    view = teil("molekuel", _big_molecule())
+    size = len(json.dumps(view, ensure_ascii=False).encode("utf-8"))
+    out = schema.validate(view)
+    out_size = len(json.dumps(out, ensure_ascii=False).encode("utf-8"))
+    assert size < schema.MAX_JSON and out_size < schema.MAX_JSON and size < 31_000             # gemessen: 30 369 Byte
+    assert schema.validate(out) == out and len(out["bausteine"][0]["atome"]) == 300
+    full = _big_molecule()                                                         # dazu 400 Bindungen mit ordnung: 45 950 Byte
+    full["bindungen"] = [{"von": a, "bis": a + d, "ordnung": 3} for a in range(300) for d in (1, 2) if a + d < 300][:400]
+    out = schema.validate(teil("molekuel", full))
+    assert len(json.dumps(out, ensure_ascii=False).encode("utf-8")) < schema.MAX_JSON and len(out["bausteine"][0]["bindungen"]) == 400
+
+
+def test_p5b_three_hundred_and_one_atoms_are_rejected():
+    fields = _big_molecule()
+    fields["atome"].append({"element": "H", "position": [0, 0, 0]})
+    teil_bad("molekuel", fields)
+
+
+def test_p5b_filled_defaults_never_push_a_view_over_the_size_limit_of_the_second_check():
+    mol = {"atome": [{"element": "H", "position": [0, 0, i]} for i in range(30)], "bindungen": _bonds(400)}   # ohne ordnung
+    pad = {"typ": "text", "absaetze": ["x" * 1200] * 12}
+
+    def view(extra):                                                               # extra Zeichen Fülltext in Absätzen zu 1200
+        paras = ["y" * min(1200, extra - i) for i in range(0, extra, 1200)]
+        return {"id": "v", "art": "teilchen", "titel": "T", "bausteine": [{"typ": "teilchen", "form": "molekuel", **mol},
+                                                                          pad, pad, {"typ": "text", "absaetze": paras}]}
+
+    def size(v):
+        return len(json.dumps(v, ensure_ascii=False).encode("utf-8"))
+
+    extra = schema.MAX_JSON - size(view(1)) - 1000
+    raw = view(extra)
+    assert schema.MAX_JSON - 1100 <= size(raw) <= schema.MAX_JSON                  # Eingabe knapp unter der Grenze ...
+    with pytest.raises(schema.ViewError) as e:                                     # ... ergänzt (400 x "ordnung": 1) aber darüber
+        schema.validate(raw)
+    assert e.value.code == "too_large"
+    ok = view(extra - 6000)                                                        # 400 x 14 Byte = 5600: passt noch
+    once = schema.validate(ok)
+    assert size(once) <= schema.MAX_JSON and schema.validate(once) == once
+
+
+def p5_view(*blocks):
+    return {"id": "v", "art": "teilchen", "titel": "T", "bausteine": list(blocks)}
+
+
+SIM_B = {"typ": "simulation", "modell": "pendel", "parameter": SIM_MIN["pendel"]}
+MOL_B = {"typ": "teilchen", "form": "molekuel", **T_MIN["molekuel"]}
+ORB_B = {"typ": "teilchen", "form": "orbital", **T_MIN["orbital"]}
+ATOM_B = {"typ": "teilchen", "form": "atom", **T_MIN["atom"]}
+TEXT_B = {"typ": "text", "absaetze": ["a"]}
+
+
+@pytest.mark.parametrize("blocks,code", [
+    ([SIM_B, SIM_B], None), ([SIM_B, SIM_B, SIM_B], "bad_block_3"), ([SIM_B, TEXT_B, SIM_B, TEXT_B, SIM_B], "bad_block_5"),
+    ([MOL_B, MOL_B], None), ([ORB_B, ORB_B], None), ([MOL_B, ORB_B], None), ([MOL_B, MOL_B, MOL_B], "bad_block_3"),
+    ([ORB_B, ORB_B, ORB_B], "bad_block_3"), ([MOL_B, ATOM_B, ORB_B, ATOM_B, MOL_B], "bad_block_5"),
+    ([ATOM_B] * 12, None),                                                          # Atome sind statisches SVG: keine Grenze außer 12 Bausteinen
+    ([SIM_B, SIM_B, MOL_B, ORB_B, ATOM_B, ATOM_B, TEXT_B], None),                  # gemischt: jede Grenze für sich
+    ([SIM_B, MOL_B, SIM_B, ORB_B, ATOM_B, SIM_B], "bad_block_6"), ([SIM_B, MOL_B, SIM_B, ORB_B, ATOM_B, ORB_B], "bad_block_6"),
+    ([MOL_B, SIM_B, ORB_B, SIM_B, MOL_B, SIM_B], "bad_block_5"),                    # der erste Baustein über einer Grenze
+])
+def test_p5b_at_most_two_simulations_and_two_webgl_particles_per_view(blocks, code):
+    if code is None:
+        once = schema.validate(p5_view(*blocks))
+        assert len(once["bausteine"]) == len(blocks) and schema.validate(once) == once
+    else:
+        with pytest.raises(schema.ViewError) as e:
+            schema.validate(p5_view(*blocks))
+        assert e.value.code == code
+
+
+def test_zeige_tool_names_the_teilchen_kind_block_forms_and_new_models():
+    props = ch.ZEIGE_TOOL["inputSchema"]["properties"]
+    assert "teilchen" in props["art"]["enum"] and "teilchen" in props["bausteine"]["items"]["properties"]["typ"]["enum"]
+    desc = props["bausteine"]["description"]
+    for name in ("teilchen", "molekuel", "atome", "element", "position", "Ångström", "bindungen", "ordnung", "beschriftungen", "darstellung",
+                 "kugel-stab", "kalotte", "neutronen", "ladung", "schalen", "orbital", "3d_x2-y2", "3d_z2", "punkte", "startwert",
+                 "doppelpendel", "laenge1", "laenge2", "masse1", "masse2", "winkel1", "winkel2", "welle", "wellen", "amplitude",
+                 "wellenlaenge", "frequenz", "Hz", "richtung", "rechts", "links", "bereich", "anziehung", "Sonnenmassen", "Index ab 0"):
+        assert name in desc, name
+    assert "teilchen" in ch.ZEIGE_TOOL["description"] and "keine Formeln" in ch.ZEIGE_TOOL["description"]
+    assert all(m in ch.INSTRUCTIONS for m in ("teilchen", "molekuel", "atom", "orbital", "doppelpendel", "welle"))
+    assert "nie Formeln oder Code" in ch.INSTRUCTIONS and "keine Messung" in ch.INSTRUCTIONS
+
+
+def test_p5b_teilchen_is_listed_by_tools_list_and_travels_through_the_real_channel_into_the_bridge_store(channel):
+    c, out, root = channel
+    c.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+    zeige = {t["name"]: t for t in json.loads(out.getvalue().splitlines()[-1])["result"]["tools"]}["zeige"]
+    assert "teilchen" in zeige["inputSchema"]["properties"]["art"]["enum"]
+    assert "teilchen" in zeige["inputSchema"]["properties"]["bausteine"]["items"]["properties"]["typ"]["enum"]
+    assert all(n in zeige["inputSchema"]["properties"]["bausteine"]["description"] for n in (*T_MIN, "doppelpendel", "welle", "anziehung"))
+    b = br.Bridge(root)
+    view = p5_view({"typ": "teilchen", "form": "molekuel", "name": "Wasser", "atome": WASSER}, ATOM_B, ORB_B,
+                   {"typ": "simulation", "modell": "welle", "parameter": SIM_MIN["welle"]})
+    assert call(c, out, view)["content"][0]["text"] == "Wird gezeigt."
+    r = call(c, out, {**teil("molekuel", {"atome": WASSER, "bindungen": [{"von": 0, "bis": 7}]}), "id": "kaputt"})
+    assert r["isError"] is True and "bad_block_1" in r["content"][0]["text"]
+    r = call(c, out, {**p5_view(MOL_B, ORB_B, MOL_B), "id": "zu-viele"})
+    assert r["isError"] is True and "bad_block_3" in r["content"][0]["text"]
+    c.say("Hier das Wassermolekül.")
+    assert b.fetch() == ("ok", ["Hier das Wassermolekül."])
+    got = {i["id"]: i for i in b.stage.since(0)[0]}
+    assert set(got) == {"v"} and got["v"]["art"] == "teilchen"
+    blocks = got["v"]["bausteine"]
+    assert blocks[0] == {"typ": "teilchen", "form": "molekuel", "name": "Wasser", "atome": WASSER, "bindungen": [], "beschriftungen": [],
+                         "darstellung": "kugel-stab"}
+    assert blocks[1] == {"typ": "teilchen", **T_FILLED["atom"], "form": "atom"} and blocks[2] == {"typ": "teilchen", "form": "orbital", **T_FILLED["orbital"]}
+    assert blocks[3]["parameter"] == SIM_FILLED["welle"]
+
+
+def test_p5b_bridge_drops_invalid_teilchen_that_got_past_the_channel(channel):
+    c, out, root = channel
+    b = br.Bridge(root)
+    c.show(teil("atom", T_MIN["atom"]))
+    c._views.append({**teil("molekuel", {"atome": WASSER, "bindungen": [{"von": 0, "bis": 0}]}), "id": "selbst"})       # Bindung auf sich selbst
+    c._views.append({**teil("atom", {"element": "Na", "schalen": [2, 8, 2]}), "id": "summe"})                         # falsche Schalensumme
+    c._views.append({**teil("molekuel", {"atome": [{"element": "Xx", "position": [0, 0, 0]}]}), "id": "element"})      # unbekanntes Element
+    c._views.append({**teil("orbital", {"orbital": "4f"}), "id": "orbital"})                                           # unbekanntes Orbital
+    c._views.append({**p5_view(SIM_B, SIM_B, SIM_B), "id": "drei-sim"})                                               # über der Grenze je Ansicht
+    c._views.append({**teil("atom", {"element": "Sc"}), "id": "ohne-schalen"})                                        # über 20 ohne Schalen
+    c.say("Hier das Atom.")
+    assert b.fetch() == ("ok", ["Hier das Atom."])
+    assert [i["id"] for i in b.stage.since(0)[0]] == ["t"]
+
+
 # --- Härtung: jede Eingabe endet als Ansicht oder ViewError, nie als anderer Fehler -----------------------
 
 def _view(typ, art="antwort", **fields):
@@ -1134,6 +1691,7 @@ HUGE_FIELDS = [
     lambda n: _view("anleitung", art="lernen", schritte=[{**S, "sekunden": n}]),
     lambda n: _view("anleitung", art="lernen", schritte=[S], aktuell=n),
     *SIM_NUMERIC,
+    *TEILCHEN_NUMERIC,
 ]
 
 
@@ -1174,6 +1732,15 @@ ENUM_FIELDS = [
     lambda v: sim("gas", {**SIM_MIN["gas"], "stoesse": v}),
     lambda v: sim("umlauf", {"zentralmasse": 1, "koerper": [{"name": "a", "abstand": 1, "farbe": v}]}),
     lambda v: sim("umlauf", {"zentralmasse": 1, "koerper": [{"name": v, "abstand": 1}]}),
+    lambda v: sim("umlauf", {"zentralmasse": 1, "koerper": [ERDE], "anziehung": v}),
+    lambda v: sim("welle", {"wellen": [{**W1, "richtung": v}]}),
+    lambda v: teil(v, T_MIN["atom"]),
+    lambda v: teil("molekuel", {"atome": [{"element": v, "position": [0, 0, 0]}]}),
+    lambda v: teil("molekuel", {"atome": WASSER, "darstellung": v}),
+    lambda v: teil("molekuel", {"atome": WASSER, "name": v}),
+    lambda v: teil("molekuel", {"atome": WASSER, "beschriftungen": [{"atom": 0, "text": v}]}),
+    lambda v: teil("atom", {"element": v}),
+    lambda v: teil("orbital", {"orbital": v}),
 ]
 
 
@@ -1199,7 +1766,9 @@ def _fuzz_examples():
             p6("gegenueber", "antwort", **GEGENUEBER), p6("lernkarten", **KARTEN), p6("quiz", **QUIZ), p6("anleitung", aktuell=1, **ANLEITUNG),
             p6("netz", "netz", form="baum", knoten=KNOTEN, kanten=KANTEN),
             *[sim(m, SIM_FULL[m], laufzeit=45, tempo=3, spur=False, beschreibung="b") for m in SIM_FULL],
-            *[sim(m, SIM_MIN[m]) for m in SIM_MIN]]
+            *[sim(m, SIM_MIN[m]) for m in SIM_MIN],
+            *[teil(f, T_FULL[f]) for f in T_FULL], *[teil(f, T_MIN[f]) for f in T_MIN],
+            teil("atom", {"element": "H", "ladung": 1}), p5_view(SIM_B, MOL_B, ORB_B, ATOM_B, SIM_B)]
 
 
 def _paths(v, path=()):
@@ -1218,9 +1787,10 @@ def test_seeded_fuzz_only_returns_views_or_raises_view_errors():
     rnd = random.Random(6)
     junk = [None, True, False, 0, -1, 1.5, float("nan"), float("inf"), float("-inf"), 10**400, -10**400, 2**63, "", "x" * 2000,
             "\ud800", "a\udfffb", chr(0x202e), [], [None], [[1]], {}, {"a": 1}, {"typ": [1]}, ["auf"], "linie", "baum", "a", "n0",
-            "gas", "pendel", "umlauf", 0.05, 1000, 100.0]
+            "gas", "pendel", "umlauf", 0.05, 1000, 100.0, "doppelpendel", "welle", "links", "molekuel", "atom", "orbital", "H", "Og",
+            "kalotte", "3d_z2", "teilchen", "simulation", 2, 3, 300, 32, 7, -3]
     examples = _fuzz_examples()
-    for _ in range(3000):
+    for _ in range(4000):
         view = copy.deepcopy(rnd.choice(examples))
         for _ in range(rnd.randint(1, 3)):
             path = rnd.choice(list(_paths(view))[1:])

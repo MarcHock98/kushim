@@ -73,9 +73,10 @@ INSTRUCTIONS = (
     "Zum Abwägen, für Abläufe in der Zeit und für Übersetzungen nimm `vergleich`, `zeitstrahl` und `gegenueber` (art antwort oder "
     "recherche), zum Lernen `lernkarten`, `quiz` und `anleitung` (art lernen; `richtig` und `aktuell` zählen ab 0, ein Klick im "
     "Fenster erreicht dich nicht), für Ablaufdiagramme, Bäume und Mindmaps `netz` (art netz). "
-    "Für Bewegung zeige eine `simulation` (art simulation) mit einem eingebauten Modell (pendel, feder, wurf, umlauf, gas): "
-    "schick nur den Modellnamen und Zahlen in den festen Einheiten, nie Formeln oder Code, und sag dazu, dass es eine Simulation "
-    "ist, keine Messung."
+    "Für Bewegung zeige eine `simulation` (art simulation) mit einem eingebauten Modell (pendel, feder, wurf, umlauf, gas, "
+    "doppelpendel, welle): schick nur den Modellnamen und Zahlen in den festen Einheiten, nie Formeln oder Code, und sag dazu, dass "
+    "es eine Simulation ist, keine Messung. Für Moleküle, Atome und Orbitale zeige einen Baustein `teilchen` (art teilchen, form "
+    "molekuel, atom oder orbital) nur mit Elementsymbolen, Lagen in Ångström, Indizes und Zahlen."
 )
 MAX_VIEWS = 10                   # nicht abgeholte Ansichten (zeige); ältere fallen weg
 CANCEL_TEXT = "Abbruch per Stimme: den laufenden Auftrag nicht fortsetzen und nichts Neues beginnen."
@@ -100,7 +101,8 @@ ZEIGE_TOOL = {
                     "aenderung: Diff; kushim liest selbst keine Dateien, du schickst nur Text, höchstens 400 Zeilen), modell (szene3d: einfache Körper, drehbar, "
                     "auch vorher/nachher), plan (plan2d: Linien, Kreise, Maße, Ebenen), lernen (lernkarten, quiz, anleitung; "
                     "Knöpfe ändern nur die Anzeige), netz (netz: ablauf, baum, mindmap), simulation (simulation: eingebautes Modell "
-                    "pendel, feder, wurf, umlauf oder gas, nur Parameter, keine Formeln; eine Simulation, keine Messung); "
+                    "pendel, feder, wurf, umlauf, gas, doppelpendel oder welle, nur Parameter, keine Formeln; eine Simulation, "
+                    "keine Messung), teilchen (teilchen: Molekül, Atom im vereinfachten Schalenmodell oder Orbital, nur Daten); "
                     "vergleich, zeitstrahl und gegenueber passen "
                     "zu antwort und recherche. Nur Text, kein HTML/Markdown; Formeln als "
                     "KaTeX-TeX in `tex`; Adressen nur als Text. Dieselbe id aktualisiert die Ansicht, schliessen=true räumt ab. "
@@ -132,12 +134,22 @@ ZEIGE_TOOL = {
             "richtig:Index ab 0,erklaerung?}]}, anleitung{schritte:[{titel,text,sekunden?}],aktuell?:Index ab 0} (art lernen; "
             "Timer nur Anzeige ohne Ton), netz{form:ablauf|baum|mindmap,knoten:[{id:[a-z0-9_-],text,art?:start|ende|entscheidung|"
             "schritt}],kanten:[{von,bis,text?}]} (art netz; baum und mindmap: genau eine Wurzel, je Knoten eine Kante hinein), "
-            "simulation{modell:pendel|feder|wurf|umlauf|gas,parameter:{...},laufzeit?:5 bis 60 s (30),tempo?:Zeitraffer 0,1 bis 100 "
+            "simulation{modell:pendel|feder|wurf|umlauf|gas|doppelpendel|welle,parameter:{...},laufzeit?:5 bis 60 s (30),tempo?:Zeitraffer 0,1 bis 100 "
             "(ohne: wählt das Fenster),spur?,beschreibung?} (art simulation; nur Parameter, keine Formeln; parameter je modell: "
             "pendel{laenge m,winkel Grad,anfangsgeschwindigkeit? Grad/s,daempfung? 1/s,g? m/s²}, feder{masse kg,federkonstante N/m,"
             "auslenkung m,daempfung? kg/s}, wurf{geschwindigkeit m/s,winkel Grad,hoehe? m,g? m/s²,luftwiderstand? 1/m}, "
-            "umlauf{zentralmasse Sonnenmassen,koerper:[{name,abstand AE,exzentrizitaet?,phase? Grad,farbe?}] (1 bis 8)}, "
-            "gas{anzahl (2 bis 300),kasten:[b,h],radius,geschwindigkeit Kastenbreiten/s,schwerkraft?,stoesse?,startwert?})"),
+            "umlauf{zentralmasse Sonnenmassen,koerper:[{name,abstand AE,exzentrizitaet?,phase? Grad,masse? 0 bis 0,01 Sonnenmassen,farbe?}] "
+            "(1 bis 8),anziehung?:true für gegenseitige Anziehung}, "
+            "gas{anzahl (2 bis 300),kasten:[b,h],radius,geschwindigkeit Kastenbreiten/s,schwerkraft?,stoesse?,startwert?}, "
+            "doppelpendel{laenge1 m,laenge2 m,masse1? kg,masse2? kg,winkel1 Grad,winkel2 Grad,g? m/s²,daempfung? 1/s}, "
+            "welle{wellen:[{amplitude m,wellenlaenge m,frequenz Hz,phase? Grad,richtung?:rechts|links}] (1 bis 3, überlagert),"
+            "bereich? m auf der x-Achse (0: automatisch)}; höchstens 2 Simulationen je Ansicht), "
+            "teilchen{form:molekuel,name?,atome:[{element:Symbol wie H|He|Og,position:[x,y,z] in Ångström}] (1 bis 300),"
+            "bindungen?:[{von,bis:Index ab 0,ordnung?:1|2|3}] (ohne: aus den Abständen),beschriftungen?:[{atom:Index ab 0,text}],"
+            "darstellung?:kugel-stab|kalotte} oder {form:atom,element,neutronen?,ladung?:-3 bis 3,schalen?:[Elektronen je Schale] "
+            "(Summe = Ordnungszahl minus ladung; über 20 Elektronen Pflicht)} oder {form:orbital,orbital:1s|2s|2p_x|2p_y|2p_z|3s|"
+            "3p_x|3p_y|3p_z|3d_xy|3d_xz|3d_yz|3d_x2-y2|3d_z2,punkte?:500 bis 5000,startwert?} (art teilchen; nur Daten, keine Formeln; "
+            "höchstens 2 Moleküle oder Orbitale je Ansicht)"),
             "items": {"type": "object", "required": ["typ"], "properties": {"typ": {"type": "string", "enum": list(stage_schema.BLOCKS)}}}},
     }},
 }
