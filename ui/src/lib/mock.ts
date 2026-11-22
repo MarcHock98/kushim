@@ -77,6 +77,15 @@ export class MockSocket implements Socket {
     turn(200000, "Zeig mir, wie ein Pendel schwingt.", "Hier ein Pendel mit einem Meter Länge.", DEMO_VIEWS[17]);
     turn(211000, "Wie fliegt ein schräg geworfener Ball?", "Hier der Wurf unter 45 Grad.", DEMO_VIEWS[18]);
     turn(222000, "Wie bewegen sich Teilchen in einem Gas?", "Hier ein Gas mit 60 Teilchen.", DEMO_VIEWS[19]);
+    turn(233000, "Wie sieht ein Wassermolekül aus?", "Hier Wasser, gewinkelt mit zwei Bindungen.", TEILCHEN_DEMOS[0]);
+    turn(244000, "Zeig mir Ethanol.", "Hier Ethanol; die Bindungen sind aus den Abständen berechnet.", TEILCHEN_DEMOS[1]);
+    turn(255000, "Wie ist ein Natriumatom aufgebaut?", "Hier das Schalenmodell von Natrium.", TEILCHEN_DEMOS[2]);
+    turn(266000, "Wie sieht ein 2p-Orbital aus?", "Hier das 2p_z-Orbital als Wolke.", TEILCHEN_DEMOS[3]);
+    // P5b-Simulationen über ihre id (die Liste wächst an anderer Stelle mit)
+    const sim = (id: string) => DEMO_VIEWS.find((v) => v.id === id);
+    turn(277000, "Zeig mir ein Doppelpendel.", "Hier ein Doppelpendel, das chaotisch schwingt.", sim("doppelpendel"));
+    turn(288000, "Wie entsteht eine stehende Welle?", "Hier zwei Wellen, die gegeneinander laufen.", sim("welle"));
+    turn(299000, "Was passiert, wenn sich Planeten gegenseitig anziehen?", "Hier drei Planeten, die sich gegenseitig stören.", sim("anziehung"));
   }
 
   send(data: string): void {
@@ -318,4 +327,51 @@ export const DEMO_VIEWS: Record<string, unknown>[] = [
     { typ: "simulation", modell: "gas",
       parameter: { anzahl: 60, kasten: [100, 60], radius: 1.5, geschwindigkeit: 0.5, schwerkraft: 0, stoesse: true, startwert: 7 },
       laufzeit: 30, tempo: 0, spur: true, beschreibung: "60 gleich schnelle Teilchen stoßen sich; die Geschwindigkeiten verteilen sich mit der Zeit." } ] },
+  // P5b: Doppelpendel, stehende Welle, Umlauf mit Anziehung; genau wie nach der Backend-Prüfung (routine/p5b-schema, validate(view) == view)
+  { id: "doppelpendel", art: "simulation", titel: "Doppelpendel (Beispiel)", stand: "", schliessen: false, bausteine: [
+    { typ: "simulation", modell: "doppelpendel",
+      parameter: { laenge1: 1, laenge2: 1, masse1: 1, masse2: 1, winkel1: 120, winkel2: -10, g: 9.81, daempfung: 0 },
+      laufzeit: 30, tempo: 0, spur: true, beschreibung: "Zwei gleich lange Arme mit gleichen Massen, oben bei 120 Grad und unten bei -10 Grad losgelassen, ohne Reibung." } ] },
+  { id: "welle", art: "simulation", titel: "Stehende Welle (Beispiel)", stand: "", schliessen: false, bausteine: [
+    { typ: "simulation", modell: "welle",
+      parameter: { wellen: [
+        { amplitude: 1, wellenlaenge: 2, frequenz: 0.5, phase: 0, richtung: "rechts" },
+        { amplitude: 1, wellenlaenge: 2, frequenz: 0.5, phase: 0, richtung: "links" } ], bereich: 0 },
+      laufzeit: 30, tempo: 0, spur: true, beschreibung: "Zwei gleiche Wellen laufen gegeneinander. Zusammen entsteht eine stehende Welle: Manche Stellen bewegen sich nie." } ] },
+  { id: "anziehung", art: "simulation", titel: "Drei Planeten, die sich anziehen (Beispiel)", stand: "", schliessen: false, bausteine: [
+    { typ: "simulation", modell: "umlauf",
+      parameter: { zentralmasse: 1, koerper: [
+        { name: "Innen", abstand: 1, exzentrizitaet: 0, phase: 0, masse: 0.001, farbe: "arc" },
+        { name: "Mitte", abstand: 1.6, exzentrizitaet: 0.05, phase: 120, masse: 0.003, farbe: "amber" },
+        { name: "Außen", abstand: 2.5, exzentrizitaet: 0.1, phase: 240, masse: 0.001, farbe: "ok" } ], anziehung: true },
+      laufzeit: 30, tempo: 0, spur: true, beschreibung: "Ein sonnenähnlicher Stern in der Mitte und drei Planeten mit einigen Jupitermassen. Die Planeten stören ihre Bahnen gegenseitig." } ] },
+];
+
+/** P5b: Teilchen (Wasser mit Bindungen, Ethanol ohne Bindungen, Natrium-Atom, Orbital 2p_z), genau wie nach der Backend-Prüfung:
+ *  alle Felder mit Standardwerten, stand "" und schliessen false. Eigene Liste, damit die Zählung der übrigen Beispiele gleich bleibt;
+ *  die Vorführung zeigt sie nach den übrigen Beispielen. Lagen in Ångström. */
+export const TEILCHEN_DEMOS: Record<string, unknown>[] = [
+  { id: "wasser", art: "teilchen", titel: "Wasser (Beispiel)", stand: "", schliessen: false, bausteine: [
+    { typ: "teilchen", form: "molekuel", name: "Wasser", atome: [
+      { element: "O", position: [0, 0, 0.1173] },
+      { element: "H", position: [0, 0.7572, -0.4692] },
+      { element: "H", position: [0, -0.7572, -0.4692] } ],
+      bindungen: [{ von: 0, bis: 1, ordnung: 1 }, { von: 0, bis: 2, ordnung: 1 }],
+      beschriftungen: [{ atom: 0, text: "Sauerstoff, leicht negativ" }], darstellung: "kugel-stab" } ] },
+  { id: "ethanol", art: "teilchen", titel: "Ethanol (Beispiel)", stand: "", schliessen: false, bausteine: [
+    { typ: "teilchen", form: "molekuel", name: "Ethanol", atome: [
+      { element: "C", position: [1.1879, -0.3829, 0] },
+      { element: "C", position: [0, 0.5526, 0] },
+      { element: "O", position: [-1.1867, -0.2472, 0] },
+      { element: "H", position: [2.0939, 0.2191, 0] },
+      { element: "H", position: [1.1757, -1.0213, 0.8812] },
+      { element: "H", position: [1.1757, -1.0213, -0.8812] },
+      { element: "H", position: [0.0258, 1.1997, 0.8794] },
+      { element: "H", position: [0.0258, 1.1997, -0.8794] },
+      { element: "H", position: [-1.9447, 0.3544, 0] } ],
+      bindungen: [], beschriftungen: [], darstellung: "kugel-stab" } ] },
+  { id: "natrium", art: "teilchen", titel: "Natrium-Atom (Beispiel)", stand: "", schliessen: false, bausteine: [
+    { typ: "teilchen", form: "atom", element: "Na", neutronen: 12, ladung: 0, schalen: [2, 8, 1] } ] },
+  { id: "orbital-2pz", art: "teilchen", titel: "Orbital 2p_z (Beispiel)", stand: "", schliessen: false, bausteine: [
+    { typ: "teilchen", form: "orbital", orbital: "2p_z", punkte: 2500, startwert: 1 } ] },
 ];

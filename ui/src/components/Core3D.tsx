@@ -10,11 +10,16 @@ import { Avatar } from "./Avatar";
 
 const reduced = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+/** Gibt es WebGL? Der Probe-Kontext wird sofort wieder freigegeben, damit viele Ansichten nacheinander nicht die Grenze des
+ *  Browsers für gleichzeitige WebGL-Kontexte erreichen (sonst verwirft er einen echten). */
 export function hasWebGL(): boolean {
   if (typeof WebGLRenderingContext === "undefined") return false;
   try {
     const c = document.createElement("canvas");
-    return !!(c.getContext("webgl2") || c.getContext("webgl"));
+    const gl = (c.getContext("webgl2") || c.getContext("webgl")) as WebGLRenderingContext | null;
+    if (!gl) return false;
+    try { gl.getExtension?.("WEBGL_lose_context")?.loseContext(); } catch { /* nur Aufräumen */ }
+    return true;
   } catch {
     return false;
   }

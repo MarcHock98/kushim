@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { ORBIT_BUTTONS, ORBIT_HINT, orbitDrag, orbitEye, orbitHome, orbitKey, orbitStep, orbitWheel, type OrbitAction, type V3 } from "../../lib/orbitCamera";
 import { allBounds, describeObject, describeSize, diffScenes, diffText, PALETTE_VAR, type Box3, type SceneBlock } from "../../lib/scene";
 import { hasWebGL } from "../Core3D";
 
@@ -8,7 +9,7 @@ import { hasWebGL } from "../Core3D";
 // Texte von Claude erscheinen nur als Text im DOM, nie im 3D-Bild.
 
 type Axis = "x" | "y" | "z";
-interface Ctl { update(mix: number, cut: boolean, axis: Axis, pos: number): void; view(action: string): void }
+interface Ctl { update(mix: number, cut: boolean, axis: Axis, pos: number): void; view(action: OrbitAction): void }
 
 const AXIS_LABEL: Record<Axis, string> = { x: "Breite (x)", y: "Höhe (y)", z: "Tiefe (z)" };
 const IDX: Record<Axis, number> = { x: 0, y: 1, z: 2 };
@@ -86,16 +87,15 @@ export function Model3D({ b }: { b: SceneBlock }) {
       });
 
       const box: Box3 = allBounds(b);
-      const center = [0, 1, 2].map((i) => (box.min[i] + box.max[i]) / 2);
+      const center = [0, 1, 2].map((i) => (box.min[i] + box.max[i]) / 2) as V3;
       const diag = Math.max(1e-6, Math.hypot(box.max[0] - box.min[0], box.max[1] - box.min[1], box.max[2] - box.min[2]));
       const cam = new T.PerspectiveCamera(45, 1, diag / 1000, diag * 100);
-      const home = { theta: 0.7, phi: 1.15, dist: diag * 1.3 };
-      const v = { ...home };
+      let v = orbitHome(diag);
       let raf = 0, queued = false, pending = false;
 
       const paint = () => {
-        const s = Math.sin(v.phi);
-        cam.position.set(center[0] + v.dist * s * Math.sin(v.theta), center[1] + v.dist * Math.cos(v.phi), center[2] + v.dist * s * Math.cos(v.theta));
+        const eye = orbitEye(v, center, diag);
+        cam.position.set(eye[0], eye[1], eye[2]);
         cam.lookAt(center[0], center[1], center[2]);
         renderer.render(scene, cam);
       };
@@ -131,13 +131,7 @@ export function Model3D({ b }: { b: SceneBlock }) {
           draw();
         },
         view(action) {
-          if (action === "left") v.theta -= 0.2;
-          else if (action === "right") v.theta += 0.2;
-          else if (action === "up") v.phi = Math.max(0.15, v.phi - 0.15);
-          else if (action === "down") v.phi = Math.min(Math.PI - 0.15, v.phi + 0.15);
-          else if (action === "in") v.dist = Math.max(diag * 0.2, v.dist * 0.85);
-          else if (action === "out") v.dist = Math.min(diag * 10, v.dist / 0.85);
-          else if (action === "reset") Object.assign(v, home);
+          v = orbitStep(v, action, diag);
           draw();
         },
       };
@@ -146,13 +140,12 @@ export function Model3D({ b }: { b: SceneBlock }) {
       const down = (e: PointerEvent) => { drag = { x: e.clientX, y: e.clientY }; el.setPointerCapture?.(e.pointerId); };
       const move = (e: PointerEvent) => {
         if (!drag) return;
-        v.theta -= (e.clientX - drag.x) * 0.01;
-        v.phi = Math.min(Math.PI - 0.15, Math.max(0.15, v.phi - (e.clientY - drag.y) * 0.01));
+        v = orbitDrag(v, e.clientX - drag.x, e.clientY - drag.y, diag);
         drag = { x: e.clientX, y: e.clientY };
         draw();
       };
       const up = () => { drag = null; };
-      const wheel = (e: WheelEvent) => { e.preventDefault(); api.view(e.deltaY < 0 ? "in" : "out"); };
+      const wheel = (e: WheelEvent) => { e.preventDefault(); api.view(orbitWheel(e.deltaY)); };
       const visible = () => { if (!document.hidden && pending) { pending = false; draw(); } };
       el.addEventListener("pointerdown", down); el.addEventListener("pointermove", move);
       el.addEventListener("pointerup", up); el.addEventListener("pointercancel", up);
@@ -160,7 +153,8 @@ export function Model3D({ b }: { b: SceneBlock }) {
       document.addEventListener("visibilitychange", visible);
       const ro = typeof ResizeObserver === "function" ? new ResizeObserver(resize) : null;
       ro?.observe(el);
-      el.addEventListener("webglcontextlost", (e) => { e.preventDefault(); setGl(false); });
+      const lost = (e: Event) => { e.preventDefault(); setGl(false); };
+      el.addEventListener("webglcontextlost", lost);
 
       ctl.current = api;
       resize();
@@ -172,6 +166,7 @@ export function Model3D({ b }: { b: SceneBlock }) {
         el.removeEventListener("pointerdown", down); el.removeEventListener("pointermove", move);
         el.removeEventListener("pointerup", up); el.removeEventListener("pointercancel", up);
         el.removeEventListener("wheel", wheel);
+        el.removeEventListener("webglcontextlost", lost);
         document.removeEventListener("visibilitychange", visible);
         disposables.forEach((d) => d.dispose());
         renderer.dispose();
@@ -190,8 +185,7 @@ export function Model3D({ b }: { b: SceneBlock }) {
   const label = `3D-Szene: ${names}. ${size}. ${b.szenen.reduce((a, s) => a + s.objekte.length, 0)} Objekte.`;
   const labelOf = (name: string) => b.beschriftungen.filter((l) => l.objekt === name).map((l) => l.text).join("; ");
   const key = (e: React.KeyboardEvent) => {
-    const map: Record<string, string> = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down", "+": "in", "-": "out", "0": "reset", Home: "reset" };
-    const a = map[e.key];
+    const a = orbitKey(e);                                               // mit Strg, Alt oder Meta: null, die Taste gehört dem Browser
     if (a) { e.preventDefault(); ctl.current?.view(a); }
   };
 
@@ -199,15 +193,14 @@ export function Model3D({ b }: { b: SceneBlock }) {
     <section className="v-model" aria-label={label}>
       <p className="d-name"><span className="label">Maße</span> {size}</p>
       {gl ? (
-        <div className="m-stage" tabIndex={0} onKeyDown={key} aria-label="3D-Ansicht. Pfeiltasten drehen, Plus und Minus zoomen, Null setzt zurück.">
+        <div className="m-stage" tabIndex={0} onKeyDown={key} aria-label={ORBIT_HINT}>
           <canvas ref={canvas} className="m-canvas" role="img" aria-label={label} />
         </div>
       ) : <p className="v-note">3D braucht WebGL, das hier nicht verfügbar ist. Die Objektliste unten zeigt den Inhalt.</p>}
       <div className="m-controls">
         {gl && (
           <div className="m-row" role="group" aria-label="Ansicht">
-            {([["left", "Links drehen"], ["right", "Rechts drehen"], ["up", "Nach oben kippen"], ["down", "Nach unten kippen"],
-              ["in", "Näher"], ["out", "Weiter weg"], ["reset", "Ansicht zurücksetzen"]] as const).map(([a, t]) => (
+            {ORBIT_BUTTONS.map(([a, t]) => (
               <button key={a} type="button" onClick={() => ctl.current?.view(a)}>{t}</button>
             ))}
           </div>
