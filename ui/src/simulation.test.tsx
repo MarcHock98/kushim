@@ -9,6 +9,7 @@ import { DEMO_VIEWS, MockSocket } from "./lib/mock";
 import {
   createSim, formatFest, formatZahl, GRENZEN, mitWert, MODELLE, normalizeSim, snapshot, standbild, type SimModell, type SimSnapshot,
 } from "./lib/physics";
+import { createSimLoop } from "./lib/simLoop";
 import { ART_LABEL, parseItem, type Block, type SimBlock, type View } from "./lib/stage";
 
 // P5a (docs/ui-p5-plan.md, Abschnitte 3 bis 6 und 10): Baustein `simulation` mit falschem requestAnimationFrame und falscher Uhr.
@@ -18,6 +19,10 @@ import { ART_LABEL, parseItem, type Block, type SimBlock, type View } from "./li
 vi.mock("./lib/physics", async (orig) => {
   const m = await orig<typeof import("./lib/physics")>();
   return { ...m, snapshot: vi.fn(m.snapshot), standbild: vi.fn(m.standbild), mitWert: vi.fn(m.mitWert) };
+});
+vi.mock("./lib/simLoop", async (orig) => {
+  const m = await orig<typeof import("./lib/simLoop")>();
+  return { ...m, createSimLoop: vi.fn(m.createSimLoop) };
 });
 
 const TOKEN = "t".repeat(43);
@@ -725,8 +730,9 @@ describe("Kein Klick sendet etwas, auch bei „weniger Bewegung“", () => {
 
     /** Jeden Knopf prüfen (echter Knopf, bedienbar, fokussierbar) und dann nach dem Fokus anklicken. */
     const pressAll = () => {
-      const bs = [...document.querySelectorAll<HTMLButtonElement>(".s-controls button")];
-      expect(bs.length).toBeGreaterThan(0);
+      const bs = [...document.querySelectorAll<HTMLButtonElement>(".s-controls button, .s-regler button")];
+      expect(bs.length).toBeGreaterThan(1);
+      expect(bs.at(-1)!.textContent).toBe("Zurück auf die Werte von Claude");
       for (const b of bs) {
         expect(b.tagName).toBe("BUTTON");
         expect(b.type).toBe("button");
@@ -737,8 +743,23 @@ describe("Kein Klick sendet etwas, auch bei „weniger Bewegung“", () => {
         fireEvent.click(b);
       }
     };
-    pressAll();                                                                          // „Trotzdem abspielen“
+    /** Jeden Regler ziehen und mit Tasten bedienen (beim Standbild rechnet das nur das Standbild neu). */
+    const regler = () => {
+      for (const s of screen.getAllByRole("slider") as HTMLInputElement[]) {
+        s.focus();
+        fireEvent.change(s, { target: { value: String(Number(s.value) + 2) } });
+        for (const key of ["ArrowRight", "ArrowLeft", "End", "Home"]) tippe(s, key);
+        fireEvent.pointerUp(s);
+        fireEvent.blur(s);
+      }
+    };
+    regler();
+    expect(word()).toBe(STILL);
+    fireEvent.click(btn("Zurück auf die Werte von Claude"));
+    regler();
+    pressAll();                                                                          // „Trotzdem abspielen“, „Zurück“
     expect(word()).toBe("läuft");
+    regler();
     f.run(0.5);
     pressAll(); f.run(0.5);                                                              // Pause, dann Neu starten (läuft wieder)
     pressAll(); f.run(0.5);
@@ -794,6 +815,11 @@ type P5bName = keyof typeof P5B;
 const P5B_NAMEN = Object.keys(P5B) as P5bName[];
 const simB = (n: P5bName, extra: Record<string, unknown> = {}) => ({ typ: "simulation", ...base, ...P5B[n], ...extra }) as unknown as SimBlock;
 const slider = (name: string) => screen.getByRole("slider", { name }) as HTMLInputElement;
+const realMitWert = vi.mocked(mitWert).getMockImplementation()!;
+/** Nur setTimeout und clearTimeout falsch (der Regler-Takt); Bildtakt und Uhr kommen aus fakeFrames. */
+const fakeTimers = () => vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+const warte = (ms: number) => act(() => { vi.advanceTimersByTime(ms); });
+const tippe = (s: HTMLElement, key: string) => { fireEvent.keyDown(s, { key }); fireEvent.keyUp(s, { key }); };
 const lastCall = () => vi.mocked(mitWert).mock.calls.at(-1)?.slice(1);
 const lastInput = () => vi.mocked(mitWert).mock.results.at(-1)?.value as SimBlock;
 const NOTE: Record<P5bName, RegExp | string> = {
@@ -874,6 +900,26 @@ describe("P5b: neue Modelle zeichnen", () => {
     expect(screen.queryByText(/Dünne Linien/)).toBeNull();
   });
 
+  it("Text bleibt Text auch mit anziehung: Namen und Beschreibung nur im DOM, nie im Bild oder in Attributen", () => {
+    const r = recordingCtx(), f = fakeFrames();
+    const evil = "<script>alert(1)</script><b>x</b>", name = "<img src=x onerror=alert(1)>", other = "url(#evil)";
+    const b = simB("anziehung", { beschreibung: evil, parameter: { zentralmasse: 1, anziehung: true, koerper: [
+      { name, abstand: 1, exzentrizitaet: 0, phase: 0, masse: 0.001, farbe: "arc" },
+      { name: other, abstand: 2, exzentrizitaet: 0.1, phase: 10, masse: 0.002, farbe: "ok" }] } });
+    const { container } = card(b);
+    f.run(1);
+    fireEvent.change(slider("Zentralmasse"), { target: { value: "600" } });              // auch nach einem Neustart durch den Regler
+    f.run(0.5);
+    for (const s of [evil, name, other]) expect(screen.getByText(s)).toBeInTheDocument();
+    expect(r.count("fillText") + r.count("strokeText")).toBe(0);
+    const strings = r.calls.flatMap((c) => c.args).filter((a) => typeof a === "string") as string[];
+    expect(strings.some((s) => s.includes("img") || s.includes("script") || s.includes("evil"))).toBe(false);
+    expect(container.querySelector(".v-sim script, .v-sim img, .v-sim b, .v-sim a, .v-sim [href]")).toBeNull();
+    for (const el of container.querySelectorAll("*")) {
+      for (const at of el.attributes) expect([evil, name, other].some((s) => at.value.includes(s)), at.name).toBe(false);
+    }
+  });
+
   it("Umlauf ohne anziehung behält den Satz „… nicht an.“", () => {
     recordingCtx(); fakeFrames();
     card(simB("anziehung", { parameter: { ...(P5B.anziehung.parameter as object), anziehung: false } }));
@@ -923,7 +969,7 @@ describe("P5b: Regler", () => {
   });
 
   it("logarithmische und lineare Skala bilden die Stellung richtig ab", () => {
-    recordingCtx(); fakeFrames();
+    fakeTimers(); recordingCtx(); fakeFrames();
     card(sim("pendel"));
     const s = slider("Länge");
     expect(s.max).toBe("1000");
@@ -931,21 +977,21 @@ describe("P5b: Regler", () => {
     fireEvent.change(s, { target: { value: "500" } });                                    // Mitte: √(0,05 · 100) = 2,236 → 2,25 (Schritt 0,05)
     expect(lastCall()).toEqual(["laenge", 2.25]);
     expect(slider("Länge")).toHaveAttribute("aria-valuetext", "2,25 m");
-    fireEvent.pointerUp(s);
-    fireEvent.change(s, { target: { value: "0" } }); fireEvent.pointerUp(s);
+    fireEvent.pointerUp(s); warte(400);
+    fireEvent.change(s, { target: { value: "0" } }); fireEvent.pointerUp(s); warte(400);
     expect(lastCall()).toEqual(["laenge", 0.05]);
-    fireEvent.change(s, { target: { value: "1000" } }); fireEvent.pointerUp(s);
+    fireEvent.change(s, { target: { value: "1000" } }); fireEvent.pointerUp(s); warte(400);
     expect(lastCall()).toEqual(["laenge", 100]);
     const w = slider("Startwinkel");
     expect(w.max).toBe("340");
     expect(w.value).toBe("200");                                                          // 30 Grad auf -170 bis 170, Schritt 1
-    fireEvent.change(w, { target: { value: "250" } }); fireEvent.pointerUp(w);
+    fireEvent.change(w, { target: { value: "250" } }); fireEvent.pointerUp(w); warte(400);
     expect(lastCall()).toEqual(["winkel", 80]);
     expect(screen.getByText(/^Regler: Länge 100 m, Startwinkel 80 Grad\./)).toBeInTheDocument();
   });
 
   it("Tastatur: Pfeil, Ende und Pos1 starten neu mit begrenztem Wert über mitWert; Tasten mit Strg, Alt oder Meta bleiben dem Browser", () => {
-    recordingCtx(); const f = fakeFrames();
+    fakeTimers(); recordingCtx(); const f = fakeFrames();
     card(sim("pendel", { laufzeit: 60 }));
     f.run(1);
     const s = slider("Länge");
@@ -960,26 +1006,66 @@ describe("P5b: Regler", () => {
     expect(word()).toBe("läuft");
     expect(row("Zeit in der Simulation")).toBe("0 s");
     expect(f.pending()).toBe(1);
-    fireEvent.keyDown(s, { key: "End" }); fireEvent.keyUp(s, { key: "End" });
+    warte(400);
+    tippe(s, "End"); warte(400);
     expect(lastCall()).toEqual(["laenge", 100]);
     expect(slider("Länge")).toHaveAttribute("aria-valuetext", "100 m");
     const n = vi.mocked(mitWert).mock.calls.length;
-    for (const key of ["ArrowRight", "ArrowUp", "PageUp", "End"]) { fireEvent.keyDown(s, { key }); fireEvent.keyUp(s, { key }); }
+    for (const key of ["ArrowRight", "ArrowUp", "PageUp", "End"]) { tippe(s, key); warte(400); }
     expect(vi.mocked(mitWert).mock.calls.length).toBe(n);                                 // am Rand: nichts weiter
     for (const mod of [{ ctrlKey: true }, { altKey: true }, { metaKey: true }]) {
       expect(fireEvent.keyDown(s, { key: "Home", ...mod })).toBe(true);
     }
+    warte(400);
     expect(vi.mocked(mitWert).mock.calls.length).toBe(n);
-    fireEvent.keyDown(s, { key: "Home" }); fireEvent.keyUp(s, { key: "Home" });
+    tippe(s, "Home"); warte(400);
     expect(lastCall()).toEqual(["laenge", 0.05]);
     expect(document.activeElement).toBe(s);                                               // der Fokus bleibt auf dem Regler
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each([["ArrowLeft", -1], ["ArrowDown", -1], ["PageDown", -1], ["ArrowRight", 1], ["ArrowUp", 1], ["PageUp", 1]] as const)(
+    "F1: %s bei 1,234 m geht in Tastenrichtung (logarithmisch, zwischen zwei Stellungen)", (key, dir) => {
+      fakeTimers(); recordingCtx(); fakeFrames();
+      card(sim("pendel", { parameter: { laenge: 1.234, winkel: 30, anfangsgeschwindigkeit: 0, daempfung: 0, g: 9.81 } }));
+      tippe(slider("Länge"), key);
+      const [feld, wert] = lastCall() as [string, number];
+      expect(feld).toBe("laenge");
+      expect(Math.sign(wert - 1.234)).toBe(dir);
+      if (key === "ArrowLeft") expect(wert).toBe(1.2);
+      if (key === "ArrowRight") expect(wert).toBe(1.25);
+    });
+
+  it("F1: jede Pfeiltaste ändert jeden Regler aller Modelle streng in ihrer Richtung, auch von krummen Werten aus", () => {
+    fakeTimers(); recordingCtx(); fakeFrames();
+    const krumm = [1.234, 0.0777, 3.3333, 17.01, 0.51];
+    for (const [m, b] of [...MODELLE.map((x) => [x, sim(x)] as const), ...(["doppelpendel", "welle"] as const).map((n) => [n, simB(n)] as const)]) {
+      for (const g of GRENZEN[m]) {
+        for (const k of krumm) {
+          const roh = g.min + (g.max - g.min) * (k / 20);                                 // innen, nicht auf einer Stellung
+          const start = mitWert(b, g.feld, roh);
+          for (const [key, dir] of [["ArrowLeft", -1], ["ArrowRight", 1]] as const) {
+            const v = card(start);
+            vi.mocked(mitWert).mockClear();
+            const vor = (start.parameter as Record<string, unknown>);
+            const alt = g.feld.split(".").reduce<unknown>((o, t) => (o as Record<string, unknown>)[t], vor) as number;
+            tippe(slider(g.name), key);
+            const call = lastCall() as [string, number] | undefined;
+            if (call) expect(Math.sign(call[1] - alt), `${m} ${g.feld} ${alt} ${key}`).toBe(dir);
+            else expect(dir < 0 ? alt <= g.min : alt >= g.max, `${m} ${g.feld} ${alt} ${key} ohne Wert`).toBe(true);
+            v.unmount();
+            warte(400);
+          }
+        }
+      }
+    }
   });
 
   it("die abgeleitete Grenze der Feder begrenzt den Wert (mitWert), die Anzeige zeigt den begrenzten Wert", () => {
-    recordingCtx(); fakeFrames();
+    fakeTimers(); recordingCtx(); fakeFrames();
     card(sim("feder"));
     const s = slider("Federkonstante");
-    fireEvent.keyDown(s, { key: "End" }); fireEvent.keyUp(s, { key: "End" });
+    tippe(s, "End"); warte(400);
     expect(lastCall()).toEqual(["federkonstante", 1e6]);
     const k = (lastInput().parameter as { federkonstante: number }).federkonstante;
     expect(k).toBeLessThan(1e6);                                                          // Schwingungsdauer ≥ 0,05 s bei 1 kg
@@ -988,9 +1074,8 @@ describe("P5b: Regler", () => {
     expect(screen.queryByText(/wurden angepasst/)).toBeNull();
   });
 
-  it("beim Ziehen höchstens ein Neustart je 200 ms, beim Loslassen einmal mit dem letzten Wert", () => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    recordingCtx(); fakeFrames();
+  it("beim Ziehen höchstens ein Neustart je 200 ms, nach dem Loslassen einmal mit dem letzten Wert", () => {
+    fakeTimers(); recordingCtx(); fakeFrames();
     card(simB("doppelpendel"));
     const s = slider("Startwinkel oben");
     expect(s.value).toBe("300");                                                          // 120 Grad auf -180 bis 180
@@ -1004,12 +1089,138 @@ describe("P5b: Regler", () => {
     expect(vi.mocked(mitWert)).toHaveBeenCalledTimes(3);
     expect(slider("Startwinkel oben")).toHaveAttribute("aria-valuetext", "141 Grad");      // die Anzeige folgt sofort
     fireEvent.pointerUp(s);
+    expect(vi.mocked(mitWert)).toHaveBeenCalledTimes(3);                                  // Loslassen wartet den Takt ab
+    warte(200);                                                                           // der Takt bei 600 ms bringt den letzten Wert
     expect(vi.mocked(mitWert)).toHaveBeenCalledTimes(4);
     expect(lastCall()).toEqual(["winkel1", 141]);
     expect(screen.getByText(createSim(lastInput()).text)).toBeInTheDocument();
     expect(screen.getByText(/Start bei 141 Grad und -10 Grad/)).toBeInTheDocument();
-    act(() => { vi.advanceTimersByTime(1000); });
+    warte(1000);
     expect(vi.mocked(mitWert)).toHaveBeenCalledTimes(4);                                  // nichts kommt nach
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("30 Neustarts durch Ziehen: immer genau ein Bild bestellt, nach dem Abbau keins und kein Zeitgeber", () => {
+    fakeTimers(); recordingCtx(); const f = fakeFrames();
+    const v = card(simB("doppelpendel", { laufzeit: 60 }));
+    const s = slider("Startwinkel oben");
+    for (let i = 1; i <= 30; i++) {
+      fireEvent.change(s, { target: { value: String(300 - i) } });
+      warte(200);
+      f.frame();
+      expect(f.pending()).toBe(1);
+    }
+    expect(vi.mocked(mitWert)).toHaveBeenCalledTimes(30);
+    expect(slider("Startwinkel oben")).toHaveAttribute("aria-valuetext", "90 Grad");
+    v.unmount();
+    expect(f.pending()).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("Abbau mitten im Ziehen: kein Zeitgeber übrig, danach kommt kein Wert mehr", () => {
+    fakeTimers(); recordingCtx(); const f = fakeFrames();
+    const v = card(sim("pendel"));
+    const s = slider("Startwinkel");
+    fireEvent.change(s, { target: { value: "210" } });
+    fireEvent.change(s, { target: { value: "220" } });                                    // wartet auf den Takt
+    expect(vi.mocked(mitWert)).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(1);
+    v.unmount();
+    expect(vi.getTimerCount()).toBe(0);
+    warte(1000);
+    expect(vi.mocked(mitWert)).toHaveBeenCalledTimes(1);
+    expect(f.pending()).toBe(0);
+  });
+
+  it("neue Daten mitten im Ziehen: kein Zeitgeber, kein alter Wert, Tempo wieder „normal“", () => {
+    fakeTimers(); recordingCtx(); fakeFrames();
+    const v = card(sim("pendel", { laufzeit: 60 }));
+    click("doppelt");
+    expect(screen.getByText("Tempo: doppelt")).toBeInTheDocument();
+    const s = slider("Startwinkel");
+    fireEvent.change(s, { target: { value: "210" } });
+    fireEvent.change(s, { target: { value: "260" } });
+    expect(vi.getTimerCount()).toBe(1);
+    v.rerender(cardEl(sim("pendel", { laufzeit: 60, beschreibung: "neu" })));
+    expect(vi.getTimerCount()).toBe(0);
+    warte(1000);
+    expect(vi.mocked(mitWert)).toHaveBeenCalledTimes(1);                                  // der Wert 90 Grad kommt nie an
+    expect(slider("Startwinkel")).toHaveAttribute("aria-valuetext", "30 Grad");
+    expect(screen.getByText(createSim(sim("pendel")).text)).toBeInTheDocument();
+    expect(screen.getByText("Tempo: normal")).toBeInTheDocument();
+    expect(btn("normal")).toHaveAttribute("aria-pressed", "true");
+    expect(btn("doppelt")).toHaveAttribute("aria-pressed", "false");
+    expect(btn("Zurück auf die Werte von Claude")).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it.each(["ohne Ereignis", "keyUp", "blur", "touchEnd", "mouseUp", "pointerUp"] as const)(
+    "Ende des Ziehens %s: der letzte Wert kommt spätestens nach 200 ms, danach kein Zeitgeber", (ende) => {
+      fakeTimers(); recordingCtx(); fakeFrames();
+      card(sim("pendel"));
+      const s = slider("Startwinkel");
+      s.focus();
+      fireEvent.change(s, { target: { value: "210" } });
+      warte(50);
+      fireEvent.change(s, { target: { value: "230" } });
+      if (ende !== "ohne Ereignis") fireEvent[ende](s);
+      expect(vi.mocked(mitWert)).toHaveBeenCalledTimes(1);
+      warte(150);
+      expect(vi.mocked(mitWert)).toHaveBeenCalledTimes(2);
+      expect(lastCall()).toEqual(["winkel", 60]);
+      expect(slider("Startwinkel")).toHaveAttribute("aria-valuetext", "60 Grad");
+      warte(200);
+      expect(vi.getTimerCount()).toBe(0);
+      expect(vi.mocked(mitWert)).toHaveBeenCalledTimes(2);
+      expect(screen.getByText(/^Regler: Länge 1 m, Startwinkel 60 Grad\./)).toBeInTheDocument();
+    });
+
+  it("Tippen wird gedrosselt wie Ziehen: höchstens ein Neustart je 200 ms und danach einer mit dem letzten Wert", () => {
+    fakeTimers(); recordingCtx(); fakeFrames();
+    card(sim("pendel"));
+    const s = slider("Startwinkel");
+    s.focus();
+    const zeiten: number[] = [];
+    let jetzt = 0;
+    vi.mocked(mitWert).mockImplementation((...a) => { zeiten.push(jetzt); return realMitWert(...a); });
+    try {
+      for (let i = 0; i < 10; i++) { tippe(s, "ArrowRight"); jetzt += 50; warte(50); }     // zehn Tipps in 500 ms
+      for (let i = 0; i < 10; i++) { jetzt += 50; warte(50); }
+    } finally {
+      vi.mocked(mitWert).mockImplementation(realMitWert);
+    }
+    expect(zeiten).toEqual([0, 200, 400, 600]);                                           // sofort, je 200 ms, dann der letzte
+    for (let i = 1; i < zeiten.length; i++) expect(zeiten[i] - zeiten[i - 1]).toBeGreaterThanOrEqual(200);
+    expect(lastCall()).toEqual(["winkel", 40]);                                           // 30 Grad plus zehn Schritte
+    expect(slider("Startwinkel")).toHaveAttribute("aria-valuetext", "40 Grad");
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("„Zurück“ mitten im Ziehen: kein alter Wert kommt später an", () => {
+    fakeTimers(); recordingCtx(); fakeFrames();
+    card(sim("pendel"));
+    const s = slider("Startwinkel");
+    fireEvent.change(s, { target: { value: "210" } });
+    fireEvent.change(s, { target: { value: "300" } });
+    click("Zurück auf die Werte von Claude");
+    expect(vi.getTimerCount()).toBe(0);
+    warte(1000);
+    expect(vi.mocked(mitWert)).toHaveBeenCalledTimes(1);
+    expect(slider("Startwinkel")).toHaveAttribute("aria-valuetext", "30 Grad");
+    expect(screen.getByText(createSim(sim("pendel")).text)).toBeInTheDocument();
+    expect(btn("Zurück auf die Werte von Claude")).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("der Hinweis zur Beschreibung von Claude erscheint nach einer Änderung und geht mit „Zurück“", () => {
+    fakeTimers(); recordingCtx(); fakeFrames();
+    const HINWEIS = "Die Beschreibung von Claude gilt für die ursprünglichen Werte.";
+    card(sim("pendel", { beschreibung: "Ein Pendel bei 30 Grad." }));
+    expect(screen.queryByText(HINWEIS)).toBeNull();
+    fireEvent.change(slider("Startwinkel"), { target: { value: "250" } });
+    expect(screen.getByText(HINWEIS)).toBeInTheDocument();
+    expect(screen.getByText("Ein Pendel bei 30 Grad.")).toBeInTheDocument();
+    warte(400);
+    click("Zurück auf die Werte von Claude");
+    expect(screen.queryByText(HINWEIS)).toBeNull();
   });
 
   it("„Zurück auf die Werte von Claude“ stellt die gelieferten Daten wieder her; die Textfassung nennt beide", () => {
@@ -1090,6 +1301,28 @@ describe("P5b: Tempo", () => {
     expect(screen.getByText(SATZ).closest(".s-tempo")).not.toBeNull();
   });
 
+  it("eine Schleife ohne setTempoFaktor: keine Tempo-Gruppe, alles andere bleibt", () => {
+    recordingCtx(); const f = fakeFrames();
+    const real = vi.mocked(createSimLoop).getMockImplementation()!;
+    vi.mocked(createSimLoop).mockImplementation((o) => {
+      const l = real(o);
+      delete l.setTempoFaktor; delete l.getTempoFaktor;
+      return l;
+    });
+    try {
+      card(sim("pendel"));
+      expect(word()).toBe("läuft");
+      expect(screen.queryByRole("group", { name: "Tempo" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "doppelt" })).toBeNull();
+      expect(btn("Pause")).toBeInTheDocument();
+      expect(screen.getAllByRole("slider")).toHaveLength(2);
+      f.run(0.5);
+      expect(f.pending()).toBe(1);
+    } finally {
+      vi.mocked(createSimLoop).mockImplementation(real);
+    }
+  });
+
   it("bei „weniger Bewegung“ kein Tempo (keine Schleife), nach „Trotzdem abspielen“ schon", () => {
     reducedMotion(); recordingCtx(); fakeFrames();
     card(simB("doppelpendel"));
@@ -1168,7 +1401,7 @@ describe("P5b: Bedienen sendet, speichert und spielt nichts", () => {
     click("Pause"); click("Weiter"); f.run(0.2); click("Neu starten"); f.run(0.2);
   };
 
-  it.each(P5B_NAMEN)("%s (Vorführung): Tempo, Regler, Zurück und Tasten lassen die gesendeten Nachrichten unverändert", async (n) => {
+  it.each([...P5B_NAMEN, "pendel", "wurf", "gas"])("%s (Vorführung): Tempo, Regler, Zurück und Tasten lassen die gesendeten Nachrichten unverändert", async (n) => {
     recordingCtx(); const f = fakeFrames();
     const sock: { current?: MockSocket } = {};
     const loader = async () => ({ client: new ApiClient({ port: 5000, token: TOKEN }, (u) => (sock.current = new MockSocket(u, TOKEN))) });

@@ -16,12 +16,13 @@ import { useBoxSize } from "../../lib/useBoxSize";
 // kommen von der Oberfläche, nicht von Claude.
 // Pause, Weiter, Neu starten, Tempo und Regler ändern nur die Anzeige im Fenster: nichts wird gesendet, gespeichert oder abgespielt.
 // Ein Regler baut mit `mitWert` eine neue Eingabe (innerhalb der Schema-Grenzen) und startet die Simulation damit neu, beim Ziehen
-// höchstens alle 200 ms und einmal beim Loslassen. „Zurück auf die Werte von Claude“ nimmt wieder die gelieferten Daten.
+// und Tippen höchstens alle 200 ms und danach einmal mit dem letzten Wert. „Zurück auf die Werte von Claude“ nimmt wieder die
+// gelieferten Daten.
 // Bei „weniger Bewegung“ gibt es keine Schleife, sondern ein Standbild mit Textfassung und den Knopf „Trotzdem abspielen“.
 
 const FIG_MS = 500;              // Kennwerte höchstens zweimal je Sekunde neu (nicht jedes Bild, weniger React-Arbeit)
 const DIST_MS = 1000;            // Verteilung beim Gas einmal je Sekunde neu
-const REGLER_MS = 200;           // Regler: höchstens ein Neustart je 200 ms beim Ziehen
+const REGLER_MS = 200;           // Regler: höchstens ein Neustart je 200 ms beim Ziehen und Tippen
 const LOG_N = 1000;              // Stufen eines logarithmischen Reglers
 const DPR_MAX = 1.5;
 const DEFAULT_W = 640, H_MIN = 180, H_MAX = 420, CURVE_H = 120, DIST_H = 72, PAD = 10, WELLE_RATIO = 0.4;
@@ -39,7 +40,8 @@ const SATZ_ANZIEHUNG = "Die Körper ziehen sich gegenseitig an.";
 const SATZ_OHNE_ANZIEHUNG = "Die Körper ziehen sich gegenseitig nicht an.";
 const SATZ_CHAOS = "Das Doppelpendel ist chaotisch: Schon eine winzige Änderung am Start ergibt eine ganz andere Bahn. "
   + "Die Energie in Prozent des Starts zeigt, wie genau gerechnet wird.";
-const SATZ_TEMPO_ZEITLUPE = "Tempo wirkt erst, wenn die Rechengrenze nicht erreicht ist.";
+const SATZ_BESCHREIBUNG_ALT = "Die Beschreibung von Claude gilt für die ursprünglichen Werte.";
+const SATZ_TEMPO_ZEITLUPE ="Tempo wirkt erst, wenn die Rechengrenze nicht erreicht ist.";
 const SATZ_WELLE ="Waagerecht der Ort, senkrecht die Auslenkung. Die beiden Achsen haben verschiedene Maßstäbe.";
 
 interface Pal { farbe: Record<Farbe, string>; line: string; strong: string; muted: string; amber: string }
@@ -101,20 +103,22 @@ function posAusWert(g: GrenzFeld, v: number): number {
 const SCHRITT_TASTE: Record<string, number> = { ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1, PageUp: 10, PageDown: -10 };
 
 /** Nächster Wert für eine Taste (Pfeile ein Schritt, Bild auf/ab zehn, Pos1/Ende die Grenzen); `null`: Taste gehört nicht dem Regler.
- *  Logarithmisch wird so weit geschoben, bis sich der gerundete Wert wirklich ändert. */
+ *  Es wird so weit geschoben, bis der gerundete Wert wirklich in Tastenrichtung liegt (ein Wert zwischen zwei Stellungen, etwa
+ *  1,234 m, rundet sonst zur Nachbarstellung und von dort in die falsche Richtung); am Rand bleibt der Wert, wie er ist. */
 function wertFuerTaste(g: GrenzFeld, wert: number, key: string): number | null {
   if (key === "Home") return g.min;
   if (key === "End") return g.max;
   const d = SCHRITT_TASTE[key];
   if (d === undefined) return null;
   const n = stufen(g);
-  let p = posAusWert(g, wert), next = wert;
-  for (let i = 0; i < n && next === wert; i++) {
+  let p = posAusWert(g, wert);
+  for (let i = 0; i <= n; i++) {
     p = clamp(p + d, 0, n);
-    next = wertAusPos(g, p);
+    const next = wertAusPos(g, p);
+    if (Math.sign(next - wert) === Math.sign(d)) return next;
     if (p === 0 || p === n) break;
   }
-  return next;
+  return wert;
 }
 
 const reglerText = (g: GrenzFeld, v: number) => `${formatZahl(v)} ${g.einheit}`;
@@ -356,7 +360,7 @@ export function Simulation({ b }: { b: SimBlock }) {
   const eff: SimBlock = edit && edit.for === b ? edit.input : b;
   const cfg = useMemo(() => normalizeSim(eff), [eff]);              // nur Begrenzen, keine Vorausrechnung
   const orig = useMemo(() => normalizeSim(b), [b]);
-  const [shown, setShown] = useState<{ for: SimBlock; feld: string; wert: number } | null>(null);   // Wert beim Ziehen
+  const [shown, setShown] = useState<{ for: SimBlock; werte: Record<string, number> } | null>(null);   // Werte beim Ziehen
   const [reduced, setReduced] = useState(prefersReduced);
   const [forcedFor, setForcedFor] = useState<SimBlock | null>(null);  // „Trotzdem abspielen“ gilt für genau diese Daten
   const forced = forcedFor === b;
@@ -382,7 +386,7 @@ export function Simulation({ b }: { b: SimBlock }) {
   const loopRef = useRef<SimLoop | null>(null);
   const effRef = useRef<SimBlock>(eff);
   const tempoRef = useRef<TempoFaktor>(tempo);
-  const thr = useRef<{ timer: number | null; pending: { feld: string; wert: number } | null }>({ timer: null, pending: null });
+  const thr = useRef<{ timer: number | null; pending: Record<string, number> | null }>({ timer: null, pending: null });
   const clocks = useRef({ fig: -Infinity, dist: -Infinity });
   const gfx = useRef<Gfx>({ ctx: null, w: DEFAULT_W, h: H_MIN, dpr: 1, pal: null, snap: null, trail: null, bild: null }).current;
 
@@ -523,33 +527,32 @@ export function Simulation({ b }: { b: SimBlock }) {
   };
 
   /** Neue Eingabe aus dem Regler (begrenzt durch `mitWert`); der Aufbau oben startet die Simulation damit neu. */
-  const uebernimm = (feld: string, wert: number) => {
-    const next = mitWert(effRef.current, feld, wert);
+  const uebernimm = (werte: Record<string, number>) => {
+    let next = effRef.current;
+    for (const [feld, wert] of Object.entries(werte)) next = mitWert(next, feld, wert);
     effRef.current = next;
     setEdit({ for: b, input: next });
   };
-  const takt = () => {                                                 // Ende der 200 ms: den letzten Wert übernehmen, dann weiter warten
+  // Ziehen und Tasten gleich: der erste Wert startet sofort neu, danach höchstens ein Neustart je 200 ms mit den letzten Werten
+  // (je Regler), und nach dem letzten Wert genau einer. Loslassen (Maus, Finger, Taste, Fokus weg) wartet diesen letzten Neustart ab,
+  // statt sofort neu zu starten; so bleibt es auch bei schnellem Tippen bei höchstens einem Neustart je 200 ms.
+  const takt = () => {
     const t = thr.current;
     t.timer = null;
     const p = t.pending;
-    if (!p) { setShown(null); return; }
+    if (!p) { setShown(null); return; }                                // nichts Neues: der Regler zeigt wieder den gerechneten Wert
     t.pending = null;
-    uebernimm(p.feld, p.wert);
+    uebernimm(p);
     t.timer = window.setTimeout(takt, REGLER_MS);
   };
   const ziehe = (g: GrenzFeld, wert: number) => {
-    setShown({ for: b, feld: g.feld, wert });
+    setShown((s) => ({ for: b, werte: { ...(s && s.for === b ? s.werte : {}), [g.feld]: wert } }));
     const t = thr.current;
-    if (t.timer === null) { t.pending = null; uebernimm(g.feld, wert); t.timer = window.setTimeout(takt, REGLER_MS); }
-    else t.pending = { feld: g.feld, wert };
+    if (t.timer === null) { t.pending = null; uebernimm({ [g.feld]: wert }); t.timer = window.setTimeout(takt, REGLER_MS); }
+    else t.pending = { ...(t.pending ?? {}), [g.feld]: wert };
   };
   const loslassen = () => {
-    const t = thr.current;
-    if (t.timer !== null) { window.clearTimeout(t.timer); t.timer = null; }
-    const p = t.pending;
-    t.pending = null;
-    if (p) uebernimm(p.feld, p.wert);
-    setShown(null);
+    if (thr.current.timer === null) setShown(null);                    // sonst bringt der laufende Takt den letzten Wert
   };
   const taste = (g: GrenzFeld, wert: number) => (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.ctrlKey || e.altKey || e.metaKey) return;                    // Tasten mit Strg, Alt oder Meta gehören dem Browser
@@ -560,9 +563,9 @@ export function Simulation({ b }: { b: SimBlock }) {
   };
   const edited = !!edit && edit.for === b;
   const zurueck = () => {
-    if (!edited) return;
     const t = thr.current;
-    if (t.timer !== null) window.clearTimeout(t.timer);
+    if (!edited && t.timer === null) return;
+    if (t.timer !== null) window.clearTimeout(t.timer);                // kein alter Wert kommt mehr nach
     t.timer = null; t.pending = null;
     effRef.current = b;
     setShown(null);
@@ -629,7 +632,8 @@ export function Simulation({ b }: { b: SimBlock }) {
         <div className="m-row s-regler" role="group" aria-label="Regler">
           {regler.map((r, i) => {
             const id = `${uid}-regler-${i}`;
-            const w = shown && shown.for === b && shown.feld === r.feld ? shown.wert : leseWert(cfg, r.feld) ?? r.min;
+            const gezogen = shown && shown.for === b ? shown.werte[r.feld] : undefined;
+            const w = gezogen ?? leseWert(cfg, r.feld) ?? r.min;
             const txt = reglerText(r, w);
             return (
               <div key={r.feld} className="m-slider s-slider">
@@ -741,6 +745,7 @@ export function Simulation({ b }: { b: SimBlock }) {
           </p>
         )}
         {cfg.beschreibung && <p>{cfg.beschreibung}</p>}
+        {cfg.beschreibung && edited && <p className="v-note">{SATZ_BESCHREIBUNG_ALT}</p>}
       </div>
     </section>
   );
