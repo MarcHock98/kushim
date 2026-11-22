@@ -14,7 +14,8 @@ from typing import Any, Callable
 
 MAX_JSON = 48 * 1024
 ID = re.compile(r"[a-z0-9-]{1,40}")
-ARTEN = ("antwort", "rechnung", "markt", "recherche", "auftrag", "mail", "dokument", "modell", "plan", "lernen", "netz")
+ARTEN = ("antwort", "rechnung", "markt", "recherche", "auftrag", "mail", "dokument", "modell", "plan", "lernen", "netz",
+         "simulation")
 MAX_BLOCKS = 12
 RICHTUNG = ("auf", "ab", "gleich")
 
@@ -344,6 +345,12 @@ def _point(v: Any, dims: int, c: str) -> list[float | int]:
     return [_coord(x, c) for x in _list(v, dims, dims, c)]
 
 
+def _farbe(v: Any, c: str) -> str:
+    if v not in PALETTE:
+        raise ViewError(c)
+    return v
+
+
 def _object3d(o: Any, c: str) -> dict[str, Any]:
     if not isinstance(o, dict):
         raise ViewError(c)
@@ -360,10 +367,7 @@ def _object3d(o: Any, c: str) -> dict[str, Any]:
                  "position": _point(o.get("position", [0, 0, 0]), 3, c), "drehung": _point(o.get("drehung", [0, 0, 0]), 3, c)}
     else:
         raise ViewError(c)
-    farbe = o.get("farbe", "arc")
-    if farbe not in PALETTE:
-        raise ViewError(c)
-    return {"form": form, "name": _text(o.get("name"), 40, c, optional=True), "farbe": farbe, **extra}
+    return {"form": form, "name": _text(o.get("name"), 40, c, optional=True), "farbe": _farbe(o.get("farbe", "arc"), c), **extra}
 
 
 def _szene3d(b: dict[str, Any], c: str) -> dict[str, Any]:
@@ -571,6 +575,114 @@ def _netz(b: dict[str, Any], c: str) -> dict[str, Any]:
     return {"form": form, "knoten": knoten, "kanten": kanten}
 
 
+# --- P5a: Simulation mit festen Modellen (docs/ui-p5-plan.md) ---------------------------------------------
+# Claude schickt nur den Namen eines eingebauten Modells und Zahlen, nie Formeln oder Code. Die Einheiten sind fest
+# (SI; bei umlauf AE und Sonnenmassen; bei gas Kastenbreiten je Sekunde). Fehlende Felder mit Standard werden ergänzt,
+# damit die Oberfläche immer jedes Feld bekommt.
+
+SIM_MODELLE = ("pendel", "feder", "wurf", "umlauf", "gas")
+SIM_ZAHLEN: dict[str, dict[str, tuple[float, float, float | None]]] = {      # Feld: (von, bis, Standard; None = Pflicht)
+    "pendel": {"laenge": (0.05, 100, None), "winkel": (-170, 170, None), "anfangsgeschwindigkeit": (-720, 720, 0),
+               "daempfung": (0, 5, 0), "g": (0.1, 100, 9.81)},
+    "feder": {"masse": (0.001, 1000, None), "federkonstante": (0.001, 1_000_000, None), "auslenkung": (-10, 10, None),
+              "daempfung": (0, 10_000, 0)},
+    "wurf": {"geschwindigkeit": (0.1, 1000, None), "winkel": (-90, 90, None), "hoehe": (0, 10_000, 0), "g": (0.1, 100, 9.81),
+             "luftwiderstand": (0, 1, 0)},
+    "umlauf": {"zentralmasse": (0.01, 100, None)},
+}
+SIM_KOERPER = {"abstand": (0.01, 1000, None), "exzentrizitaet": (0, 0.95, 0), "phase": (0, 360, 0)}
+MAX_SIM_KOERPER, MAX_TEILCHEN, MAX_STARTWERT = 8, 300, 2_147_483_647
+
+
+def _bounded(v: Any, lo: float, hi: float, c: str) -> float | int:
+    n = _num(v, c)
+    if not lo <= n <= hi:
+        raise ViewError(c)
+    return n
+
+
+def _zahlen(p: dict[str, Any], spec: dict[str, tuple[float, float, float | None]], c: str) -> dict[str, Any]:
+    """Die Zahlenfelder nach `spec`, in dieser Reihenfolge; ein fehlendes Pflichtfeld ist None und wird abgelehnt."""
+    return {k: _bounded(p.get(k, std), lo, hi, c) for k, (lo, hi, std) in spec.items()}
+
+
+def _sim_pendel(p: dict[str, Any], c: str) -> dict[str, Any]:
+    _item(p, set(SIM_ZAHLEN["pendel"]), c)
+    return _zahlen(p, SIM_ZAHLEN["pendel"], c)
+
+
+def _sim_feder(p: dict[str, Any], c: str) -> dict[str, Any]:
+    _item(p, set(SIM_ZAHLEN["feder"]), c)
+    out = _zahlen(p, SIM_ZAHLEN["feder"], c)
+    if not 0.05 <= 2 * math.pi * math.sqrt(out["masse"] / out["federkonstante"]) <= 1000:     # Schwingungsdauer in s
+        raise ViewError(c)
+    return out
+
+
+def _sim_wurf(p: dict[str, Any], c: str) -> dict[str, Any]:
+    _item(p, set(SIM_ZAHLEN["wurf"]), c)
+    out = _zahlen(p, SIM_ZAHLEN["wurf"], c)
+    if out["hoehe"] == 0 and out["winkel"] <= 0:                                          # vom Boden aus: sonst kein Flug
+        raise ViewError(c)
+    return out
+
+
+def _sim_umlauf(p: dict[str, Any], c: str) -> dict[str, Any]:
+    _item(p, {"zentralmasse", "koerper"}, c)
+    koerper, names = [], set()
+    for k in _list(p.get("koerper"), 1, MAX_SIM_KOERPER, c):
+        k = _item(k, {"name", "abstand", "exzentrizitaet", "phase", "farbe"}, c)
+        name = _text(k.get("name"), 30, c)
+        if name in names:
+            raise ViewError(c)
+        names.add(name)
+        koerper.append({"name": name, **_zahlen(k, SIM_KOERPER, c), "farbe": _farbe(k.get("farbe", "arc"), c)})
+    abstand = [k["abstand"] for k in koerper]
+    if max(abstand) / min(abstand) > 100:
+        raise ViewError(c)
+    return {**_zahlen(p, SIM_ZAHLEN["umlauf"], c), "koerper": koerper}
+
+
+def _sim_gas(p: dict[str, Any], c: str) -> dict[str, Any]:
+    _item(p, {"anzahl", "kasten", "radius", "geschwindigkeit", "schwerkraft", "stoesse", "startwert"}, c)
+    anzahl = _int(p.get("anzahl"), 2, MAX_TEILCHEN, c)
+    kasten = [_bounded(x, 1, 1000, c) for x in _list(p.get("kasten"), 2, 2, c)]
+    if max(kasten) / min(kasten) > 10:
+        raise ViewError(c)
+    radius = _num(p.get("radius"), c)
+    if not 0 < radius <= 0.05 * min(kasten) or anzahl * math.pi * radius ** 2 > 0.3 * kasten[0] * kasten[1]:
+        raise ViewError(c)
+    speed = _num(p.get("geschwindigkeit"), c)
+    if not 0 < speed <= 10:
+        raise ViewError(c)
+    stoesse = p.get("stoesse", True)
+    if not isinstance(stoesse, bool):
+        raise ViewError(c)
+    return {"anzahl": anzahl, "kasten": kasten, "radius": radius, "geschwindigkeit": speed,
+            "schwerkraft": _bounded(p.get("schwerkraft", 0), 0, 100, c), "stoesse": stoesse,
+            "startwert": _int(p.get("startwert", 1), 0, MAX_STARTWERT, c)}
+
+
+SIM_PARAMETER: dict[str, Callable[[dict[str, Any], str], dict[str, Any]]] = {
+    "pendel": _sim_pendel, "feder": _sim_feder, "wurf": _sim_wurf, "umlauf": _sim_umlauf, "gas": _sim_gas,
+}
+
+
+def _simulation(b: dict[str, Any], c: str) -> dict[str, Any]:
+    _fields(b, {"modell", "parameter", "laufzeit", "tempo", "spur", "beschreibung"}, c)
+    modell, p = b.get("modell"), b.get("parameter")
+    if not isinstance(modell, str) or modell not in SIM_PARAMETER or not isinstance(p, dict):
+        raise ViewError(c)
+    tempo = _num(b.get("tempo", 0), c)                                                    # 0: die Oberfläche wählt das Tempo
+    if tempo != 0 and not 0.1 <= tempo <= 100:
+        raise ViewError(c)
+    spur = b.get("spur", True)
+    if not isinstance(spur, bool):
+        raise ViewError(c)
+    return {"modell": modell, "parameter": SIM_PARAMETER[modell](p, c), "laufzeit": _bounded(b.get("laufzeit", 30), 5, 60, c),
+            "tempo": tempo, "spur": spur, "beschreibung": _text(b.get("beschreibung"), 400, c, optional=True)}
+
+
 BLOCKS: dict[str, Callable[[dict[str, Any], str], dict[str, Any]]] = {
     "text": _text_block, "liste": _liste, "formel": _formel, "schritte": _schritte, "ergebnis": _ergebnis,
     "kennzahlen": _kennzahlen, "tabelle": _tabelle, "diagramm": _diagramm, "aussagen": _aussagen,
@@ -578,7 +690,7 @@ BLOCKS: dict[str, Callable[[dict[str, Any], str], dict[str, Any]]] = {
     "fortschritt": _fortschritt, "aufgaben": _aufgaben, "zeitplan": _zeitplan, "mail": _mail,
     "mail-entwurf": _mail_entwurf, "countdown": _countdown, "dokument": _dokument, "aenderung": _aenderung,
     "szene3d": _szene3d, "plan2d": _plan2d, "vergleich": _vergleich, "zeitstrahl": _zeitstrahl, "gegenueber": _gegenueber,
-    "lernkarten": _lernkarten, "quiz": _quiz, "anleitung": _anleitung, "netz": _netz,
+    "lernkarten": _lernkarten, "quiz": _quiz, "anleitung": _anleitung, "netz": _netz, "simulation": _simulation,
 }
 
 
