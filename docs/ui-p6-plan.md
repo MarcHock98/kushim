@@ -1,6 +1,6 @@
 # Plan P6: Lernen, Anleitungen, Vergleiche, Zeitstrahl, Übersetzung, Diagramme
 
-Stand 2026-11-13. Teil von `docs/ui-dynamic-plan.md`, Fortsetzung von P3 bis P4. **Noch nicht gebaut, zur Freigabe.**
+Stand 2026-11-13. Teil von `docs/ui-dynamic-plan.md`, Fortsetzung von P3 bis P4. **Gebaut am 2026-11-22 (P6a und P6b) nach den Empfehlungen aus Abschnitt 7.**
 Ziel: Die restlichen Anwendungsfälle des Katalogs (Abschnitte A und E) zeigen, dazu Diagramme wie Abläufe und Mindmaps.
 P6 braucht **keinen** Dateizugriff von kushim und **kein neues Paket** (empfohlen).
 

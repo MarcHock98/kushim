@@ -158,3 +158,16 @@ Am Ende jedes Durchlaufs eine kurze Rückschau: Was hat gehakt? Was wurde wieder
   einen Baustein-Fehler nie das ganze Fenster leeren lassen (`BlockGuard`).
 - **Farben in der UI:** `test_ui_rules.py` verbietet Hex-Farben im Quelltext; für three.js die CSS-Variable lesen und höchstens
   `|| "#888"` als Ersatz nehmen.
+
+- **Manager mit Agenten (2026-11-22):** Pakete so schneiden, dass keine zwei Agenten dieselbe Datei ändern; jeder schreibende Agent
+  im eigenen Worktree (`isolation: worktree`) auf eigenem Branch; Feldnamen und Zählweise (ab 0) vorher fest vorgeben, wenn Backend
+  und Oberfläche parallel entstehen, und Standardwerte des Schemas dem UI-Agenten nachreichen. Vor dem Merge: `test-manager`
+  (Lücken an den ursprünglichen Agenten zurückgeben, er hat den Kontext), dann `safety-auditor`, dann Browser.
+- **Worktree und Tests:** Im Worktree zeigt `import kushim` auf den Hauptordner: immer `PYTHONPATH=src`. `node_modules` fehlt dort
+  (`cd ui && npm ci`).
+- **`npm ci` im Hauptordner nur bei gestopptem Dev-Server** (`preview_stop`): sonst bricht es mit EPERM ab und hinterlässt ein
+  halb gelöschtes `node_modules`.
+- **Ein neu angelegter Agententyp ist in derselben Sitzung nicht verlässlich aufrufbar:** dann einen allgemeinen Agenten die Datei
+  unter `.claude/agents/` lesen und in dieser Rolle arbeiten lassen.
+- **Ansehen findet, was Tests nicht finden:** Kante und Beschriftung auf einem Knoten, Wortbruch in der Tabelle bei 375 px. Ältere
+  Demo-Ansichten über „Übersicht“ → „Zeigen“ öffnen, wenn die Reiter schon weitergerückt sind.
