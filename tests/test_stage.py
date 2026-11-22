@@ -457,3 +457,264 @@ def test_zeige_tool_names_the_scene_and_plan_blocks():
     assert {"szene3d", "plan2d"} <= set(props["bausteine"]["items"]["properties"]["typ"]["enum"])
     assert "szene3d" in props["bausteine"]["description"] and "plan2d" in props["bausteine"]["description"]
     assert "3D" in ch.INSTRUCTIONS and "Grundriss" in ch.INSTRUCTIONS and "Einheit" in ch.INSTRUCTIONS
+
+
+# --- P6: Vergleich, Zeitstrahl, Gegenüberstellung, Lernen, Netz (docs/ui-p6-plan.md) -------------------
+
+VERGLEICH = dict(optionen=["Bahn", "Auto"], kriterien=[{"name": "Kosten", "werte": [49, "120 €"]}, {"name": "Zeit", "werte": ["4 h", 3.5]}],
+                 vorteile=[["entspannt"], []], nachteile=[[], ["Stau", "Parken"]], fazit="Bahn, wenn es keine Eile hat.")
+ZEITSTRAHL = dict(ereignisse=[{"zeit": "1989", "titel": "Mauerfall"}, {"zeit": "März 2020", "titel": "Lockdown", "text": "Erste Welle"},
+                              {"zeit": "1789", "titel": "Revolution"}], einheit="Jahre")
+GEGENUEBER = dict(sprachen=["Deutsch", "Arabisch"], paare=[{"original": "Guten Morgen", "uebersetzung": "صباح الخير"}])
+KARTEN = dict(karten=[{"frage": "Hauptstadt von Frankreich?", "antwort": "Paris"}])
+QUIZ = dict(fragen=[{"frage": "2 + 2?", "optionen": ["3", "4", "5"], "richtig": 1, "erklaerung": "Zwei und zwei."},
+                    {"frage": "Erde rund?", "optionen": ["ja", "nein"], "richtig": 0}])
+ANLEITUNG = dict(schritte=[{"titel": "Wasser kochen", "text": "Einen Liter aufsetzen.", "sekunden": 300}, {"titel": "Aufgießen", "text": "Über den Tee."}])
+KNOTEN = [{"id": "a", "text": "Start", "art": "start"}, {"id": "b", "text": "Prüfen", "art": "entscheidung"},
+          {"id": "c", "text": "Ja-Weg"}, {"id": "d", "text": "Ende", "art": "ende"}]
+KANTEN = [{"von": "a", "bis": "b"}, {"von": "b", "bis": "c", "text": "ja"}, {"von": "b", "bis": "d", "text": "nein"}]
+
+
+def p6(typ, art="lernen", **fields):
+    return {"id": "p6", "art": art, "titel": "T", "bausteine": [{"typ": typ, **fields}]}
+
+
+def p6_block(typ, art="lernen", **fields):
+    return schema.validate(p6(typ, art, **fields))["bausteine"][0]
+
+
+def test_p6_blocks_pass_and_get_a_fixed_shape():
+    b = p6_block("vergleich", "antwort", **VERGLEICH)
+    assert b["optionen"] == ["Bahn", "Auto"] and b["kriterien"][0]["werte"] == [49, "120 €"] and b["nachteile"][1] == ["Stau", "Parken"]
+    b = p6_block("vergleich", "recherche", optionen=["A", "B", "C"], kriterien=[{"name": "x", "werte": [1, 2, ""]}])
+    assert b["vorteile"] == [[], [], []] and b["nachteile"] == [[], [], []] and b["fazit"] == ""
+    b = p6_block("zeitstrahl", "antwort", **ZEITSTRAHL)
+    assert [e["zeit"] for e in b["ereignisse"]] == ["1989", "März 2020", "1789"]                     # Reihenfolge wie geschickt
+    assert b["ereignisse"][0]["text"] == "" and b["einheit"] == "Jahre"
+    assert p6_block("zeitstrahl", "antwort", ereignisse=[{"zeit": "1", "titel": "t"}])["einheit"] == ""
+    b = p6_block("gegenueber", "antwort", **GEGENUEBER)
+    assert b == {"typ": "gegenueber", "sprachen": ["Deutsch", "Arabisch"], "paare": GEGENUEBER["paare"]}
+    assert p6_block("lernkarten", **KARTEN) == {"typ": "lernkarten", "karten": KARTEN["karten"]}
+    b = p6_block("quiz", **QUIZ)
+    assert [f["richtig"] for f in b["fragen"]] == [1, 0] and b["fragen"][1]["erklaerung"] == ""
+    b = p6_block("anleitung", **ANLEITUNG)
+    assert b["aktuell"] == 0 and [s["sekunden"] for s in b["schritte"]] == [300, 0]
+    assert p6_block("anleitung", aktuell=1, **ANLEITUNG)["aktuell"] == 1
+    b = p6_block("netz", "netz", form="ablauf", knoten=KNOTEN, kanten=KANTEN)
+    assert b["knoten"][2] == {"id": "c", "text": "Ja-Weg", "art": ""} and b["kanten"][0] == {"von": "a", "bis": "b", "text": ""}
+    assert p6_block("netz", "netz", form="mindmap", knoten=[{"id": "mitte", "text": "Thema"}])["kanten"] == []
+    for form in ("baum", "mindmap"):
+        assert p6_block("netz", "netz", form=form, knoten=KNOTEN, kanten=KANTEN)["form"] == form
+    loop = KANTEN + [{"von": "c", "bis": "a", "text": "nochmal"}]
+    assert len(p6_block("netz", "netz", form="ablauf", knoten=KNOTEN, kanten=loop)["kanten"]) == 4        # Ablauf darf Kreise haben
+
+
+@pytest.mark.parametrize("typ,fields", [("vergleich", VERGLEICH), ("zeitstrahl", ZEITSTRAHL), ("gegenueber", GEGENUEBER),
+                                        ("lernkarten", KARTEN), ("quiz", QUIZ), ("anleitung", ANLEITUNG),
+                                        ("netz", dict(form="baum", knoten=KNOTEN, kanten=KANTEN))])
+def test_p6_checked_views_pass_the_second_check_unchanged(typ, fields):
+    once = schema.validate(p6(typ, **fields))                                    # die Bridge prüft das Ergebnis des Channels erneut
+    assert schema.validate(once) == once
+
+
+def _tree(n):
+    return dict(form="baum", knoten=[{"id": f"n{i}", "text": "x"} for i in range(n)], kanten=[{"von": "n0", "bis": f"n{i}"} for i in range(1, n)])
+
+
+Q = {"frage": "f", "optionen": ["a", "b"], "richtig": 0}
+S = {"titel": "t", "text": "x"}
+K2 = [{"id": "a", "text": "A"}, {"id": "b", "text": "B"}]
+K3 = K2 + [{"id": "c", "text": "C"}]
+
+
+@pytest.mark.parametrize("typ,fields", [
+    # vergleich
+    ("vergleich", {**VERGLEICH, "optionen": ["nur eine"], "kriterien": [{"name": "k", "werte": [1]}], "vorteile": [[]], "nachteile": [[]]}),
+    ("vergleich", {"optionen": list("abcdef"), "kriterien": [{"name": "k", "werte": [1] * 6}]}),
+    ("vergleich", {**VERGLEICH, "optionen": ["x" * 81, "b"]}),
+    ("vergleich", {**VERGLEICH, "optionen": ["", "b"]}),
+    ("vergleich", {**VERGLEICH, "optionen": "Bahn, Auto"}),
+    ("vergleich", {**VERGLEICH, "kriterien": []}),
+    ("vergleich", {**VERGLEICH, "kriterien": [{"name": "k", "werte": [1, 2]}] * 16}),
+    ("vergleich", {**VERGLEICH, "kriterien": [{"name": "x" * 81, "werte": [1, 2]}]}),
+    ("vergleich", {**VERGLEICH, "kriterien": [{"name": "k", "werte": [1]}]}),                          # werte: falsche Länge
+    ("vergleich", {**VERGLEICH, "kriterien": [{"name": "k", "werte": [1, 2, 3]}]}),
+    ("vergleich", {**VERGLEICH, "kriterien": [{"name": "k", "werte": ["x" * 201, 2]}]}),
+    ("vergleich", {**VERGLEICH, "kriterien": [{"name": "k", "werte": [float("inf"), 2]}]}),
+    ("vergleich", {**VERGLEICH, "kriterien": [{"name": "k", "werte": [True, 2]}]}),
+    ("vergleich", {**VERGLEICH, "kriterien": [{"name": "k", "werte": [None, 2]}]}),
+    ("vergleich", {**VERGLEICH, "kriterien": [{"name": "k", "werte": [1, 2], "farbe": "rot"}]}),
+    ("vergleich", {**VERGLEICH, "vorteile": [["a"]]}),                                                   # äußere Länge falsch
+    ("vergleich", {**VERGLEICH, "nachteile": [[], [], []]}),
+    ("vergleich", {**VERGLEICH, "vorteile": [["a"] * 7, []]}),
+    ("vergleich", {**VERGLEICH, "vorteile": [["x" * 201], []]}),
+    ("vergleich", {**VERGLEICH, "vorteile": [[""], []]}),
+    ("vergleich", {**VERGLEICH, "vorteile": ["a", "b"]}),
+    ("vergleich", {**VERGLEICH, "fazit": "x" * 401}),
+    ("vergleich", {**VERGLEICH, "fazit": 5}),
+    ("vergleich", {**VERGLEICH, "empfehlung": "Bahn"}),
+    # zeitstrahl
+    ("zeitstrahl", {"ereignisse": []}),
+    ("zeitstrahl", {"ereignisse": [{"zeit": "1", "titel": "t"}] * 41}),
+    ("zeitstrahl", {"ereignisse": [{"zeit": "x" * 41, "titel": "t"}]}),
+    ("zeitstrahl", {"ereignisse": [{"zeit": 1989, "titel": "t"}]}),
+    ("zeitstrahl", {"ereignisse": [{"zeit": "1", "titel": "x" * 121}]}),
+    ("zeitstrahl", {"ereignisse": [{"zeit": "1", "titel": ""}]}),
+    ("zeitstrahl", {"ereignisse": [{"zeit": "1", "titel": "t", "text": "x" * 401}]}),
+    ("zeitstrahl", {"ereignisse": [{"zeit": "1", "titel": "t", "bild": "x.png"}]}),
+    ("zeitstrahl", {**ZEITSTRAHL, "einheit": "x" * 41}),
+    ("zeitstrahl", {**ZEITSTRAHL, "sortiert": True}),
+    # gegenueber
+    ("gegenueber", {**GEGENUEBER, "sprachen": ["Deutsch"]}),
+    ("gegenueber", {**GEGENUEBER, "sprachen": ["a", "b", "c"]}),
+    ("gegenueber", {**GEGENUEBER, "sprachen": ["x" * 21, "b"]}),
+    ("gegenueber", {**GEGENUEBER, "sprachen": ["", "b"]}),
+    ("gegenueber", {**GEGENUEBER, "sprachen": "de-ar"}),
+    ("gegenueber", {**GEGENUEBER, "paare": []}),
+    ("gegenueber", {**GEGENUEBER, "paare": [{"original": "a", "uebersetzung": "b"}] * 41}),
+    ("gegenueber", {**GEGENUEBER, "paare": [{"original": "x" * 601, "uebersetzung": "b"}]}),
+    ("gegenueber", {**GEGENUEBER, "paare": [{"original": "a", "uebersetzung": "x" * 601}]}),
+    ("gegenueber", {**GEGENUEBER, "paare": [{"original": "a"}]}),
+    ("gegenueber", {**GEGENUEBER, "paare": [{"original": "a", "uebersetzung": "b", "dir": "rtl"}]}),
+    ("gegenueber", {**GEGENUEBER, "richtung": "rtl"}),
+    # lernkarten
+    ("lernkarten", {"karten": []}),
+    ("lernkarten", {"karten": [{"frage": "f", "antwort": "a"}] * 31}),
+    ("lernkarten", {"karten": [{"frage": "x" * 401, "antwort": "a"}]}),
+    ("lernkarten", {"karten": [{"frage": "f", "antwort": "x" * 401}]}),
+    ("lernkarten", {"karten": [{"frage": "f"}]}),
+    ("lernkarten", {"karten": [{"frage": "f", "antwort": 42}]}),
+    ("lernkarten", {"karten": [{"frage": "f", "antwort": "a", "gewusst": True}]}),
+    ("lernkarten", {"karten": ["f"]}),
+    ("lernkarten", {**KARTEN, "speichern": True}),
+    # quiz
+    ("quiz", {"fragen": []}),
+    ("quiz", {"fragen": [Q] * 21}),
+    ("quiz", {"fragen": [{**Q, "frage": "x" * 301}]}),
+    ("quiz", {"fragen": [{**Q, "optionen": ["a"]}]}),
+    ("quiz", {"fragen": [{**Q, "optionen": list("abcdef")}]}),
+    ("quiz", {"fragen": [{**Q, "optionen": ["x" * 201, "b"]}]}),
+    ("quiz", {"fragen": [{**Q, "richtig": 2}]}),                                                         # zeigt auf keine Option
+    ("quiz", {"fragen": [{**Q, "richtig": -1}]}),
+    ("quiz", {"fragen": [{**Q, "richtig": True}]}),                                                      # bool ist keine Zahl
+    ("quiz", {"fragen": [{**Q, "richtig": False}]}),
+    ("quiz", {"fragen": [{**Q, "richtig": 1.0}]}),
+    ("quiz", {"fragen": [{**Q, "richtig": "1"}]}),
+    ("quiz", {"fragen": [{"frage": "f", "optionen": ["a", "b"]}]}),
+    ("quiz", {"fragen": [{**Q, "erklaerung": "x" * 401}]}),
+    ("quiz", {"fragen": [{**Q, "punkte": 3}]}),
+    ("quiz", {**QUIZ, "ergebnis": 2}),
+    # anleitung
+    ("anleitung", {"schritte": []}),
+    ("anleitung", {"schritte": [S] * 31}),
+    ("anleitung", {"schritte": [{**S, "titel": "x" * 121}]}),
+    ("anleitung", {"schritte": [{**S, "text": "x" * 601}]}),
+    ("anleitung", {"schritte": [{"titel": "t"}]}),
+    ("anleitung", {"schritte": [{**S, "sekunden": 86401}]}),
+    ("anleitung", {"schritte": [{**S, "sekunden": -5}]}),
+    ("anleitung", {"schritte": [{**S, "sekunden": 1.5}]}),
+    ("anleitung", {"schritte": [{**S, "sekunden": True}]}),
+    ("anleitung", {"schritte": [{**S, "sekunden": False}]}),
+    ("anleitung", {"schritte": [{**S, "sekunden": "60"}]}),
+    ("anleitung", {"schritte": [{**S, "sekunden": float("nan")}]}),
+    ("anleitung", {"schritte": [{**S, "ton": "gong"}]}),
+    ("anleitung", {"schritte": [S, S], "aktuell": 2}),                                                   # kein dritter Schritt
+    ("anleitung", {"schritte": [S], "aktuell": -1}),
+    ("anleitung", {"schritte": [S], "aktuell": True}),
+    ("anleitung", {"schritte": [S], "aktuell": 0.0}),
+    ("anleitung", {"schritte": [S], "aktuell": None}),
+    ("anleitung", {**ANLEITUNG, "autoplay": True}),
+    # netz
+    ("netz", {"form": "kreis", "knoten": K2, "kanten": []}),
+    ("netz", {"knoten": K2, "kanten": []}),
+    ("netz", {"form": "ablauf", "knoten": []}),
+    ("netz", {"form": "ablauf", "knoten": [{"id": f"n{i}", "text": "x"} for i in range(61)]}),
+    ("netz", {"form": "ablauf", "knoten": [{"id": "A", "text": "x"}]}),
+    ("netz", {"form": "ablauf", "knoten": [{"id": "x" * 25, "text": "x"}]}),
+    ("netz", {"form": "ablauf", "knoten": [{"id": "", "text": "x"}]}),
+    ("netz", {"form": "ablauf", "knoten": [{"id": "a b", "text": "x"}]}),
+    ("netz", {"form": "ablauf", "knoten": [{"id": 1, "text": "x"}]}),
+    ("netz", {"form": "ablauf", "knoten": [{"id": "a", "text": "x"}, {"id": "a", "text": "y"}]}),       # doppelte id
+    ("netz", {"form": "ablauf", "knoten": [{"id": "a", "text": "x" * 81}]}),
+    ("netz", {"form": "ablauf", "knoten": [{"id": "a", "text": ""}]}),
+    ("netz", {"form": "ablauf", "knoten": [{"id": "a", "text": "x", "art": "raute"}]}),
+    ("netz", {"form": "ablauf", "knoten": [{"id": "a", "text": "x", "farbe": "rot"}]}),
+    ("netz", {"form": "ablauf", "knoten": K2, "kanten": [{"von": "a", "bis": "z"}]}),                    # Kante ins Leere
+    ("netz", {"form": "ablauf", "knoten": K2, "kanten": [{"von": "z", "bis": "a"}]}),
+    ("netz", {"form": "ablauf", "knoten": K2, "kanten": [{"von": ["a"], "bis": "b"}]}),
+    ("netz", {"form": "ablauf", "knoten": K2, "kanten": [{"von": "a"}]}),
+    ("netz", {"form": "ablauf", "knoten": K2, "kanten": [{"von": "a", "bis": "a"}]}),                    # Schleife auf sich selbst
+    ("netz", {"form": "ablauf", "knoten": K2, "kanten": [{"von": "a", "bis": "b", "text": "x" * 41}]}),
+    ("netz", {"form": "ablauf", "knoten": K2, "kanten": [{"von": "a", "bis": "b", "stil": "dick"}]}),
+    ("netz", {"form": "ablauf", "knoten": K2, "kanten": [{"von": "a", "bis": "b"}] * 121}),
+    ("netz", {"form": "ablauf", "knoten": K2, "kanten": [], "layout": "dagre"}),
+    ("netz", {"form": "baum", "knoten": K2, "kanten": []}),                                              # zwei Wurzeln
+    ("netz", {"form": "baum", "knoten": K3, "kanten": [{"von": "a", "bis": "b"}]}),
+    ("netz", {"form": "baum", "knoten": K2, "kanten": [{"von": "a", "bis": "b"}, {"von": "b", "bis": "a"}]}),      # Kreis, keine Wurzel
+    ("netz", {"form": "baum", "knoten": K3, "kanten": [{"von": "a", "bis": "c"}, {"von": "b", "bis": "c"}]}),      # zwei Eltern
+    ("netz", {"form": "baum", "knoten": K2, "kanten": [{"von": "a", "bis": "b"}, {"von": "a", "bis": "b"}]}),
+    ("netz", {"form": "baum", "knoten": K3 + [{"id": "d", "text": "D"}],
+              "kanten": [{"von": "a", "bis": "b"}, {"von": "c", "bis": "d"}, {"von": "d", "bis": "c"}]}),             # Kreis abseits der Wurzel
+    ("netz", {"form": "mindmap", "knoten": K2, "kanten": []}),
+    ("netz", {"form": "mindmap", "knoten": K3, "kanten": [{"von": "a", "bis": "c"}, {"von": "b", "bis": "c"}]}),
+])
+def test_p6_rejections(typ, fields):
+    with pytest.raises(schema.ViewError) as e:
+        schema.validate(p6(typ, **fields))
+    assert e.value.code == "bad_block_1"
+
+
+@pytest.mark.parametrize("typ,fields", [
+    ("vergleich", {"optionen": ["x" * 80] * 5, "kriterien": [{"name": "x" * 80, "werte": ["x" * 200] * 5}] * 15,
+                   "vorteile": [["x" * 200] * 6] * 5, "fazit": "x" * 400}),
+    ("zeitstrahl", {"ereignisse": [{"zeit": "x" * 40, "titel": "x" * 120, "text": "x" * 400}] * 40, "einheit": "x" * 40}),
+    ("gegenueber", {"sprachen": ["x" * 20] * 2, "paare": [{"original": "x" * 600, "uebersetzung": "x" * 600}] * 10}),
+    ("lernkarten", {"karten": [{"frage": "x" * 400, "antwort": "x" * 400}] * 30}),
+    ("quiz", {"fragen": [{"frage": "x" * 300, "optionen": ["x" * 200] * 5, "richtig": 4, "erklaerung": "x" * 400}] * 20}),
+    ("anleitung", {"schritte": [{"titel": "x" * 120, "text": "x" * 300, "sekunden": 86400}] * 30, "aktuell": 29}),
+    ("anleitung", {"schritte": [{"titel": "t", "text": "x", "sekunden": 1}]}),
+    ("netz", {"form": "ablauf", "knoten": [{"id": f"k{i:022d}", "text": "x" * 80} for i in range(60)],
+              "kanten": [{"von": f"k{i % 60:022d}", "bis": f"k{(i + 1) % 60:022d}", "text": "x" * 40} for i in range(120)]}),
+    ("netz", _tree(60)),
+])
+def test_p6_limits_are_inclusive(typ, fields):
+    assert schema.validate(p6(typ, **fields))["bausteine"][0]["typ"] == typ
+
+
+def test_p6_text_loses_control_and_direction_characters():
+    tricky = "Paris" + chr(0x202e) + "sirap" + chr(0x2066) + chr(0) + chr(27) + "[31m" + chr(10) + "Ende"
+    texts = [p6_block("lernkarten", karten=[{"frage": tricky, "antwort": tricky}])["karten"][0]["antwort"],
+             p6_block("gegenueber", "antwort", sprachen=[tricky[:12], "b"], paare=[{"original": tricky, "uebersetzung": "x"}])["paare"][0]["original"],
+             p6_block("quiz", fragen=[{"frage": tricky, "optionen": [tricky, "b"], "richtig": 0}])["fragen"][0]["optionen"][0],
+             p6_block("netz", "netz", form="ablauf", knoten=[{"id": "a", "text": tricky}])["knoten"][0]["text"],
+             p6_block("zeitstrahl", "antwort", ereignisse=[{"zeit": "1", "titel": tricky}])["ereignisse"][0]["titel"],
+             p6_block("vergleich", "antwort", optionen=[tricky, "b"], kriterien=[{"name": "k", "werte": [tricky, 1]}])["kriterien"][0]["werte"][0],
+             p6_block("anleitung", schritte=[{"titel": "t", "text": tricky}])["schritte"][0]["text"]]
+    for text in texts:
+        assert text.startswith("Paris") and text.endswith("Ende") and all(c.isprintable() for c in text)
+        assert chr(0x202e) not in text and chr(0x2066) not in text and chr(10) not in text and chr(27) not in text
+    with pytest.raises(schema.ViewError):                                       # nur Steuerzeichen: leer, also abgelehnt
+        schema.validate(p6("lernkarten", karten=[{"frage": chr(0x202e) + chr(0), "antwort": "a"}]))
+
+
+def test_zeige_tool_names_the_p6_kinds_and_blocks():
+    props = ch.ZEIGE_TOOL["inputSchema"]["properties"]
+    assert {"lernen", "netz"} <= set(props["art"]["enum"])
+    new = {"vergleich", "zeitstrahl", "gegenueber", "lernkarten", "quiz", "anleitung", "netz"}
+    assert new <= set(props["bausteine"]["items"]["properties"]["typ"]["enum"])
+    assert all(n in props["bausteine"]["description"] for n in new) and "Index ab 0" in props["bausteine"]["description"]
+    assert all(n in ch.INSTRUCTIONS for n in new) and "ab 0" in ch.INSTRUCTIONS
+
+
+def test_p6_views_are_listed_by_tools_list_and_travel_through_the_real_channel_into_the_bridge_store(channel):
+    c, out, root = channel
+    c.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+    zeige = {t["name"]: t for t in json.loads(out.getvalue().splitlines()[-1])["result"]["tools"]}["zeige"]
+    assert {"quiz", "netz", "vergleich"} <= set(zeige["inputSchema"]["properties"]["bausteine"]["items"]["properties"]["typ"]["enum"])
+    b = br.Bridge(root)
+    assert call(c, out, p6("quiz", **QUIZ))["content"][0]["text"] == "Wird gezeigt."
+    assert call(c, out, {**p6("netz", art="netz", form="baum", knoten=KNOTEN, kanten=KANTEN), "id": "n"})["content"][0]["text"] == "Wird gezeigt."
+    c.say("Hier dein Quiz.")
+    assert b.fetch() == ("ok", ["Hier dein Quiz."])
+    got = {i["id"]: i for i in b.stage.since(0)[0]}
+    assert got["p6"]["bausteine"][0]["fragen"][0]["richtig"] == 1 and got["n"]["art"] == "netz"

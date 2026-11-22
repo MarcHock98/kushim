@@ -14,7 +14,7 @@ from typing import Any, Callable
 
 MAX_JSON = 48 * 1024
 ID = re.compile(r"[a-z0-9-]{1,40}")
-ARTEN = ("antwort", "rechnung", "markt", "recherche", "auftrag", "mail", "dokument", "modell", "plan")
+ARTEN = ("antwort", "rechnung", "markt", "recherche", "auftrag", "mail", "dokument", "modell", "plan", "lernen", "netz")
 MAX_BLOCKS = 12
 RICHTUNG = ("auf", "ab", "gleich")
 
@@ -434,13 +434,144 @@ def _plan2d(b: dict[str, Any], c: str) -> dict[str, Any]:
     return {"einheit": _text(b.get("einheit"), 8, c, optional=True), "ebenen": layers, "elemente": elems}
 
 
+# --- P6: Vergleich, Zeitstrahl, Gegenüberstellung, Lernen, Netz (docs/ui-p6-plan.md) ---------------------
+
+NETZ_FORM = ("ablauf", "baum", "mindmap")
+KNOTEN_ART = ("start", "ende", "entscheidung", "schritt")
+NODE_ID = re.compile(r"[a-z0-9_-]{1,24}")
+
+
+def _int(v: Any, lo: int, hi: int, code: str) -> int:
+    """Eine ganze Zahl (kein bool, keine Kommazahl) zwischen lo und hi."""
+    if isinstance(v, bool) or not isinstance(v, int) or not lo <= v <= hi:
+        raise ViewError(code)
+    return v
+
+
+def _item(v: Any, allowed: set[str], c: str) -> dict[str, Any]:
+    if not isinstance(v, dict) or set(v) - allowed:
+        raise ViewError(c)
+    return v
+
+
+def _vergleich(b: dict[str, Any], c: str) -> dict[str, Any]:
+    _fields(b, {"optionen", "kriterien", "vorteile", "nachteile", "fazit"}, c)
+    optionen = [_text(o, 80, c) for o in _list(b.get("optionen"), 2, 5, c)]
+    n = len(optionen)
+    kriterien = []
+    for k in _list(b.get("kriterien"), 1, 15, c):
+        k = _item(k, {"name", "werte"}, c)
+        kriterien.append({"name": _text(k.get("name"), 80, c), "werte": [_cell(w, c) for w in _list(k.get("werte"), n, n, c)]})
+
+    def per_option(key: str) -> list[list[str]]:              # je Option eine Liste, parallel zu `optionen`
+        raw = b.get(key)
+        if raw is None:
+            return [[] for _ in optionen]
+        return [[_text(p, 200, c) for p in _list(lst, 0, 6, c)] for lst in _list(raw, n, n, c)]
+
+    return {"optionen": optionen, "kriterien": kriterien, "vorteile": per_option("vorteile"),
+            "nachteile": per_option("nachteile"), "fazit": _text(b.get("fazit"), 400, c, optional=True)}
+
+
+def _zeitstrahl(b: dict[str, Any], c: str) -> dict[str, Any]:
+    _fields(b, {"ereignisse", "einheit"}, c)
+    out = []
+    for e in _list(b.get("ereignisse"), 1, 40, c):            # Reihenfolge bleibt, wie Claude sie schickt
+        e = _item(e, {"zeit", "titel", "text"}, c)
+        out.append({"zeit": _text(e.get("zeit"), 40, c), "titel": _text(e.get("titel"), 120, c),
+                    "text": _text(e.get("text"), 400, c, optional=True)})
+    return {"ereignisse": out, "einheit": _text(b.get("einheit"), 40, c, optional=True)}
+
+
+def _gegenueber(b: dict[str, Any], c: str) -> dict[str, Any]:
+    _fields(b, {"sprachen", "paare"}, c)
+    sprachen = [_text(s, 20, c) for s in _list(b.get("sprachen"), 2, 2, c)]
+    paare = []
+    for p in _list(b.get("paare"), 1, 40, c):
+        p = _item(p, {"original", "uebersetzung"}, c)
+        paare.append({"original": _text(p.get("original"), 600, c), "uebersetzung": _text(p.get("uebersetzung"), 600, c)})
+    return {"sprachen": sprachen, "paare": paare}
+
+
+def _lernkarten(b: dict[str, Any], c: str) -> dict[str, Any]:
+    _fields(b, {"karten"}, c)
+    out = []
+    for k in _list(b.get("karten"), 1, 30, c):
+        k = _item(k, {"frage", "antwort"}, c)
+        out.append({"frage": _text(k.get("frage"), 400, c), "antwort": _text(k.get("antwort"), 400, c)})
+    return {"karten": out}
+
+
+def _quiz(b: dict[str, Any], c: str) -> dict[str, Any]:
+    _fields(b, {"fragen"}, c)
+    out = []
+    for f in _list(b.get("fragen"), 1, 20, c):
+        f = _item(f, {"frage", "optionen", "richtig", "erklaerung"}, c)
+        optionen = [_text(o, 200, c) for o in _list(f.get("optionen"), 2, 5, c)]
+        out.append({"frage": _text(f.get("frage"), 300, c), "optionen": optionen,
+                    "richtig": _int(f.get("richtig"), 0, len(optionen) - 1, c),      # Index ab 0
+                    "erklaerung": _text(f.get("erklaerung"), 400, c, optional=True)})
+    return {"fragen": out}
+
+
+def _anleitung(b: dict[str, Any], c: str) -> dict[str, Any]:
+    _fields(b, {"schritte", "aktuell"}, c)
+    out = []
+    for s in _list(b.get("schritte"), 1, 30, c):
+        s = _item(s, {"titel", "text", "sekunden"}, c)
+        sek = s.get("sekunden", 0)                            # 0: kein Timer (nur Anzeige, ohne Ton)
+        out.append({"titel": _text(s.get("titel"), 120, c), "text": _text(s.get("text"), 600, c),
+                    "sekunden": 0 if sek == 0 and not isinstance(sek, bool) else _int(sek, 1, 86400, c)})
+    return {"schritte": out, "aktuell": _int(b.get("aktuell", 0), 0, len(out) - 1, c)}    # Index ab 0
+
+
+def _netz(b: dict[str, Any], c: str) -> dict[str, Any]:
+    _fields(b, {"form", "knoten", "kanten"}, c)
+    form = b.get("form")
+    if form not in NETZ_FORM:
+        raise ViewError(c)
+    knoten, ids = [], set()
+    for k in _list(b.get("knoten"), 1, 60, c):
+        k = _item(k, {"id", "text", "art"}, c)
+        kid, art = k.get("id"), k.get("art", "")
+        if not isinstance(kid, str) or not NODE_ID.fullmatch(kid) or kid in ids or art not in ("", *KNOTEN_ART):
+            raise ViewError(c)
+        ids.add(kid)
+        knoten.append({"id": kid, "text": _text(k.get("text"), 80, c), "art": art})
+    kanten = []
+    for e in _list(b.get("kanten", []), 0, 120, c):
+        e = _item(e, {"von", "bis", "text"}, c)
+        von, bis = e.get("von"), e.get("bis")
+        if not isinstance(von, str) or not isinstance(bis, str) or von not in ids or bis not in ids or von == bis:   # keine Kante ins Leere, keine Schleife auf sich selbst
+            raise ViewError(c)
+        kanten.append({"von": von, "bis": bis, "text": _text(e.get("text"), 40, c, optional=True)})
+    if form in ("baum", "mindmap"):                           # genau eine Wurzel (bei der Mindmap die Mitte), sonst je eine Kante hinein
+        incoming = {i: 0 for i in ids}
+        children: dict[str, list[str]] = {i: [] for i in ids}
+        for e in kanten:
+            incoming[e["bis"]] += 1
+            children[e["von"]].append(e["bis"])
+        roots = [i for i, n in incoming.items() if n == 0]
+        if len(roots) != 1 or any(n > 1 for n in incoming.values()):
+            raise ViewError(c)
+        seen, todo = set(), [roots[0]]                       # alle von der Wurzel erreichbar: dann gibt es keinen Kreis
+        while todo:
+            node = todo.pop()
+            seen.add(node)
+            todo.extend(children[node])
+        if seen != ids:
+            raise ViewError(c)
+    return {"form": form, "knoten": knoten, "kanten": kanten}
+
+
 BLOCKS: dict[str, Callable[[dict[str, Any], str], dict[str, Any]]] = {
     "text": _text_block, "liste": _liste, "formel": _formel, "schritte": _schritte, "ergebnis": _ergebnis,
     "kennzahlen": _kennzahlen, "tabelle": _tabelle, "diagramm": _diagramm, "aussagen": _aussagen,
     "widerspruch": _aussagen, "quellen": _quellen, "hinweis": _hinweis, "systemzustand": _systemzustand,
     "fortschritt": _fortschritt, "aufgaben": _aufgaben, "zeitplan": _zeitplan, "mail": _mail,
     "mail-entwurf": _mail_entwurf, "countdown": _countdown, "dokument": _dokument, "aenderung": _aenderung,
-    "szene3d": _szene3d, "plan2d": _plan2d,
+    "szene3d": _szene3d, "plan2d": _plan2d, "vergleich": _vergleich, "zeitstrahl": _zeitstrahl, "gegenueber": _gegenueber,
+    "lernkarten": _lernkarten, "quiz": _quiz, "anleitung": _anleitung, "netz": _netz,
 }
 
 

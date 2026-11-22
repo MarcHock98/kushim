@@ -69,7 +69,10 @@ INSTRUCTIONS = (
     "sag per `sprich` eine kurze Übersicht und zeige Gliederung und Ausschnitt als `dokument` (art dokument), eigene Änderungen als "
     "`aenderung`. Zeige nie Dateien mit Zugangsdaten (.env, Schlüssel, Tokens, Passwörter). "
     "Für Modelle zeige eine 3D-Szene aus einfachen Körpern (`szene3d`, art modell, zwei Szenen für vorher und nachher), für Pläne und "
-    "Grundrisse einen `plan2d` (art plan). Gib die Einheit an, wenn du sie kennst (`einheit`), sonst nenne keine Maße als gewiss."
+    "Grundrisse einen `plan2d` (art plan). Gib die Einheit an, wenn du sie kennst (`einheit`), sonst nenne keine Maße als gewiss. "
+    "Zum Abwägen, für Abläufe in der Zeit und für Übersetzungen nimm `vergleich`, `zeitstrahl` und `gegenueber` (art antwort oder "
+    "recherche), zum Lernen `lernkarten`, `quiz` und `anleitung` (art lernen; `richtig` und `aktuell` zählen ab 0, ein Klick im "
+    "Fenster erreicht dich nicht), für Ablaufdiagramme, Bäume und Mindmaps `netz` (art netz)."
 )
 MAX_VIEWS = 10                   # nicht abgeholte Ansichten (zeige); ältere fallen weg
 CANCEL_TEXT = "Abbruch per Stimme: den laufenden Auftrag nicht fortsetzen und nichts Neues beginnen."
@@ -92,7 +95,9 @@ ZEIGE_TOOL = {
                     "(text, aussagen mit Quellennummern, widerspruch, quellen), auftrag (fortschritt, aufgaben, zeitplan, countdown), mail "
                     "(mail, mail-entwurf; reine Anzeige, gesendet wird damit nichts), dokument (dokument: Dateitext mit Zeilennummern und Gliederung, "
                     "aenderung: Diff; kushim liest selbst keine Dateien, du schickst nur Text, höchstens 400 Zeilen), modell (szene3d: einfache Körper, drehbar, "
-                    "auch vorher/nachher), plan (plan2d: Linien, Kreise, Maße, Ebenen). Nur Text, kein HTML/Markdown; Formeln als "
+                    "auch vorher/nachher), plan (plan2d: Linien, Kreise, Maße, Ebenen), lernen (lernkarten, quiz, anleitung; "
+                    "Knöpfe ändern nur die Anzeige), netz (netz: ablauf, baum, mindmap); vergleich, zeitstrahl und gegenueber passen "
+                    "zu antwort und recherche. Nur Text, kein HTML/Markdown; Formeln als "
                     "KaTeX-TeX in `tex`; Adressen nur als Text. Dieselbe id aktualisiert die Ansicht, schliessen=true räumt ab. "
                     "Baustein {\"typ\":\"systemzustand\"} zeigt kushims eigene Systemwerte (CPU, RAM, GPU ...)."),
     "inputSchema": {"type": "object", "required": ["id"], "additionalProperties": False, "properties": {
@@ -115,7 +120,13 @@ ZEIGE_TOOL = {
             "masse:[Zahlen],position?:[x,y,z],drehung?:[x,y,z in Grad],farbe?:arc|amber|ok|warn|alarm|text|gedaempft} oder "
             "{form:linie,punkte:[[x,y,z]]}]}],hervorheben?:[name],beschriftungen?:[{objekt,text}]} (art modell), "
             "plan2d{einheit?,ebenen?:[name],elemente:[{art:linie|mass{von,bis,text?}|polylinie{punkte,geschlossen}|rechteck{x,y,b,h}|"
-            "kreis{x,y,r}|bogen{x,y,r,von,bis}|text{x,y,text,groesse?},ebene?}]} (art plan; höchstens 800 Elemente)"),
+            "kreis{x,y,r}|bogen{x,y,r,von,bis}|text{x,y,text,groesse?},ebene?}]} (art plan; höchstens 800 Elemente), "
+            "vergleich{optionen:[str] (2 bis 5),kriterien:[{name,werte:[str|zahl] je Option}],vorteile?:[[str]] und nachteile?:[[str]] "
+            "je Option,fazit?}, zeitstrahl{ereignisse:[{zeit (Text),titel,text?}],einheit?}, gegenueber{sprachen:[von,nach],"
+            "paare:[{original,uebersetzung}]}, lernkarten{karten:[{frage,antwort}]}, quiz{fragen:[{frage,optionen:[str] (2 bis 5),"
+            "richtig:Index ab 0,erklaerung?}]}, anleitung{schritte:[{titel,text,sekunden?}],aktuell?:Index ab 0} (art lernen; "
+            "Timer nur Anzeige ohne Ton), netz{form:ablauf|baum|mindmap,knoten:[{id:[a-z0-9_-],text,art?:start|ende|entscheidung|"
+            "schritt}],kanten:[{von,bis,text?}]} (art netz; baum und mindmap: genau eine Wurzel, je Knoten eine Kante hinein)"),
             "items": {"type": "object", "required": ["typ"], "properties": {"typ": {"type": "string", "enum": list(stage_schema.BLOCKS)}}}},
     }},
 }
