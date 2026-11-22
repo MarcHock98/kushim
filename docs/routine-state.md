@@ -166,12 +166,26 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
   durch Claude Code, `prefers-reduced-motion` aus der Windows-Einstellung. Wirkt erst nach neuem `kushim start`.
   Nächster Schritt: P5b (Moleküle, Atome, Orbitale, Regler) nach Freigabe; sonst E2/E3 prüfen.
 
+- 2026-11-23 Loop (Manager mit Opus-Agenten): Nutzer gab P5b „wie empfohlen“ frei. **P5b gebaut** (Branches `routine/p5b-schema`
+  (schon vorher gemerged), `routine/p5b-chem`, `routine/p5b-physics`, `routine/p5b-teilchen`, `routine/p5b-simview`, zusammengeführt
+  in `routine/p5b-ui`, gemerged, nicht gepusht): Baustein `teilchen` (Molekül in 3D, Schalenmodell, Orbital-Wolke), `chem.ts`
+  (118 Elemente, Summenformel, Bindungen aus Abständen, |ψ|²-Wolke mit Startwert), Doppelpendel, Welle, Umlauf mit Anziehung,
+  Regler und Tempo. Je Ansicht höchstens 2 Simulationen und 2 räumliche Bausteine (szene3d zählt mit; 3 szene3d waren vorher gültig).
+  2543 Python- und 539 UI-Tests grün, Typcheck und Build sauber, neuer Paritätstest Elementliste UI/Schema.
+  Testmanager mit eigenen Proben fand bei grünen Tests: falsche Schalenregel im Vertrag (Übergangsmetall-Ionen; jetzt Pflicht ab
+  Z 21), verlorene Markierung „ungültig“ in `chem.ts`, Energieverlust beim extremen Doppelpendel, numerischen Auswurf bei nahen
+  Begegnungen, Regler-Pfeiltaste in falscher Richtung; alles behoben. Safety-Auditor (Opus): Schema zweimal, Oberfläche freigegeben;
+  dessen Hinweis N1 (teilweise kaputtes Molekül wurde als anderes Molekül gezeigt) selbst behoben.
+  **Nicht im Browser angesehen:** der Browser-Bereich war ausgeblendet, die Demo lief dort gedrosselt. Offen (niedrig): Standbild des
+  Doppelpendels kostet bis 31 ms je Regler-Neustart bei „weniger Bewegung“. Nicht geprüft: echtes WebGL, Tauri-Fenster, GPU-Last,
+  Vorleser, echter Aufruf durch Claude Code. Wirkt erst nach neuem `kushim start`.
+  Nächster Schritt: P5b im Browser ansehen (Skill `kushim-ui-check`), dann Roadmap E2/E3 prüfen.
+
 ## Slack
 - Nutzer-ID / Kanal-ID: nicht verwendet. Verbundenes Slack-Konto hat andere Mail (Arbeits-Workspace) als die Git-/Claude-Mail, Empfänger unsicher, daher nichts gesendet
 
 ## Offene Fragen an den Nutzer
-- 2026-11-22 **P5b der Oberfläche** (`docs/ui-p5-plan.md`, Abschnitt 7): Moleküle, Atome, Orbitale, Regler. P5a ist gebaut;
-  P5b braucht ein eigenes OK. Dazu eine kleine Frage: höchstens 1 bis 2 Simulationen je Ansicht begrenzen (Empfehlung, Auditor)?
+- 2026-11-23: keine offene Entscheidung zu P5. Zu prüfen: P5b im Browser (Bereich war ausgeblendet).
 - 2026-11-22 P6, nach Empfehlung entschieden, jederzeit änderbar: doppelte Antwortoptionen im Quiz erlaubt; eine Aktualisierung
   derselben Ansicht setzt Quiz-, Karten- und Timerstand zurück; ein gestarteter Timer läuft beim Schrittwechsel in Echtzeit weiter.
 - Keine offenen Fragen. (C7 am 2026-11-11 beantwortet, siehe Entscheidungen.)
