@@ -83,8 +83,8 @@ export function Timeline({ b }: { b: Of<"zeitstrahl"> }) {
 /** Original und Übersetzung nebeneinander (am Handy untereinander). `dir="auto"` an jedem Text: Die Schriftrichtung
  *  bestimmt der Browser aus dem Text selbst, nicht Claude. */
 export function Pairs({ b }: { b: Of<"gegenueber"> }) {
+  if (!Array.isArray(b.sprachen) || b.sprachen.length !== 2 || !b.sprachen.every((s) => typeof s === "string")) throw new Error("sprachen");
   const [von, nach] = b.sprachen;
-  if (typeof von !== "string" || typeof nach !== "string") throw new Error("sprachen");
   return (
     <section className="v-pairs" aria-label={`Übersetzung ${von} und ${nach}`}>
       <div className="g-head" aria-hidden="true">

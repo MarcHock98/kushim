@@ -198,16 +198,24 @@ export function Guide({ b }: { b: Of<"anleitung"> }) {
   const [idx, setIdx] = useState(() => clamp(b.aktuell));
   const [seen, setSeen] = useState(b.aktuell);
   if (b.aktuell !== seen) { setSeen(b.aktuell); setIdx(clamp(b.aktuell)); }   // Claude hat `aktuell` geändert: die Ansicht folgt
-  const [timer, setTimer] = useState<{ step: number; ends: number } | null>(null);
-  const [now, setNow] = useState(() => Date.now());
+  // Restzeit in ms; jeder Takt zieht die echte vergangene Zeit ab (auch die Zeit auf anderen Schritten), aber nie eine
+  // negative: Springt die Uhr zurück, wächst die Restzeit nicht und der Timer bleibt nicht hängen.
+  const [timer, setTimer] = useState<{ step: number; run: number; left: number; last: number } | null>(null);
   const active = timer && timer.step === idx ? timer : null;          // ein Timer gehört zu seinem Schritt
-  const over = !!active && active.ends <= now;
+  const over = !!active && active.left <= 0;
+  const run = active ? active.run : 0;
 
   useEffect(() => {
-    if (!active || over) return;
-    const id = setInterval(() => setNow(Date.now()), 1000);
+    if (!run || over) return;
+    const tick = () => setTimer((t) => {
+      if (!t) return t;
+      const now = Date.now();
+      return { ...t, left: t.left - Math.max(0, now - t.last), last: now };
+    });
+    tick();                                                        // zurück auf dem Schritt: sofort die echte Restzeit
+    const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, [active?.ends, active?.step, over]);                          // läuft nur, solange ein Timer zählt
+  }, [run, over]);                                                 // läuft nur, solange ein Timer dieses Schritts zählt
 
   if (n === 0) return <p className="v-note">Keine Schritte.</p>;
 
@@ -219,9 +227,9 @@ export function Guide({ b }: { b: Of<"anleitung"> }) {
   };
   const s = b.schritte[idx];
   const sec = seconds(s.sekunden);
-  const start = () => { const t = Date.now(); setNow(t); setTimer({ step: idx, ends: t + sec * 1000 }); };
+  const start = () => { const t = Date.now(); setTimer((old) => ({ step: idx, run: (old?.run ?? 0) + 1, left: sec * 1000, last: t })); };
   const state = !active ? "Timer nicht gestartet" : over ? "Timer abgelaufen" : "Timer läuft";
-  const shownTime = !active ? clock(sec) : over ? "abgelaufen" : clock((active.ends - now) / 1000);
+  const shownTime = !active ? clock(sec) : over ? "abgelaufen" : clock(Math.min(sec, active.left / 1000));
 
   return (
     <section className="v-guide" aria-label="Anleitung" onKeyDown={key}>
