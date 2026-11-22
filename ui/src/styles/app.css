@@ -300,7 +300,8 @@ h2, h3 { font-family: var(--font-display); font-weight: 600; letter-spacing: .04
 .v-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .v-compare, .v-timeline, .v-pairs { display: grid; gap: var(--s-4); min-width: 0; }
 .c-table tbody th { font-family: var(--font-ui); font-size: var(--fs-sm); font-weight: 600; letter-spacing: normal; text-transform: none; color: var(--text); background: transparent; }
-.c-table td, .c-table th { overflow-wrap: anywhere; vertical-align: top; }
+.c-table td, .c-table th { overflow-wrap: break-word; vertical-align: top; min-width: 5rem; }
+.c-table thead th, .c-table td.num { white-space: nowrap; }
 .c-unknown { color: var(--text-muted); font-style: italic; }
 .c-options { display: grid; gap: var(--s-3); grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); }
 .c-option { display: grid; gap: var(--s-3); align-content: start; padding: var(--s-3) var(--s-4); background: var(--bg-3); border-radius: var(--r-md); min-width: 0; }
