@@ -222,3 +222,108 @@ describe("layoutNet robustness", () => {
     expect(long.lines.every((s) => s.length <= 24)).toBe(true);
   });
 });
+
+const FORMS: NetForm[] = ["ablauf", "baum", "mindmap"];
+const TEXT80 = "abcdefg ".repeat(10);
+const star = (n: number, text: (i: number) => string, art?: (i: number) => NetNode["art"]) => ({
+  knoten: Array.from({ length: n }, (_, i) => node(`s${i}`, text(i), art?.(i))),
+  kanten: Array.from({ length: n - 1 }, (_, i) => edge("s0", `s${i + 1}`)),
+});
+const chain = (n: number) => ({
+  knoten: Array.from({ length: n }, (_, i) => node(`c${i}`, `Glied ${i}`)),
+  kanten: Array.from({ length: n - 1 }, (_, i) => edge(`c${i}`, `c${i + 1}`)),
+});
+
+describe("layoutNet extreme shapes", () => {
+  it("lays out a star with 59 children in every form", () => {
+    for (const form of FORMS) {
+      const { knoten, kanten } = star(60, (i) => `Ast ${i}`);
+      const l = layoutNet(form, knoten, kanten);
+      checkLayout(l);
+      expect(l.boxes).toHaveLength(60);
+      expect(l.edges).toHaveLength(59);
+    }
+  });
+
+  it("lays out a chain of depth 60 in every form", () => {
+    for (const form of FORMS) {
+      const { knoten, kanten } = chain(60);
+      const l = layoutNet(form, knoten, kanten);
+      checkLayout(l);
+      expect(l.boxes).toHaveLength(60);
+    }
+  });
+
+  it("lays out 80-character texts in every node (star, tree, flow)", () => {
+    for (const form of FORMS) {
+      checkLayout(layoutNet(form, star(60, () => TEXT80).knoten, star(60, () => TEXT80).kanten));
+      const t = bigTree(60, 5), d = bigDag(60, 120, 5);
+      checkLayout(layoutNet(form, t.knoten.map((k) => ({ ...k, text: TEXT80 })), t.kanten));
+      checkLayout(layoutNet(form, d.knoten.map((k) => ({ ...k, text: TEXT80 })), d.kanten));
+    }
+  });
+
+  it("lays out texts that fill all 8 lines", () => {
+    const long = "Wort ".repeat(80);
+    for (const form of FORMS) {
+      const { knoten, kanten } = bigTree(60, 9);
+      const l = layoutNet(form, knoten.map((k) => ({ ...k, text: long })), kanten);
+      checkLayout(l);
+      expect(l.boxes.every((b) => b.lines.length === 8 && b.lines[7].endsWith("…"))).toBe(true);
+    }
+  });
+
+  it("keeps enlarged entscheidung boxes apart in baum and mindmap", () => {
+    for (const form of ["baum", "mindmap"] as NetForm[]) {
+      const s = star(60, (i) => (i % 2 ? TEXT80 : `E ${i}`), (i) => (i % 2 ? "schritt" : "entscheidung"));
+      checkLayout(layoutNet(form, s.knoten, s.kanten));
+      const t = bigTree(60, 13);
+      const l = layoutNet(form, t.knoten.map((k, i) => ({ ...k, art: i % 3 === 0 ? "entscheidung" as const : undefined })), t.kanten);
+      checkLayout(l);
+      const dec = l.boxes.find((b) => b.art === "entscheidung" && b.lines.length === 1)!;
+      expect(dec.h).toBeCloseTo((18 + 16) * 1.3, 6);
+    }
+  });
+
+  // Gemessene Größe des breitesten Falls (60er-Stern, 80 Zeichen je Knoten), damit die Komponente weiß, dass sie auf die
+  // Breite einpassen muss. Gemessen mit Standardmaßen: ablauf 12842 x 256, baum 12842 x 256, mindmap 4674 x 4570 Pixel.
+  it("records the size of the widest case: a 60-star with 80-character texts (about 12842 x 256, mindmap 4674 x 4570) needs fit-to-width", () => {
+    const s = star(60, () => TEXT80);
+    for (const form of FORMS) {
+      const l = layoutNet(form, s.knoten, s.kanten);
+      expect(l.width).toBeGreaterThan(2000);
+      expect(Math.max(l.width, l.height)).toBeLessThan(20000);
+    }
+  });
+});
+
+describe("layoutNet hostile input", () => {
+  it("caps 5000 nodes and 20000 edges to 200 and 400 and returns fast", () => {
+    const knoten = Array.from({ length: 5000 }, (_, i) => node(`h${i}`, `Knoten ${i}`));
+    const kanten = Array.from({ length: 20000 }, (_, i) => edge(`h${i % 5000}`, `h${(i * 7 + 1) % 5000}`));
+    for (const form of FORMS) {
+      const t = performance.now();
+      const l = layoutNet(form, knoten, kanten);
+      expect(performance.now() - t).toBeLessThan(1000);
+      expect(l.boxes).toHaveLength(200);
+      expect(l.edges.length).toBeLessThanOrEqual(400);
+      checkLayout(l);
+    }
+  });
+
+  it("accepts non-string texts, prototype-like ids and broken opts", () => {
+    const knoten = [
+      { id: "__proto__", text: 42 }, { id: "constructor", text: null }, { id: "toString", text: { a: 1 } }, { id: "x" },
+    ] as unknown as NetNode[];
+    const kanten = [edge("__proto__", "constructor"), edge("constructor", "toString"), edge("__proto__", "x"), { von: "x", bis: "__proto__", text: 5 }] as unknown as NetEdge[];
+    const bad = [{ charW: NaN, lineH: -5, maxChars: -1, maxLines: NaN }, { charW: -1, lineH: Infinity, maxChars: NaN, maxLines: -3 }];
+    for (const form of FORMS) for (const opts of bad) {
+      let l: NetLayout | undefined;
+      expect(() => { l = layoutNet(form, knoten, kanten, opts); }).not.toThrow();
+      checkLayout(l!);
+      expect(l!.boxes.map((b) => b.id)).toEqual(["__proto__", "constructor", "toString", "x"]);
+      expect(l!.boxes[0].lines).toEqual(["42"]);
+      expect(l!.boxes.every((b) => b.w > 0 && b.h > 0)).toBe(true);
+    }
+  });
+});
