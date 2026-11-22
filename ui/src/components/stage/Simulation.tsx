@@ -1,30 +1,48 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import {
-  addToTrail, createSim, createTrail, FARBEN, formatWert, normalizeSim, standbild,
-  type Ausschnitt, type Farbe, type Kennwert, type Pt, type SimModell, type SimSnapshot, type SimState, type Standbild, type Trail, type Verteilung,
+  addToTrail, createSim, createTrail, FARBEN, formatWert, formatZahl, GRENZEN, mitWert, normalizeSim, standbild,
+  type Ausschnitt, type Farbe, type GrenzFeld, type Kennwert, type Pt, type SimModellAlle, type SimSnapshot, type SimState, type Standbild,
+  type Trail, type Verteilung,
 } from "../../lib/physics";
 import { PALETTE_VAR } from "../../lib/scene";
-import { createSimLoop, type FrameScheduler, type LoopState, type LoopStatus, type SimLoop } from "../../lib/simLoop";
+import { createSimLoop, TEMPO_FAKTOREN, type FrameScheduler, type LoopState, type LoopStatus, type SimLoop, type TempoFaktor } from "../../lib/simLoop";
 import type { SimBlock } from "../../lib/stage";
 import { useBoxSize } from "../../lib/useBoxSize";
 
-// Baustein `simulation` (Plan docs/ui-p5-plan.md, Abschnitte 3 bis 6, P5a). Gerechnet wird in lib/physics.ts, getaktet in
+// Baustein `simulation` (Plan docs/ui-p5-plan.md, Abschnitte 3 bis 7). Gerechnet wird in lib/physics.ts, getaktet in
 // lib/simLoop.ts (höchstens 30 Bilder je Sekunde, Stopp nach der Laufzeit, verdeckt oder außer Sicht kein Schritt). Hier wird nur
-// gezeichnet (Canvas 2D, gleicher Maßstab auf beiden Achsen, y nach oben) und bedient. Texte aus den Daten (Namen, Beschreibung)
-// stehen nur im DOM, nie im Bild. Der Satz „Simulation, keine Messung“ und die Hinweise kommen von der Oberfläche, nicht von Claude.
-// Pause, Weiter und Neu starten ändern nur die Anzeige im Fenster: nichts wird gesendet, gespeichert oder abgespielt.
+// gezeichnet (Canvas 2D, gleicher Maßstab auf beiden Achsen, y nach oben; nur die Welle hat zwei Maßstäbe und sagt das) und bedient.
+// Texte aus den Daten (Namen, Beschreibung) stehen nur im DOM, nie im Bild. Der Satz „Simulation, keine Messung“ und die Hinweise
+// kommen von der Oberfläche, nicht von Claude.
+// Pause, Weiter, Neu starten, Tempo und Regler ändern nur die Anzeige im Fenster: nichts wird gesendet, gespeichert oder abgespielt.
+// Ein Regler baut mit `mitWert` eine neue Eingabe (innerhalb der Schema-Grenzen) und startet die Simulation damit neu, beim Ziehen
+// und Tippen höchstens alle 200 ms und danach einmal mit dem letzten Wert. „Zurück auf die Werte von Claude“ nimmt wieder die
+// gelieferten Daten.
 // Bei „weniger Bewegung“ gibt es keine Schleife, sondern ein Standbild mit Textfassung und den Knopf „Trotzdem abspielen“.
 
 const FIG_MS = 500;              // Kennwerte höchstens zweimal je Sekunde neu (nicht jedes Bild, weniger React-Arbeit)
 const DIST_MS = 1000;            // Verteilung beim Gas einmal je Sekunde neu
+const REGLER_MS = 200;           // Regler: höchstens ein Neustart je 200 ms beim Ziehen und Tippen
+const LOG_N = 1000;              // Stufen eines logarithmischen Reglers
 const DPR_MAX = 1.5;
-const DEFAULT_W = 640, H_MIN = 180, H_MAX = 420, CURVE_H = 120, DIST_H = 72, PAD = 10;
+const DEFAULT_W = 640, H_MIN = 180, H_MAX = 420, CURVE_H = 120, DIST_H = 72, PAD = 10, WELLE_RATIO = 0.4;
 const REDUCE = "(prefers-reduced-motion: reduce)";
-const MODELL_LABEL: Record<SimModell, string> = { pendel: "Pendel", feder: "Federpendel", wurf: "Wurf", umlauf: "Umlaufbahnen", gas: "Gas im Kasten" };
+const MODELL_LABEL: Record<SimModellAlle, string> = {
+  pendel: "Pendel", feder: "Federpendel", wurf: "Wurf", umlauf: "Umlaufbahnen", gas: "Gas im Kasten", doppelpendel: "Doppelpendel", welle: "Welle",
+};
 const FARBE_WORT: Record<Farbe, string> = {
   arc: "Cyan", amber: "Bernstein", ok: "Grün", warn: "Warnfarbe (Bernstein)", alarm: "Rot", text: "Weiß", gedaempft: "Grau",
 };
+const TEMPO_WORT: Record<TempoFaktor, string> = { 0.5: "halb", 1: "normal", 2: "doppelt" };
+const TEIL_FARBE: readonly Farbe[] = ["amber", "ok", "text"];       // einzelne Wellen (dünn); die Summe ist Cyan und dick
 const STILL_WORT = "Standbild, weniger Bewegung ist eingestellt";
+const SATZ_ANZIEHUNG = "Die Körper ziehen sich gegenseitig an.";
+const SATZ_OHNE_ANZIEHUNG = "Die Körper ziehen sich gegenseitig nicht an.";
+const SATZ_CHAOS = "Das Doppelpendel ist chaotisch: Schon eine winzige Änderung am Start ergibt eine ganz andere Bahn. "
+  + "Die Energie in Prozent des Starts zeigt, wie genau gerechnet wird.";
+const SATZ_BESCHREIBUNG_ALT = "Die Beschreibung von Claude gilt für die ursprünglichen Werte.";
+const SATZ_TEMPO_ZEITLUPE ="Tempo wirkt erst, wenn die Rechengrenze nicht erreicht ist.";
+const SATZ_WELLE ="Waagerecht der Ort, senkrecht die Auslenkung. Die beiden Achsen haben verschiedene Maßstäbe.";
 
 interface Pal { farbe: Record<Farbe, string>; line: string; strong: string; muted: string; amber: string }
 interface Gfx {
@@ -32,15 +50,82 @@ interface Gfx {
   snap: SimSnapshot | null; trail: Trail | null; bild: Standbild | null;
 }
 interface Info { text: string; angepasst: number; ausschnitt: Ausschnitt; bild: Standbild | null; koerper: { name: string; farbe: Farbe }[] }
-interface Figures { zeit: number; einheit: string; kennwerte: Kennwert[] }
+/** `ausserhalb`: Körper außerhalb des Bildausschnitts (vom Rechenkern gezählt; fehlt das Feld, gilt 0). */
+interface Figures { zeit: number; einheit: string; kennwerte: Kennwert[]; ausserhalb: number }
 
 const prefersReduced = (): boolean => {
   try { return typeof matchMedia === "function" && !!matchMedia(REDUCE).matches; } catch { return false; }
 };
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 const dprNow = () => Math.min(typeof window !== "undefined" && window.devicePixelRatio > 0 ? window.devicePixelRatio : 1, DPR_MAX);
-const figOf = (s: SimSnapshot): Figures => ({ zeit: s.zeit, einheit: s.einheit, kennwerte: s.kennwerte });
+const ausserhalbOf = (s: SimSnapshot): number => {
+  const n = s.ausserhalb;                                              // nur Umlauf mit Anziehung; sonst fehlt das Feld
+  return typeof n === "number" && Number.isFinite(n) && n > 0 ? Math.round(n) : 0;
+};
+const figOf = (s: SimSnapshot): Figures => ({ zeit: s.zeit, einheit: s.einheit, kennwerte: s.kennwerte, ausserhalb: ausserhalbOf(s) });
 const running = (s: LoopStatus | "") => s === "laeuft" || s === "zeitlupe";
+
+// --- Regler ------------------------------------------------------------------------------------------------------------
+
+/** Zahl unter `parameter` entlang des Pfads eines Reglers (`laenge`, `wellen.0.frequenz`); nur endliche Zahlen, sonst null. */
+function leseWert(input: unknown, feld: string): number | null {
+  let o: unknown = input && typeof input === "object" ? (input as { parameter?: unknown }).parameter : undefined;
+  for (const t of feld.split(".")) {
+    if (Array.isArray(o)) { const i = Number(t); o = Number.isInteger(i) && i >= 0 && i < o.length ? o[i] : undefined; }
+    else if (o && typeof o === "object") o = Object.prototype.hasOwnProperty.call(o, t) ? (o as Record<string, unknown>)[t] : undefined;
+    else return null;
+  }
+  return typeof o === "number" && Number.isFinite(o) ? o : null;
+}
+
+const stellen = (s: number): number => { const t = String(s), i = t.indexOf("."); return i < 0 ? 0 : t.length - i - 1; };
+/** Auf ein Vielfaches des Reglerschritts, ohne Gleitkomma-Reste, in den Grenzen. */
+const aufSchritt = (v: number, g: GrenzFeld): number =>
+  clamp(Number((Math.round(v / g.schritt) * g.schritt).toFixed(Math.min(12, stellen(g.schritt)))), g.min, g.max);
+/** Stufen des Reglers: linear eine je Schritt, logarithmisch LOG_N. */
+const stufen = (g: GrenzFeld): number => (g.skala === "log" ? LOG_N : Math.max(1, Math.round((g.max - g.min) / g.schritt)));
+
+/** Wert zu einer Reglerstellung. Logarithmisch: min·(max/min)^(Stellung/Stufen), auf drei gültige Ziffern und den Schritt gerundet. */
+function wertAusPos(g: GrenzFeld, pos: number): number {
+  const n = stufen(g), p = clamp(Number.isFinite(pos) ? Math.round(pos) : 0, 0, n);
+  if (g.skala === "log") return aufSchritt(Number((g.min * Math.pow(g.max / g.min, p / n)).toPrecision(3)), g);
+  return aufSchritt(g.min + p * g.schritt, g);
+}
+
+/** Reglerstellung zu einem Wert (Umkehrung von `wertAusPos`, gerundet). */
+function posAusWert(g: GrenzFeld, v: number): number {
+  const n = stufen(g);
+  if (!Number.isFinite(v)) return 0;
+  if (g.skala === "log") return clamp(Math.round((n * Math.log(Math.max(v, g.min) / g.min)) / Math.log(g.max / g.min)), 0, n);
+  return clamp(Math.round((v - g.min) / g.schritt), 0, n);
+}
+
+const SCHRITT_TASTE: Record<string, number> = { ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1, PageUp: 10, PageDown: -10 };
+
+/** Nächster Wert für eine Taste (Pfeile ein Schritt, Bild auf/ab zehn, Pos1/Ende die Grenzen); `null`: Taste gehört nicht dem Regler.
+ *  Es wird so weit geschoben, bis der gerundete Wert wirklich in Tastenrichtung liegt (ein Wert zwischen zwei Stellungen, etwa
+ *  1,234 m, rundet sonst zur Nachbarstellung und von dort in die falsche Richtung); am Rand bleibt der Wert, wie er ist. */
+function wertFuerTaste(g: GrenzFeld, wert: number, key: string): number | null {
+  if (key === "Home") return g.min;
+  if (key === "End") return g.max;
+  const d = SCHRITT_TASTE[key];
+  if (d === undefined) return null;
+  const n = stufen(g);
+  let p = posAusWert(g, wert);
+  for (let i = 0; i <= n; i++) {
+    p = clamp(p + d, 0, n);
+    const next = wertAusPos(g, p);
+    if (Math.sign(next - wert) === Math.sign(d)) return next;
+    if (p === 0 || p === n) break;
+  }
+  return wert;
+}
+
+const reglerText = (g: GrenzFeld, v: number) => `${formatZahl(v)} ${g.einheit}`;
+const reglerSatz = (liste: readonly GrenzFeld[], input: unknown) =>
+  liste.map((g) => { const v = leseWert(input, g.feld); return `${g.name} ${v === null ? "unbekannt" : reglerText(g, v)}`; }).join(", ");
+
+// --- Zeichnen ----------------------------------------------------------------------------------------------------------
 
 /** Farben aus den CSS-Variablen der Palette (einmal je Aufbau gelesen, nicht je Bild). Ohne Stylesheet: neutrale Farbnamen. */
 function readPalette(): Pal {
@@ -77,6 +162,13 @@ function mapper(a: Ausschnitt, w: number, h: number) {
 }
 type Map2 = ReturnType<typeof mapper>;
 
+/** Welle: jede Achse füllt die Fläche für sich (zwei Maßstäbe; die Ansicht sagt das in Worten). */
+function mapperFrei(a: Ausschnitt, w: number, h: number): Map2 {
+  const iw = Math.max(1, w - 2 * PAD), ih = Math.max(1, h - 2 * PAD);
+  const aw = a.maxX - a.minX > 0 ? a.maxX - a.minX : 1, ah = a.maxY - a.minY > 0 ? a.maxY - a.minY : 1;
+  return { s: iw / aw, aw, ah, X: (x: number) => PAD + ((x - a.minX) / aw) * iw, Y: (y: number) => PAD + ((a.maxY - y) / ah) * ih };
+}
+
 function line(ctx: CanvasRenderingContext2D, pts: Pt[], m: Map2, close = false): void {
   if (pts.length < 2) return;
   ctx.beginPath();
@@ -84,6 +176,29 @@ function line(ctx: CanvasRenderingContext2D, pts: Pt[], m: Map2, close = false):
   for (let i = 1; i < pts.length; i++) ctx.lineTo(m.X(pts[i][0]), m.Y(pts[i][1]));
   if (close) ctx.closePath();
   ctx.stroke();
+}
+
+/** Welle: Ortsachse (Ruhelage) mit Endstrichen, im Standbild die Hülle gestrichelt, die einzelnen Wellen dünn, die Summe dick. */
+function paintWelle(ctx: CanvasRenderingContext2D, g: Gfx, snap: SimSnapshot, pal: Pal): void {
+  const a = snap.ausschnitt, m = mapperFrei(a, g.w, g.h), y0 = m.Y(0);
+  ctx.strokeStyle = pal.strong; ctx.lineWidth = 1;
+  line(ctx, [[a.minX, 0], [a.maxX, 0]], m);
+  ctx.beginPath();
+  for (const x of [m.X(a.minX), m.X(a.maxX)]) { ctx.moveTo(x, y0 - 6); ctx.lineTo(x, y0 + 6); }
+  ctx.stroke();
+  if (g.bild?.modell === "welle") {
+    ctx.strokeStyle = pal.muted; ctx.lineWidth = 1.5; ctx.setLineDash([6, 4]);
+    line(ctx, g.bild.huelleMin, m);
+    line(ctx, g.bild.huelleMax, m);
+    ctx.setLineDash([]);
+  }
+  const teil = snap.teilkurven ?? [];
+  if (teil.length >= 2) {
+    ctx.lineWidth = 1; ctx.globalAlpha = 0.7;
+    teil.forEach((k, j) => { ctx.strokeStyle = pal.farbe[TEIL_FARBE[j] ?? "text"]; line(ctx, k, m); });
+    ctx.globalAlpha = 1;
+  }
+  if (snap.kurve) { ctx.strokeStyle = pal.farbe.arc; ctx.lineWidth = 2.5; line(ctx, snap.kurve, m); }
 }
 
 /** Ein Bild der Simulation: Rahmen je Modell, Standbild-Zusätze, Spur, Aufhängung, Körper. Wirft nie; `false` heißt Zeichenfehler
@@ -95,12 +210,14 @@ function paint(g: Gfx): boolean {
     ctx.setTransform(g.dpr, 0, 0, g.dpr, 0, 0);
     ctx.clearRect(0, 0, g.w, g.h);
     ctx.globalAlpha = 1; ctx.setLineDash([]); ctx.lineCap = "round"; ctx.lineJoin = "round";
+    if (snap.modell === "welle") { paintWelle(ctx, g, snap, pal); return true; }
     const m = mapper(snap.ausschnitt, g.w, g.h), a = snap.ausschnitt;
     const body = snap.koerper[0];
+    const haengt = snap.modell === "pendel" || snap.modell === "doppelpendel";
     ctx.strokeStyle = pal.strong; ctx.lineWidth = 2;
     if (snap.modell === "wurf") line(ctx, [[a.minX, 0], [a.maxX, 0]], m);                        // Boden
     if (snap.modell === "gas") { ctx.lineWidth = 1.5; ctx.strokeRect(m.X(a.minX), m.Y(a.maxY), m.aw * m.s, m.ah * m.s); }   // Kasten
-    if (snap.modell === "pendel" && snap.anker) {                                                // Decke
+    if (haengt && snap.anker) {                                                                  // Decke
       const x = m.X(snap.anker[0]), y = m.Y(snap.anker[1]);
       ctx.beginPath(); ctx.moveTo(x - 24, y); ctx.lineTo(x + 24, y); ctx.stroke();
     }
@@ -124,17 +241,23 @@ function paint(g: Gfx): boolean {
         ctx.beginPath(); ctx.moveTo(ax - 7, ay - 7); ctx.lineTo(ax + 7, ay + 7); ctx.moveTo(ax + 7, ay - 7); ctx.lineTo(ax - 7, ay + 7); ctx.stroke();
       }
     }
-    if (g.bild?.modell === "umlauf") {                                                           // alle Bahnen
+    if (g.bild?.modell === "umlauf") {                                                           // alle Bahnen; mit Anziehung offene Wege
       ctx.lineWidth = 1.5; ctx.globalAlpha = 0.6;
-      for (const b of g.bild.bahnen) { ctx.strokeStyle = pal.farbe[b.farbe] ?? pal.farbe.arc; line(ctx, b.punkte, m, true); }
+      const zu = !g.bild.offen;
+      for (const b of g.bild.bahnen) { ctx.strokeStyle = pal.farbe[b.farbe] ?? pal.farbe.arc; line(ctx, b.punkte, m, zu); }
       ctx.globalAlpha = 1;
     }
-    const t = g.trail;
+    if (g.bild?.modell === "doppelpendel") {                                                     // Weg des unteren Körpers (gestrichelt)
+      ctx.strokeStyle = pal.muted; ctx.lineWidth = 1.2; ctx.setLineDash([6, 4]);
+      line(ctx, g.bild.bahn, m);
+      ctx.setLineDash([]);
+    }
+    const t = g.trail, nur = snap.spurKoerper;
     if (t) {                                                                                     // Spur (Ringpuffer, älteste zuerst)
       ctx.lineWidth = 1.5; ctx.globalAlpha = 0.45;
       for (let i = 0; i < t.xs.length; i++) {
         const n = t.laenge[i];
-        if (n < 2) continue;
+        if (n < 2 || (nur && !nur.includes(i))) continue;
         ctx.strokeStyle = pal.farbe[snap.koerper[i]?.farbe] ?? pal.farbe.arc;
         ctx.beginPath();
         for (let j = 0; j < n; j++) {
@@ -145,9 +268,12 @@ function paint(g: Gfx): boolean {
       }
       ctx.globalAlpha = 1;
     }
-    if (snap.anker && body && snap.modell === "pendel") {                                        // Stange und Aufhängung
+    if (snap.anker && body && haengt) {                                                          // Stange(n) und Aufhängung
       ctx.strokeStyle = pal.strong; ctx.lineWidth = 2;
-      line(ctx, [snap.anker, [body.x, body.y]], m);
+      const arme: Pt[] = [snap.anker, [body.x, body.y]];
+      const unten = snap.modell === "doppelpendel" ? snap.koerper[1] : undefined;
+      if (unten) arme.push([unten.x, unten.y]);
+      line(ctx, arme, m);
       ctx.fillStyle = pal.muted;
       ctx.beginPath(); ctx.arc(m.X(snap.anker[0]), m.Y(snap.anker[1]), 3, 0, 2 * Math.PI); ctx.fill();
     }
@@ -171,7 +297,7 @@ function paint(g: Gfx): boolean {
       }
       ctx.fill();
     } else {
-      const r = snap.modell === "umlauf" ? 6 : 9;
+      const r = snap.modell === "umlauf" ? 6 : snap.modell === "doppelpendel" ? 8 : 9;
       for (const k of snap.koerper) {
         ctx.fillStyle = pal.farbe[k.farbe] ?? pal.farbe.arc;
         ctx.beginPath(); ctx.arc(m.X(k.x), m.Y(k.y), r, 0, 2 * Math.PI); ctx.fill();
@@ -229,11 +355,19 @@ function infoOf(sim: SimState, bild: Standbild | null): Info {
 }
 
 export function Simulation({ b }: { b: SimBlock }) {
-  const cfg = useMemo(() => normalizeSim(b), [b]);                   // nur Begrenzen, keine Vorausrechnung
+  // Regler: die geänderte Eingabe gilt nur für genau diese Daten (neue Daten = wieder die Werte von Claude) und nur im Fenster.
+  const [edit, setEdit] = useState<{ for: SimBlock; input: SimBlock } | null>(null);
+  const eff: SimBlock = edit && edit.for === b ? edit.input : b;
+  const cfg = useMemo(() => normalizeSim(eff), [eff]);              // nur Begrenzen, keine Vorausrechnung
+  const orig = useMemo(() => normalizeSim(b), [b]);
+  const [shown, setShown] = useState<{ for: SimBlock; werte: Record<string, number> } | null>(null);   // Werte beim Ziehen
   const [reduced, setReduced] = useState(prefersReduced);
   const [forcedFor, setForcedFor] = useState<SimBlock | null>(null);  // „Trotzdem abspielen“ gilt für genau diese Daten
   const forced = forcedFor === b;
   const still = reduced && !forced;
+  const [tempoFor, setTempoFor] = useState<{ for: SimBlock; f: TempoFaktor } | null>(null);
+  const tempo: TempoFaktor = tempoFor && tempoFor.for === b ? tempoFor.f : 1;
+  const [canTempo, setCanTempo] = useState(false);
   const [info, setInfo] = useState<Info | null>(null);
   const [status, setStatus] = useState<{ status: LoopStatus | ""; wort: string }>({ status: "", wort: "" });
   const [fig, setFig] = useState<Figures | null>(null);
@@ -242,6 +376,7 @@ export function Simulation({ b }: { b: SimBlock }) {
   const [brokenFor, setBrokenFor] = useState<SimBlock | null>(null);  // Zeichenfehler: angehalten, gilt für genau diese Daten
   const broken = brokenFor === b;
 
+  const uid = useId();
   const wrap = useRef<HTMLElement>(null);
   const frame = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -249,14 +384,19 @@ export function Simulation({ b }: { b: SimBlock }) {
   const distCanvas = useRef<HTMLCanvasElement>(null);
   const pauseBtn = useRef<HTMLButtonElement>(null);
   const loopRef = useRef<SimLoop | null>(null);
+  const effRef = useRef<SimBlock>(eff);
+  const tempoRef = useRef<TempoFaktor>(tempo);
+  const thr = useRef<{ timer: number | null; pending: Record<string, number> | null }>({ timer: null, pending: null });
   const clocks = useRef({ fig: -Infinity, dist: -Infinity });
   const gfx = useRef<Gfx>({ ctx: null, w: DEFAULT_W, h: H_MIN, dpr: 1, pal: null, snap: null, trail: null, bild: null }).current;
 
   const box = useBoxSize(frame);
   const cssW = Math.max(120, box?.width ?? DEFAULT_W);
   const a = info?.ausschnitt;
-  const ratio = a && a.maxX > a.minX && a.maxY > a.minY ? (a.maxY - a.minY) / (a.maxX - a.minX) : 0.5;
+  const ratio = cfg.modell === "welle" ? WELLE_RATIO : a && a.maxX > a.minX && a.maxY > a.minY ? (a.maxY - a.minY) / (a.maxX - a.minX) : 0.5;
   const cssH = Math.round(clamp(cssW * ratio, H_MIN, H_MAX));
+
+  useEffect(() => { effRef.current = eff; tempoRef.current = tempo; });   // vor dem Aufbau unten: der neue Lauf übernimmt das Tempo
 
   useEffect(() => {                                                    // „weniger Bewegung“ kann sich ändern; Listener räumt auf
     let mq: MediaQueryList | null = null;
@@ -266,6 +406,11 @@ export function Simulation({ b }: { b: SimBlock }) {
     mq.addEventListener("change", on);
     return () => mq?.removeEventListener("change", on);
   }, []);
+
+  useEffect(() => {                                                    // Regler-Zeitgeber: neue Daten oder Abbau räumen ihn ab
+    const t = thr.current;
+    return () => { if (t.timer !== null) window.clearTimeout(t.timer); t.timer = null; t.pending = null; };
+  }, [b]);
 
   useEffect(() => {                                                    // Größe der Zeichenfläche; neu zeichnen ohne neu zu rechnen
     gfx.w = cssW; gfx.h = cssH;
@@ -280,13 +425,14 @@ export function Simulation({ b }: { b: SimBlock }) {
     clocks.current = { fig: -Infinity, dist: -Infinity };
     setNoCtx(!ctx);
     if (still || !ctx) {                                               // keine Schleife: ein Bild aus der Vorausrechnung
-      const sim = createSim(b);
+      const sim = createSim(eff);
       const bild = still ? standbild(sim) : null;
       gfx.bild = bild; gfx.snap = sim.startBild;
       setInfo(infoOf(sim, bild));
       setFig(figOf(sim.startBild));
       setDist(bild?.modell === "gas" ? bild.verteilung : sim.startBild.verteilung);
       setStatus({ status: "", wort: still ? STILL_WORT : "" });
+      setCanTempo(false);
       if (!paint(gfx)) setBrokenFor(b);
       return;
     }
@@ -307,9 +453,9 @@ export function Simulation({ b }: { b: SimBlock }) {
       requestFrame: (cb) => (typeof requestAnimationFrame === "function" ? requestAnimationFrame(cb) : window.setTimeout(() => cb(performance.now()), 33)),
       cancelFrame: (id) => (typeof cancelAnimationFrame === "function" ? cancelAnimationFrame(id) : window.clearTimeout(id)),
     };
-    const trails = cfg.spur && cfg.modell !== "gas";                  // Gas: keine Spur (der Helfer kennt nur die ersten 8 Körper)
+    const trails = cfg.spur && cfg.modell !== "gas" && cfg.modell !== "welle";   // Gas: der Helfer kennt nur 8 Körper; Welle: keine Körper
     loop = createSimLoop({
-      input: b, scheduler,
+      input: eff, scheduler,
       isHidden: () => document.hidden || !inView,
       onFrame: (snap) => {
         if (dead) return;
@@ -333,11 +479,14 @@ export function Simulation({ b }: { b: SimBlock }) {
     if (dead) { loop.dispose(); return; }
     const own = loop;
     loopRef.current = own;
+    const hatTempo = typeof own.setTempoFaktor === "function";
+    if (hatTempo) own.setTempoFaktor?.(tempoRef.current);             // Neustart durch einen Regler behält das Tempo
+    setCanTempo(hatTempo);
     const st = own.getState();
     setStatus({ status: st.status, wort: st.wort });
     setInfo(infoOf(own.getSim(), null));
     return () => { dead = true; own.dispose(); io?.disconnect(); if (loopRef.current === own) loopRef.current = null; };
-  }, [b, cfg, still, broken, gfx]);
+  }, [b, eff, cfg, still, broken, gfx]);
 
   useEffect(() => {                                                    // Kurve im Standbild (Pendel, Feder)
     const bild = info?.bild;
@@ -370,6 +519,58 @@ export function Simulation({ b }: { b: SimBlock }) {
     l.restart();
     sync(l);
   };
+  const setzeTempo = (f: TempoFaktor) => {
+    const l = loopRef.current;
+    if (!l || typeof l.setTempoFaktor !== "function") return;
+    l.setTempoFaktor(f);
+    setTempoFor({ for: b, f: l.getTempoFaktor?.() ?? f });
+  };
+
+  /** Neue Eingabe aus dem Regler (begrenzt durch `mitWert`); der Aufbau oben startet die Simulation damit neu. */
+  const uebernimm = (werte: Record<string, number>) => {
+    let next = effRef.current;
+    for (const [feld, wert] of Object.entries(werte)) next = mitWert(next, feld, wert);
+    effRef.current = next;
+    setEdit({ for: b, input: next });
+  };
+  // Ziehen und Tasten gleich: der erste Wert startet sofort neu, danach höchstens ein Neustart je 200 ms mit den letzten Werten
+  // (je Regler), und nach dem letzten Wert genau einer. Loslassen (Maus, Finger, Taste, Fokus weg) wartet diesen letzten Neustart ab,
+  // statt sofort neu zu starten; so bleibt es auch bei schnellem Tippen bei höchstens einem Neustart je 200 ms.
+  const takt = () => {
+    const t = thr.current;
+    t.timer = null;
+    const p = t.pending;
+    if (!p) { setShown(null); return; }                                // nichts Neues: der Regler zeigt wieder den gerechneten Wert
+    t.pending = null;
+    uebernimm(p);
+    t.timer = window.setTimeout(takt, REGLER_MS);
+  };
+  const ziehe = (g: GrenzFeld, wert: number) => {
+    setShown((s) => ({ for: b, werte: { ...(s && s.for === b ? s.werte : {}), [g.feld]: wert } }));
+    const t = thr.current;
+    if (t.timer === null) { t.pending = null; uebernimm({ [g.feld]: wert }); t.timer = window.setTimeout(takt, REGLER_MS); }
+    else t.pending = { ...(t.pending ?? {}), [g.feld]: wert };
+  };
+  const loslassen = () => {
+    if (thr.current.timer === null) setShown(null);                    // sonst bringt der laufende Takt den letzten Wert
+  };
+  const taste = (g: GrenzFeld, wert: number) => (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.ctrlKey || e.altKey || e.metaKey) return;                    // Tasten mit Strg, Alt oder Meta gehören dem Browser
+    const next = wertFuerTaste(g, wert, e.key);
+    if (next === null) return;
+    e.preventDefault();
+    if (next !== wert) ziehe(g, next);
+  };
+  const edited = !!edit && edit.for === b;
+  const zurueck = () => {
+    const t = thr.current;
+    if (!edited && t.timer === null) return;
+    if (t.timer !== null) window.clearTimeout(t.timer);                // kein alter Wert kommt mehr nach
+    t.timer = null; t.pending = null;
+    effRef.current = b;
+    setShown(null);
+    setEdit(null);
+  };
 
   const label = MODELL_LABEL[cfg.modell];
   if (cfg.ungueltig || broken) {
@@ -384,13 +585,19 @@ export function Simulation({ b }: { b: SimBlock }) {
   const bild = info?.bild ?? null;
   const canPause = running(status.status) || status.status === "pausiert";
   const g = dist?.grenzen ?? [];
+  const regler = GRENZEN[cfg.modell] ?? [];
+  const anziehung = cfg.modell === "umlauf" && cfg.parameter.anziehung === true;
+  const wellen = cfg.modell === "welle" ? cfg.parameter.wellen : [];
+  const playing = !still && !noCtx;
   return (
     <section ref={wrap} className="v-sim" aria-label={`Simulation: ${label}`}>
       <div className="s-head">
         <p className="s-flag">Simulation, keine Messung</p>
         <span className="label">{label}</span>
       </div>
-      {cfg.modell === "umlauf" && <p className="v-note">Die Körper ziehen sich gegenseitig nicht an.</p>}
+      {cfg.modell === "umlauf" && <p className="v-note">{anziehung ? SATZ_ANZIEHUNG : SATZ_OHNE_ANZIEHUNG}</p>}
+      {cfg.modell === "doppelpendel" && <p className="v-note">{SATZ_CHAOS}</p>}
+      {cfg.modell === "welle" && <p className="v-note">{SATZ_WELLE}</p>}
       {info && info.angepasst > 0 && <p className="v-note">Einige Angaben fehlten oder lagen außerhalb der Grenzen und wurden angepasst.</p>}
       {noCtx && <p className="v-note" role="note">Das Bild kann hier nicht gezeichnet werden. Die Beschreibung steht darunter.</p>}
       <div ref={frame} className="s-frame" hidden={noCtx}>
@@ -399,7 +606,7 @@ export function Simulation({ b }: { b: SimBlock }) {
       </div>
       <div className="m-row s-controls" role="group" aria-label="Simulation steuern">
         {still && !noCtx && <button type="button" onClick={() => setForcedFor(b)}>Trotzdem abspielen</button>}
-        {!still && !noCtx && (
+        {playing && (
           <>
             <button ref={pauseBtn} type="button" aria-disabled={canPause ? undefined : "true"} onClick={toggle}>
               {status.status === "pausiert" ? "Weiter" : "Pause"}
@@ -409,6 +616,38 @@ export function Simulation({ b }: { b: SimBlock }) {
         )}
         <p className="s-state" aria-live="polite">{status.wort}</p>
       </div>
+      {playing && canTempo && (
+        <div className="m-row s-tempo" role="group" aria-label="Tempo">
+          {TEMPO_FAKTOREN.map((f) => (
+            <button key={f} type="button" aria-pressed={tempo === f} onClick={() => setzeTempo(f)}>{TEMPO_WORT[f]}</button>
+          ))}
+          <p className="s-tempo-wort" aria-live="polite">Tempo: {TEMPO_WORT[tempo]}</p>
+          {status.status === "zeitlupe" && <p className="v-note">{SATZ_TEMPO_ZEITLUPE}</p>}
+        </div>
+      )}
+      {fig && fig.ausserhalb > 0 && (
+        <p className="v-note">{`${fig.ausserhalb} Körper außerhalb des Bildausschnitts.`}</p>
+      )}
+      {regler.length > 0 && (
+        <div className="m-row s-regler" role="group" aria-label="Regler">
+          {regler.map((r, i) => {
+            const id = `${uid}-regler-${i}`;
+            const gezogen = shown && shown.for === b ? shown.werte[r.feld] : undefined;
+            const w = gezogen ?? leseWert(cfg, r.feld) ?? r.min;
+            const txt = reglerText(r, w);
+            return (
+              <div key={r.feld} className="m-slider s-slider">
+                <label htmlFor={id}>{r.name}</label>
+                <input id={id} type="range" min={0} max={stufen(r)} step={1} value={posAusWert(r, w)} aria-valuetext={txt}
+                  onChange={(e) => ziehe(r, wertAusPos(r, Number(e.currentTarget.value)))} onKeyDown={taste(r, w)} onKeyUp={loslassen}
+                  onPointerUp={loslassen} onMouseUp={loslassen} onTouchEnd={loslassen} onBlur={loslassen} />
+                <span className="num" aria-hidden="true">{txt}</span>
+              </div>
+            );
+          })}
+          <button type="button" aria-disabled={edited ? undefined : "true"} onClick={zurueck}>Zurück auf die Werte von Claude</button>
+        </div>
+      )}
       {bild && (bild.modell === "pendel" || bild.modell === "feder") && (
         <figure className="s-curve">
           <canvas ref={curve} style={{ height: CURVE_H }} aria-hidden="true" />
@@ -427,7 +666,33 @@ export function Simulation({ b }: { b: SimBlock }) {
             : `Die Bahn ist nur bis ${formatWert(bild.flugzeit)} s vorausgerechnet; der Aufprall liegt später.`}
         </p>
       )}
-      {bild?.modell === "umlauf" && <p className="v-note">Alle Bahnen als Linien, die Körper in ihrer Startlage.</p>}
+      {bild?.modell === "umlauf" && (
+        <p className="v-note">
+          {bild.offen
+            ? `Die gerechneten Wege über ${formatWert(bild.dauer ?? 0)} Jahre als offene Linien, die Körper in ihrer Startlage.`
+            : "Alle Bahnen als Linien, die Körper in ihrer Startlage."}
+        </p>
+      )}
+      {bild?.modell === "doppelpendel" && (
+        <p className="v-note">
+          {bild.bahn.length > 1
+            ? `Gestrichelt: der Weg des unteren Körpers in den ersten ${formatWert(bild.dauer)} s. Die Arme stehen in der Startlage.`
+            : "Der Weg des unteren Körpers kann nicht gezeigt werden. Die Arme stehen in der Startlage."}
+        </p>
+      )}
+      {bild?.modell === "welle" && (
+        <p className="v-note">
+          Die Kurve zur Zeit 0. Gestrichelt: die Hülle, also der kleinste und größte Ausschlag an jeder Stelle über {formatWert(bild.dauer)} s.{" "}
+          {bild.exakt ? "Die Hülle ist genau gerechnet." : "Die Hülle ist nur abgetastet und kann etwas zu eng sein."}
+        </p>
+      )}
+      {cfg.modell === "welle" && info && (
+        <p className="v-note">
+          Waagerecht: Ort von 0 bis {formatZahl(info.ausschnitt.maxX)} m. Senkrecht: Auslenkung bis{" "}
+          {formatZahl(wellen.reduce((s, q) => s + q.amplitude, 0))} m nach oben und unten (Summe der Amplituden).
+          {wellen.length > 1 ? " Dicke Linie: die Summe. Dünne Linien: die einzelnen Wellen." : ""}
+        </p>
+      )}
       {info && info.koerper.length > 0 && (
         <ul className="s-legend" aria-label="Körper">
           <li>Zentralmasse in der Mitte (Bernstein, größerer Punkt)</li>
@@ -439,7 +704,7 @@ export function Simulation({ b }: { b: SimBlock }) {
           <table className="v-table s-figures">
             <caption className="label">{still || noCtx ? "Kennwerte am Start" : "Kennwerte"}</caption>
             <tbody>
-              {!still && !noCtx && <tr><th scope="row">Zeit in der Simulation</th><td className="num">{formatWert(fig.zeit)} {fig.einheit}</td></tr>}
+              {playing && <tr><th scope="row">Zeit in der Simulation</th><td className="num">{formatWert(fig.zeit)} {fig.einheit}</td></tr>}
               {fig.kennwerte.map((k) => <tr key={k.id}><th scope="row">{k.name}</th><td className="num">{k.text}</td></tr>)}
             </tbody>
           </table>
@@ -471,7 +736,14 @@ export function Simulation({ b }: { b: SimBlock }) {
       <div className="s-text">
         <span className="label">Beschreibung</span>
         <p>{info?.text ?? ""}</p>
+        {regler.length > 0 && (
+          <p>
+            {`Regler: ${reglerSatz(regler, cfg)}.`}
+            {edited ? ` Mit den Reglern geändert; die Werte von Claude: ${reglerSatz(regler, orig)}.` : ""}
+          </p>
+        )}
         {cfg.beschreibung && <p>{cfg.beschreibung}</p>}
+        {cfg.beschreibung && edited && <p className="v-note">{SATZ_BESCHREIBUNG_ALT}</p>}
       </div>
     </section>
   );

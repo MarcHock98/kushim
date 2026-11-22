@@ -6,7 +6,10 @@ import { ViewCard } from "./components/stage/ViewCard";
 import { ApiClient } from "./lib/api";
 import { STATE_VIEW } from "./lib/avatarState";
 import { DEMO_VIEWS, MockSocket } from "./lib/mock";
-import { createSim, formatFest, MODELLE, normalizeSim, snapshot, standbild, type SimModell, type SimSnapshot } from "./lib/physics";
+import {
+  createSim, formatFest, formatZahl, GRENZEN, mitWert, MODELLE, normalizeSim, snapshot, standbild, type NKoerperKern, type SimModell, type SimSnapshot,
+} from "./lib/physics";
+import { createSimLoop } from "./lib/simLoop";
 import { ART_LABEL, parseItem, type Block, type SimBlock, type View } from "./lib/stage";
 
 // P5a (docs/ui-p5-plan.md, Abschnitte 3 bis 6 und 10): Baustein `simulation` mit falschem requestAnimationFrame und falscher Uhr.
@@ -15,12 +18,19 @@ import { ART_LABEL, parseItem, type Block, type SimBlock, type View } from "./li
 
 vi.mock("./lib/physics", async (orig) => {
   const m = await orig<typeof import("./lib/physics")>();
-  return { ...m, snapshot: vi.fn(m.snapshot), standbild: vi.fn(m.standbild) };
+  return { ...m, snapshot: vi.fn(m.snapshot), standbild: vi.fn(m.standbild), mitWert: vi.fn(m.mitWert) };
+});
+vi.mock("./lib/simLoop", async (orig) => {
+  const m = await orig<typeof import("./lib/simLoop")>();
+  return { ...m, createSimLoop: vi.fn(m.createSimLoop) };
 });
 
 const TOKEN = "t".repeat(43);
 const REDUCE = "(prefers-reduced-motion: reduce)";
-afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.mocked(standbild).mockClear(); vi.mocked(snapshot).mockClear(); });
+afterEach(() => {
+  cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals();
+  vi.mocked(standbild).mockClear(); vi.mocked(snapshot).mockClear(); vi.mocked(mitWert).mockClear();
+});
 
 type Call = { name: string; args: unknown[] };
 /** Zeichenfläche, die jeden Aufruf und jede gesetzte Eigenschaft mitschreibt. `fail` wirft bei diesem Aufruf. */
@@ -521,7 +531,7 @@ describe("Bühne und Vorführung", () => {
 
   it("die drei Beispiele (Pendel, Wurf, Gas mit etwa 60 Teilchen) sind vollständig wie vom Backend und zeigen sich ohne Hinweis", () => {
     recordingCtx(); fakeFrames();
-    const raw = DEMO_VIEWS.slice(17);
+    const raw = DEMO_VIEWS.slice(17, 20);
     expect(raw.map((v) => v.id)).toEqual(["pendel", "wurf", "gas"]);
     const KEYS: Record<string, string[]> = {
       pendel: ["anfangsgeschwindigkeit", "daempfung", "g", "laenge", "winkel"],
@@ -720,8 +730,9 @@ describe("Kein Klick sendet etwas, auch bei „weniger Bewegung“", () => {
 
     /** Jeden Knopf prüfen (echter Knopf, bedienbar, fokussierbar) und dann nach dem Fokus anklicken. */
     const pressAll = () => {
-      const bs = [...document.querySelectorAll<HTMLButtonElement>(".s-controls button")];
-      expect(bs.length).toBeGreaterThan(0);
+      const bs = [...document.querySelectorAll<HTMLButtonElement>(".s-controls button, .s-regler button")];
+      expect(bs.length).toBeGreaterThan(1);
+      expect(bs.at(-1)!.textContent).toBe("Zurück auf die Werte von Claude");
       for (const b of bs) {
         expect(b.tagName).toBe("BUTTON");
         expect(b.type).toBe("button");
@@ -732,8 +743,23 @@ describe("Kein Klick sendet etwas, auch bei „weniger Bewegung“", () => {
         fireEvent.click(b);
       }
     };
-    pressAll();                                                                          // „Trotzdem abspielen“
+    /** Jeden Regler ziehen und mit Tasten bedienen (beim Standbild rechnet das nur das Standbild neu). */
+    const regler = () => {
+      for (const s of screen.getAllByRole("slider") as HTMLInputElement[]) {
+        s.focus();
+        fireEvent.change(s, { target: { value: String(Number(s.value) + 2) } });
+        for (const key of ["ArrowRight", "ArrowLeft", "End", "Home"]) tippe(s, key);
+        fireEvent.pointerUp(s);
+        fireEvent.blur(s);
+      }
+    };
+    regler();
+    expect(word()).toBe(STILL);
+    fireEvent.click(btn("Zurück auf die Werte von Claude"));
+    regler();
+    pressAll();                                                                          // „Trotzdem abspielen“, „Zurück“
     expect(word()).toBe("läuft");
+    regler();
     f.run(0.5);
     pressAll(); f.run(0.5);                                                              // Pause, dann Neu starten (läuft wieder)
     pressAll(); f.run(0.5);
@@ -770,5 +796,718 @@ describe("Zeichenfläche: Größe", () => {
     const nums = r.calls.flatMap((x) => x.args).filter((a) => typeof a === "number");
     expect(nums.length).toBeGreaterThan(0);
     expect(nums.every((v) => Number.isFinite(v))).toBe(true);
+  });
+});
+
+// --- P5b (docs/ui-p5-plan.md, Abschnitt 7): Doppelpendel, Welle, Umlauf mit Anziehung, Regler und Tempo ---------------
+
+const P5B: Record<"doppelpendel" | "welle" | "anziehung", Record<string, unknown>> = {
+  doppelpendel: { modell: "doppelpendel", parameter: { laenge1: 1, laenge2: 1, masse1: 1, masse2: 1, winkel1: 120, winkel2: -10, g: 9.81, daempfung: 0 } },
+  welle: { modell: "welle", parameter: { bereich: 0, wellen: [
+    { amplitude: 1, wellenlaenge: 2, frequenz: 0.5, phase: 0, richtung: "rechts" },
+    { amplitude: 1, wellenlaenge: 2, frequenz: 0.5, phase: 0, richtung: "links" }] } },
+  anziehung: { modell: "umlauf", parameter: { zentralmasse: 1, anziehung: true, koerper: [
+    { name: "Innen", abstand: 1, exzentrizitaet: 0, phase: 0, masse: 0.001, farbe: "arc" },
+    { name: "Mitte", abstand: 1.6, exzentrizitaet: 0.05, phase: 120, masse: 0.003, farbe: "amber" },
+    { name: "Außen", abstand: 2.5, exzentrizitaet: 0.1, phase: 240, masse: 0.001, farbe: "ok" }] } },
+};
+type P5bName = keyof typeof P5B;
+const P5B_NAMEN = Object.keys(P5B) as P5bName[];
+const simB = (n: P5bName, extra: Record<string, unknown> = {}) => ({ typ: "simulation", ...base, ...P5B[n], ...extra }) as unknown as SimBlock;
+const slider = (name: string) => screen.getByRole("slider", { name }) as HTMLInputElement;
+const realMitWert = vi.mocked(mitWert).getMockImplementation()!;
+/** Nur setTimeout und clearTimeout falsch (der Regler-Takt); Bildtakt und Uhr kommen aus fakeFrames. */
+const fakeTimers = () => vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+const warte = (ms: number) => act(() => { vi.advanceTimersByTime(ms); });
+const tippe = (s: HTMLElement, key: string) => { fireEvent.keyDown(s, { key }); fireEvent.keyUp(s, { key }); };
+const lastCall = () => vi.mocked(mitWert).mock.calls.at(-1)?.slice(1);
+const lastInput = () => vi.mocked(mitWert).mock.results.at(-1)?.value as SimBlock;
+const NOTE: Record<P5bName, RegExp | string> = {
+  doppelpendel: /^Das Doppelpendel ist chaotisch: Schon eine winzige Änderung am Start ergibt eine ganz andere Bahn\./,
+  welle: "Waagerecht der Ort, senkrecht die Auslenkung. Die beiden Achsen haben verschiedene Maßstäbe.",
+  anziehung: "Die Körper ziehen sich gegenseitig an.",
+};
+
+/** Pfade im letzten Bild der Hauptfläche (ab dem letzten clearRect): Linienbreite und Zahl der lineTo je beginPath. */
+function framePaths(calls: Call[]) {
+  const start = calls.map((c) => c.name).lastIndexOf("clearRect");
+  const out: { width: number; lineTo: number }[] = [];
+  let width = 0;
+  for (const c of calls.slice(start)) {
+    if (c.name === "set:lineWidth") width = c.args[0] as number;
+    else if (c.name === "beginPath") out.push({ width, lineTo: 0 });
+    else if (c.name === "lineTo" && out.length) out[out.length - 1].lineTo++;
+  }
+  return out;
+}
+
+describe("P5b: neue Modelle zeichnen", () => {
+  it.each(P5B_NAMEN)("%s: fester Satz der Oberfläche, Bild, Zustand in Worten, Textfassung", (n) => {
+    const r = recordingCtx(), f = fakeFrames();
+    const b = simB(n);
+    card(b);
+    expect(screen.getByText(FIXED)).toBeInTheDocument();
+    expect(screen.getByText(NOTE[n])).toBeInTheDocument();
+    expect(screen.queryByText(/nicht an\./)).toBeNull();
+    expect(screen.getByText(createSim(b).text)).toBeInTheDocument();
+    expect(screen.queryByText(/angepasst/)).toBeNull();
+    expect(word()).toBe("läuft");
+    expect(f.pending()).toBe(1);
+    expect(screen.getByRole("group", { name: "Simulation steuern" })).toBeInTheDocument();
+    if (n === "welle") expect(screen.getByText(/^Waagerecht: Ort von 0 bis 4 m\. Senkrecht: Auslenkung bis 2 m nach oben und unten/)).toBeInTheDocument();
+    if (n === "anziehung") for (const k of ["Innen", "Mitte", "Außen"]) expect(screen.getByText(k)).toBeInTheDocument();
+    f.run(1);
+    expect(r.count("clearRect")).toBeGreaterThan(20);
+    expect(r.count("fillText") + r.count("strokeText")).toBe(0);
+    const nums = r.calls.filter((c) => ["arc", "moveTo", "lineTo", "fillRect", "strokeRect"].includes(c.name)).flatMap((c) => c.args);
+    expect(nums.length).toBeGreaterThan(0);
+    expect(nums.every((v) => typeof v === "number" && Number.isFinite(v))).toBe(true);
+  });
+
+  it("Doppelpendel: zwei Arme an der Aufhängung, Spur nur für den unteren Körper; ohne spur keine", () => {
+    for (const spur of [true, false]) {
+      const r = recordingCtx(), f = fakeFrames();
+      const v = card(simB("doppelpendel", { spur }));
+      f.run(1);
+      const frame = r.calls.slice(r.calls.map((c) => c.name).lastIndexOf("clearRect"));
+      const i0 = frame.findIndex((c) => c.name === "set:globalAlpha" && c.args[0] === 0.45);
+      if (spur) {
+        expect(i0).toBeGreaterThan(0);
+        const i1 = frame.findIndex((c, i) => i > i0 && c.name === "set:globalAlpha" && c.args[0] === 1);
+        expect(frame.slice(i0, i1).filter((c) => c.name === "stroke")).toHaveLength(1);   // eine Spur: nur der untere Körper
+      } else expect(i0).toBe(-1);
+      expect(framePaths(r.calls).some((p) => p.lineTo === 2)).toBe(true);                // Aufhängung → oben → unten
+      expect(frame.filter((c) => c.name === "arc").length).toBeGreaterThanOrEqual(3);      // zwei Körper und die Aufhängung
+      v.unmount();
+      vi.restoreAllMocks(); vi.unstubAllGlobals();
+    }
+  });
+
+  it("Welle: die Summe mit 400 Punkten dick, zwei einzelne Wellen dünn; eine einzelne Welle ohne Teilkurven", () => {
+    const r = recordingCtx(), f = fakeFrames();
+    const v = card(simB("welle"));
+    f.run(0.5);
+    const full = framePaths(r.calls).filter((p) => p.lineTo === 399);
+    expect(full).toHaveLength(3);
+    expect(full.filter((p) => p.width === 2.5)).toHaveLength(1);
+    expect(full.filter((p) => p.width === 1)).toHaveLength(2);
+    expect(screen.getByText(/Dicke Linie: die Summe\. Dünne Linien: die einzelnen Wellen\./)).toBeInTheDocument();
+    v.unmount();
+    const eine = simB("welle", { parameter: { bereich: 0, wellen: [{ amplitude: 1, wellenlaenge: 2, frequenz: 0.5, phase: 0, richtung: "rechts" }] } });
+    card(eine);
+    f.run(0.5);
+    expect(framePaths(r.calls).filter((p) => p.lineTo === 399)).toHaveLength(1);
+    expect(screen.queryByText(/Dünne Linien/)).toBeNull();
+  });
+
+  it("Text bleibt Text auch mit anziehung: Namen und Beschreibung nur im DOM, nie im Bild oder in Attributen", () => {
+    const r = recordingCtx(), f = fakeFrames();
+    const evil = "<script>alert(1)</script><b>x</b>", name = "<img src=x onerror=alert(1)>", other = "url(#evil)";
+    const b = simB("anziehung", { beschreibung: evil, parameter: { zentralmasse: 1, anziehung: true, koerper: [
+      { name, abstand: 1, exzentrizitaet: 0, phase: 0, masse: 0.001, farbe: "arc" },
+      { name: other, abstand: 2, exzentrizitaet: 0.1, phase: 10, masse: 0.002, farbe: "ok" }] } });
+    const { container } = card(b);
+    f.run(1);
+    fireEvent.change(slider("Zentralmasse"), { target: { value: "600" } });              // auch nach einem Neustart durch den Regler
+    f.run(0.5);
+    for (const s of [evil, name, other]) expect(screen.getByText(s)).toBeInTheDocument();
+    expect(r.count("fillText") + r.count("strokeText")).toBe(0);
+    const strings = r.calls.flatMap((c) => c.args).filter((a) => typeof a === "string") as string[];
+    expect(strings.some((s) => s.includes("img") || s.includes("script") || s.includes("evil"))).toBe(false);
+    expect(container.querySelector(".v-sim script, .v-sim img, .v-sim b, .v-sim a, .v-sim [href]")).toBeNull();
+    for (const el of container.querySelectorAll("*")) {
+      for (const at of el.attributes) expect([evil, name, other].some((s) => at.value.includes(s)), at.name).toBe(false);
+    }
+  });
+
+  it("Umlauf ohne anziehung behält den Satz „… nicht an.“", () => {
+    recordingCtx(); fakeFrames();
+    card(simB("anziehung", { parameter: { ...(P5B.anziehung.parameter as object), anziehung: false } }));
+    expect(screen.getByText("Die Körper ziehen sich gegenseitig nicht an.")).toBeInTheDocument();
+    expect(screen.queryByText("Die Körper ziehen sich gegenseitig an.")).toBeNull();
+  });
+
+  it("Körper außerhalb des Bildausschnitts (Rechenkern zählt) stehen in Worten da", () => {
+    recordingCtx(); const f = fakeFrames();
+    card(simB("anziehung", { laufzeit: 60 }));
+    f.run(0.6);
+    expect(screen.queryByText(/außerhalb des Bildausschnitts/)).toBeNull();
+    const loop = vi.mocked(createSimLoop).mock.results.at(-1)!.value as ReturnType<typeof createSimLoop>;
+    const s = loop.getSim(), k = s.kern as NKoerperKern;
+    k.x[0] = s.ausschnitt.maxX + 5; k.y[2] = s.ausschnitt.minY - 5;                     // zwei Körper weit draußen (wie nach einer Streuung)
+    expect(snapshot(s).ausserhalb).toBe(2);
+    f.frame(); f.frame();
+    click("Pause");                                                                       // beim Anhalten stehen die letzten Zahlen da
+    expect(screen.getByText("2 Körper außerhalb des Bildausschnitts.")).toBeInTheDocument();
+    expect(screen.getAllByText(/außerhalb des Bildausschnitts/)).toHaveLength(1);
+  });
+
+  it("Energie: mit Anziehung die Energieabweichung, beim Doppelpendel Prozent des Starts, ohne Anziehung keine", () => {
+    recordingCtx(); const f = fakeFrames();
+    const has = (name: string) => [...document.querySelectorAll(".s-figures th")].some((th) => th.textContent === name);
+    let v = card(simB("anziehung", { laufzeit: 60 }));
+    f.run(1); click("Pause");
+    expect(row("Energieabweichung")).toMatch(/^-?\d+,\d+ %$/);
+    expect(Math.abs(num(row("Energieabweichung")))).toBeLessThan(1);
+    expect(has("Gesamtenergie in Prozent des Starts")).toBe(false);
+    expect(has("Energie in Prozent des Starts")).toBe(false);
+    v.unmount();
+    v = card(simB("anziehung", { parameter: { ...(P5B.anziehung.parameter as object), anziehung: false } }));
+    expect(has("Energieabweichung")).toBe(false);
+    v.unmount();
+    card(simB("doppelpendel"));
+    expect(has("Energie in Prozent des Starts")).toBe(true);
+    expect(has("Energieabweichung")).toBe(false);
+  });
+
+  it("Welle über mehr als 50 kürzeste Wellenlängen: der Bereich wird gekürzt, Hinweis, Satz in der Textfassung und Achse in Worten", () => {
+    recordingCtx(); fakeFrames();
+    const b = simB("welle", { parameter: { bereich: 10000, wellen: [{ amplitude: 1, wellenlaenge: 0.01, frequenz: 0.5, phase: 0, richtung: "rechts" }] } });
+    expect(normalizeSim(b).angepasst).toContain("parameter.bereich");
+    card(b);
+    expect(screen.getByText("Einige Angaben fehlten oder lagen außerhalb der Grenzen und wurden angepasst.")).toBeInTheDocument();
+    expect(screen.getByText(/Der gezeigte Bereich wurde auf 0,5 m gekürzt \(50 kürzeste Wellenlängen\), damit die Welle richtig dargestellt wird\./)).toBeInTheDocument();
+    expect(screen.getByText(/^Waagerecht: Ort von 0 bis 0,5 m\./)).toBeInTheDocument();
+    expect(word()).toBe("läuft");
+  });
+});
+
+describe("P5b: Regler", () => {
+  const ALLE = [...MODELLE.map((m) => [m, sim(m)] as const), ...(["doppelpendel", "welle"] as const).map((n) => [n, simB(n)] as const)];
+
+  it.each(ALLE)("%s: ein beschrifteter Regler je Eintrag in GRENZEN, Wert mit Komma und Einheit", (m, b) => {
+    recordingCtx(); fakeFrames();
+    card(b);
+    const liste = GRENZEN[m];
+    expect(screen.getAllByRole("slider")).toHaveLength(liste.length);
+    const cfg = normalizeSim(b) as unknown as { parameter: Record<string, unknown> };
+    for (const g of liste) {
+      const s = slider(g.name);
+      expect(s.type).toBe("range");
+      expect(s.tabIndex).toBeGreaterThanOrEqual(0);
+      const roh = g.feld.split(".").reduce<unknown>((o, k) => (o as Record<string, unknown>)[k], cfg.parameter) as number;
+      const txt = `${formatZahl(roh)} ${g.einheit}`;
+      expect(s).toHaveAttribute("aria-valuetext", txt);
+      expect(s.closest(".s-slider")!.textContent).toContain(txt);                         // sichtbar neben dem Regler
+      expect(s.id).toMatch(new RegExp(`^[_:a-z0-9]+-regler-${liste.indexOf(g)}$`, "i"));   // React-id und Nummer, keine Daten
+    }
+    expect(btn("Zurück auf die Werte von Claude")).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("logarithmische und lineare Skala bilden die Stellung richtig ab", () => {
+    fakeTimers(); recordingCtx(); fakeFrames();
+    card(sim("pendel"));
+    const s = slider("Länge");
+    expect(s.max).toBe("1000");
+    expect(s.value).toBe("394");                                                          // 1 m auf 0,05 bis 100 m logarithmisch
+    fireEvent.change(s, { target: { value: "500" } });                                    // Mitte: √(0,05 · 100) = 2,236 → 2,25 (Schritt 0,05)
+    expect(lastCall()).toEqual(["laenge", 2.25]);
+    expect(slider("Länge")).toHaveAttribute("aria-valuetext", "2,25 m");
+    fireEvent.pointerUp(s); warte(400);
+    fireEvent.change(s, { target: { value: "0" } }); fireEvent.pointerUp(s); warte(400);
+    expect(lastCall()).toEqual(["laenge", 0.05]);
+    fireEvent.change(s, { target: { value: "1000" } }); fireEvent.pointerUp(s); warte(400);
+    expect(lastCall()).toEqual(["laenge", 100]);
+    const w = slider("Startwinkel");
+    expect(w.max).toBe("340");
+    expect(w.value).toBe("200");                                                          // 30 Grad auf -170 bis 170, Schritt 1
+    fireEvent.change(w, { target: { value: "250" } }); fireEvent.pointerUp(w); warte(400);
+    expect(lastCall()).toEqual(["winkel", 80]);
+    expect(screen.getByText(/^Regler: Länge 100 m, Startwinkel 80 Grad\./)).toBeInTheDocument();
+  });
+
+  it("Tastatur: Pfeil, Ende und Pos1 starten neu mit begrenztem Wert über mitWert; Tasten mit Strg, Alt oder Meta bleiben dem Browser", () => {
+    fakeTimers(); recordingCtx(); const f = fakeFrames();
+    card(sim("pendel", { laufzeit: 60 }));
+    f.run(1);
+    const s = slider("Länge");
+    s.focus();
+    expect(fireEvent.keyDown(s, { key: "ArrowRight" })).toBe(false);                    // vom Regler übernommen
+    fireEvent.keyUp(s, { key: "ArrowRight" });
+    const [feld, wert] = lastCall() as [string, number];
+    expect(feld).toBe("laenge");
+    expect(wert).toBeGreaterThan(1);
+    expect(wert).toBeLessThan(1.1);
+    expect(screen.getByText(createSim(lastInput()).text)).toBeInTheDocument();           // neu gestartet mit der neuen Eingabe
+    expect(word()).toBe("läuft");
+    expect(row("Zeit in der Simulation")).toBe("0 s");
+    expect(f.pending()).toBe(1);
+    warte(400);
+    tippe(s, "End"); warte(400);
+    expect(lastCall()).toEqual(["laenge", 100]);
+    expect(slider("Länge")).toHaveAttribute("aria-valuetext", "100 m");
+    const n = vi.mocked(mitWert).mock.calls.length;
+    for (const key of ["ArrowRight", "ArrowUp", "PageUp", "End"]) { tippe(s, key); warte(400); }
+    expect(vi.mocked(mitWert).mock.calls.length).toBe(n);                                 // am Rand: nichts weiter
+    for (const mod of [{ ctrlKey: true }, { altKey: true }, { metaKey: true }]) {
+      expect(fireEvent.keyDown(s, { key: "Home", ...mod })).toBe(true);
+    }
+    warte(400);
+    expect(vi.mocked(mitWert).mock.calls.length).toBe(n);
+    tippe(s, "Home"); warte(400);
+    expect(lastCall()).toEqual(["laenge", 0.05]);
+    expect(document.activeElement).toBe(s);                                               // der Fokus bleibt auf dem Regler
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each([["ArrowLeft", -1], ["ArrowDown", -1], ["PageDown", -1], ["ArrowRight", 1], ["ArrowUp", 1], ["PageUp", 1]] as const)(
+    "F1: %s bei 1,234 m geht in Tastenrichtung (logarithmisch, zwischen zwei Stellungen)", (key, dir) => {
+      fakeTimers(); recordingCtx(); fakeFrames();
+      card(sim("pendel", { parameter: { laenge: 1.234, winkel: 30, anfangsgeschwindigkeit: 0, daempfung: 0, g: 9.81 } }));
+      tippe(slider("Länge"), key);
+      const [feld, wert] = lastCall() as [string, number];
+      expect(feld).toBe("laenge");
+      expect(Math.sign(wert - 1.234)).toBe(dir);
+      if (key === "ArrowLeft") expect(wert).toBe(1.2);
+      if (key === "ArrowRight") expect(wert).toBe(1.25);
+    });
+
+  it("F1: jede Pfeiltaste ändert jeden Regler aller Modelle streng in ihrer Richtung, auch von krummen Werten aus", () => {
+    fakeTimers(); recordingCtx(); fakeFrames();
+    const krumm = [1.234, 0.0777, 3.3333, 17.01, 0.51];
+    for (const [m, b] of [...MODELLE.map((x) => [x, sim(x)] as const), ...(["doppelpendel", "welle"] as const).map((n) => [n, simB(n)] as const)]) {
+      for (const g of GRENZEN[m]) {
+        for (const k of krumm) {
+          const roh = g.min + (g.max - g.min) * (k / 20);                                 // innen, nicht auf einer Stellung
+          const start = mitWert(b, g.feld, roh);
+          for (const [key, dir] of [["ArrowLeft", -1], ["ArrowRight", 1]] as const) {
+            const v = card(start);
+            vi.mocked(mitWert).mockClear();
+            const vor = start.parameter as unknown as Record<string, unknown>;
+            const alt = g.feld.split(".").reduce<unknown>((o, t) => (o as Record<string, unknown>)[t], vor) as number;
+            tippe(slider(g.name), key);
+            const call = lastCall() as [string, number] | undefined;
+            if (call) expect(Math.sign(call[1] - alt), `${m} ${g.feld} ${alt} ${key}`).toBe(dir);
+            else expect(dir < 0 ? alt <= g.min : alt >= g.max, `${m} ${g.feld} ${alt} ${key} ohne Wert`).toBe(true);
+            v.unmount();
+            warte(400);
+          }
+        }
+      }
+    }
+  });
+
+  it("die abgeleitete Grenze der Feder begrenzt den Wert (mitWert), die Anzeige zeigt den begrenzten Wert", () => {
+    fakeTimers(); recordingCtx(); fakeFrames();
+    card(sim("feder"));
+    const s = slider("Federkonstante");
+    tippe(s, "End"); warte(400);
+    expect(lastCall()).toEqual(["federkonstante", 1e6]);
+    const k = (lastInput().parameter as { federkonstante: number }).federkonstante;
+    expect(k).toBeLessThan(1e6);                                                          // Schwingungsdauer ≥ 0,05 s bei 1 kg
+    expect(2 * Math.PI * Math.sqrt(1 / k)).toBeGreaterThanOrEqual(0.05);
+    expect(slider("Federkonstante")).toHaveAttribute("aria-valuetext", `${formatZahl(k)} N/m`);
+    expect(screen.queryByText(/wurden angepasst/)).toBeNull();
+  });
+
+  it("beim Ziehen höchstens ein Neustart je 200 ms, nach dem Loslassen einmal mit dem letzten Wert", () => {
+    fakeTimers(); recordingCtx(); fakeFrames();
+    card(simB("doppelpendel"));
+    const s = slider("Startwinkel oben");
+    expect(s.value).toBe("300");                                                          // 120 Grad auf -180 bis 180
+    for (let i = 1; i <= 20; i++) {                                                       // 400 ms ziehen, alle 20 ms ein Schritt
+      fireEvent.change(s, { target: { value: String(300 + i) } });
+      act(() => { vi.advanceTimersByTime(20); });
+    }
+    expect(vi.mocked(mitWert)).toHaveBeenCalledTimes(3);                                  // bei 0, 200 und 400 ms
+    expect(lastCall()).toEqual(["winkel1", 140]);
+    fireEvent.change(s, { target: { value: "321" } });
+    expect(vi.mocked(mitWert)).toHaveBeenCalledTimes(3);
+    expect(slider("Startwinkel oben")).toHaveAttribute("aria-valuetext", "141 Grad");      // die Anzeige folgt sofort
+    fireEvent.pointerUp(s);
+    expect(vi.mocked(mitWert)).toHaveBeenCalledTimes(3);                                  // Loslassen wartet den Takt ab
+    warte(200);                                                                           // der Takt bei 600 ms bringt den letzten Wert
+    expect(vi.mocked(mitWert)).toHaveBeenCalledTimes(4);
+    expect(lastCall()).toEqual(["winkel1", 141]);
+    expect(screen.getByText(createSim(lastInput()).text)).toBeInTheDocument();
+    expect(screen.getByText(/Start bei 141 Grad und -10 Grad/)).toBeInTheDocument();
+    warte(1000);
+    expect(vi.mocked(mitWert)).toHaveBeenCalledTimes(4);                                  // nichts kommt nach
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("30 Neustarts durch Ziehen: immer genau ein Bild bestellt, nach dem Abbau keins und kein Zeitgeber", () => {
+    fakeTimers(); recordingCtx(); const f = fakeFrames();
+    const v = card(simB("doppelpendel", { laufzeit: 60 }));
+    const s = slider("Startwinkel oben");
+    for (let i = 1; i <= 30; i++) {
+      fireEvent.change(s, { target: { value: String(300 - i) } });
+      warte(200);
+      f.frame();
+      expect(f.pending()).toBe(1);
+    }
+    expect(vi.mocked(mitWert)).toHaveBeenCalledTimes(30);
+    expect(slider("Startwinkel oben")).toHaveAttribute("aria-valuetext", "90 Grad");
+    v.unmount();
+    expect(f.pending()).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("Abbau mitten im Ziehen: kein Zeitgeber übrig, danach kommt kein Wert mehr", () => {
+    fakeTimers(); recordingCtx(); const f = fakeFrames();
+    const v = card(sim("pendel"));
+    const s = slider("Startwinkel");
+    fireEvent.change(s, { target: { value: "210" } });
+    fireEvent.change(s, { target: { value: "220" } });                                    // wartet auf den Takt
+    expect(vi.mocked(mitWert)).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(1);
+    v.unmount();
+    expect(vi.getTimerCount()).toBe(0);
+    warte(1000);
+    expect(vi.mocked(mitWert)).toHaveBeenCalledTimes(1);
+    expect(f.pending()).toBe(0);
+  });
+
+  it("neue Daten mitten im Ziehen: kein Zeitgeber, kein alter Wert, Tempo wieder „normal“", () => {
+    fakeTimers(); recordingCtx(); fakeFrames();
+    const v = card(sim("pendel", { laufzeit: 60 }));
+    click("doppelt");
+    expect(screen.getByText("Tempo: doppelt")).toBeInTheDocument();
+    const s = slider("Startwinkel");
+    fireEvent.change(s, { target: { value: "210" } });
+    fireEvent.change(s, { target: { value: "260" } });
+    expect(vi.getTimerCount()).toBe(1);
+    v.rerender(cardEl(sim("pendel", { laufzeit: 60, beschreibung: "neu" })));
+    expect(vi.getTimerCount()).toBe(0);
+    warte(1000);
+    expect(vi.mocked(mitWert)).toHaveBeenCalledTimes(1);                                  // der Wert 90 Grad kommt nie an
+    expect(slider("Startwinkel")).toHaveAttribute("aria-valuetext", "30 Grad");
+    expect(screen.getByText(createSim(sim("pendel")).text)).toBeInTheDocument();
+    expect(screen.getByText("Tempo: normal")).toBeInTheDocument();
+    expect(btn("normal")).toHaveAttribute("aria-pressed", "true");
+    expect(btn("doppelt")).toHaveAttribute("aria-pressed", "false");
+    expect(btn("Zurück auf die Werte von Claude")).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it.each(["ohne Ereignis", "keyUp", "blur", "touchEnd", "mouseUp", "pointerUp"] as const)(
+    "Ende des Ziehens %s: der letzte Wert kommt spätestens nach 200 ms, danach kein Zeitgeber", (ende) => {
+      fakeTimers(); recordingCtx(); fakeFrames();
+      card(sim("pendel"));
+      const s = slider("Startwinkel");
+      s.focus();
+      fireEvent.change(s, { target: { value: "210" } });
+      warte(50);
+      fireEvent.change(s, { target: { value: "230" } });
+      if (ende !== "ohne Ereignis") fireEvent[ende](s);
+      expect(vi.mocked(mitWert)).toHaveBeenCalledTimes(1);
+      warte(150);
+      expect(vi.mocked(mitWert)).toHaveBeenCalledTimes(2);
+      expect(lastCall()).toEqual(["winkel", 60]);
+      expect(slider("Startwinkel")).toHaveAttribute("aria-valuetext", "60 Grad");
+      warte(200);
+      expect(vi.getTimerCount()).toBe(0);
+      expect(vi.mocked(mitWert)).toHaveBeenCalledTimes(2);
+      expect(screen.getByText(/^Regler: Länge 1 m, Startwinkel 60 Grad\./)).toBeInTheDocument();
+    });
+
+  it("Tippen wird gedrosselt wie Ziehen: höchstens ein Neustart je 200 ms und danach einer mit dem letzten Wert", () => {
+    fakeTimers(); recordingCtx(); fakeFrames();
+    card(sim("pendel"));
+    const s = slider("Startwinkel");
+    s.focus();
+    const zeiten: number[] = [];
+    let jetzt = 0;
+    vi.mocked(mitWert).mockImplementation((...a) => { zeiten.push(jetzt); return realMitWert(...a); });
+    try {
+      for (let i = 0; i < 10; i++) { tippe(s, "ArrowRight"); jetzt += 50; warte(50); }     // zehn Tipps in 500 ms
+      for (let i = 0; i < 10; i++) { jetzt += 50; warte(50); }
+    } finally {
+      vi.mocked(mitWert).mockImplementation(realMitWert);
+    }
+    expect(zeiten).toEqual([0, 200, 400, 600]);                                           // sofort, je 200 ms, dann der letzte
+    for (let i = 1; i < zeiten.length; i++) expect(zeiten[i] - zeiten[i - 1]).toBeGreaterThanOrEqual(200);
+    expect(lastCall()).toEqual(["winkel", 40]);                                           // 30 Grad plus zehn Schritte
+    expect(slider("Startwinkel")).toHaveAttribute("aria-valuetext", "40 Grad");
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("„Zurück“ mitten im Ziehen: kein alter Wert kommt später an", () => {
+    fakeTimers(); recordingCtx(); fakeFrames();
+    card(sim("pendel"));
+    const s = slider("Startwinkel");
+    fireEvent.change(s, { target: { value: "210" } });
+    fireEvent.change(s, { target: { value: "300" } });
+    click("Zurück auf die Werte von Claude");
+    expect(vi.getTimerCount()).toBe(0);
+    warte(1000);
+    expect(vi.mocked(mitWert)).toHaveBeenCalledTimes(1);
+    expect(slider("Startwinkel")).toHaveAttribute("aria-valuetext", "30 Grad");
+    expect(screen.getByText(createSim(sim("pendel")).text)).toBeInTheDocument();
+    expect(btn("Zurück auf die Werte von Claude")).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("der Hinweis zur Beschreibung von Claude erscheint nach einer Änderung und geht mit „Zurück“", () => {
+    fakeTimers(); recordingCtx(); fakeFrames();
+    const HINWEIS = "Die Beschreibung von Claude gilt für die ursprünglichen Werte.";
+    card(sim("pendel", { beschreibung: "Ein Pendel bei 30 Grad." }));
+    expect(screen.queryByText(HINWEIS)).toBeNull();
+    fireEvent.change(slider("Startwinkel"), { target: { value: "250" } });
+    expect(screen.getByText(HINWEIS)).toBeInTheDocument();
+    expect(screen.getByText("Ein Pendel bei 30 Grad.")).toBeInTheDocument();
+    warte(400);
+    click("Zurück auf die Werte von Claude");
+    expect(screen.queryByText(HINWEIS)).toBeNull();
+  });
+
+  it("„Zurück auf die Werte von Claude“ stellt die gelieferten Daten wieder her; die Textfassung nennt beide", () => {
+    recordingCtx(); const f = fakeFrames();
+    const b = sim("pendel");
+    card(b);
+    const s = slider("Länge");
+    fireEvent.change(s, { target: { value: "500" } }); fireEvent.pointerUp(s);
+    expect(screen.getByText(createSim(lastInput()).text)).toBeInTheDocument();
+    expect(screen.queryByText(createSim(b).text)).toBeNull();
+    expect(screen.getByText(/^Regler: Länge 2,25 m, Startwinkel 30 Grad\. Mit den Reglern geändert; die Werte von Claude: Länge 1 m, Startwinkel 30 Grad\.$/)).toBeInTheDocument();
+    const reset = btn("Zurück auf die Werte von Claude");
+    expect(reset).not.toHaveAttribute("aria-disabled");
+    reset.focus();
+    click("Zurück auf die Werte von Claude");
+    expect(screen.getByText(createSim(b).text)).toBeInTheDocument();
+    expect(slider("Länge")).toHaveAttribute("aria-valuetext", "1 m");
+    expect(screen.getByText("Regler: Länge 1 m, Startwinkel 30 Grad.")).toBeInTheDocument();
+    expect(btn("Zurück auf die Werte von Claude")).toHaveAttribute("aria-disabled", "true");
+    expect(document.activeElement).toBe(reset);
+    expect(word()).toBe("läuft");
+    expect(f.pending()).toBe(1);
+  });
+
+  it("neue Daten verwerfen die Reglerwerte", () => {
+    recordingCtx(); fakeFrames();
+    const v = card(sim("pendel"));
+    const s = slider("Länge");
+    fireEvent.change(s, { target: { value: "500" } }); fireEvent.pointerUp(s);
+    v.rerender(cardEl(sim("pendel", { beschreibung: "neu" })));
+    expect(slider("Länge")).toHaveAttribute("aria-valuetext", "1 m");
+    expect(btn("Zurück auf die Werte von Claude")).toHaveAttribute("aria-disabled", "true");
+  });
+});
+
+describe("P5b: Tempo", () => {
+  it("halb, normal, doppelt ändern den Faktor der Schleife und das Wort; Neu starten und Regler behalten ihn", () => {
+    recordingCtx(); const f = fakeFrames();
+    card(sim("pendel", { tempo: 1, laufzeit: 60 }));
+    const group = screen.getByRole("group", { name: "Tempo" });
+    expect([...group.querySelectorAll("button")].map((x) => x.textContent)).toEqual(["halb", "normal", "doppelt"]);
+    expect(btn("normal")).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("Tempo: normal")).toBeInTheDocument();
+    const lauf = () => { f.run(1); click("Pause"); const t = num(row("Zeit in der Simulation")); return t; };
+    const t1 = lauf();
+    expect(t1).toBeGreaterThan(0.85); expect(t1).toBeLessThan(1.05);
+    click("doppelt");
+    expect(btn("doppelt")).toHaveAttribute("aria-pressed", "true");
+    expect(btn("normal")).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByText("Tempo: doppelt")).toBeInTheDocument();
+    click("Weiter");
+    const t2 = lauf() - t1;
+    expect(t2).toBeGreaterThan(1.7); expect(t2).toBeLessThan(2.1);
+    click("Neu starten");
+    expect(screen.getByText("Tempo: doppelt")).toBeInTheDocument();
+    const t3 = lauf();
+    expect(t3).toBeGreaterThan(1.7); expect(t3).toBeLessThan(2.1);
+    const w = slider("Startwinkel");
+    fireEvent.change(w, { target: { value: "210" } }); fireEvent.pointerUp(w);             // neuer Lauf mit 40 Grad
+    expect(word()).toBe("läuft");
+    expect(screen.getByText("Tempo: doppelt")).toBeInTheDocument();
+    const t4 = lauf();
+    expect(t4).toBeGreaterThan(1.7); expect(t4).toBeLessThan(2.1);
+    click("halb"); click("Neu starten");
+    expect(screen.getByText("Tempo: halb")).toBeInTheDocument();
+    const t5 = lauf();
+    expect(t5).toBeGreaterThan(0.4); expect(t5).toBeLessThan(0.55);
+  });
+
+  it("in der Zeitlupe sagt die Ansicht, dass das Tempo erst ohne Rechengrenze wirkt", () => {
+    recordingCtx(); const f = fakeFrames();
+    card(sim("gas", { tempo: 100, laufzeit: 60, parameter: { ...(BLOCKS.gas.parameter as object), anzahl: 300 } }));
+    const SATZ = "Tempo wirkt erst, wenn die Rechengrenze nicht erreicht ist.";
+    expect(screen.queryByText(SATZ)).toBeNull();
+    for (let i = 0; i < 180 && word() !== "Zeitlupe, Rechengrenze erreicht"; i++) f.frame();
+    expect(word()).toBe("Zeitlupe, Rechengrenze erreicht");
+    expect(screen.getByText(SATZ)).toBeInTheDocument();
+    expect(screen.getByText(SATZ).closest(".s-tempo")).not.toBeNull();
+  });
+
+  it("eine Schleife ohne setTempoFaktor: keine Tempo-Gruppe, alles andere bleibt", () => {
+    recordingCtx(); const f = fakeFrames();
+    const real = vi.mocked(createSimLoop).getMockImplementation()!;
+    vi.mocked(createSimLoop).mockImplementation((o) => {
+      const l = real(o);
+      delete l.setTempoFaktor; delete l.getTempoFaktor;
+      return l;
+    });
+    try {
+      card(sim("pendel"));
+      expect(word()).toBe("läuft");
+      expect(screen.queryByRole("group", { name: "Tempo" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "doppelt" })).toBeNull();
+      expect(btn("Pause")).toBeInTheDocument();
+      expect(screen.getAllByRole("slider")).toHaveLength(2);
+      f.run(0.5);
+      expect(f.pending()).toBe(1);
+    } finally {
+      vi.mocked(createSimLoop).mockImplementation(real);
+    }
+  });
+
+  it("bei „weniger Bewegung“ kein Tempo (keine Schleife), nach „Trotzdem abspielen“ schon", () => {
+    reducedMotion(); recordingCtx(); fakeFrames();
+    card(simB("doppelpendel"));
+    expect(screen.queryByRole("group", { name: "Tempo" })).toBeNull();
+    expect(screen.getAllByRole("slider")).toHaveLength(2);
+    click("Trotzdem abspielen");
+    expect(screen.getByRole("group", { name: "Tempo" })).toBeInTheDocument();
+    expect(btn("normal")).toHaveAttribute("aria-pressed", "true");
+  });
+});
+
+describe("P5b: weniger Bewegung", () => {
+  it.each(P5B_NAMEN)("%s: keine Schleife, das neue Standbild mit Erklärung, Regler rechnen nur das Standbild neu", (n) => {
+    reducedMotion();
+    const r = recordingCtx(), f = fakeFrames();
+    const b = simB(n);
+    card(b);
+    expect(f.raf).not.toHaveBeenCalled();
+    expect(word()).toBe(STILL);
+    expect(screen.getByText(FIXED)).toBeInTheDocument();
+    expect(screen.getByText(NOTE[n])).toBeInTheDocument();
+    expect(screen.getByText(createSim(b).text)).toBeInTheDocument();
+    expect(btn("Trotzdem abspielen")).toBeInTheDocument();
+    expect(standbild).toHaveBeenCalledTimes(1);
+    const dashes = r.calls.filter((c) => c.name === "setLineDash" && (c.args[0] as number[]).length > 0).length;
+    if (n === "doppelpendel") {
+      expect(screen.getByText(/^Gestrichelt: der Weg des unteren Körpers in den ersten [\d,]+ s\. Die Arme stehen in der Startlage\.$/)).toBeInTheDocument();
+      expect(dashes).toBeGreaterThanOrEqual(1);
+      expect(r.count("lineTo")).toBeGreaterThan(100);
+    }
+    if (n === "welle") {
+      expect(screen.getByText(/Gestrichelt: die Hülle, .* über [\d,]+ s\. Die Hülle ist genau gerechnet\./)).toBeInTheDocument();
+      expect(framePaths(r.calls).filter((p) => p.lineTo === 399)).toHaveLength(5);       // Summe, zwei Wellen, Hülle unten und oben
+      expect(dashes).toBeGreaterThanOrEqual(1);
+    }
+    if (n === "anziehung") {
+      expect(screen.getByText(/^Die gerechneten Wege über [\d,]+ Jahre als offene Linien, die Körper in ihrer Startlage\.$/)).toBeInTheDocument();
+      expect(r.count("closePath")).toBe(0);                                               // offen, keine geschlossenen Ellipsen
+      expect(r.count("lineTo")).toBeGreaterThan(100);
+    }
+    const s = screen.getAllByRole("slider")[0];
+    fireEvent.change(s, { target: { value: String(Number(s.getAttribute("value")) + 5) } }); fireEvent.pointerUp(s);
+    expect(standbild).toHaveBeenCalledTimes(2);
+    expect(word()).toBe(STILL);
+    f.run(1);
+    expect(f.raf).not.toHaveBeenCalled();
+  });
+
+  it("Welle mit verschiedenen Frequenzen: die Hülle ist abgetastet und die Ansicht sagt es", () => {
+    reducedMotion(); recordingCtx(); fakeFrames();
+    card(simB("welle", { parameter: { bereich: 0, wellen: [
+      { amplitude: 1, wellenlaenge: 2, frequenz: 0.5, phase: 0, richtung: "rechts" },
+      { amplitude: 0.5, wellenlaenge: 1, frequenz: 1.5, phase: 90, richtung: "links" }] } }));
+    expect(screen.getByText(/Die Hülle ist nur abgetastet und kann etwas zu eng sein\./)).toBeInTheDocument();
+  });
+});
+
+describe("P5b: Bedienen sendet, speichert und spielt nichts", () => {
+  /** Alle neuen Bedienelemente einmal: Tempo, jeder Regler mit Ziehen und Tasten, Zurück, dazu Pause, Weiter, Neu starten. */
+  const bedieneAlles = (f: ReturnType<typeof fakeFrames>) => {
+    for (const t of ["doppelt", "halb", "normal"]) { const b = btn(t) as HTMLButtonElement; expect(b.type).toBe("button"); b.focus(); fireEvent.click(b); f.run(0.2); }
+    for (const s of screen.getAllByRole("slider") as HTMLInputElement[]) {
+      expect(s.tagName).toBe("INPUT");
+      s.focus();
+      expect(document.activeElement).toBe(s);
+      fireEvent.change(s, { target: { value: String(Number(s.value) + 3) } });
+      fireEvent.pointerUp(s);
+      for (const key of ["ArrowRight", "ArrowLeft", "PageUp", "End", "Home", "Enter", " "]) { fireEvent.keyDown(s, { key }); fireEvent.keyUp(s, { key }); }
+      fireEvent.keyDown(s, { key: "ArrowRight", ctrlKey: true });
+      fireEvent.blur(s);
+      f.run(0.2);
+    }
+    const reset = btn("Zurück auf die Werte von Claude") as HTMLButtonElement;
+    expect(reset.type).toBe("button");
+    fireEvent.click(reset); f.run(0.2);
+    click("Pause"); click("Weiter"); f.run(0.2); click("Neu starten"); f.run(0.2);
+  };
+
+  it.each([...P5B_NAMEN, "pendel", "wurf", "gas"])("%s (Vorführung): Tempo, Regler, Zurück und Tasten lassen die gesendeten Nachrichten unverändert", async (n) => {
+    recordingCtx(); const f = fakeFrames();
+    const sock: { current?: MockSocket } = {};
+    const loader = async () => ({ client: new ApiClient({ port: 5000, token: TOKEN }, (u) => (sock.current = new MockSocket(u, TOKEN))) });
+    render(<App load={loader} />);
+    await waitFor(() => screen.getAllByText(STATE_VIEW.idle.label));
+    const v = DEMO_VIEWS.find((x) => x.id === n)!;
+    sock.current!.show(v);
+    await waitFor(() => screen.getByRole("heading", { name: String(v.titel) }), { timeout: 3000 });
+    await waitFor(() => expect(word()).toBe("läuft"));
+    const pollTypes = new Set(["voice.state", ...sock.current!.sent.map((x) => (x as { type: string }).type)]);
+    const before = JSON.stringify(sock.current!.sent);
+    bedieneAlles(f);
+    fireEvent.click(screen.getByText("Beschreibung"));
+    expect(JSON.stringify(sock.current!.sent)).toBe(before);
+    await new Promise((res) => setTimeout(res, 1200));
+    const later = sock.current!.sent.map((x) => (x as { type: string }).type);
+    expect(later.filter((t) => !pollTypes.has(t))).toEqual([]);
+  }, 15_000);
+
+  it("nichts wird gespeichert, geladen oder abgespielt", () => {
+    recordingCtx(); const f = fakeFrames();
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+    const fetchSpy = vi.fn(), idbOpen = vi.fn(), audio = vi.fn(), ctx = vi.fn(), speak = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    vi.stubGlobal("indexedDB", { open: idbOpen });
+    vi.stubGlobal("Audio", audio);
+    vi.stubGlobal("AudioContext", ctx);
+    vi.stubGlobal("webkitAudioContext", ctx);
+    vi.stubGlobal("speechSynthesis", { speak, cancel: vi.fn() });
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(() => Promise.resolve());
+    for (const n of P5B_NAMEN) {
+      const v = card(simB(n, { laufzeit: 60 }));
+      bedieneAlles(f);
+      v.unmount();
+    }
+    for (const spy of [setItem, fetchSpy, idbOpen, audio, ctx, speak, play]) expect(spy).not.toHaveBeenCalled();
+    expect(localStorage.length).toBe(0);
+    expect(sessionStorage.length).toBe(0);
+    expect(document.querySelector("audio, video, iframe, object, embed")).toBeNull();
+  });
+});
+
+describe("P5b: Vorführung", () => {
+  it("die drei neuen Beispiele sind vollständig wie vom Backend und zeigen sich ohne Hinweis", () => {
+    recordingCtx(); fakeFrames();
+    const raw = P5B_NAMEN.map((n) => DEMO_VIEWS.find((v) => v.id === n)!);
+    expect(raw.every(Boolean)).toBe(true);
+    const KEYS: Record<string, string[]> = {
+      doppelpendel: ["daempfung", "g", "laenge1", "laenge2", "masse1", "masse2", "winkel1", "winkel2"],
+      welle: ["bereich", "wellen"],
+      umlauf: ["anziehung", "koerper", "zentralmasse"],
+    };
+    raw.forEach((r, i) => {
+      expect(Object.keys(r).sort()).toEqual(["art", "bausteine", "id", "schliessen", "stand", "titel"]);
+      const v = parseItem({ ...r, seq: i + 1 }) as View;
+      const b = v.bausteine[0] as SimBlock;
+      expect(Object.keys(b).sort()).toEqual(["beschreibung", "laufzeit", "modell", "parameter", "spur", "tempo", "typ"]);
+      expect(Object.keys(b.parameter).sort()).toEqual(KEYS[b.modell]);
+      if (b.modell === "welle") {
+        expect(b.parameter.wellen).toHaveLength(2);
+        for (const w of b.parameter.wellen) expect(Object.keys(w).sort()).toEqual(["amplitude", "frequenz", "phase", "richtung", "wellenlaenge"]);
+        expect(b.parameter.wellen.map((w) => w.richtung).sort()).toEqual(["links", "rechts"]);
+        expect(new Set(b.parameter.wellen.map((w) => w.frequenz)).size).toBe(1);
+      }
+      if (b.modell === "umlauf") {
+        expect(b.parameter.anziehung).toBe(true);
+        expect(b.parameter.koerper).toHaveLength(3);
+        for (const k of b.parameter.koerper) expect(Object.keys(k).sort()).toEqual(["abstand", "exzentrizitaet", "farbe", "masse", "name", "phase"]);
+      }
+      if (b.modell === "doppelpendel") { expect(b.parameter.winkel1).toBe(120); expect(b.parameter.winkel2).toBe(-10); }
+      const cfg = normalizeSim(b);
+      expect(cfg.angepasst).toEqual([]);
+      expect(cfg.ungueltig).toBe(false);
+      const c = render(<ViewCard view={v} sys={null} sysNo={false} onClose={() => undefined} />);
+      expect(screen.queryByRole("alert")).toBeNull();
+      expect(screen.queryByText(/angepasst|kann nicht gezeigt|nicht gezeichnet/)).toBeNull();
+      expect(screen.getByText(FIXED)).toBeInTheDocument();
+      expect(screen.getByText(b.beschreibung)).toBeInTheDocument();
+      if (b.modell === "welle") expect(screen.getByText(/stehende Welle mit festen Knoten/)).toBeInTheDocument();
+      c.unmount();
+    });
   });
 });
