@@ -76,6 +76,8 @@ export interface MolekuelGeometrie {
   summenformel: string;
   text: string;
   zeilen: AtomZeile[];
+  /** true: die Eingabe war ungültig; dann ohne Atome und mit neutralem Text. */
+  ungueltig: boolean;
 }
 export interface AtomModell {
   symbol: string;
@@ -115,6 +117,8 @@ export interface OrbitalWolke {
   versuche: number;
   beschreibung: string;
   text: string;
+  /** true: die Eingabe war ungültig; dann ohne Punkte und mit neutralem Text. */
+  ungueltig: boolean;
 }
 
 export const FORMEN: readonly TeilchenForm[] = ["molekuel", "atom", "orbital"];
@@ -220,6 +224,14 @@ const own = (o: Obj, k: string): unknown => (Object.prototype.hasOwnProperty.cal
 const hat = (o: Obj, k: string): boolean => Object.prototype.hasOwnProperty.call(o, k);
 const STEUER = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2066-\u2069\ufeff]/g;
 const text = (v: unknown, max: number): string => (typeof v === "string" ? v.replace(STEUER, "").slice(0, max).trim() : "");
+/** Trug die Eingabe selbst schon `ungueltig: true` (oder ist sie kein Objekt)? Wirft das Lesen, gilt sie als ungültig. */
+function warUngueltig(c: unknown): boolean {
+  try {
+    return !isObj(c) || own(c, "ungueltig") === true;
+  } catch {
+    return true;
+  }
+}
 const ganz = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v);
 
 /** Ganze Zahl in [lo, hi]; fehlt sie, gilt `def` still; kaputt, gerundet oder begrenzt wird notiert. */
@@ -376,7 +388,9 @@ function atomNorm(src: Obj, fix: string[]): AtomConfig {
   const rohS = own(src, "schalen");
   if (rohS === undefined) {
     schalen = schalenRegel(Math.max(0, elektronen));
-    if (elektronen > 20) { fix.push("schalen"); ungueltig = true; }      // über 20 Elektronen ist `schalen` Pflicht
+    // Die Regel 2, 8, 8, 2 stimmt nur bis Ordnungszahl 20 (ab Scandium füllt sich die dritte Schale weiter, auch bei Ionen
+    // wie Sc³⁺ mit 18 Elektronen). Darum gilt sie nur bei Z ≤ 20 und Z − ladung ≤ 20, sonst ist `schalen` Pflicht.
+    if (z > 20 || elektronen > 20) { fix.push("schalen"); ungueltig = true; }
   } else if (!Array.isArray(rohS)) {
     fix.push("schalen"); ungueltig = true; schalen = schalenRegel(Math.max(0, Math.min(elektronen, 20)));
   } else {
@@ -513,7 +527,7 @@ export function kugelRadius(el: ChemElement, darstellung: Darstellung): number {
 
 const leereGeometrie = (darstellung: Darstellung): MolekuelGeometrie => ({
   atome: [], bindungen: [], bindungenAbgeleitet: false, beschriftungen: [], darstellung, zentrum: [0, 0, 0], radius: 1,
-  atomzahl: 0, bindungszahl: 0, summenformel: "", text: "Molekül ohne gültige Atome.", zeilen: [],
+  atomzahl: 0, bindungszahl: 0, summenformel: "", text: "Ungültige Molekülangabe.", zeilen: [], ungueltig: true,
 });
 
 /** Alles, was die Ansicht zum Zeichnen und für die Textfassung braucht. Wirft nie; die Eingabe wird noch einmal begrenzt. */
@@ -522,6 +536,7 @@ export function molekuelGeometrie(config: MolekuelConfig): MolekuelGeometrie {
   try {
     const cfg = normalizeTeilchen({ ...config, form: "molekuel" }) as MolekuelConfig;
     darstellung = cfg.darstellung;
+    if (cfg.ungueltig || warUngueltig(config)) return leereGeometrie(darstellung);
     return geometrie(cfg);
   } catch {
     return leereGeometrie(darstellung);
@@ -559,7 +574,7 @@ function geometrie(cfg: MolekuelConfig): MolekuelGeometrie {
   return {
     atome: geo, bindungen, bindungenAbgeleitet: abgeleitet, beschriftungen: cfg.beschriftungen.map((l) => ({ ...l })), darstellung,
     zentrum, radius: radius > 0 && fin(radius) ? radius : 1, atomzahl: atome.length, bindungszahl: bindungen.length, summenformel: formel,
-    text, zeilen,
+    text, zeilen, ungueltig: false,
   };
 }
 
@@ -583,7 +598,8 @@ export function atomModell(config: AtomConfig): AtomModell {
   } catch {
     cfg = ersatzAtom(["intern"]) as AtomConfig;
   }
-  const el = elementNachSymbol(cfg.element) ?? ELEMENTE[0];
+  const ungueltig = cfg.ungueltig || warUngueltig(config);
+  const el =elementNachSymbol(cfg.element) ?? ELEMENTE[0];
   const neutronen = cfg.neutronen >= 0 ? cfg.neutronen : null;
   const elektronen = Math.max(0, el.z - cfg.ladung);
   const schalen = cfg.schalen.slice();
@@ -600,7 +616,7 @@ export function atomModell(config: AtomConfig): AtomModell {
   return {
     symbol: el.symbol, name: el.name, farbe: el.farbe, z: el.z, protonen: el.z, neutronen,
     massenzahl: neutronen !== null ? el.z + neutronen : null, ladung: cfg.ladung, elektronen, schalen, ladungText: lt,
-    text: `${teile.join(", ")}. Vereinfachtes Schalenmodell.`, ungueltig: cfg.ungueltig,
+    text: ungueltig ? "Ungültige Atomangabe." : `${teile.join(", ")}. Vereinfachtes Schalenmodell.`, ungueltig,
   };
 }
 
@@ -678,10 +694,10 @@ export function orbitalPunkte(config: OrbitalConfig): OrbitalWolke {
   } catch {
     cfg = { typ: "teilchen", form: "orbital", orbital: "1s", punkte: PUNKTE_STANDARD, startwert: 1, angepasst: ["intern"], ungueltig: true };
   }
-  const name = cfg.orbital, d = ORBITAL_DEF[name], soll = cfg.punkte;
-  const pos = new Float32Array(3 * soll), ph = new Int8Array(soll);
+  const name = cfg.orbital, d = ORBITAL_DEF[name], soll = cfg.punkte, ungueltig = cfg.ungueltig || warUngueltig(config);
+  const pos = new Float32Array(ungueltig ? 0 : 3 * soll), ph = new Int8Array(ungueltig ? 0 : soll);
   let n = 0, versuche = 0, plus = 0, weit = 0;
-  try {
+  if (!ungueltig) try {                                              // ungültig: keine Wolke, die ein echtes Orbital vortäuscht
     const rng = mulberry32(cfg.startwert), pMax = radialMax(name, d), grenze = VERSUCHE_JE_PUNKT * soll;
     while (n < soll && versuche < grenze) {
       versuche++;
@@ -713,6 +729,7 @@ export function orbitalPunkte(config: OrbitalConfig): OrbitalWolke {
   const zahl = n === soll ? mehrzahl(n, "Punkt", "Punkte") : `${n} von ${soll} Punkten`;
   return {
     orbital: name, soll, anzahl: n, vollstaendig: n === soll, positionen, phasen, plus, minus: n - plus,
-    ausdehnung: n > 0 ? weit : d.rMax, versuche, beschreibung: d.beschreibung, text: `Orbital ${name}, ${zahl}, ${d.beschreibung}.`,
+    ausdehnung: n > 0 ? weit : d.rMax, versuche, beschreibung: d.beschreibung,
+    text: ungueltig ? "Ungültige Orbitalangabe." : `Orbital ${name}, ${zahl}, ${d.beschreibung}.`, ungueltig,
   };
 }
