@@ -3,14 +3,17 @@ import { ART_LABEL, type Block, type View } from "../../lib/stage";
 import { IconCross } from "../Icons";
 import { SystemPanel, type SysData } from "../SystemPanel";
 import { Chart } from "./Chart";
+import { Compare, Pairs, Timeline } from "./Compare";
 import { Change, Document } from "./Doc";
+import { Flashcards, Guide, Quiz } from "./Learn";
 import { Model3D } from "./Model3D";
 import { Plan2D } from "./Plan2D";
 import { Countdown, Mail, MailDraft, Progress, Schedule, Tasks } from "./Live";
 import { Tex } from "./Tex";
 
-// Eine Ansicht von Claude auf der Bühne. Layout je Art (antwort, rechnung, markt, recherche, auftrag, mail), Bausteine nur als Text.
-// Quellen-Adressen sind Text, kein Link: nichts öffnet sich, nichts wird nachgeladen.
+// Eine Ansicht von Claude auf der Bühne. Layout je Art (antwort, rechnung, markt, recherche, auftrag, mail, lernen), Bausteine nur als Text.
+// Quellen-Adressen sind Text, kein Link: nichts öffnet sich, nichts wird nachgeladen. Knöpfe in Lernkarten, Quiz und Anleitung
+// ändern nur die Anzeige im Fenster, sie senden nichts.
 
 /** Fängt einen Fehler in einem einzelnen Baustein ab: Er zeigt dann einen Hinweis, der Rest der Oberfläche läuft weiter.
  *  (Das Backend prüft jede Ansicht, aber ein Darstellungsfehler darf nie das ganze Fenster leeren.) */
@@ -90,6 +93,12 @@ function BlockView({ b, sys, sysNo }: { b: Block; sys: SysData | null; sysNo: bo
     case "aenderung": return <Change b={b} />;
     case "szene3d": return <Model3D b={b} />;
     case "plan2d": return <Plan2D b={b} />;
+    case "vergleich": return <Compare b={b} />;
+    case "zeitstrahl": return <Timeline b={b} />;
+    case "gegenueber": return <Pairs b={b} />;
+    case "lernkarten": return <Flashcards b={b} />;
+    case "quiz": return <Quiz b={b} />;
+    case "anleitung": return <Guide b={b} />;
   }
 }
 
