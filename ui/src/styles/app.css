@@ -418,6 +418,31 @@ h2, h3 { font-family: var(--font-display); font-weight: 600; letter-spacing: .04
 .s-name { color: var(--text); }
 .s-text { display: grid; gap: var(--s-1); }
 .s-text p { margin: 0; max-width: 70ch; overflow-wrap: anywhere; line-height: 1.55; }
+/* ----- Teilchen (P5b): Molekül und Orbital mit three.js (nur Zeichnen bei Änderung), Schalenmodell als statisches SVG. Symbole,
+   Beschriftungen und Achsennamen stehen als DOM-Text über dem Bild, nie im Bild ----- */
+.v-teilchen { display: grid; gap: var(--s-3); min-width: 0; }
+.t-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s-1) var(--s-3); }
+.t-name { color: var(--text); overflow-wrap: anywhere; }
+.t-flag { margin: 0; font-family: var(--font-mono); font-size: var(--fs-xs); letter-spacing: .08em; text-transform: uppercase; color: var(--arc); }
+.t-facts { margin: 0; display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-4); font-size: var(--fs-sm); color: var(--text-muted); }
+.t-formula { font-family: var(--font-mono); font-weight: 600; color: var(--text); }
+.t-legend, .t-labels { margin: 0; padding-left: var(--s-5); display: grid; gap: var(--s-1); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.t-sym { font-family: var(--font-mono); font-weight: 600; color: var(--text); }
+.t-overlay { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.t-tag { position: absolute; left: var(--s-2); top: calc(-1 * var(--s-3)); max-width: 24ch; padding: 0 var(--s-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+         font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text); background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--r-sm); }
+.t-axis { left: var(--s-1); color: var(--text-muted); background: transparent; border-color: transparent; }
+.t-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: middle; }
+.t-dot-arc { background: var(--arc); }
+.t-dot-amber { background: var(--amber); }
+.t-shells { margin: 0; display: grid; gap: var(--s-2); justify-items: center; }
+.t-shells svg { display: block; width: 100%; max-width: 420px; height: auto; }
+.t-shells figcaption { justify-self: stretch; }
+.a-shell { fill: none; stroke: var(--line-strong); stroke-width: 1.5; }
+.a-electron { fill: var(--arc); }
+.a-core { fill: var(--bg-3); stroke: var(--amber); stroke-width: 2; }
+.a-sym { fill: var(--text); font-family: var(--font-display); font-size: 18px; font-weight: 600; }
+.a-count { fill: var(--text-muted); font-family: var(--font-mono); font-size: 12px; }
 
 /* ===== Responsive Layout =====
    < 800 px:     Leiste unten (vier gleich große Felder), Inhalt darüber
