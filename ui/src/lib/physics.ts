@@ -9,8 +9,20 @@
 // Energie fällt nur); Wurf ohne Luftwiderstand geschlossen, mit Luftwiderstand fester Schritt (Schwerkraft und Bremsung je exakt,
 // im Wechsel); Umlauf geschlossen über die Kepler-Gleichung; Gas mit festem Schritt, elastischen Stößen über ein Raster (Zellen
 // ≤ 4·N + 16) und energieerhaltenden Wänden.
+// P5b (Plan Abschnitt 7): Doppelpendel mit festem Schritt Runge-Kutta vierter Ordnung, die Dämpfung je halber Schritt exakt
+// (ω·e^(−c·dt/2), die Energie fällt dabei nur); Welle als geschlossene Überlagerung von bis zu drei Sinuswellen; Umlauf mit
+// gegenseitiger Anziehung (`anziehung: true`) als Leapfrog (Stoß, Drift, Stoß) mit fester Zentralmasse im Ursprung und kleiner
+// Glättung (Zentralmasse 0,001, Körper untereinander 0,01 der kleinsten großen Halbachse); ohne Anziehung bleibt der Umlauf die
+// geschlossene Kepler-Lösung, Bit für Bit wie in P5a. Dazu Regler-Grenzen (`GRENZEN`, `mitWert`).
+// Typen: `SimModell`, `SimInput` und `SimConfig` bleiben die fünf P5a-Modelle (die Ansicht prüft sie vollständig); die Fassungen
+// mit allen sieben Modellen heißen `SimModellAlle`, `SimInputAlle`, `SimConfigAlle`. `normalizeSim` gibt für eine Eingabe vom Typ
+// `SimInput` eine `SimConfig` zurück, sonst eine `SimConfigAlle`.
 
 export type SimModell = "pendel" | "feder" | "wurf" | "umlauf" | "gas";
+/** Modelle aus P5b. */
+export type SimModellP5b = "doppelpendel" | "welle";
+export type SimModellAlle = SimModell | SimModellP5b;
+export type WellenRichtung = "rechts" | "links";
 export type Farbe = "arc" | "amber" | "ok" | "warn" | "alarm" | "text" | "gedaempft";
 export type Pt = [number, number];
 /** `laeuft`: rechnet weiter; `gelandet`: Wurf am Boden (Ende); `instabil`: eine Zahl war nicht endlich oder die Eingabe unbrauchbar. */
@@ -19,11 +31,21 @@ export type SimPhase = "laeuft" | "gelandet" | "instabil";
 export interface PendelParameter { laenge: number; winkel: number; anfangsgeschwindigkeit: number; daempfung: number; g: number }
 export interface FederParameter { masse: number; federkonstante: number; auslenkung: number; daempfung: number }
 export interface WurfParameter { geschwindigkeit: number; winkel: number; hoehe: number; g: number; luftwiderstand: number }
-export interface UmlaufKoerper { name: string; abstand: number; exzentrizitaet: number; phase: number; farbe: Farbe }
-export interface UmlaufParameter { zentralmasse: number; koerper: UmlaufKoerper[] }
+/** `masse` (P5b) in Sonnenmassen 0 bis 0,01, zählt nur mit `anziehung: true`; fehlt sie, gilt 0. */
+export interface UmlaufKoerper { name: string; abstand: number; exzentrizitaet: number; phase: number; farbe: Farbe; masse?: number }
+/** `anziehung` (P5b): die Körper ziehen sich gegenseitig an; fehlt sie, gilt `false` (geschlossene Kepler-Lösung). */
+export interface UmlaufParameter { zentralmasse: number; koerper: UmlaufKoerper[]; anziehung?: boolean }
 export interface GasParameter {
   anzahl: number; kasten: [number, number]; radius: number; geschwindigkeit: number; schwerkraft: number; stoesse: boolean; startwert: number;
 }
+/** Winkel in Grad aus der Senkrechten (nach unten 0), Längen in m, Massen in kg, Dämpfung in 1/s. */
+export interface DoppelpendelParameter {
+  laenge1: number; laenge2: number; masse1: number; masse2: number; winkel1: number; winkel2: number; g: number; daempfung: number;
+}
+/** Eine Sinuswelle y = A·sin(k·x ∓ ω·t + φ), k = 2π/λ, ω = 2π·f; „rechts“ läuft zu größerem x. Phase in Grad. */
+export interface Welle { amplitude: number; wellenlaenge: number; frequenz: number; phase: number; richtung: WellenRichtung }
+/** `bereich` in m; 0 = automatisch (doppelte größte Wellenlänge). */
+export interface WelleParameter { wellen: Welle[]; bereich: number }
 interface Gemeinsam { laufzeit: number; tempo: number; spur: boolean; beschreibung: string }
 /** Eingabe wie vom Backend geprüft (Standardwerte gefüllt). Einheiten: SI; `umlauf` in AE, Jahren, Sonnenmassen; `gas` in „Einheiten“. */
 export type SimInput = Gemeinsam & (
@@ -36,6 +58,12 @@ export type SimInput = Gemeinsam & (
  *  Modell unbekannt oder eine Kombination, die das Backend ablehnt (Wurf aus Höhe 0 nicht nach oben, Umlauf mit größter durch
  *  kleinste Halbachse über 100). Eine ungültige Eingabe läuft nicht (Phase „instabil“). */
 export type SimConfig = SimInput & { angepasst: string[]; ungueltig: boolean };
+/** Eingabe der P5b-Modelle (vom Backend geprüft, Standardwerte gefüllt). */
+export type SimInputP5b = Gemeinsam & (
+  | { modell: "doppelpendel"; parameter: DoppelpendelParameter }
+  | { modell: "welle"; parameter: WelleParameter });
+export type SimInputAlle = SimInput | SimInputP5b;
+export type SimConfigAlle = SimInputAlle & { angepasst: string[]; ungueltig: boolean };
 
 /** Bildausschnitt in Modelleinheiten (y nach oben), einmal vorab gerechnet, damit das Bild nicht springt. */
 export interface Ausschnitt { minX: number; maxX: number; minY: number; maxY: number }
@@ -45,24 +73,38 @@ export interface Kennwert { id: string; name: string; wert: number; einheit: str
 /** Geschwindigkeitsverteilung: 11 Grenzen, 10 Klassen; die letzte Klasse nimmt auch alles darüber. */
 export interface Verteilung { grenzen: number[]; anzahl: number[] }
 export interface SimSnapshot {
-  modell: SimModell;
+  modell: SimModellAlle;
   /** Modellzeit (Sekunden, bei `umlauf` Jahre). */
   zeit: number;
   einheit: "s" | "Jahre";
   phase: SimPhase;
+  /** Doppelpendel: [oberer, unterer] Pendelkörper; Welle: keine. */
   koerper: SimKoerper[];
-  /** Aufhängung (Pendel), Wand (Feder), Zentralmasse (Umlauf); sonst null. */
+  /** Aufhängung (Pendel, Doppelpendel), Wand (Feder), Zentralmasse (Umlauf); sonst null. */
   anker: Pt | null;
+  /** Welle: x von 0 bis `bereich`, y von −1,1·(Summe der Amplituden) bis +1,1·…, beides in m (die Ansicht skaliert y selbst). */
   ausschnitt: Ausschnitt;
   kennwerte: Kennwert[];
   verteilung: Verteilung | null;
+  /** Nur Welle: die Summe y(x) an WELLE_PUNKTE Stellen von 0 bis `bereich` (Lagen in m). */
+  kurve?: Pt[];
+  /** Nur Welle: jede einzelne Welle an denselben Stellen (eine Kurve je Welle, höchstens drei). */
+  teilkurven?: Pt[][];
+  /** Indizes der Körper, die eine Spur bekommen (Doppelpendel: nur der untere, [1]); fehlt das Feld: alle. */
+  spurKoerper?: number[];
 }
-/** Standbild für „weniger Bewegung“. `kurve`: Punkte (Zeit in s, Wert); `bahn`/`punkte`: Lagen in Modelleinheiten. */
+/** Standbild für „weniger Bewegung“. `kurve`: Punkte (Zeit in s, Wert); `bahn`/`punkte`: Lagen in Modelleinheiten.
+ *  Umlauf mit Anziehung: `bahnen` sind die gerechneten Wege über `dauer` Jahre (`offen: true`, nicht geschlossen zeichnen).
+ *  Doppelpendel: Startlage (`start`) und der Weg des unteren Körpers über die ersten `dauer` s (10 s, sonst so viel wie ins
+ *  Budget passt). Welle: die Kurve bei t = 0 mit den einzelnen Wellen und die Hülle (kleinster und größter Wert je Stelle über eine
+ *  Periode der langsamsten Welle, `dauer` s); `exakt`: alle Frequenzen gleich, Hülle geschlossen gerechnet, sonst abgetastet. */
 export type Standbild =
   | { modell: "pendel" | "feder"; start: SimSnapshot; kurve: Pt[]; groesse: string; einheit: string; dauer: number }
   | { modell: "wurf"; start: SimSnapshot; bahn: Pt[]; gipfel: Pt; aufprall: Pt; flugzeit: number; vollstaendig: boolean }
-  | { modell: "umlauf"; start: SimSnapshot; bahnen: { name: string; farbe: Farbe; punkte: Pt[] }[] }
-  | { modell: "gas"; start: SimSnapshot; verteilung: Verteilung; zeit: number };
+  | { modell: "umlauf"; start: SimSnapshot; bahnen: { name: string; farbe: Farbe; punkte: Pt[] }[]; offen?: boolean; dauer?: number }
+  | { modell: "gas"; start: SimSnapshot; verteilung: Verteilung; zeit: number }
+  | { modell: "doppelpendel"; start: SimSnapshot; bahn: Pt[]; dauer: number }
+  | { modell: "welle"; start: SimSnapshot; kurve: Pt[]; teilkurven: Pt[][]; huelleMin: Pt[]; huelleMax: Pt[]; dauer: number; exakt: boolean };
 export interface AdvanceResult {
   /** Gerechnete Teilschritte (bei geschlossener Lösung: übersprungene Raster-Schritte). */
   schritte: number;
@@ -92,12 +134,35 @@ export interface GasKern {
   px: Float64Array; py: Float64Array; vx: Float64Array; vy: Float64Array; start: Float64Array;
   nx: number; ny: number; zelle: Int32Array; zaehler: Int32Array; zeiger: Int32Array; folge: Int32Array; rKleiner: boolean;
 }
-export type SimKern = PendelKern | FederKern | WurfKern | UmlaufKern | GasKern;
+/** Doppelpendel: Winkel aus der Senkrechten (rad), Winkelgeschwindigkeiten (rad/s); `damp` = e^(−c·dt/2). */
+export interface DoppelpendelKern {
+  art: "doppelpendel"; L1: number; L2: number; m1: number; m2: number; g: number; c: number; damp: number;
+  th1: number; om1: number; th2: number; om2: number; E0: number;
+  /** Schwingungsdauern bei kleinen Ausschlägen: gleichsinnig (langsam) und gegensinnig (schnell). */
+  Tlangsam: number; Tschnell: number;
+}
+/** Welle: je Welle Amplitude, Wellenzahl k = 2π/λ, Kreisfrequenz ω = 2π·f, Phase (rad) und s = −1 (rechts) oder +1 (links). */
+export interface WelleKern {
+  art: "welle"; A: number[]; k: number[]; w: number[]; phi: number[]; s: number[]; lambda: number[]; f: number[];
+  bereich: number; automatisch: boolean; xs: Float64Array; Tmax: number; Tmin: number;
+}
+/** Umlauf mit gegenseitiger Anziehung: Lagen (AE), Geschwindigkeiten (AE/Jahr), Beschleunigungen; G = 4π² AE³/(Jahr²·Sonnenmasse). */
+export interface NKoerperKern {
+  art: "nkoerper"; n: number; GM: number; m: Float64Array; w: Float64Array;
+  x: Float64Array; y: Float64Array; vx: Float64Array; vy: Float64Array; ax: Float64Array; ay: Float64Array;
+  /** Quadrat der Glättungslänge zur Zentralmasse und zwischen den Körpern (AE²). */
+  eps2z: number; eps2: number; bahnen: UmlaufBahn[]; E0: number;
+  /** Vorab gerechnete Wege (für Bildausschnitt und Standbild) über `pfadDauer` Jahre. */
+  pfade: Pt[][]; pfadDauer: number;
+}
+export type SimKern = PendelKern | FederKern | WurfKern | UmlaufKern | GasKern | DoppelpendelKern | WelleKern | NKoerperKern;
 
 /** Zustand einer Simulation. `advance` ändert ihn an Ort und Stelle; `kern` ist innen und nur für Tests lesbar. */
 export interface SimState {
-  readonly config: SimConfig;
-  readonly modell: SimModell;
+  readonly config: SimConfigAlle;
+  readonly modell: SimModellAlle;
+  /** Umlauf mit gegenseitiger Anziehung (die Ansicht zeigt dann ihren festen Satz dazu); sonst false. */
+  readonly anziehung?: boolean;
   /** Fester Teilschritt in Modellzeit (bei geschlossener Lösung das Zeitraster). */
   readonly dt: number;
   /** Modellzeit je echter Sekunde (aus der Eingabe oder automatisch). */
@@ -122,6 +187,12 @@ export interface SimState {
 }
 
 export const MODELLE: readonly SimModell[] = ["pendel", "feder", "wurf", "umlauf", "gas"];
+/** Alle sieben Modelle (P5a und P5b). */
+export const MODELLE_ALLE: readonly SimModellAlle[] = [...MODELLE, "doppelpendel", "welle"];
+/** Stellen, an denen die Welle ausgewertet wird (gleichmäßig von 0 bis `bereich`). */
+export const WELLE_PUNKTE = 400;
+/** Höchstens so viele Punkte im Weg des Standbilds beim Doppelpendel. */
+export const DOPPELPENDEL_BAHN_MAX = 1200;
 export const FARBEN: readonly Farbe[] = ["arc", "amber", "ok", "warn", "alarm", "text", "gedaempft"];
 /** Höchstens so viele Körper-Schritte für Bildausschnitt, Kennwerte und Standbild, einmal beim Öffnen. */
 export const VORAUS_BUDGET = 200_000;
@@ -135,6 +206,10 @@ const RAD = Math.PI / 180;
 const TAU = 2 * Math.PI;
 const MAX_CALL = 1_000_000;          // Körper-Schritte je Aufruf von `advance`, falls der Aufrufer keine Grenze nennt
 const GAS_STANDBILD_S = 10;
+const DP_STANDBILD_S = 10;           // Weg des unteren Doppelpendel-Körpers im Standbild: die ersten 10 s Modellzeit
+const G_AE = TAU * TAU;              // Gravitationskonstante in AE³/(Jahr²·Sonnenmasse)
+const NK_GLAETTUNG_Z = 1e-3, NK_GLAETTUNG = 1e-2;   // Glättung zur Zentralmasse und zwischen Körpern, je mal kleinste Halbachse
+const NK_PFAD_PUNKTE = 360;          // Punkte je Körper im vorab gerechneten Weg (Umlauf mit Anziehung)
 const fin = Number.isFinite;
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
 
@@ -209,8 +284,12 @@ function bool(o: Obj, key: string, def: boolean, fix: string[], pfad: string): b
   return def;
 }
 
-/** Begrenzt eine Eingabe auf die Grenzen des Plans. Wirft nie; Fehlendes wird mit Standardwerten gefüllt und in `angepasst` genannt. */
-export function normalizeSim(input: unknown): SimConfig {
+/** Begrenzt eine Eingabe auf die Grenzen des Plans. Wirft nie; Fehlendes wird mit Standardwerten gefüllt und in `angepasst` genannt.
+ *  Ausnahme für ältere Eingaben: fehlen beim Umlauf `anziehung` oder `masse`, gilt ohne Meldung `false` bzw. 0 (die Felder
+ *  bleiben dann weg). Eine Eingabe vom Typ `SimInput` (die fünf P5a-Modelle) gibt eine `SimConfig`. */
+export function normalizeSim(input: SimInput): SimConfig;
+export function normalizeSim(input: unknown): SimConfigAlle;
+export function normalizeSim(input: unknown): SimConfigAlle {
   try {
     return normalisiere(input);
   } catch {
@@ -218,11 +297,11 @@ export function normalizeSim(input: unknown): SimConfig {
   }
 }
 
-function normalisiere(input: unknown): SimConfig {
+function normalisiere(input: unknown): SimConfigAlle {
   const fix: string[] = [];
   const src: Obj = isObj(input) ? input : {};
   const m = own(src, "modell");
-  const bekannt = typeof m === "string" && (MODELLE as readonly string[]).includes(m);
+  const bekannt = typeof m === "string" && (MODELLE_ALLE as readonly string[]).includes(m);
   if (!bekannt) fix.push("modell");
   const rawP = own(src, "parameter");
   const p: Obj = isObj(rawP) ? rawP : {};
@@ -235,7 +314,7 @@ function normalisiere(input: unknown): SimConfig {
   if (rohB !== undefined && rohB !== beschreibung) fix.push("beschreibung");   // gekürzt, Steuerzeichen entfernt oder kein Text
   const basis = { laufzeit, tempo, spur, beschreibung, angepasst: fix, ungueltig: !bekannt };
   const P = "parameter.";
-  switch (bekannt ? (m as SimModell) : "pendel") {
+  switch (bekannt ? (m as SimModellAlle) : "pendel") {
     case "pendel":
       return {
         ...basis, modell: "pendel", parameter: {
@@ -280,18 +359,56 @@ function normalisiere(input: unknown): SimConfig {
         if (!(FARBEN as readonly unknown[]).includes(f)) fix.push(pf + "farbe");
         const rn = own(k, "name"), name = text(rn, 30);
         if (!name || name !== rn) fix.push(pf + "name");                // fehlt, leer, gekürzt oder Steuerzeichen entfernt
-        koerper.push({
+        const q: UmlaufKoerper = {
           name: name || `Körper ${i + 1}`, abstand: zahl(k, "abstand", 1, 0.01, 1000, fix, pf),
           exzentrizitaet: zahl(k, "exzentrizitaet", 0, 0, 0.95, fix, pf),
           phase: typeof ph === "number" && fin(ph) ? ((ph % 360) + 360) % 360 : 0,
           farbe: (FARBEN as readonly unknown[]).includes(f) ? (f as Farbe) : "arc",
-        });
+        };
+        if (own(k, "masse") !== undefined) q.masse = zahl(k, "masse", 0, 0, 0.01, fix, pf);   // P5b; fehlt sie, gilt 0
+        koerper.push(q);
       });
       if (!koerper.length) koerper.push({ name: "Körper 1", abstand: 1, exzentrizitaet: 0, phase: 0, farbe: "arc" });
       // Wie im Schema: größte durch kleinste Halbachse ≤ 100 (sonst ist der innere Körper im Bild nicht zu sehen).
       const halbachsen = koerper.map((q) => q.abstand);
       const ungueltig = basis.ungueltig || Math.max(...halbachsen) > 100 * Math.min(...halbachsen);
-      return { ...basis, ungueltig, modell: "umlauf", parameter: { zentralmasse, koerper } };
+      const parameter: UmlaufParameter = { zentralmasse, koerper };
+      const ra = own(p, "anziehung");                                // P5b; fehlt sie, gilt false
+      if (ra !== undefined) {
+        parameter.anziehung = typeof ra === "boolean" ? ra : false;
+        if (typeof ra !== "boolean") fix.push(P + "anziehung");
+      }
+      return { ...basis, ungueltig, modell: "umlauf", parameter };
+    }
+    case "doppelpendel":
+      return {
+        ...basis, modell: "doppelpendel", parameter: {
+          laenge1: zahl(p, "laenge1", 1, 0.05, 100, fix, P), laenge2: zahl(p, "laenge2", 1, 0.05, 100, fix, P),
+          masse1: zahl(p, "masse1", 1, 0.01, 1000, fix, P), masse2: zahl(p, "masse2", 1, 0.01, 1000, fix, P),
+          winkel1: zahl(p, "winkel1", 90, -180, 180, fix, P), winkel2: zahl(p, "winkel2", 0, -180, 180, fix, P),
+          g: zahl(p, "g", 9.81, 0.1, 100, fix, P), daempfung: zahl(p, "daempfung", 0, 0, 5, fix, P),
+        },
+      };
+    case "welle": {
+      const roh = own(p, "wellen");
+      const liste: unknown[] = Array.isArray(roh) ? roh.slice(0, 3) : [];
+      if (!Array.isArray(roh) || roh.length === 0 || roh.length > 3) fix.push(P + "wellen");
+      const wellen: Welle[] = [];
+      liste.forEach((w, i) => {
+        const pf = `${P}wellen.${i}.`;
+        if (!isObj(w)) { fix.push(pf.slice(0, -1)); return; }
+        const r = own(w, "richtung");
+        if (r !== "rechts" && r !== "links") fix.push(pf + "richtung");
+        wellen.push({
+          amplitude: zahl(w, "amplitude", 1, 0.001, 100, fix, pf), wellenlaenge: zahl(w, "wellenlaenge", 2, 0.01, 1000, fix, pf),
+          frequenz: zahl(w, "frequenz", 0.5, 0.01, 100, fix, pf), phase: zahl(w, "phase", 0, 0, 360, fix, pf),
+          richtung: r === "links" ? "links" : "rechts",
+        });
+      });
+      if (!wellen.length) wellen.push({ amplitude: 1, wellenlaenge: 2, frequenz: 0.5, phase: 0, richtung: "rechts" });
+      let bereich = zahl(p, "bereich", 0, 0, 10000, fix, P);
+      if (bereich > 0 && bereich < 0.01) { bereich = 0.01; fix.push(P + "bereich"); }   // 0 = automatisch, sonst 0,01 bis 10 000 m
+      return { ...basis, modell: "welle", parameter: { wellen, bereich } };
     }
     case "gas": {
       const rohA = zahl(p, "anzahl", 100, 2, GAS_MAX, fix, P), anzahl = Math.round(rohA);
@@ -718,17 +835,246 @@ function gasTeile(p: GasParameter): Teile {
   return { kern, dt, periode: 1, ausschnitt: { minX: 0, maxX: b, minY: 0, maxY: h }, text: satz, koerper: kern.N, einheit: "s", voraus: 0 };
 }
 
+// --- Doppelpendel ------------------------------------------------------------------------------------------------------
+
+let DA1 = 0, DA2 = 0;                // Ergebnis von `dpBeschl` (ohne Speicher je Aufruf)
+
+/** Winkelbeschleunigungen des ungedämpften Doppelpendels (die üblichen Bewegungsgleichungen, Winkel aus der Senkrechten). */
+function dpBeschl(k: DoppelpendelKern, t1: number, w1: number, t2: number, w2: number): void {
+  const d = t1 - t2, sd = Math.sin(d), cd = Math.cos(d), m1 = k.m1, m2 = k.m2, M = m1 + m2, g = k.g;
+  const nenner = 2 * (m1 + m2 * sd * sd);                           // = 2·m1 + m2 − m2·cos(2Δ), immer ≥ 2·m1 > 0
+  DA1 = (-g * (2 * m1 + m2) * Math.sin(t1) - m2 * g * Math.sin(t1 - 2 * t2) - 2 * sd * m2 * (w2 * w2 * k.L2 + w1 * w1 * k.L1 * cd)) / (k.L1 * nenner);
+  DA2 = (2 * sd * (w1 * w1 * k.L1 * M + g * M * Math.cos(t1) + w2 * w2 * k.L2 * m2 * cd)) / (k.L2 * nenner);
+}
+
+/** Ein fester Schritt: halbe Dämpfung exakt (ω·e^(−c·dt/2); entspricht der Reibungskraft −c·M(θ)·ω, die Energie fällt dabei nur),
+ *  Runge-Kutta vierter Ordnung ohne Dämpfung, wieder halbe Dämpfung. Winkel danach auf (−π, π] gebracht. */
+function dpSchritt(k: DoppelpendelKern, dt: number): void {
+  if (k.c > 0) { k.om1 *= k.damp; k.om2 *= k.damp; }
+  const t1 = k.th1, w1 = k.om1, t2 = k.th2, w2 = k.om2, h = 0.5 * dt;
+  dpBeschl(k, t1, w1, t2, w2);
+  const a1 = DA1, b1 = DA2, t1b = t1 + h * w1, w1b = w1 + h * a1, t2b = t2 + h * w2, w2b = w2 + h * b1;
+  dpBeschl(k, t1b, w1b, t2b, w2b);
+  const a2 = DA1, b2 = DA2, t1c = t1 + h * w1b, w1c = w1 + h * a2, t2c = t2 + h * w2b, w2c = w2 + h * b2;
+  dpBeschl(k, t1c, w1c, t2c, w2c);
+  const a3 = DA1, b3 = DA2, t1d = t1 + dt * w1c, w1d = w1 + dt * a3, t2d = t2 + dt * w2c, w2d = w2 + dt * b3;
+  dpBeschl(k, t1d, w1d, t2d, w2d);
+  const a4 = DA1, b4 = DA2, s = dt / 6;
+  let n1 = t1 + s * (w1 + 2 * w1b + 2 * w1c + w1d), n2 = t2 + s * (w2 + 2 * w2b + 2 * w2c + w2d);
+  if (n1 > Math.PI || n1 < -Math.PI) n1 -= TAU * Math.round(n1 / TAU);
+  if (n2 > Math.PI || n2 < -Math.PI) n2 -= TAU * Math.round(n2 / TAU);
+  k.th1 = n1; k.th2 = n2;
+  k.om1 = w1 + s * (a1 + 2 * a2 + 2 * a3 + a4);
+  k.om2 = w2 + s * (b1 + 2 * b2 + 2 * b3 + b4);
+  if (k.c > 0) { k.om1 *= k.damp; k.om2 *= k.damp; }
+}
+
+/** Energie in J, Nullpunkt der Lage ganz unten (beide Arme senkrecht nach unten), darum nie negativ. 1 − cos θ = 2·sin²(θ/2). */
+function dpEnergie(k: DoppelpendelKern): number {
+  const { L1, L2, m1, m2, g, om1, om2 } = k, s1 = Math.sin(k.th1 / 2), s2 = Math.sin(k.th2 / 2);
+  return 0.5 * (m1 + m2) * L1 * L1 * om1 * om1 + 0.5 * m2 * L2 * L2 * om2 * om2 + m2 * L1 * L2 * om1 * om2 * Math.cos(k.th1 - k.th2)
+    + 2 * (m1 + m2) * g * L1 * s1 * s1 + 2 * m2 * g * L2 * s2 * s2;
+}
+
+/** Kreisfrequenzen² der beiden Eigenschwingungen bei kleinen Ausschlägen: Nullstellen von
+ *  m1·L1·L2·x² − (m1+m2)·g·(L1+L2)·x + (m1+m2)·g² (ohne Auslöschung gerechnet). [langsam, schnell]. */
+export function doppelpendelEigen(L1: number, L2: number, m1: number, m2: number, g: number): [number, number] {
+  const M = m1 + m2, B = M * g * (L1 + L2);
+  const wurzel = g * Math.sqrt(M * (m1 * (L1 - L2) ** 2 + m2 * (L1 + L2) ** 2));
+  return [(2 * M * g * g) / (B + wurzel), (B + wurzel) / (2 * m1 * L1 * L2)];
+}
+
+function doppelpendelTeile(p: DoppelpendelParameter): Teile {
+  const { laenge1: L1, laenge2: L2, masse1: m1, masse2: m2, g, daempfung: c } = p, M = m1 + m2, R = L1 + L2;
+  const [x1, x2] = doppelpendelEigen(L1, L2, m1, m2, g);
+  const Tlangsam = TAU / Math.sqrt(x1), Tschnell = TAU / Math.sqrt(x2);
+  const kern: DoppelpendelKern = {
+    art: "doppelpendel", L1, L2, m1, m2, g, c, damp: 1, th1: p.winkel1 * RAD, om1: 0, th2: p.winkel2 * RAD, om2: 0, E0: 0, Tlangsam, Tschnell,
+  };
+  const E = dpEnergie(kern);
+  // Schritt aus der schnellen Eigenschwingung (/2000), dazu eine Grenze aus der Energie: |ω| ≤ √(2E/λmin) mit der kleinsten
+  // Eigenzahl der Massenmatrix λmin ≥ det/Spur ≥ m1·m2·L1²·L2² / ((m1+m2)·L1² + m2·L2²). So bleibt ein schnelles Überschlagen
+  // genau (höchstens 2π/500 rad je Schritt bei der größten möglichen Winkelgeschwindigkeit).
+  let dt = Tschnell / 2000;
+  const lmin = (m1 * m2 * L1 * L1 * L2 * L2) / (M * L1 * L1 + m2 * L2 * L2), wmax = Math.sqrt((2 * E) / lmin);
+  if (wmax > 0 && fin(wmax)) dt = Math.min(dt, TAU / (500 * wmax));
+  kern.damp = Math.exp((-c * dt) / 2);
+  kern.E0 = E;
+  // Höchste erreichbare Lagen aus der Energie (V = m1·g·(y1 + L1) + m2·g·(y2 + L1 + L2) ≤ E), dazu die Startlagen.
+  const y1 = -L1 * Math.cos(kern.th1), y2 = y1 - L2 * Math.cos(kern.th2);
+  const oben = Math.max(0, y1, y2, Math.min(L1, E / (M * g) - L1), Math.min(R, E / (m2 * g) - R));
+  const teile = [`Doppelpendel, Längen ${formatZahl(L1)} m und ${formatZahl(L2)} m`, `Massen ${formatZahl(m1)} kg und ${formatZahl(m2)} kg`,
+    `Start bei ${formatZahl(p.winkel1)} Grad und ${formatZahl(p.winkel2)} Grad`, c > 0 ? `Dämpfung ${formatZahl(c)} pro Sekunde` : "ohne Dämpfung"];
+  if (g !== 9.81) teile.push(`Fallbeschleunigung ${formatZahl(g)} m/s²`);
+  const satz = `${teile.join(", ")}. Kleine Schwingungen dauern etwa ${formatWert(Tlangsam)} s (beide Arme gleichsinnig) `
+    + `oder ${formatWert(Tschnell)} s (gegensinnig). Die Bewegung ist chaotisch: kleinste Änderungen am Start führen zu ganz anderen Bahnen.`;
+  return { kern, dt, periode: Tlangsam, ausschnitt: rahmen(-R, R, -R, Math.min(R, oben)), text: satz, koerper: 2, einheit: "s", voraus: 0 };
+}
+
+const dpLagen = (k: DoppelpendelKern): [number, number, number, number] => {
+  const x1 = k.L1 * Math.sin(k.th1), y1 = -k.L1 * Math.cos(k.th1);
+  return [x1, y1, x1 + k.L2 * Math.sin(k.th2), y1 - k.L2 * Math.cos(k.th2)];
+};
+
+// --- Welle -------------------------------------------------------------------------------------------------------------
+
+function welleTeile(p: WelleParameter): Teile {
+  const n = p.wellen.length, A: number[] = [], k: number[] = [], w: number[] = [], phi: number[] = [], s: number[] = [], lambda: number[] = [], f: number[] = [];
+  for (const q of p.wellen) {
+    A.push(q.amplitude); k.push(TAU / q.wellenlaenge); w.push(TAU * q.frequenz); phi.push(q.phase * RAD);
+    s.push(q.richtung === "links" ? 1 : -1); lambda.push(q.wellenlaenge); f.push(q.frequenz);
+  }
+  const automatisch = !(p.bereich > 0), bereich = automatisch ? 2 * Math.max(...lambda) : p.bereich;
+  const xs = new Float64Array(WELLE_PUNKTE);
+  for (let i = 0; i < WELLE_PUNKTE; i++) xs[i] = (bereich * i) / (WELLE_PUNKTE - 1);
+  const Tmax = 1 / Math.min(...f), Tmin = 1 / Math.max(...f), S = A.reduce((a, b) => a + b, 0);
+  const kern: WelleKern = { art: "welle", A, k, w, phi, s, lambda, f, bereich, automatisch, xs, Tmax, Tmin };
+  const zahlwort = ["eine", "zwei", "drei"][n - 1] ?? String(n);
+  const ueber = `über ${formatZahl(bereich)} m${automatisch ? " (doppelte größte Wellenlänge)" : ""}`;
+  const beschreibe = (q: Welle) => `Amplitude ${formatZahl(q.amplitude)} m, Wellenlänge ${formatZahl(q.wellenlaenge)} m, Frequenz ${formatZahl(q.frequenz)} Hz`
+    + `${q.phase !== 0 ? `, Phase ${formatZahl(q.phase)} Grad` : ""}, nach ${q.richtung}, Periode etwa ${formatWert(1 / q.frequenz)} s, `
+    + `Geschwindigkeit etwa ${formatWert(q.wellenlaenge * q.frequenz)} m/s.`;
+  let satz = n === 1
+    ? `Eine Welle ${ueber}: ${beschreibe(p.wellen[0])}`
+    : `Überlagerung von ${zahlwort} Wellen ${ueber}. ` + p.wellen.map((q, i) => `Welle ${i + 1}: ${beschreibe(q)}`).join(" ");
+  const [a, b] = p.wellen;
+  if (n === 2 && a.amplitude === b.amplitude && a.wellenlaenge === b.wellenlaenge && a.frequenz === b.frequenz && a.richtung !== b.richtung) {
+    satz += " Zusammen ergeben sie eine stehende Welle mit festen Knoten.";
+  }
+  if (((WELLE_PUNKTE - 1) * Math.min(...lambda)) / bereich < 8) satz += ` Die kürzeste Welle ist für ${WELLE_PUNKTE} Stützpunkte zu fein; das Bild zeigt sie nur grob.`;
+  return {
+    kern, dt: Tmin / 1000, periode: Tmax, ausschnitt: { minX: 0, maxX: bereich, minY: -1.1 * S, maxY: 1.1 * S }, text: satz, koerper: n, einheit: "s", voraus: 0,
+  };
+}
+
+/** Wert der Welle `j` an der Stelle x zur Zeit t: A·sin(k·x + s·(ω·t) + φ), s = −1 nach rechts, +1 nach links. */
+const welleWert = (k: WelleKern, j: number, x: number, t: number): number => k.A[j] * Math.sin(k.k[j] * x + k.s[j] * (k.w[j] * t) + k.phi[j]);
+
+/** Summe und einzelne Wellen an allen Stellen zur Zeit t; dazu die größte Auslenkung der Summe. */
+function welleKurven(k: WelleKern, t: number): { kurve: Pt[]; teil: Pt[][]; max: number } {
+  const n = k.A.length, kurve: Pt[] = new Array(WELLE_PUNKTE), teil: Pt[][] = Array.from({ length: n }, () => new Array<Pt>(WELLE_PUNKTE));
+  let max = 0;
+  for (let i = 0; i < WELLE_PUNKTE; i++) {
+    const x = k.xs[i];
+    let y = 0;
+    for (let j = 0; j < n; j++) { const v = welleWert(k, j, x, t); teil[j][i] = [x, v]; y += v; }
+    kurve[i] = [x, y];
+    max = Math.max(max, Math.abs(y));
+  }
+  return { kurve, teil, max };
+}
+
+// --- Umlauf mit gegenseitiger Anziehung ------------------------------------------------------------------------------
+
+/** Beschleunigungen: Zentralmasse (fest im Ursprung) und alle Paare, beide geglättet (r² + ε²). Paarkräfte sind gleich und
+ *  entgegengesetzt und liegen auf der Verbindungslinie, darum bleibt der Drehimpuls um den Ursprung erhalten. */
+function nkBeschl(k: NKoerperKern): void {
+  const { n, x, y, ax, ay, m } = k;
+  for (let i = 0; i < n; i++) {
+    const r2 = x[i] * x[i] + y[i] * y[i] + k.eps2z, f = k.GM / (r2 * Math.sqrt(r2));
+    ax[i] = -f * x[i]; ay[i] = -f * y[i];
+  }
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      if (m[i] === 0 && m[j] === 0) continue;
+      const dx = x[j] - x[i], dy = y[j] - y[i], r2 = dx * dx + dy * dy + k.eps2, f = G_AE / (r2 * Math.sqrt(r2));
+      ax[i] += m[j] * f * dx; ay[i] += m[j] * f * dy; ax[j] -= m[i] * f * dx; ay[j] -= m[i] * f * dy;
+    }
+  }
+}
+
+/** Leapfrog: halber Stoß, Drift, neue Beschleunigung, halber Stoß (zeitumkehrbar, symplektisch, ohne Energiedrift). */
+function nkSchritt(k: NKoerperKern, dt: number): void {
+  const { n, x, y, vx, vy, ax, ay } = k, h = 0.5 * dt;
+  for (let i = 0; i < n; i++) { vx[i] += h * ax[i]; vy[i] += h * ay[i]; x[i] += dt * vx[i]; y[i] += dt * vy[i]; }
+  nkBeschl(k);
+  for (let i = 0; i < n; i++) { vx[i] += h * ax[i]; vy[i] += h * ay[i]; }
+}
+
+/** Gesamtenergie mit den geglätteten Potentialen, gewichtet mit den Massen (sind alle Massen 0: jede Bahnenergie einfach). */
+function nkEnergie(k: NKoerperKern): number {
+  const { n, x, y, vx, vy, m, w } = k;
+  let e = 0;
+  for (let i = 0; i < n; i++) e += w[i] * (0.5 * (vx[i] * vx[i] + vy[i] * vy[i]) - k.GM / Math.sqrt(x[i] * x[i] + y[i] * y[i] + k.eps2z));
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      if (m[i] === 0 || m[j] === 0) continue;
+      const dx = x[j] - x[i], dy = y[j] - y[i];
+      e -= (G_AE * m[i] * m[j]) / Math.sqrt(dx * dx + dy * dy + k.eps2);
+    }
+  }
+  return e;
+}
+
+function nkKopie(k: NKoerperKern): NKoerperKern {
+  return { ...k, x: k.x.slice(), y: k.y.slice(), vx: k.vx.slice(), vy: k.vy.slice(), ax: k.ax.slice(), ay: k.ay.slice() };
+}
+
+function nkoerperTeile(p: UmlaufParameter, budget: number): Teile {
+  const kepler = umlaufTeile(p), uk = kepler.kern as UmlaufKern, bahnen = uk.bahnen, n = bahnen.length, M = p.zentralmasse;
+  const amin = Math.min(...bahnen.map((b) => b.a)), Pmin = kepler.periode, Pmax = Math.max(...bahnen.map((b) => b.P));
+  const m = new Float64Array(p.koerper.map((q) => q.masse ?? 0)), summe = m.reduce((a, b) => a + b, 0);
+  const kern: NKoerperKern = {
+    art: "nkoerper", n, GM: G_AE * M, m, w: summe > 0 ? m.slice() : new Float64Array(n).fill(1),
+    x: new Float64Array(n), y: new Float64Array(n), vx: new Float64Array(n), vy: new Float64Array(n), ax: new Float64Array(n), ay: new Float64Array(n),
+    eps2z: (NK_GLAETTUNG_Z * amin) ** 2, eps2: (NK_GLAETTUNG * amin) ** 2, bahnen, E0: 0, pfade: [], pfadDauer: 0,
+  };
+  bahnen.forEach((b, i) => {                                        // Kepler-Lage und -Geschwindigkeit am Start (wie ohne Anziehung)
+    const Ed = TAU / b.P / (1 - b.e * Math.cos(b.E));
+    kern.x[i] = b.a * (Math.cos(b.E) - b.e); kern.y[i] = b.b * Math.sin(b.E);
+    kern.vx[i] = -b.a * Math.sin(b.E) * Ed; kern.vy[i] = b.b * Math.cos(b.E) * Ed;
+  });
+  nkBeschl(kern);
+  kern.E0 = nkEnergie(kern);
+  // Schritt: innerster Umlauf / 2000, bei großer Exzentrizität kleiner (Zeitmaß am Perihel ∝ (1 − e)^1,5, höchstens 20-mal kleiner).
+  const dt = Math.min(...bahnen.map((b) => b.P * clamp((1 - b.e) ** 1.5, 0.05, 1))) / 2000;
+  // Vorausrechnung: die Wege über einen Umlauf des äußersten Körpers, höchstens die Hälfte des Budgets.
+  const schritte = Math.max(0, Math.min(Math.ceil(Pmax / dt), Math.floor(budget / 2 / n)));
+  const sim = nkKopie(kern), jede = Math.max(1, Math.ceil(schritte / (NK_PFAD_PUNKTE - 1)));
+  const pfade: Pt[][] = Array.from({ length: n }, (_, i) => [[sim.x[i], sim.y[i]]]);
+  for (let s = 1; s <= schritte; s++) {
+    nkSchritt(sim, dt);
+    if (s % jede === 0 || s === schritte) for (let i = 0; i < n; i++) pfade[i].push([sim.x[i], sim.y[i]]);
+  }
+  kern.pfade = pfade.every((q) => q.every((pt) => fin(pt[0]) && fin(pt[1]))) ? pfade : [];
+  kern.pfadDauer = schritte * dt;
+  // Bildausschnitt: die Kepler-Bahnen und die vorab gerechneten Wege, diese höchstens bis zum Dreifachen der Kepler-Größe.
+  let minX = 0, maxX = 0, minY = 0, maxY = 0;
+  for (const b of bahnen) {
+    minX = Math.min(minX, -b.a * (1 + b.e)); maxX = Math.max(maxX, b.a * (1 - b.e)); minY = Math.min(minY, -b.b); maxY = Math.max(maxY, b.b);
+  }
+  const gross = 3 * Math.max(-minX, maxX, -minY, maxY);
+  for (const q of kern.pfade) for (const [px, py] of q) {
+    minX = Math.min(minX, Math.max(px, -gross)); maxX = Math.max(maxX, Math.min(px, gross));
+    minY = Math.min(minY, Math.max(py, -gross)); maxY = Math.max(maxY, Math.min(py, gross));
+  }
+  const satz = `Umlaufbahnen um eine Zentralmasse von ${formatZahl(M)} ${M === 1 ? "Sonnenmasse" : "Sonnenmassen"}, `
+    + `${n} Körper. Die Körper ziehen sich gegenseitig an. Die Zentralmasse bleibt fest in der Mitte. `
+    + bahnen.map((b, i) => `${b.name}: Start auf einer Bahn mit großer Halbachse ${formatZahl(b.a)} AE und Exzentrizität ${formatZahl(b.e)}, `
+      + `${m[i] > 0 ? `Masse ${formatZahl(m[i])} Sonnenmassen` : "ohne eigene Masse"}, Umlaufzeit dieser Bahn etwa ${formatWert(b.P)} Jahre.`).join(" ");
+  return {
+    kern, dt, periode: Pmin, ausschnitt: rahmen(minX, maxX, minY, maxY, 0.06), text: satz, koerper: n, einheit: "Jahre", voraus: schritte * n,
+  };
+}
+
 // --- Zustand -----------------------------------------------------------------------------------------------------------
 
-function teileFuer(cfg: SimConfig, budget: number): Teile {
+function teileFuer(cfg: SimConfigAlle, budget: number): Teile {
   switch (cfg.modell) {
     case "pendel": return pendelTeile(cfg.parameter);
     case "feder": return federTeile(cfg.parameter);
     case "wurf": return wurfTeile(cfg.parameter, budget);
-    case "umlauf": return umlaufTeile(cfg.parameter);
+    case "umlauf": return cfg.parameter.anziehung === true ? nkoerperTeile(cfg.parameter, budget) : umlaufTeile(cfg.parameter);
     case "gas": return gasTeile(cfg.parameter);
+    case "doppelpendel": return doppelpendelTeile(cfg.parameter);
+    case "welle": return welleTeile(cfg.parameter);
   }
 }
+
+const alleEndlich = (...a: ArrayLike<number>[]): boolean => {
+  for (const q of a) for (let i = 0; i < q.length; i++) if (!fin(q[i])) return false;
+  return true;
+};
 
 function kernEndlich(k: SimKern): boolean {
   switch (k.art) {
@@ -739,6 +1085,9 @@ function kernEndlich(k: SimKern): boolean {
     case "gas":
       for (let i = 0; i < k.N; i++) if (!fin(k.px[i]) || !fin(k.py[i]) || !fin(k.vx[i]) || !fin(k.vy[i])) return false;
       return true;
+    case "doppelpendel": return fin(k.th1) && fin(k.om1) && fin(k.th2) && fin(k.om2);
+    case "welle": return fin(k.bereich) && fin(k.Tmax) && fin(k.Tmin) && alleEndlich(k.A, k.k, k.w, k.phi, k.xs);
+    case "nkoerper": return alleEndlich(k.x, k.y, k.vx, k.vy, k.ax, k.ay);
   }
 }
 
@@ -756,12 +1105,12 @@ export function createSim(input: unknown): SimState {
   }
 }
 
-function baue(cfg: SimConfig): SimState {
+function baue(cfg: SimConfigAlle): SimState {
   const t = teileFuer(cfg, VORAUS_BUDGET);
   if (t.kern.art === "gas" && t.kern.rKleiner) cfg.angepasst.push("parameter.radius");
   const auto = cfg.modell === "gas" ? 1 : clamp(t.periode > 0 && fin(t.periode) ? t.periode / 4 : 1, 1e-6, 1e7);
   const s: SimState = {
-    config: cfg, modell: cfg.modell, dt: t.dt, tempo: cfg.tempo > 0 ? cfg.tempo : auto, koerper: t.koerper, ausschnitt: t.ausschnitt,
+    config: cfg, modell: cfg.modell, anziehung: t.kern.art === "nkoerper", dt: t.dt, tempo: cfg.tempo > 0 ? cfg.tempo : auto, koerper: t.koerper, ausschnitt: t.ausschnitt,
     text: t.text, einheit: t.einheit, periode: t.periode, startBild: null as unknown as SimSnapshot,
     phase: cfg.ungueltig ? "instabil" : t.kern.art === "wurf" && t.kern.gelandet ? "gelandet" : "laeuft",
     schritt: 0, zeit: 0, vorausSchritte: t.voraus, soll: 0, kern: t.kern, bild: null,
@@ -779,7 +1128,9 @@ function einSchritt(s: SimState): void {
     case "feder": federSchritt(k, s.dt); break;
     case "wurf": wurfSchritt(k, s.dt, s.schritt * s.dt); break;
     case "gas": gasSchritt(k, s.dt); break;
-    case "umlauf": break;
+    case "doppelpendel": dpSchritt(k, s.dt); break;
+    case "nkoerper": nkSchritt(k, s.dt); break;
+    case "umlauf": case "welle": break;
   }
   s.schritt++;
 }
@@ -796,11 +1147,12 @@ export function advance(state: SimState, simSeconds: number, maxBodySteps: numbe
     if (n <= 0) return nichts;
     const k = state.kern;
     let out: AdvanceResult;
-    if (k.art === "umlauf" || (k.art === "wurf" && k.geschlossen)) {
+    if (k.art === "umlauf" || k.art === "welle" || (k.art === "wurf" && k.geschlossen)) {
       state.schritt = ziel;
       state.zeit = ziel * state.dt;
       if (k.art === "umlauf") umlaufStellen(k, state.zeit);
-      else { wurfAuswerten(k, state.zeit); if (k.gelandet) { state.zeit = k.landezeit; state.phase = "gelandet"; } }
+      else if (k.art === "wurf") { wurfAuswerten(k, state.zeit); if (k.gelandet) { state.zeit = k.landezeit; state.phase = "gelandet"; } }
+      // Welle: geschlossen, die Kurve rechnet `snapshot` zur Zeit `state.zeit`.
       out = { schritte: n, koerperSchritte: state.koerper, begrenzt: false };
     } else {
       const mb = fin(maxBodySteps) && maxBodySteps > 0 ? Math.min(maxBodySteps, MAX_CALL) : MAX_CALL;
@@ -884,6 +1236,33 @@ export function snapshot(state: SimState): SimSnapshot {
           verteilung: gasVerteilung(k),
         };
       }
+      case "doppelpendel": {
+        const [x1, y1, x2, y2] = dpLagen(k);
+        return {
+          ...basis, anker: [0, 0], spurKoerper: [1],
+          koerper: [{ x: x1, y: y1, r: 0, farbe: "arc", name: "oberer Pendelkörper" }, { x: x2, y: y2, r: 0, farbe: "amber", name: "unterer Pendelkörper" }],
+          kennwerte: [kw("winkel1", "Winkel des oberen Arms jetzt", k.th1 / RAD, "Grad"), kw("winkel2", "Winkel des unteren Arms jetzt", k.th2 / RAD, "Grad"),
+            kw("energie", "Energie in Prozent des Starts", prozent(dpEnergie(k), k.E0), "%")],
+          verteilung: null,
+        };
+      }
+      case "welle": {
+        const { kurve, teil, max } = welleKurven(k, state.zeit), kennwerte: Kennwert[] = [];
+        k.A.forEach((_, j) => kennwerte.push(kw(`periode.${j}`, `Periode Welle ${j + 1}`, 1 / k.f[j], "s"),
+          kw(`geschwindigkeit.${j}`, `Geschwindigkeit Welle ${j + 1}`, k.lambda[j] * k.f[j], "m/s")));
+        kennwerte.push(kw("auslenkung", "Größte Auslenkung jetzt", max, "m"));
+        return { ...basis, koerper: [], anker: null, kennwerte, verteilung: null, kurve, teilkurven: teil };
+      }
+      case "nkoerper": {
+        const koerper: SimKoerper[] = [], kennwerte: Kennwert[] = [];
+        k.bahnen.forEach((b, i) => {
+          koerper.push({ x: k.x[i], y: k.y[i], r: 0, farbe: b.farbe, name: b.name });
+          kennwerte.push(kw(`umlaufzeit.${i}`, `Umlaufzeit ${b.name}`, b.P, "Jahre"), kw(`abstand.${i}`, `Abstand ${b.name} jetzt`, Math.hypot(k.x[i], k.y[i]), "AE"));
+        });
+        const e = nkEnergie(k);
+        kennwerte.push(kw("energie", "Gesamtenergie in Prozent des Starts", Math.abs(k.E0) > 1e-300 ? (e / k.E0) * 100 : 100, "%"));
+        return { ...basis, koerper, anker: [0, 0], kennwerte, verteilung: null };
+      }
     }
   } catch {
     state.phase = "instabil";
@@ -901,6 +1280,7 @@ export function isFiniteSnapshot(s: SimSnapshot | null | undefined): boolean {
     for (const k of s.koerper) if (!fin(k.x) || !fin(k.y) || !fin(k.r)) return false;
     for (const k of s.kennwerte) if (!fin(k.wert)) return false;
     if (s.verteilung && ![...s.verteilung.grenzen, ...s.verteilung.anzahl].every(fin)) return false;
+    for (const q of [s.kurve ?? [], ...(s.teilkurven ?? [])]) for (const p of q) if (!fin(p[0]) || !fin(p[1])) return false;
     return true;
   } catch {
     return false;
@@ -911,7 +1291,9 @@ export function isFiniteSnapshot(s: SimSnapshot | null | undefined): boolean {
 
 /** Standbild für „weniger Bewegung“, einmal gerechnet und gemerkt. Teilt sich die Vorausrechnung (VORAUS_BUDGET) mit
  *  `createSim`. Pendel und Feder: Lage-Zeit-Kurve über drei Schwingungen; Wurf: ganze Bahn mit Gipfel und Aufprall; Umlauf: alle
- *  Bahnen; Gas: Verteilung nach 10 s gerechneter Zeit (passt das nicht ins Budget, mit gröberem Schritt oder kürzer, siehe `zeit`). */
+ *  Bahnen; Gas: Verteilung nach 10 s gerechneter Zeit (passt das nicht ins Budget, mit gröberem Schritt oder kürzer, siehe `zeit`).
+ *  P5b: Doppelpendel mit dem Weg des unteren Körpers über 10 s; Welle mit Kurve bei t = 0 und Hülle; Umlauf mit Anziehung mit den
+ *  vorab gerechneten Wegen (`offen`). */
 export function standbild(state: SimState): Standbild {
   if (state.bild) return state.bild;
   let bild: Standbild;
@@ -977,6 +1359,57 @@ function baueStandbild(state: SimState): Standbild {
       state.vorausSchritte += n * k0.N;
       return { modell: "gas", start, verteilung: gasVerteilung(sim), zeit: n * dt };
     }
+    case "doppelpendel": {
+      const frisch = teileFuer(state.config, 0).kern as DoppelpendelKern, dt = state.dt;
+      const n = Math.max(0, Math.min(Math.ceil(DP_STANDBILD_S / dt - 1e-9), Math.floor(rest() / 2)));
+      const jede = Math.max(1, Math.ceil(n / (DOPPELPENDEL_BAHN_MAX - 1)));
+      const bahn: Pt[] = [[dpLagen(frisch)[2], dpLagen(frisch)[3]]];
+      for (let i = 1; i <= n; i++) {
+        dpSchritt(frisch, dt);
+        if (i % jede === 0 || i === n) { const l = dpLagen(frisch); bahn.push([l[2], l[3]]); }
+      }
+      state.vorausSchritte += 2 * n;
+      return { modell: "doppelpendel", start, bahn: bahn.every((p) => fin(p[0]) && fin(p[1])) ? bahn : [], dauer: n * dt };
+    }
+    case "welle": {
+      const nW = k0.A.length, { kurve, teil } = welleKurven(k0, 0);
+      const huelleMin: Pt[] = kurve.map((p) => [p[0], p[1]]), huelleMax: Pt[] = kurve.map((p) => [p[0], p[1]]);
+      const exakt = k0.f.every((f) => f === k0.f[0]);
+      if (exakt) {
+        // Gleiche Frequenz: jede Welle ist Im(B_j·e^(iωt)) mit B_j = A·e^(iθ) (links) oder −A·e^(−iθ) (rechts), θ = k·x + φ.
+        // Die Summe schwingt an jeder Stelle mit dem Betrag |Σ B_j|: das ist die Hülle, ohne Abtasten.
+        for (let i = 0; i < WELLE_PUNKTE; i++) {
+          let re = 0, im = 0;
+          for (let j = 0; j < nW; j++) {
+            const th = k0.k[j] * k0.xs[i] + k0.phi[j], a = k0.A[j];
+            if (k0.s[j] > 0) { re += a * Math.cos(th); im += a * Math.sin(th); } else { re -= a * Math.cos(th); im += a * Math.sin(th); }
+          }
+          const b = Math.hypot(re, im);
+          huelleMin[i][1] = -b; huelleMax[i][1] = b;
+        }
+        state.vorausSchritte += WELLE_PUNKTE * nW;
+      } else {
+        // Sonst abgetastet über eine Periode der langsamsten Welle: so viele Zeitpunkte, wie ins Budget passen (je Zeitpunkt
+        // kosten alle Stellen aller Wellen), höchstens 64 je Periode der schnellsten Welle.
+        const proZeit = WELLE_PUNKTE * nW, S = Math.max(2, Math.min(Math.floor(rest() / proZeit), 64 * Math.ceil(k0.Tmax / k0.Tmin)));
+        for (let j = 1; j < S; j++) {
+          const t = (k0.Tmax * j) / S;
+          for (let i = 0; i < WELLE_PUNKTE; i++) {
+            let y = 0;
+            for (let q = 0; q < nW; q++) y += welleWert(k0, q, k0.xs[i], t);
+            if (y < huelleMin[i][1]) huelleMin[i][1] = y;
+            if (y > huelleMax[i][1]) huelleMax[i][1] = y;
+          }
+        }
+        state.vorausSchritte += S * proZeit;
+      }
+      return { modell: "welle", start, kurve, teilkurven: teil, huelleMin, huelleMax, dauer: k0.Tmax, exakt };
+    }
+    case "nkoerper":
+      return {
+        modell: "umlauf", start, offen: true, dauer: k0.pfadDauer,
+        bahnen: k0.bahnen.map((b, i) => ({ name: b.name, farbe: b.farbe, punkte: k0.pfade[i] ?? [[start.koerper[i].x, start.koerper[i].y]] })),
+      };
   }
 }
 
@@ -1018,4 +1451,72 @@ export function trailPoints(trail: Trail, i: number): Pt[] {
   const out: Pt[] = [];
   for (let j = 0; j < trail.laenge[i]; j++) { const q = (trail.anfang[i] + j) % trail.max; out.push([trail.xs[i][q], trail.ys[i][q]]); }
   return out;
+}
+
+// --- Regler ------------------------------------------------------------------------------------------------------------
+
+/** Ein Wert, den die Ansicht mit einem Regler ändern darf. `feld` ist der Pfad unter `parameter`, Teile mit Punkt getrennt, Zahlen
+ *  zählen in Listen ab 0 (zum Beispiel `laenge` oder `wellen.0.frequenz` = Frequenz der ersten Welle). `min`/`max` sind die
+ *  Schema-Grenzen (beim Gas die Geschwindigkeit ab 0,01, weil das Schema nur „> 0“ sagt); `schritt` ist die Feinheit des Reglers;
+ *  `skala: "log"` empfiehlt einen logarithmischen Regler (das Verhältnis max/min ist ≥ 1000). */
+export interface GrenzFeld { feld: string; name: string; einheit: string; min: number; max: number; schritt: number; skala: "linear" | "log" }
+
+const gf = (feld: string, name: string, einheit: string, min: number, max: number, schritt: number): GrenzFeld =>
+  Object.freeze({ feld, name, einheit, min, max, schritt, skala: min > 0 && max >= 1000 * min ? "log" : "linear" });
+
+/** Regler je Modell (ein bis zwei Hauptwerte), dieselben Grenzen wie im Schema. */
+export const GRENZEN: Readonly<Record<SimModellAlle, readonly GrenzFeld[]>> = Object.freeze({
+  pendel: Object.freeze([gf("laenge", "Länge", "m", 0.05, 100, 0.05), gf("winkel", "Startwinkel", "Grad", -170, 170, 1)]),
+  feder: Object.freeze([gf("masse", "Masse", "kg", 0.001, 1000, 0.001), gf("federkonstante", "Federkonstante", "N/m", 0.001, 1e6, 0.001)]),
+  wurf: Object.freeze([gf("geschwindigkeit", "Abwurfgeschwindigkeit", "m/s", 0.1, 1000, 0.1), gf("winkel", "Abwurfwinkel", "Grad", -90, 90, 1)]),
+  umlauf: Object.freeze([gf("zentralmasse", "Zentralmasse", "Sonnenmassen", 0.01, 100, 0.01)]),
+  gas: Object.freeze([gf("geschwindigkeit", "Startgeschwindigkeit", "Kastenbreiten/s", 0.01, 10, 0.01), gf("schwerkraft", "Schwerkraft", "Einheiten/s²", 0, 100, 0.5)]),
+  doppelpendel: Object.freeze([gf("winkel1", "Startwinkel oben", "Grad", -180, 180, 1), gf("laenge2", "Länge unten", "m", 0.05, 100, 0.05)]),
+  welle: Object.freeze([gf("wellen.0.frequenz", "Frequenz der ersten Welle", "Hz", 0.01, 100, 0.01)]),
+});
+
+/** Kopiert `obj` entlang des Pfads und setzt dort `wert`; fehlt ein Zwischenglied, bleibt alles, wie es war (nur kopiert). */
+function setzePfad(obj: unknown, teile: string[], wert: number): unknown {
+  const [kopf, ...rest] = teile;
+  if (Array.isArray(obj)) {
+    const i = Number(kopf);
+    if (!Number.isInteger(i) || i < 0 || i >= obj.length) return obj.slice();
+    const kopie = obj.slice();
+    kopie[i] = rest.length ? setzePfad(obj[i], rest, wert) : wert;
+    return kopie;
+  }
+  if (!isObj(obj)) return obj;
+  const kopie: Obj = { ...obj };
+  if (!rest.length) kopie[kopf] = wert;
+  else if (own(obj, kopf) !== undefined) kopie[kopf] = setzePfad(own(obj, kopf), rest, wert);
+  return kopie;
+}
+
+/** Neue Eingabe mit `feld` (Pfad unter `parameter`, siehe GrenzFeld) auf `wert`, begrenzt auf GRENZEN des Modells. Ändert die Eingabe
+ *  nie (kopiert entlang des Pfads). Abgeleitete Regeln wie im Schema: Feder mit Schwingungsdauer 0,05 bis 1000 s (die Masse bzw.
+ *  Federkonstante wird entsprechend enger begrenzt); Wurf aus Höhe 0 mit Winkel ≥ ein Reglerschritt (1 Grad). Unbekanntes Modell,
+ *  unbekanntes Feld oder keine endliche Zahl: eine unveränderte Kopie. Wirft nie. */
+export function mitWert<T>(input: T, feld: string, wert: number): T {
+  try {
+    if (!isObj(input)) return input;
+    const kopie: Obj = { ...input }, m = own(input, "modell"), p = own(input, "parameter");
+    const liste = typeof m === "string" && Object.prototype.hasOwnProperty.call(GRENZEN, m) ? GRENZEN[m as SimModellAlle] : [];
+    const g = liste.find((x) => x.feld === feld);
+    if (!g || typeof wert !== "number" || !fin(wert) || !isObj(p)) return kopie as T;
+    let lo = g.min, hi = g.max;
+    const zahlVon = (k: string): number | null => { const v = own(p, k); return typeof v === "number" && fin(v) && v > 0 ? v : null; };
+    if (m === "feder") {                                              // T = 2π·√(m/k) zwischen 0,05 und 1000 s (knapp innen)
+      const kMin = (0.05 / TAU) ** 2 * (1 + 1e-9), kMax = (1000 / TAU) ** 2 * (1 - 1e-9);   // m/k
+      const k = zahlVon("federkonstante"), ms = zahlVon("masse");
+      let a = lo, b = hi;
+      if (feld === "masse" && k !== null) { a = Math.max(lo, k * kMin); b = Math.min(hi, k * kMax); }
+      if (feld === "federkonstante" && ms !== null) { a = Math.max(lo, ms / kMax); b = Math.min(hi, ms / kMin); }
+      if (a <= b) { lo = a; hi = b; }
+    }
+    if (m === "wurf" && feld === "winkel" && !(zahlVon("hoehe") !== null)) lo = Math.max(lo, g.schritt);
+    kopie.parameter = setzePfad(p, feld.split("."), clamp(wert, lo, hi));
+    return kopie as T;
+  } catch {
+    return input;
+  }
 }

@@ -5,6 +5,9 @@
 // angehalten oder abgebaut: kein Bild bestellt, null Last. Ein Bild mit einer nicht endlichen Zahl wird nie geliefert.
 // Nichts wirft: wirft ein Rückruf (`onFrame`, `onState`) oder der Bildtakt (`requestFrame`), endet die Schleife mit „instabil“
 // und bestellt nichts mehr. Zeit: der Zeitstempel des Bildtakts (wie bei requestAnimationFrame), sonst `now()`.
+// P5b: Tempo halb, normal oder doppelt (`setTempoFaktor`). Der Faktor gilt ab dem nächsten Bild und vervielfacht nur die Modellzeit
+// je echter Sekunde; die Grenze von 4000 Körper × Teilschritten je Bild bleibt (sonst wieder „Zeitlupe“). Kein Sprung im Bild:
+// die Simulation rechnet auf demselben Raster weiter. Neu starten behält den Faktor.
 
 import { advance, createSim, formatFest, isFiniteSnapshot, snapshot, type AdvanceResult, type SimSnapshot, type SimState } from "./physics";
 
@@ -32,6 +35,16 @@ export interface LoopState {
   simZeit: number;
   /** Körper × Teilschritte im letzten Bild (≤ MAX_KOERPER_SCHRITTE). */
   koerperSchritte: number;
+  /** Tempo-Faktor der Bedienung (0,5, 1 oder 2); die Modellzeit je echter Sekunde ist `tempo` der Simulation mal diesem Faktor. */
+  tempoFaktor?: TempoFaktor;
+}
+export type TempoFaktor = 0.5 | 1 | 2;
+export const TEMPO_FAKTOREN: readonly TempoFaktor[] = [0.5, 1, 2];
+
+/** Nächster erlaubter Tempo-Faktor: unter √0,5 halb, über √2 doppelt, sonst normal (keine Zahl: normal). */
+export function tempoFaktor(f: unknown): TempoFaktor {
+  if (typeof f !== "number" || Number.isNaN(f)) return 1;
+  return f < Math.SQRT1_2 ? 0.5 : f > Math.SQRT2 ? 2 : 1;
 }
 export interface FrameScheduler {
   /** Uhr in Millisekunden. */
@@ -67,6 +80,9 @@ export interface SimLoop {
   getSim(): SimState;
   /** Bestellte, noch nicht gelieferte Bilder (0 oder 1). */
   pending(): number;
+  /** Tempo halb, normal oder doppelt (0,5, 1, 2; andere Zahlen auf den nächsten dieser Werte), ab dem nächsten Bild, ohne Sprung. */
+  setTempoFaktor?(f: number): void;
+  getTempoFaktor?(): TempoFaktor;
 }
 
 /** Zustand in Worten: „läuft“, „pausiert“, „angehalten nach 30 s“, „gelandet nach 4,2 s“, „Zeitlupe, …“, „Simulation instabil, …“. */
@@ -86,7 +102,7 @@ export function createSimLoop(opts: SimLoopOptions): SimLoop {
   const eng = opts.engine ?? PHYSIK;
   let sim: SimState = createSim(null);
   let frameId: number | null = null, last: number | null = null, run = 0, steps = 0, ruhig = 0;
-  let status: LoopStatus = "laeuft", wort = "", disposed = false, gezeigt = false;
+  let status: LoopStatus = "laeuft", wort = "", disposed = false, gezeigt = false, faktor: TempoFaktor = 1;
   let vorher: number | null = null, takt: number | null = null;   // letztes angebotenes Bild, gemittelter Bildabstand der Anzeige
   const fenster = new Float64Array(FENSTER_BILDER);                // Zeiten der letzten 31 gelieferten Bilder (Ring)
   let fensterN = 0, fensterKopf = 0;
@@ -95,7 +111,7 @@ export function createSimLoop(opts: SimLoopOptions): SimLoop {
   const hidden = (): boolean => {
     try { return !!opts.isHidden?.(); } catch { return false; }
   };
-  const getState = (): LoopState => ({ status, wort, laufzeit: run, simZeit: sim.zeit, koerperSchritte: steps });
+  const getState = (): LoopState => ({ status, wort, laufzeit: run, simZeit: sim.zeit, koerperSchritte: steps, tempoFaktor: faktor });
   const cancel = (): void => {
     const id = frameId;
     frameId = null;
@@ -175,7 +191,7 @@ export function createSimLoop(opts: SimLoopOptions): SimLoop {
     const echt = Math.max(0, Math.min(Math.min(luecke, MAX_BILD_LUECKE_MS) / 1000, lz - run));
     run += echt;
     let res: AdvanceResult | null = null;
-    try { res = eng.advance(sim, echt * sim.tempo, MAX_KOERPER_SCHRITTE); } catch { res = null; }
+    try { res = eng.advance(sim, echt * sim.tempo * faktor, MAX_KOERPER_SCHRITTE); } catch { res = null; }
     steps = res ? Math.min(res.koerperSchritte, MAX_KOERPER_SCHRITTE) : 0;
     if (!res) { stoppe(); return; }
     if (!liefere()) return;
@@ -221,5 +237,9 @@ export function createSimLoop(opts: SimLoopOptions): SimLoop {
     getState,
     getSim: () => sim,
     pending: () => (frameId === null ? 0 : 1),
+    setTempoFaktor(f: number) {
+      faktor = tempoFaktor(f);
+    },
+    getTempoFaktor: () => faktor,
   };
 }
