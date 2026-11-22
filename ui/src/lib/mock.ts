@@ -66,6 +66,11 @@ export class MockSocket implements Socket {
     turn(79000, "Lies mir rechnen.py und gib mir eine Übersicht.", "Zwei Funktionen, neu ist die Prüfung auf leere Eingaben.", DEMO_VIEWS[6]);
     turn(90000, "Zeig mir das Regal in 3D, vorher und nachher.", "Hier ist das Regal, der neue Boden ist hervorgehoben.", DEMO_VIEWS[7]);
     turn(101000, "Zeichne den Grundriss vom Wohnzimmer.", "Hier ist der Grundriss mit Maßen.", DEMO_VIEWS[8]);
+    turn(112000, "Bahn oder Auto nach Hamburg?", "Hier der Vergleich.", DEMO_VIEWS[9]);
+    turn(123000, "Wie ging die Geschichte des Buchdrucks?", "Hier die wichtigsten Daten.", DEMO_VIEWS[10]);
+    turn(134000, "Übersetze mir ein paar Sätze ins Arabische.", "Hier sind die Sätze.", DEMO_VIEWS[11]);
+    turn(145000, "Ich will Hauptstädte üben.", "Hier sind Karten und ein kurzes Quiz.", DEMO_VIEWS[12]);
+    turn(156000, "Wie backe ich Pfannkuchen?", "Hier die Anleitung Schritt für Schritt.", DEMO_VIEWS[13]);
   }
 
   send(data: string): void {
@@ -224,4 +229,39 @@ export const DEMO_VIEWS: Record<string, unknown>[] = [
       { art: "text", ebene: "Möbel", x: 345, y: 195, text: "Tisch" },
       { art: "mass", ebene: "Maße", von: [0, -30], bis: [500, -30] },
       { art: "mass", ebene: "Maße", von: [530, 0], bis: [530, 400], text: "4 m (Wunsch)" } ] } ] },
+  // P6a: Vergleich, Zeitstrahl, Gegenüberstellung, Lernkarten, Quiz, Anleitung (vollständig wie nach der Backend-Prüfung)
+  { id: "vergleich", art: "antwort", titel: "Bahn oder Auto nach Hamburg (Beispiel)", bausteine: [
+    { typ: "vergleich", optionen: ["Bahn", "Auto", "Fernbus"], kriterien: [
+      { name: "Fahrzeit", werte: ["3:40 h", "4:50 h", "6:10 h"] },
+      { name: "Kosten in Euro", werte: [59.9, 92, 24.99] },
+      { name: "Arbeiten unterwegs", werte: ["gut", "nein", "eingeschränkt"] } ],
+      vorteile: [["schnell", "arbeiten möglich"], ["flexibel vor Ort"], ["günstig"]],
+      nachteile: [["Verspätungen möglich"], ["Stau", "Parkplatzsuche"], []],
+      fazit: "Für eine Tagesreise allein ist die Bahn am bequemsten." } ] },
+  { id: "zeitstrahl", art: "recherche", titel: "Geschichte des Buchdrucks (Beispiel)", bausteine: [
+    { typ: "zeitstrahl", einheit: "Jahren nach Christus", ereignisse: [
+      { zeit: "um 1450", titel: "Gutenberg druckt mit beweglichen Lettern", text: "In Mainz entsteht ein Verfahren mit Metall-Lettern." },
+      { zeit: "1455", titel: "Gutenberg-Bibel fertig", text: "" },
+      { zeit: "1501", titel: "Ende der Inkunabelzeit", text: "Frühdrucke bis 1500 heißen Inkunabeln." },
+      { zeit: "1811", titel: "Schnellpresse von Koenig", text: "Dampfbetrieben, viel schneller als die Handpresse." } ] } ] },
+  { id: "uebersetzung", art: "antwort", titel: "Sätze für die Reise (Beispiel)", bausteine: [
+    { typ: "gegenueber", sprachen: ["Deutsch", "Arabisch"], paare: [
+      { original: "Guten Morgen", uebersetzung: "صباح الخير" },
+      { original: "Danke", uebersetzung: "شكرا" },
+      { original: "Wo ist der Bahnhof?", uebersetzung: "أين محطة القطار؟" } ] } ] },
+  { id: "lernen", art: "lernen", titel: "Hauptstädte üben (Beispiel)", bausteine: [
+    { typ: "lernkarten", karten: [
+      { frage: "Hauptstadt von Portugal?", antwort: "Lissabon" },
+      { frage: "Hauptstadt von Kanada?", antwort: "Ottawa" },
+      { frage: "Hauptstadt von Australien?", antwort: "Canberra" } ] },
+    { typ: "quiz", fragen: [
+      { frage: "Welche Stadt ist die Hauptstadt der Schweiz?", optionen: ["Zürich", "Bern", "Genf"], richtig: 1,
+        erklaerung: "Bern ist Bundesstadt und Sitz der Regierung." },
+      { frage: "Welcher Fluss fließt durch Wien?", optionen: ["Donau", "Rhein", "Elbe", "Moldau"], richtig: 0, erklaerung: "" } ] } ] },
+  { id: "anleitung", art: "lernen", titel: "Pfannkuchen backen (Beispiel)", bausteine: [
+    { typ: "anleitung", aktuell: 0, schritte: [
+      { titel: "Zutaten bereitstellen", text: "250 g Mehl, 3 Eier, 500 ml Milch, eine Prise Salz.", sekunden: 0 },
+      { titel: "Teig rühren", text: "Alles glatt rühren, bis keine Klümpchen mehr da sind.", sekunden: 0 },
+      { titel: "Teig ruhen lassen", text: "Den Teig abgedeckt ruhen lassen.", sekunden: 300 },
+      { titel: "Ausbacken", text: "Wenig Fett in die Pfanne, je Seite etwa eine Minute.", sekunden: 60 } ] } ] },
 ];

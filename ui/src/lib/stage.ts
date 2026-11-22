@@ -2,7 +2,7 @@
 // (src/kushim/stage/schema.py); hier nur eine leichte Formprüfung, damit die Oberfläche nie an Fremdem zerbricht.
 // Alles bleibt Text: kein HTML, keine Links, keine Bilder.
 
-export type Art = "antwort" | "rechnung" | "markt" | "recherche" | "auftrag" | "mail" | "dokument" | "modell" | "plan";
+export type Art = "antwort" | "rechnung" | "markt" | "recherche" | "auftrag" | "mail" | "dokument" | "modell" | "plan" | "lernen" | "netz";
 type Cell = string | number;
 export type Block =
   | { typ: "text"; absaetze: string[] }
@@ -27,14 +27,23 @@ export type Block =
   | { typ: "szene3d"; einheit: string; hervorheben: string[]; beschriftungen: { objekt: string; text: string }[];
       szenen: { name: string; objekte: ({ form: "linie"; name: string; farbe: string; punkte: [number, number, number][] } | { form: "box" | "kugel" | "zylinder" | "kegel" | "torus" | "ebene"; name: string; farbe: string; masse: number[]; position: [number, number, number]; drehung: [number, number, number] })[] }[] }
   | { typ: "plan2d"; einheit: string; ebenen: string[]; elemente: ({ art: "linie"; ebene: string; von: [number, number]; bis: [number, number] } | { art: "mass"; ebene: string; von: [number, number]; bis: [number, number]; text: string } | { art: "polylinie"; ebene: string; punkte: [number, number][]; geschlossen: boolean } | { art: "rechteck"; ebene: string; x: number; y: number; b: number; h: number } | { art: "kreis"; ebene: string; x: number; y: number; r: number } | { art: "bogen"; ebene: string; x: number; y: number; r: number; von: number; bis: number } | { art: "text"; ebene: string; x: number; y: number; text: string; groesse: number })[] }
-  | { typ: "aenderung"; name: string; zusammenfassung: string; bloecke: { kopf: string; zeilen: { art: "gleich" | "neu" | "weg"; text: string }[] }[] };
+  | { typ: "aenderung"; name: string; zusammenfassung: string; bloecke: { kopf: string; zeilen: { art: "gleich" | "neu" | "weg"; text: string }[] }[] }
+  // P6a (docs/ui-p6-plan.md): Vergleich, Zeitstrahl, Gegenüberstellung; Lernkarten, Quiz, Anleitung. Indizes zählen ab 0.
+  // Das Backend füllt Vorgaben: leere Listen je Option, "" für fehlende Texte, sekunden 0 = kein Timer, aktuell 0.
+  | { typ: "vergleich"; optionen: string[]; kriterien: { name: string; werte: Cell[] }[]; vorteile: string[][]; nachteile: string[][]; fazit: string }
+  | { typ: "zeitstrahl"; ereignisse: { zeit: string; titel: string; text: string }[]; einheit: string }
+  | { typ: "gegenueber"; sprachen: [string, string]; paare: { original: string; uebersetzung: string }[] }
+  | { typ: "lernkarten"; karten: { frage: string; antwort: string }[] }
+  | { typ: "quiz"; fragen: { frage: string; optionen: string[]; richtig: number; erklaerung: string }[] }
+  | { typ: "anleitung"; schritte: { titel: string; text: string; sekunden: number }[]; aktuell: number };
 
 export interface View { seq: number; id: string; art: Art; titel: string; stand: string; bausteine: Block[] }
 export type StageItem = View | { seq: number; id: string; schliessen: true };
 
-const ARTEN = ["antwort", "rechnung", "markt", "recherche", "auftrag", "mail", "dokument", "modell", "plan"];
+const ARTEN = ["antwort", "rechnung", "markt", "recherche", "auftrag", "mail", "dokument", "modell", "plan", "lernen", "netz"];
 const TYPEN = ["text", "liste", "formel", "schritte", "ergebnis", "kennzahlen", "tabelle", "diagramm", "aussagen", "widerspruch",
-  "quellen", "hinweis", "systemzustand", "fortschritt", "aufgaben", "zeitplan", "mail", "mail-entwurf", "countdown", "dokument", "aenderung", "szene3d", "plan2d"];
+  "quellen", "hinweis", "systemzustand", "fortschritt", "aufgaben", "zeitplan", "mail", "mail-entwurf", "countdown", "dokument", "aenderung", "szene3d", "plan2d",
+  "vergleich", "zeitstrahl", "gegenueber", "lernkarten", "quiz", "anleitung"];
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 
 /** Ein Eintrag aus `stage.get`; `null`, wenn er nicht passt (dann wird er übergangen). */
@@ -48,5 +57,5 @@ export function parseItem(raw: unknown): StageItem | null {
 }
 
 export const ART_LABEL: Record<Art, string> = { antwort: "Antwort", rechnung: "Rechnung", markt: "Markt", recherche: "Recherche",
-  auftrag: "Auftrag", mail: "Mail", dokument: "Datei", modell: "3D-Modell", plan: "Plan" };
+  auftrag: "Auftrag", mail: "Mail", dokument: "Datei", modell: "3D-Modell", plan: "Plan", lernen: "Lernen", netz: "Diagramm" };
 export const hasSystem = (v: View | null | undefined) => !!v?.bausteine.some((b) => b.typ === "systemzustand");
