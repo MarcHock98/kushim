@@ -1,4 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { Profiler } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { ViewCard } from "./components/stage/ViewCard";
@@ -23,11 +24,11 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.moc
 
 type Call = { name: string; args: unknown[] };
 /** Zeichenfläche, die jeden Aufruf und jede gesetzte Eigenschaft mitschreibt. `fail` wirft bei diesem Aufruf. */
-function recordingCtx(fail?: string) {
+function recordingCtx(fail?: string, failWhen?: () => boolean) {
   const calls: Call[] = [];
   const ctx = new Proxy({}, {
     get: (_t, k) => (k === "canvas" ? null : (...args: unknown[]) => {
-      if (k === fail) throw new Error("kaputt");
+      if (k === fail && (!failWhen || failWhen())) throw new Error("kaputt");
       calls.push({ name: String(k), args });
     }),
     set: (_t, k, v) => { calls.push({ name: `set:${String(k)}`, args: [v] }); return true; },
@@ -66,6 +67,29 @@ function fakeObserver() {
 function reducedMotion() {
   vi.spyOn(window, "matchMedia").mockImplementation(((q: string) =>
     ({ matches: q === REDUCE, media: q, addEventListener: vi.fn(), removeEventListener: vi.fn() })) as unknown as typeof window.matchMedia);
+}
+
+/** „Weniger Bewegung“ zum Umschalten: `set` ändert die Abfrage und ruft alle angemeldeten Rückrufe (wie das Ereignis `change`). */
+function mediaControl(initial: boolean) {
+  let matches = initial;
+  const listeners = new Set<() => void>();
+  const add = vi.fn((_type: string, h: () => void) => { listeners.add(h); });
+  const rem = vi.fn((_type: string, h: () => void) => { listeners.delete(h); });
+  vi.spyOn(window, "matchMedia").mockImplementation(((q: string) =>
+    ({ get matches() { return q === REDUCE && matches; }, media: q, addEventListener: add, removeEventListener: rem })) as unknown as typeof window.matchMedia);
+  return { add, rem, listeners, set: (v: boolean) => { matches = v; act(() => { for (const h of [...listeners]) h(); }); } };
+}
+
+/** Falscher ResizeObserver: `fire` meldet allen Beobachtern eine neue Größe. */
+function fakeResize() {
+  const ros: { cb: (e: { contentRect: { width: number; height: number } }[]) => void }[] = [];
+  vi.stubGlobal("ResizeObserver", class {
+    constructor(cb: (e: { contentRect: { width: number; height: number } }[]) => void) { ros.push({ cb }); }
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  });
+  return { fire: (width: number, height: number) => act(() => { for (const r of ros) r.cb([{ contentRect: { width, height } }]); }) };
 }
 
 const base = { laufzeit: 30, tempo: 0, spur: true, beschreibung: "" };
@@ -527,5 +551,224 @@ describe("Bühne und Vorführung", () => {
   it("der Startwert im Gas ist fest: gleiche Daten, gleiches Startbild", () => {
     const a: SimSnapshot = createSim(sim("gas")).startBild, b2: SimSnapshot = createSim(sim("gas")).startBild;
     expect(a.koerper).toEqual(b2.koerper);
+  });
+});
+
+const STILL = "Standbild, weniger Bewegung ist eingestellt";
+
+describe("Weniger Bewegung ohne Kontext und im Betrieb", () => {
+  it("ohne Zeichenkontext gibt es keinen Knopf „Trotzdem abspielen“; Standbildtext und Hinweis bleiben", () => {
+    reducedMotion();
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation((() => null) as unknown as typeof HTMLCanvasElement.prototype.getContext);
+    const f = fakeFrames();
+    card(sim("pendel"));
+    expect(screen.queryByRole("button", { name: "Trotzdem abspielen" })).toBeNull();
+    expect(document.querySelectorAll(".s-controls button")).toHaveLength(0);
+    expect(screen.getByText(/Das Bild kann hier nicht gezeichnet werden/)).toBeInTheDocument();
+    expect(word()).toBe(STILL);
+    expect(screen.getByText(/etwa drei Schwingungen/)).toBeInTheDocument();
+    expect(screen.getByText("Kennwerte am Start")).toBeInTheDocument();
+    expect(screen.getByText(createSim(sim("pendel")).text)).toBeInTheDocument();
+    expect(f.raf).not.toHaveBeenCalled();
+  });
+
+  it("der Wechsel zu „weniger Bewegung“ im Betrieb baut die Schleife ab und zeigt das Standbild; beim Abbauen wird der Rückruf entfernt", () => {
+    const mc = mediaControl(false); recordingCtx(); const f = fakeFrames();
+    const v = card(sim("pendel", { laufzeit: 60 }));
+    f.run(0.5);
+    expect(f.pending()).toBe(1);
+    expect(mc.add).toHaveBeenCalledWith("change", expect.any(Function));
+    const handler = mc.add.mock.calls[0][1];
+    mc.set(true);
+    expect(f.pending()).toBe(0);
+    expect(word()).toBe(STILL);
+    expect(btn("Trotzdem abspielen")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Pause" })).toBeNull();
+    expect(screen.getByText(/etwa drei Schwingungen/)).toBeInTheDocument();
+    const n = f.raf.mock.calls.length;
+    f.run(1);
+    expect(f.raf.mock.calls.length).toBe(n);
+    mc.set(false);                                                                      // und zurück: die Schleife läuft wieder
+    expect(word()).toBe("läuft");
+    expect(f.pending()).toBe(1);
+    v.unmount();
+    expect(mc.rem).toHaveBeenCalledWith("change", handler);
+    expect(mc.listeners.size).toBe(0);
+    expect(f.pending()).toBe(0);
+  });
+
+  it("neue Daten nach „Trotzdem abspielen“ zeigen wieder das Standbild und den Knopf", () => {
+    reducedMotion(); recordingCtx(); const f = fakeFrames();
+    const v = card(sim("pendel"));
+    click("Trotzdem abspielen");
+    f.run(0.5);
+    expect(word()).toBe("läuft");
+    v.rerender(cardEl(sim("feder")));
+    expect(word()).toBe(STILL);
+    expect(f.pending()).toBe(0);
+    expect(btn("Trotzdem abspielen")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Pause" })).toBeNull();
+    expect(screen.getByText(/etwa drei Schwingungen/)).toBeInTheDocument();
+    click("Trotzdem abspielen");                                                        // und für die neuen Daten wieder möglich
+    expect(word()).toBe("läuft");
+    expect(f.pending()).toBe(1);
+  });
+});
+
+describe("Zeitlupe, Neu starten, Last, Fehler", () => {
+  it("Gas mit 300 Teilchen und hohem Tempo sagt „Zeitlupe, Rechengrenze erreicht“, ohne dass etwas wirft", () => {
+    recordingCtx(); const f = fakeFrames();
+    card(sim("gas", { tempo: 100, laufzeit: 60, parameter: { ...(BLOCKS.gas.parameter as object), anzahl: 300 } }));
+    const seen = new Set<string>();
+    expect(() => f.run(3, 60, () => seen.add(word() ?? ""))).not.toThrow();
+    expect(seen.has("Zeitlupe, Rechengrenze erreicht")).toBe(true);
+  });
+
+  it("Neu starten nach der Landung: „läuft“, Zeit 0, ein Bild bestellt", () => {
+    recordingCtx(); const f = fakeFrames();
+    card(sim("wurf", { laufzeit: 60 }));
+    for (let i = 0; i < 20 * 60 && word() === "läuft"; i++) f.frame();
+    expect(word()).toMatch(/^gelandet nach /);
+    expect(f.pending()).toBe(0);
+    click("Neu starten");
+    expect(word()).toBe("läuft");
+    expect(row("Zeit in der Simulation")).toBe("0 s");
+    expect(f.pending()).toBe(1);
+  });
+
+  it("Neu starten nach „Simulation instabil, angehalten“: „läuft“, Zeit 0, ein Bild bestellt", () => {
+    recordingCtx(); const f = fakeFrames();
+    const real = vi.mocked(snapshot).getMockImplementation()!;
+    let kaputt = false;
+    vi.mocked(snapshot).mockImplementation((st) => {
+      const s = real(st);
+      return kaputt ? { ...s, koerper: [{ ...s.koerper[0], x: Number.NaN }] } : s;
+    });
+    try {
+      card(sim("pendel"));
+      f.run(0.5);
+      kaputt = true;
+      f.run(0.5);
+      expect(word()).toBe("Simulation instabil, angehalten");
+      expect(f.pending()).toBe(0);
+      kaputt = false;
+      click("Neu starten");
+      expect(word()).toBe("läuft");
+      expect(row("Zeit in der Simulation")).toBe("0 s");
+      expect(f.pending()).toBe(1);
+      f.run(1);
+      expect(num(row("Zeit in der Simulation"))).toBeGreaterThan(0);
+    } finally {
+      vi.mocked(snapshot).mockImplementation(real);
+    }
+  });
+
+  it("React-Arbeit: in 10 s bei 60 Hz höchstens 25 Aufbauten der Ansicht (Pendel), nicht ein Aufbau je Bild", () => {
+    recordingCtx(); const f = fakeFrames();
+    let commits = 0;
+    render(<Profiler id="sim" onRender={() => { commits++; }}>{cardEl(sim("pendel", { laufzeit: 60 }))}</Profiler>);
+    const c0 = commits;
+    f.run(10);
+    expect(word()).toBe("läuft");
+    expect(commits - c0).toBeGreaterThan(5);                                            // die Kennwerte laufen wirklich weiter
+    expect(commits - c0).toBeLessThanOrEqual(25);
+  });
+
+  it("ein Zeichenfehler beim Start trennt den Beobachter (IntersectionObserver)", () => {
+    const ios = fakeObserver(); recordingCtx("arc"); const f = fakeFrames();
+    card(sim("pendel"));
+    expect(screen.getByText("Simulation kann nicht gezeigt werden.")).toBeInTheDocument();
+    expect(ios.length).toBeGreaterThan(0);
+    expect(ios.every((o) => o.disconnected)).toBe(true);
+    expect(f.pending()).toBe(0);
+  });
+
+  it("ein Zeichenfehler mitten im Lauf trennt den Beobachter und hält die Schleife an", () => {
+    let kaputt = false;
+    const ios = fakeObserver(); recordingCtx("arc", () => kaputt); const f = fakeFrames();
+    card(sim("pendel", { laufzeit: 60 }));
+    f.run(0.5);
+    expect(ios).toHaveLength(1);
+    expect(ios[0].disconnected).toBe(false);
+    kaputt = true;
+    f.run(0.3);
+    expect(screen.getByText("Simulation kann nicht gezeigt werden.")).toBeInTheDocument();
+    expect(ios.every((o) => o.disconnected)).toBe(true);
+    expect(f.pending()).toBe(0);
+    f.run(1);
+    expect(f.pending()).toBe(0);
+  });
+});
+
+describe("Kein Klick sendet etwas, auch bei „weniger Bewegung“", () => {
+  const raw = (m: string): Record<string, unknown> => m === "umlauf"
+    ? { id: "umlauf", art: "simulation", titel: "Umlaufbahnen (Beispiel)", stand: "", schliessen: false, bausteine: [sim("umlauf")] }
+    : DEMO_VIEWS.find((v) => v.id === m)!;
+
+  it.each(["pendel", "gas", "umlauf"])("%s: „Trotzdem abspielen“, Pause, Weiter, Neu starten und „Verteilung als Zahlen“ sind echte Knöpfe und senden nichts", async (m) => {
+    reducedMotion(); recordingCtx(); const f = fakeFrames();
+    const sock: { current?: MockSocket } = {};
+    const loader = async () => ({ client: new ApiClient({ port: 5000, token: TOKEN }, (u) => (sock.current = new MockSocket(u, TOKEN))) });
+    render(<App load={loader} />);
+    await waitFor(() => screen.getAllByText(STATE_VIEW.idle.label));
+    const v = raw(m);
+    sock.current!.show(v);
+    await waitFor(() => screen.getByRole("heading", { name: String(v.titel) }), { timeout: 3000 });
+    await waitFor(() => expect(word()).toBe(STILL));
+    const pollTypes = new Set(["voice.state", ...sock.current!.sent.map((x) => (x as { type: string }).type)]);   // voice.state ist eine übliche Abfrage der App
+    const before = JSON.stringify(sock.current!.sent);
+
+    /** Jeden Knopf prüfen (echter Knopf, bedienbar, fokussierbar) und dann nach dem Fokus anklicken. */
+    const pressAll = () => {
+      const bs = [...document.querySelectorAll<HTMLButtonElement>(".s-controls button")];
+      expect(bs.length).toBeGreaterThan(0);
+      for (const b of bs) {
+        expect(b.tagName).toBe("BUTTON");
+        expect(b.type).toBe("button");
+        expect(b.disabled).toBe(false);
+        expect(b.tabIndex).toBeGreaterThanOrEqual(0);
+        b.focus();
+        expect(document.activeElement).toBe(b);
+        fireEvent.click(b);
+      }
+    };
+    pressAll();                                                                          // „Trotzdem abspielen“
+    expect(word()).toBe("läuft");
+    f.run(0.5);
+    pressAll(); f.run(0.5);                                                              // Pause, dann Neu starten (läuft wieder)
+    pressAll(); f.run(0.5);
+    for (const key of ["Enter", " ", "ArrowRight", "Tab"]) fireEvent.keyDown(btn(/Pause|Weiter/), { key });
+    if (m === "gas") fireEvent.click(screen.getByText("Verteilung als Zahlen"));
+    fireEvent.click(screen.getByText("Beschreibung"));
+    expect(JSON.stringify(sock.current!.sent)).toBe(before);
+
+    await new Promise((res) => setTimeout(res, 1200));
+    const later = sock.current!.sent.map((x) => (x as { type: string }).type);
+    expect(later.filter((t) => !pollTypes.has(t))).toEqual([]);
+  }, 15_000);
+});
+
+describe("Zeichenfläche: Größe", () => {
+  it.each(["pendel", "gas"] as const)("%s: Größe 0 und Verkleinern von 800 auf 375 px: nie NaN oder Infinity, Pixelgröße höchstens 1,5 mal CSS-Größe", (m) => {
+    const r = recordingCtx(), f = fakeFrames(), rz = fakeResize();
+    vi.stubGlobal("devicePixelRatio", 3);
+    card(sim(m, { laufzeit: 60 }));
+    const c = canvases()[0] as HTMLCanvasElement;
+    const within = (cssW: number) => {
+      const cssH = Number.parseFloat(c.style.height);
+      expect(Number.isFinite(cssH) && cssH > 0).toBe(true);
+      expect(c.width).toBeGreaterThanOrEqual(1);
+      expect(c.height).toBeGreaterThanOrEqual(1);
+      expect(c.width).toBeLessThanOrEqual(1.5 * cssW + 0.5);                             // Runden darf höchstens ein halbes Pixel zugeben
+      expect(c.height).toBeLessThanOrEqual(1.5 * cssH + 0.5);
+    };
+    rz.fire(0, 0); f.run(0.2); within(640);                                              // Größe 0 wird ignoriert: Standardbreite
+    rz.fire(800, 500); f.run(0.2); within(800);
+    rz.fire(375, 300); f.run(0.2); within(375);
+    rz.fire(50, 40); f.run(0.2); within(120);                                            // untere Grenze der Breite
+    expect(r.count("clearRect")).toBeGreaterThan(0);
+    const nums = r.calls.flatMap((x) => x.args).filter((a) => typeof a === "number");
+    expect(nums.length).toBeGreaterThan(0);
+    expect(nums.every((v) => Number.isFinite(v))).toBe(true);
   });
 });

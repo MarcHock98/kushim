@@ -97,6 +97,17 @@ def test_no_code_from_strings_no_workers_no_webassembly():
     assert not hits, hits
 
 
+def test_no_worker_import_through_a_bundler_suffix():
+    """Auch über das Bündelwerkzeug darf kein Worker entstehen: kein `?worker`, `?sharedworker` oder `?worker&inline` im Import."""
+    suffix = re.compile(r"[\"'`][^\"'`\n]*\?[\w&=-]*\b(?:shared)?worker\b", re.IGNORECASE)
+    for sample in ('import W from "./w.ts?worker"', "import W from './w.ts?sharedworker'", 'import W from "./w.ts?worker&inline"', 'import W from "./w.ts?url&worker"'):
+        assert suffix.search(sample), sample                      # die Regel selbst erkennt die Formen
+    for sample in ('const a = x?.worker', 'const a = "worker"', 'import W from "./worker.ts"'):
+        assert not suffix.search(sample), sample
+    hits = [f"{p.name}: {m.group(0)}" for p in SRC for m in suffix.finditer(p.read_text(encoding="utf-8"))]
+    assert not hits, hits
+
+
 def test_shader_material_only_in_the_core():
     users = sorted(p.name for p in SRC if "ShaderMaterial" in p.read_text(encoding="utf-8"))
     assert users == ["Core3D.tsx"], users                 # keine Shader aus Ansichten, nur der feste Kern

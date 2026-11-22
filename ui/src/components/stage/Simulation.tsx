@@ -398,7 +398,7 @@ export function Simulation({ b }: { b: SimBlock }) {
           aria-label={still ? "Standbild der Simulation; die Beschreibung steht darunter als Text" : "Bild der Simulation; die Beschreibung steht darunter als Text"} />
       </div>
       <div className="m-row s-controls" role="group" aria-label="Simulation steuern">
-        {still && <button type="button" onClick={() => setForcedFor(b)}>Trotzdem abspielen</button>}
+        {still && !noCtx && <button type="button" onClick={() => setForcedFor(b)}>Trotzdem abspielen</button>}
         {!still && !noCtx && (
           <>
             <button ref={pauseBtn} type="button" aria-disabled={canPause ? undefined : "true"} onClick={toggle}>
