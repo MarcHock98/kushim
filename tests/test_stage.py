@@ -1284,6 +1284,76 @@ def test_p5b_element_table_has_118_unique_symbols_and_atomic_numbers():
         assert schema.ORDNUNGSZAHL[sym] == z and schema.ELEMENTE[z - 1] == sym
 
 
+ALL_ELEMENTS = (                                                                  # von Hand ausgeschrieben, unabhängig von schema.py
+    "H He Li Be B C N O F Ne Na Mg Al Si P S Cl Ar K Ca Sc Ti V Cr Mn Fe Co Ni Cu Zn Ga Ge As Se Br Kr Rb Sr Y Zr Nb Mo Tc Ru Rh Pd Ag "
+    "Cd In Sn Sb Te I Xe Cs Ba La Ce Pr Nd Pm Sm Eu Gd Tb Dy Ho Er Tm Yb Lu Hf Ta W Re Os Ir Pt Au Hg Tl Pb Bi Po At Rn Fr Ra Ac Th Pa "
+    "U Np Pu Am Cm Bk Cf Es Fm Md No Lr Rf Db Sg Bh Hs Mt Ds Rg Cn Nh Fl Mc Lv Ts Og"
+).split()
+
+
+def test_p5b_element_table_matches_the_written_out_list_and_z_is_index_plus_one():
+    assert len(ALL_ELEMENTS) == 118 and schema.ELEMENTE == tuple(ALL_ELEMENTS)
+    assert schema.ORDNUNGSZAHL == {s: i + 1 for i, s in enumerate(ALL_ELEMENTS)}
+    for i, sym in enumerate(ALL_ELEMENTS):
+        assert schema.ORDNUNGSZAHL[sym] == i + 1
+
+
+@pytest.mark.parametrize("axis", [0, 1, 2])
+@pytest.mark.parametrize("sign", [1, -1])
+def test_p5b_position_limit_on_every_side_of_every_axis(axis, sign):
+    def mol(v):
+        return {"atome": [{"element": "H", "position": [v if j == axis else 0 for j in range(3)]}]}
+    assert teil_block("molekuel", mol(sign * 200))["atome"][0]["position"][axis] == sign * 200
+    assert teil_block("molekuel", mol(sign * 200.0))["atome"][0]["position"][axis] == sign * 200
+    teil_bad("molekuel", mol(sign * 200.001))
+    teil_bad("molekuel", mol(sign * 201))
+
+
+def test_p5b_indices_at_three_hundred_atoms():
+    a = atoms(300)
+    got = teil_block("molekuel", {"atome": a, "bindungen": [{"von": 0, "bis": 299}, {"von": 299, "bis": 298}],
+                                  "beschriftungen": [{"atom": 299, "text": "letztes"}, {"atom": 0, "text": "erstes"}]})
+    assert got["bindungen"][0] == {"von": 0, "bis": 299, "ordnung": 1} and got["beschriftungen"][0]["atom"] == 299
+    teil_bad("molekuel", {"atome": a, "bindungen": [{"von": 0, "bis": 300}]})
+    teil_bad("molekuel", {"atome": a, "bindungen": [{"von": 300, "bis": 0}]})
+    teil_bad("molekuel", {"atome": a, "beschriftungen": [{"atom": 300, "text": "x"}]})
+
+
+def test_filled_defaults_of_an_older_block_are_size_checked_at_the_exact_boundary():
+    werte = [{"name": f"k{i}", "wert": i} for i in range(8)]                     # ohne einheit, aenderung, richtung: werden ergänzt
+
+    def view(n):                                                                   # n Zeichen Fülltext, Absätze zu 1200
+        paras = ["y" * min(1200, n - i) for i in range(0, n, 1200)]
+        return {"id": "k", "art": "markt", "titel": "T", "stand": "heute", "bausteine": [
+            {"typ": "kennzahlen", "werte": werte}, *[{"typ": "text", "absaetze": paras[j:j + 12]} for j in range(0, len(paras), 12)]]}
+
+    def size(v):
+        return len(json.dumps(v, ensure_ascii=False).encode("utf-8"))
+
+    def ok(n):
+        try:
+            schema.validate(view(n))
+            return True
+        except schema.ViewError as e:
+            assert e.code == "too_large"
+            return False
+
+    lo, hi = 1, schema.MAX_JSON                                                    # ok(lo), nicht ok(hi): die Grenze suchen
+    assert ok(lo) and not ok(hi)
+    while hi - lo > 1:
+        mid = (lo + hi) // 2
+        lo, hi = (mid, hi) if ok(mid) else (lo, mid)
+    over, under = view(hi), view(lo)
+    assert size(over) - size(under) == 1                                          # genau ein Byte Unterschied in der Eingabe
+    assert size(over) <= schema.MAX_JSON - 300                                    # die Eingabe allein wäre klein genug ...
+    with pytest.raises(schema.ViewError) as e:                                     # ... erst die ergänzten Felder machen sie zu groß
+        schema.validate(over)
+    assert e.value.code == "too_large"
+    once = schema.validate(under)
+    assert size(once) == schema.MAX_JSON and schema.validate(once) == once
+    assert once["bausteine"][0]["werte"][0] == {"name": "k0", "wert": 0, "einheit": "", "aenderung": "", "richtung": ""}
+
+
 def _schalen_for(z):
     return [min(32, z - 32 * i) for i in range((z + 31) // 32)] or []
 
@@ -1306,7 +1376,7 @@ def test_p5b_unknown_elements_and_wrong_case_are_rejected(element):
 @pytest.mark.parametrize("element,ladung,schalen", [
     ("H", 0, [1]), ("He", 0, [2]), ("Li", 0, [2, 1]), ("C", 0, [2, 4]), ("Ne", 0, [2, 8]), ("Na", 0, [2, 8, 1]), ("Ar", 0, [2, 8, 8]),
     ("K", 0, [2, 8, 8, 1]), ("Ca", 0, [2, 8, 8, 2]), ("H", 1, []), ("Li", 3, []), ("Na", 1, [2, 8]), ("Cl", -1, [2, 8, 8]),
-    ("K", -1, [2, 8, 8, 2]), ("Sc", 1, [2, 8, 8, 2]), ("Ti", 3, [2, 8, 8, 1]), ("O", -2, [2, 8]), ("N", -3, [2, 8]),
+    ("K", -1, [2, 8, 8, 2]), ("Ca", 2, [2, 8, 8]), ("Ca", 3, [2, 8, 7]), ("O", -2, [2, 8]), ("N", -3, [2, 8]),
 ])
 def test_p5b_missing_shells_are_filled_by_the_simple_rule(element, ladung, schalen):
     got = teil_block("atom", {"element": element, "ladung": ladung})
@@ -1314,9 +1384,12 @@ def test_p5b_missing_shells_are_filled_by_the_simple_rule(element, ladung, schal
     assert schema.validate(teil("atom", got)) == schema.validate(teil("atom", {"element": element, "ladung": ladung}))
 
 
-@pytest.mark.parametrize("element,ladung", [("Sc", 0), ("Ca", -1), ("K", -3), ("Fe", 0), ("Og", 0), ("Ti", 1), ("V", 2)])
-def test_p5b_shells_are_required_above_twenty_electrons(element, ladung):
-    teil_bad("atom", {"element": element, "ladung": ladung})
+@pytest.mark.parametrize("element,ladung", [("Sc", 0), ("Ca", -1), ("K", -3), ("Fe", 0), ("Og", 0), ("Ti", 1), ("V", 2),
+                                            ("Sc", 1), ("Sc", 2), ("Sc", 3), ("Ti", 2), ("Ti", 3), ("V", 3), ("Fe", 3)])
+def test_p5b_shells_are_required_above_atomic_number_twenty_or_twenty_electrons(element, ladung):
+    teil_bad("atom", {"element": element, "ladung": ladung})                    # die einfache Regel 2, 8, 8, 2 stimmt nur bis Ca
+    z = schema.ORDNUNGSZAHL[element] - ladung
+    assert teil_block("atom", {"element": element, "ladung": ladung, "schalen": _schalen_for(z)})["schalen"] == _schalen_for(z)
 
 
 @pytest.mark.parametrize("fields,ok", [
@@ -1577,6 +1650,8 @@ MOL_B = {"typ": "teilchen", "form": "molekuel", **T_MIN["molekuel"]}
 ORB_B = {"typ": "teilchen", "form": "orbital", **T_MIN["orbital"]}
 ATOM_B = {"typ": "teilchen", "form": "atom", **T_MIN["atom"]}
 TEXT_B = {"typ": "text", "absaetze": ["a"]}
+SZ_B = {"typ": "szene3d", "szenen": [{"name": "s", "objekte": [BOX]}]}
+PLAN_B = {"typ": "plan2d", "elemente": [{"art": "kreis", "x": 0, "y": 0, "r": 1}]}
 
 
 @pytest.mark.parametrize("blocks,code", [
@@ -1587,6 +1662,11 @@ TEXT_B = {"typ": "text", "absaetze": ["a"]}
     ([SIM_B, SIM_B, MOL_B, ORB_B, ATOM_B, ATOM_B, TEXT_B], None),                  # gemischt: jede Grenze für sich
     ([SIM_B, MOL_B, SIM_B, ORB_B, ATOM_B, SIM_B], "bad_block_6"), ([SIM_B, MOL_B, SIM_B, ORB_B, ATOM_B, ORB_B], "bad_block_6"),
     ([MOL_B, SIM_B, ORB_B, SIM_B, MOL_B, SIM_B], "bad_block_5"),                    # der erste Baustein über einer Grenze
+    # szene3d nutzt auch WebGL: zählt mit Molekül und Orbital zusammen
+    ([SZ_B, SZ_B], None), ([SZ_B, SZ_B, SZ_B], "bad_block_3"), ([SZ_B, MOL_B], None), ([ORB_B, SZ_B], None),
+    ([SZ_B, MOL_B, ORB_B], "bad_block_3"), ([MOL_B, ORB_B, SZ_B], "bad_block_3"), ([ORB_B, SZ_B, ATOM_B, SZ_B], "bad_block_4"),
+    ([SZ_B, SIM_B, SIM_B, MOL_B, ATOM_B, TEXT_B], None), ([SZ_B, SIM_B, SZ_B, SIM_B, SIM_B], "bad_block_5"),
+    ([SZ_B, PLAN_B, PLAN_B, PLAN_B, SZ_B], None),                                    # plan2d ist SVG: zählt nicht
 ])
 def test_p5b_at_most_two_simulations_and_two_webgl_particles_per_view(blocks, code):
     if code is None:

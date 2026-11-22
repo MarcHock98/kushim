@@ -125,7 +125,7 @@ ZEIGE_TOOL = {
             "dokument{name,ausschnitt?,zeilen:[str],gliederung?:[str]} (art dokument), aenderung{name,zusammenfassung?,bloecke:[{kopf?,zeilen:"
             "[{art:gleich|neu|weg,text}]}]}, szene3d{einheit?,szenen:[{name,objekte:[{form:box|kugel|zylinder|kegel|torus|ebene,name?,"
             "masse:[Zahlen],position?:[x,y,z],drehung?:[x,y,z in Grad],farbe?:arc|amber|ok|warn|alarm|text|gedaempft} oder "
-            "{form:linie,punkte:[[x,y,z]]}]}],hervorheben?:[name],beschriftungen?:[{objekt,text}]} (art modell), "
+            "{form:linie,punkte:[[x,y,z]]}]}],hervorheben?:[name],beschriftungen?:[{objekt,text}]} (art modell; höchstens 2 je Ansicht), "
             "plan2d{einheit?,ebenen?:[name],elemente:[{art:linie|mass{von,bis,text?}|polylinie{punkte,geschlossen}|rechteck{x,y,b,h}|"
             "kreis{x,y,r}|bogen{x,y,r,von,bis}|text{x,y,text,groesse?},ebene?}]} (art plan; höchstens 800 Elemente), "
             "vergleich{optionen:[str] (2 bis 5),kriterien:[{name,werte:[str|zahl] je Option}],vorteile?:[[str]] und nachteile?:[[str]] "
@@ -147,9 +147,9 @@ ZEIGE_TOOL = {
             "teilchen{form:molekuel,name?,atome:[{element:Symbol wie H|He|Og,position:[x,y,z] in Ångström}] (1 bis 300),"
             "bindungen?:[{von,bis:Index ab 0,ordnung?:1|2|3}] (ohne: aus den Abständen),beschriftungen?:[{atom:Index ab 0,text}],"
             "darstellung?:kugel-stab|kalotte} oder {form:atom,element,neutronen?,ladung?:-3 bis 3,schalen?:[Elektronen je Schale] "
-            "(Summe = Ordnungszahl minus ladung; über 20 Elektronen Pflicht)} oder {form:orbital,orbital:1s|2s|2p_x|2p_y|2p_z|3s|"
+            "(Summe = Ordnungszahl minus ladung; Pflicht ab Ordnungszahl 21 oder über 20 Elektronen)} oder {form:orbital,orbital:1s|2s|2p_x|2p_y|2p_z|3s|"
             "3p_x|3p_y|3p_z|3d_xy|3d_xz|3d_yz|3d_x2-y2|3d_z2,punkte?:500 bis 5000,startwert?} (art teilchen; nur Daten, keine Formeln; "
-            "höchstens 2 Moleküle oder Orbitale je Ansicht)"),
+            "höchstens 2 Moleküle, Orbitale und szene3d zusammen je Ansicht)"),
             "items": {"type": "object", "required": ["typ"], "properties": {"typ": {"type": "string", "enum": list(stage_schema.BLOCKS)}}}},
     }},
 }

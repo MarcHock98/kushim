@@ -729,7 +729,7 @@ ORBITALE = ("1s", "2s", "2p_x", "2p_y", "2p_z", "3s", "3p_x", "3p_y", "3p_z", "3
 MAX_ATOME, MAX_BINDUNGEN, MAX_ATOM_LABELS, LAGE_MAX = 300, 400, 20, 200
 SCHALEN_REGEL = (2, 8, 8, 2)                                                             # einfache Regel bis 20 Elektronen
 MAX_SCHALEN, SCHALE_MAX = 7, 32
-MAX_SIM_PRO_ANSICHT, MAX_WEBGL_PRO_ANSICHT = 2, 2                                         # Last: Simulationen und 3D-Teilchen je Ansicht
+MAX_SIM_PRO_ANSICHT, MAX_WEBGL_PRO_ANSICHT = 2, 2                                         # Last: Simulationen; WebGL (szene3d, Molekül, Orbital)
 
 
 def _element(v: Any, c: str) -> str:
@@ -778,14 +778,14 @@ def _atom(b: dict[str, Any], c: str) -> dict[str, Any]:
         schalen = [_int(s, 0, SCHALE_MAX, c) for s in _list(b["schalen"], 0, MAX_SCHALEN, c)]
         if sum(schalen) != elektronen:
             raise ViewError(c)
-    elif elektronen <= sum(SCHALEN_REGEL):
+    elif ORDNUNGSZAHL[element] <= sum(SCHALEN_REGEL) and elektronen <= sum(SCHALEN_REGEL):    # die Regel stimmt nur bis Ca
         schalen, rest = [], elektronen
         for platz in SCHALEN_REGEL:
             if rest <= 0:
                 break
             schalen.append(min(platz, rest))
             rest -= schalen[-1]
-    else:                                                                                # über 20 Elektronen: Schalen sind Pflicht
+    else:                                                                                # über Ordnungszahl 20 oder 20 Elektronen: Pflicht
         raise ViewError(c)
     return {"element": element, "neutronen": neutronen, "ladung": ladung, "schalen": schalen}
 
@@ -869,7 +869,7 @@ def _validate(raw: Any) -> dict[str, Any]:
             raise ViewError(code)
         block = {"typ": b["typ"], **BLOCKS[b["typ"]](b, code)}
         sims += block["typ"] == "simulation"
-        webgl += block["typ"] == "teilchen" and block["form"] in WEBGL_FORMEN
+        webgl += block["typ"] == "szene3d" or (block["typ"] == "teilchen" and block["form"] in WEBGL_FORMEN)
         if sims > MAX_SIM_PRO_ANSICHT or webgl > MAX_WEBGL_PRO_ANSICHT:                 # Last: der erste Baustein über der Grenze
             raise ViewError(code)
         blocks.append(block)
