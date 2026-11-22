@@ -149,13 +149,29 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
   Linien nicht umgeleitet; Text in der Raute kann bei drei Zeilen überstehen. Wirkt erst nach neuem `kushim start`.
   Nächster Schritt: P5a nach Freigabe; sonst E2/E3 der Roadmap prüfen.
 
+- 2026-11-22 Loop (Manager mit Agenten, ab dem Abend auf Opus): Nutzer gab P5a „wie empfohlen“ frei. **P5a gebaut** (Branches
+  `routine/p5a-schema`, `routine/p5a-physics`, `routine/p5a-view`, zusammengeführt in `routine/p5a-ui`, gemerged, nicht gepusht):
+  Baustein `simulation` mit Pendel, Feder, Wurf, Umlauf, Gas; `physics.ts` (fester Zeitschritt, exakte Feder und Kepler-Lösung,
+  Stöße über ein Raster), `simLoop.ts` (höchstens 30 Bilder/s, 4000 Körper-Teilschritte je Bild, Stopp nach `laufzeit`),
+  `Simulation.tsx` (Canvas 2D, Pause/Weiter/Neu starten, Standbild bei weniger Bewegung), schärfere `test_ui_rules.py`.
+  1596 Python- und 332 UI-Tests grün, Typcheck und Build sauber. Safety-Auditor: Schema freigegeben, Oberfläche freigegeben (Opus,
+  zwei niedrige Funde offen, siehe unten). Testmanager mit eigenen Proben fand bei grünen Tests fünf echte Fehler im Rechenkern
+  (Gas-Raster zu teuer, Zahlen in der Textfassung gerundet, gedämpfte Feder stand still, Schleife starb bei werfendem Rückruf,
+  Ruckeln bei Taktzittern), dazu einen in der Ansicht; alle behoben. Im Browser bei 1440 und 375 px gesehen: kein Überlauf,
+  Knöpfe 44 px, etwa 29 Bilder/s, Rechnen und Zeichnen unter 0,3 ms je Bild (Dev-Server, nicht WebView2).
+  Zwischenfall: zwei Agenten benutzten gleichzeitig `git stash` (gilt für alle Worktrees) und schoben sich Änderungen unter;
+  aufgeräumt, nichts verloren, Regel „nie `git stash`“ im Skill `kushim-manager`.
+  Offen (niedrig, Auditor): bis zu 12 Simulationen je Ansicht kosten beim Öffnen einmalig etwa 0,1 s; außer Sicht bestellt die
+  Schleife weiter leere Bilder (keine Rechnung). Nicht geprüft: Tauri-Fenster, GPU-Last neben Whisper, Vorleser, echter Aufruf
+  durch Claude Code, `prefers-reduced-motion` aus der Windows-Einstellung. Wirkt erst nach neuem `kushim start`.
+  Nächster Schritt: P5b (Moleküle, Atome, Orbitale, Regler) nach Freigabe; sonst E2/E3 prüfen.
+
 ## Slack
 - Nutzer-ID / Kanal-ID: nicht verwendet. Verbundenes Slack-Konto hat andere Mail (Arbeits-Workspace) als die Git-/Claude-Mail, Empfänger unsicher, daher nichts gesendet
 
 ## Offene Fragen an den Nutzer
-- 2026-11-22 **P5 der Oberfläche** (`docs/ui-p5-plan.md`): acht Entscheidungen (Schnitt P5a/P5b, Modelle, Hauptthread statt
-  Worker, Canvas 2D, Start und Stopp nach 30 s, weniger Bewegung, kein Paket, Atomfarben). Empfehlungen stehen im Plan.
-  Bis zur Antwort: kein Code für P5.
+- 2026-11-22 **P5b der Oberfläche** (`docs/ui-p5-plan.md`, Abschnitt 7): Moleküle, Atome, Orbitale, Regler. P5a ist gebaut;
+  P5b braucht ein eigenes OK. Dazu eine kleine Frage: höchstens 1 bis 2 Simulationen je Ansicht begrenzen (Empfehlung, Auditor)?
 - 2026-11-22 P6, nach Empfehlung entschieden, jederzeit änderbar: doppelte Antwortoptionen im Quiz erlaubt; eine Aktualisierung
   derselben Ansicht setzt Quiz-, Karten- und Timerstand zurück; ein gestarteter Timer läuft beim Schrittwechsel in Echtzeit weiter.
 - Keine offenen Fragen. (C7 am 2026-11-11 beantwortet, siehe Entscheidungen.)

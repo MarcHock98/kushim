@@ -1,7 +1,7 @@
 # Plan P5: Teilchen, Atome, Moleküle und Physik-Simulationen
 
 Stand 2026-11-22. Teil von `docs/ui-dynamic-plan.md`, nach P4a (`docs/ui-p4-plan.md`) und neben P6 (`docs/ui-p6-plan.md`).
-**Noch nicht gebaut, zur Freigabe.** Ziel: Claude Code kann eine laufende Physik-Simulation (Pendel, Feder, Wurf, Umlaufbahn,
+**P5a gebaut am 2026-11-22 nach den Empfehlungen aus Abschnitt 12 (vom Nutzer freigegeben). P5b noch offen.** Ziel: Claude Code kann eine laufende Physik-Simulation (Pendel, Feder, Wurf, Umlaufbahn,
 Gas im Kasten) und Atome, Moleküle und Orbitale im kushim-Fenster zeigen. P5 braucht **keinen** Dateizugriff von kushim, **kein
 neues Paket** und **keine Änderung an der CSP** (alles empfohlen). Eine Abweichung vom Gesamtplan: Dort stand „Web Worker“. Hier
 empfehle ich den Hauptthread mit festem Zeitschritt (Abschnitt 4).

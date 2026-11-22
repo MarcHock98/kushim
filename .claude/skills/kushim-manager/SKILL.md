@@ -25,16 +25,20 @@ UI nur nach freigegebenem Plan, Branches und Worktrees nur auf Wunsch des Nutzer
 | Algorithmus (Anordnung, Physik) | general-purpose | opus | mittel bis hoch |
 | Ansicht mit Bedienung | `ui-builder` | opus | hoch |
 | Detailplan | `Plan` | opus | hoch |
-| Testfälle abgleichen | `test-manager` | sonnet | mittel |
-| Sicherheitsprüfung | `safety-auditor` | sonnet | – |
-| Mechanische Test-Ergänzung in einer Datei | general-purpose | sonnet | niedrig |
+| Testfälle abgleichen, mit eigenen Proben | `test-manager` | opus (Nutzerwunsch 2026-11-22) | mittel |
+| Sicherheitsprüfung | `safety-auditor` | opus (`model` übergeben, die Definition sagt sonnet) | – |
+| Mechanische Test-Ergänzung in einer Datei | general-purpose | opus | niedrig |
+
+Seit 2026-11-22 wünscht der Nutzer Opus für alle Agenten. Der Testmanager mit eigenen Proben (Zufallseingaben, Zeitmessung)
+fand in P5a fünf echte Fehler bei 262 grünen Tests: Proben gehören in jeden Testmanager-Auftrag.
 
 ## 3. Auftrag an einen schreibenden Agenten (immer enthalten)
 - Was zuerst zu lesen ist (Plan-Abschnitte, Nachbardateien, `tests/test_no_egress.py`, `tests/test_ui_rules.py`).
 - Genau welche Dateien er anfassen darf, und welche ausdrücklich nicht.
 - Der Vertrag (Felder, Grenzen, Standardwerte) und die Liste der Tests.
 - Feste Regeln: eigener Worktree (`isolation: worktree`), dort `git switch -c routine/<paket>`; nie im Hauptordner arbeiten oder
-  Branches wechseln, nie pushen; CRLF und Edit-Werkzeug; kein Netz außer `npm ci`; Python immer mit `PYTHONPATH=src` und dem
+  Branches wechseln, nie pushen; **nie `git stash`** (der Stash gilt für alle Worktrees gemeinsam: zwei Agenten haben sich am
+  2026-11-22 gegenseitig Änderungen untergeschoben; zum Vergleich mit altem Code `git show <commit>:<datei> > <scratchpad>`); CRLF und Edit-Werkzeug; kein Netz außer `npm ci`; Python immer mit `PYTHONPATH=src` und dem
   Interpreter aus dem Hauptordner; node-Befehle einzeln als `cd ui && ...`; Commit nur bei grünen Tests.
 - Verlangter Bericht: Branch, Commit, Worktree, Testzahlen, Abweichungen vom Auftrag mit Grund, was nicht geprüft ist. Bei
   Bibliotheken zusätzlich die exportierten Signaturen wörtlich.
