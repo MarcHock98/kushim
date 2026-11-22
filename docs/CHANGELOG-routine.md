@@ -74,3 +74,7 @@ Format: Datum, Datei, Grund (ein Satz).
 - 2026-11-13, `.claude/skills/kushim-routine/SKILL.md`: Fallstricke „Demodaten wie das Backend“ und „Hex-Farben in der UI“ ergänzt (beide traten beim Bau von P4a auf).
 - 2026-11-22, `.claude/agents/test-manager.md`: neuer nur lesender Agent (Wunsch des Nutzers): leitet Testfälle aus Plan und Diff ab, gleicht ab, verteilt.
 - 2026-11-22, `.claude/skills/kushim-routine/SKILL.md`: Arbeitsweise „Manager mit Agenten“ und Fallstricke (Worktrees, `PYTHONPATH=src`, Dev-Server vor `npm ci` stoppen, Vertrag vorgeben) ergänzt.
+- 2026-11-22, `.claude/skills/kushim-manager/SKILL.md`: neuer Skill (Wunsch des Nutzers): Arbeitspaket mit Agenten schneiden, verteilen, prüfen, mergen.
+- 2026-11-22, `.claude/skills/kushim-ui-check/SKILL.md`: neuer Skill: Oberfläche im Browser ansehen (Demo, drei Breiten, Überlauf messen), kam in P6 mehrfach vor.
+- 2026-11-22, `.claude/agents/stage-schema-dev.md`: neuer Agent für die Python-Seite neuer Bausteine (Regeln aus den Audits von P6 und P5a).
+- 2026-11-22, `.claude/agents/ui-builder.md`: Arbeitsweise im Worktree und Regeln für Bausteine der Bühne ergänzt (keine Rechte erweitert).
