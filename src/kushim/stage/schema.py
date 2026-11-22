@@ -15,7 +15,7 @@ from typing import Any, Callable
 MAX_JSON = 48 * 1024
 ID = re.compile(r"[a-z0-9-]{1,40}")
 ARTEN = ("antwort", "rechnung", "markt", "recherche", "auftrag", "mail", "dokument", "modell", "plan", "lernen", "netz",
-         "simulation")
+         "simulation", "teilchen")
 MAX_BLOCKS = 12
 RICHTUNG = ("auf", "ab", "gleich")
 
@@ -580,7 +580,7 @@ def _netz(b: dict[str, Any], c: str) -> dict[str, Any]:
 # (SI; bei umlauf AE und Sonnenmassen; bei gas Kastenbreiten je Sekunde). Fehlende Felder mit Standard werden ergänzt,
 # damit die Oberfläche immer jedes Feld bekommt.
 
-SIM_MODELLE = ("pendel", "feder", "wurf", "umlauf", "gas")
+SIM_MODELLE = ("pendel", "feder", "wurf", "umlauf", "gas", "doppelpendel", "welle")
 SIM_ZAHLEN: dict[str, dict[str, tuple[float, float, float | None]]] = {      # Feld: (von, bis, Standard; None = Pflicht)
     "pendel": {"laenge": (0.05, 100, None), "winkel": (-170, 170, None), "anfangsgeschwindigkeit": (-720, 720, 0),
                "daempfung": (0, 5, 0), "g": (0.1, 100, 9.81)},
@@ -589,9 +589,13 @@ SIM_ZAHLEN: dict[str, dict[str, tuple[float, float, float | None]]] = {      # F
     "wurf": {"geschwindigkeit": (0.1, 1000, None), "winkel": (-90, 90, None), "hoehe": (0, 10_000, 0), "g": (0.1, 100, 9.81),
              "luftwiderstand": (0, 1, 0)},
     "umlauf": {"zentralmasse": (0.01, 100, None)},
+    "doppelpendel": {"laenge1": (0.05, 100, None), "laenge2": (0.05, 100, None), "masse1": (0.01, 1000, 1), "masse2": (0.01, 1000, 1),
+                     "winkel1": (-180, 180, None), "winkel2": (-180, 180, None), "g": (0.1, 100, 9.81), "daempfung": (0, 5, 0)},
 }
-SIM_KOERPER = {"abstand": (0.01, 1000, None), "exzentrizitaet": (0, 0.95, 0), "phase": (0, 360, 0)}
-MAX_SIM_KOERPER, MAX_TEILCHEN, MAX_STARTWERT = 8, 300, 2_147_483_647
+SIM_KOERPER = {"abstand": (0.01, 1000, None), "exzentrizitaet": (0, 0.95, 0), "phase": (0, 360, 0), "masse": (0, 0.01, 0)}
+SIM_WELLE = {"amplitude": (0.001, 100, None), "wellenlaenge": (0.01, 1000, None), "frequenz": (0.01, 100, None), "phase": (0, 360, 0)}
+WELLE_RICHTUNG = ("rechts", "links")
+MAX_SIM_KOERPER, MAX_TEILCHEN, MAX_STARTWERT, MAX_WELLEN = 8, 300, 2_147_483_647, 3
 
 
 def _bounded(v: Any, lo: float, hi: float, c: str) -> float | int:
@@ -628,10 +632,13 @@ def _sim_wurf(p: dict[str, Any], c: str) -> dict[str, Any]:
 
 
 def _sim_umlauf(p: dict[str, Any], c: str) -> dict[str, Any]:
-    _item(p, {"zentralmasse", "koerper"}, c)
+    _item(p, {"zentralmasse", "koerper", "anziehung"}, c)
+    anziehung = p.get("anziehung", False)                                                # P5b: gegenseitige Anziehung der Körper
+    if not isinstance(anziehung, bool):
+        raise ViewError(c)
     koerper, names = [], set()
     for k in _list(p.get("koerper"), 1, MAX_SIM_KOERPER, c):
-        k = _item(k, {"name", "abstand", "exzentrizitaet", "phase", "farbe"}, c)
+        k = _item(k, {"name", "abstand", "exzentrizitaet", "phase", "masse", "farbe"}, c)
         name = _text(k.get("name"), 30, c)
         if name in names:
             raise ViewError(c)
@@ -640,7 +647,7 @@ def _sim_umlauf(p: dict[str, Any], c: str) -> dict[str, Any]:
     abstand = [k["abstand"] for k in koerper]
     if max(abstand) / min(abstand) > 100:
         raise ViewError(c)
-    return {**_zahlen(p, SIM_ZAHLEN["umlauf"], c), "koerper": koerper}
+    return {**_zahlen(p, SIM_ZAHLEN["umlauf"], c), "koerper": koerper, "anziehung": anziehung}
 
 
 def _sim_gas(p: dict[str, Any], c: str) -> dict[str, Any]:
@@ -663,8 +670,29 @@ def _sim_gas(p: dict[str, Any], c: str) -> dict[str, Any]:
             "startwert": _int(p.get("startwert", 1), 0, MAX_STARTWERT, c)}
 
 
+def _sim_doppelpendel(p: dict[str, Any], c: str) -> dict[str, Any]:
+    _item(p, set(SIM_ZAHLEN["doppelpendel"]), c)
+    return _zahlen(p, SIM_ZAHLEN["doppelpendel"], c)
+
+
+def _sim_welle(p: dict[str, Any], c: str) -> dict[str, Any]:
+    _item(p, {"wellen", "bereich"}, c)
+    wellen = []
+    for w in _list(p.get("wellen"), 1, MAX_WELLEN, c):
+        w = _item(w, {*SIM_WELLE, "richtung"}, c)
+        richtung = w.get("richtung", "rechts")
+        if not isinstance(richtung, str) or richtung not in WELLE_RICHTUNG:
+            raise ViewError(c)
+        wellen.append({**_zahlen(w, SIM_WELLE, c), "richtung": richtung})
+    bereich = _num(p.get("bereich", 0), c)                                               # 0: die Oberfläche wählt den Ausschnitt
+    if bereich != 0 and not 0.01 <= bereich <= 10_000:
+        raise ViewError(c)
+    return {"wellen": wellen, "bereich": bereich}
+
+
 SIM_PARAMETER: dict[str, Callable[[dict[str, Any], str], dict[str, Any]]] = {
     "pendel": _sim_pendel, "feder": _sim_feder, "wurf": _sim_wurf, "umlauf": _sim_umlauf, "gas": _sim_gas,
+    "doppelpendel": _sim_doppelpendel, "welle": _sim_welle,
 }
 
 
@@ -683,6 +711,107 @@ def _simulation(b: dict[str, Any], c: str) -> dict[str, Any]:
             "tempo": tempo, "spur": spur, "beschreibung": _text(b.get("beschreibung"), 400, c, optional=True)}
 
 
+# --- P5b: Teilchen (Molekül, Atom im Schalenmodell, Orbital; docs/ui-p5-plan.md Abschnitt 7) -----------------
+# Nur Daten: Elementsymbole aus fester Liste, Lagen in Ångström, Indizes, Zahlen. Die Oberfläche zeichnet daraus;
+# die Orbital-Formel ist dort fest eingebaut, Claude nennt nur den Namen des Orbitals.
+
+ELEMENTE = (
+    "H", "He", "Li", "Be", "B", "C", "N", "O", "F", "Ne", "Na", "Mg", "Al", "Si", "P", "S", "Cl", "Ar", "K", "Ca",
+    "Sc", "Ti", "V", "Cr", "Mn", "Fe", "Co", "Ni", "Cu", "Zn", "Ga", "Ge", "As", "Se", "Br", "Kr", "Rb", "Sr", "Y", "Zr",
+    "Nb", "Mo", "Tc", "Ru", "Rh", "Pd", "Ag", "Cd", "In", "Sn", "Sb", "Te", "I", "Xe", "Cs", "Ba", "La", "Ce", "Pr", "Nd",
+    "Pm", "Sm", "Eu", "Gd", "Tb", "Dy", "Ho", "Er", "Tm", "Yb", "Lu", "Hf", "Ta", "W", "Re", "Os", "Ir", "Pt", "Au", "Hg",
+    "Tl", "Pb", "Bi", "Po", "At", "Rn", "Fr", "Ra", "Ac", "Th", "Pa", "U", "Np", "Pu", "Am", "Cm", "Bk", "Cf", "Es", "Fm",
+    "Md", "No", "Lr", "Rf", "Db", "Sg", "Bh", "Hs", "Mt", "Ds", "Rg", "Cn", "Nh", "Fl", "Mc", "Lv", "Ts", "Og",
+)                                                                                        # Ordnungszahl = Stelle + 1
+ORDNUNGSZAHL = {s: i + 1 for i, s in enumerate(ELEMENTE)}
+DARSTELLUNG = ("kugel-stab", "kalotte")
+ORBITALE = ("1s", "2s", "2p_x", "2p_y", "2p_z", "3s", "3p_x", "3p_y", "3p_z", "3d_xy", "3d_xz", "3d_yz", "3d_x2-y2", "3d_z2")
+MAX_ATOME, MAX_BINDUNGEN, MAX_ATOM_LABELS, LAGE_MAX = 300, 400, 20, 200
+SCHALEN_REGEL = (2, 8, 8, 2)                                                             # einfache Regel bis 20 Elektronen
+MAX_SCHALEN, SCHALE_MAX = 7, 32
+MAX_SIM_PRO_ANSICHT, MAX_WEBGL_PRO_ANSICHT = 2, 2                                         # Last: Simulationen; WebGL (szene3d, Molekül, Orbital)
+
+
+def _element(v: Any, c: str) -> str:
+    if not isinstance(v, str) or v not in ORDNUNGSZAHL:
+        raise ViewError(c)
+    return v
+
+
+def _molekuel(b: dict[str, Any], c: str) -> dict[str, Any]:
+    _fields(b, {"form", "name", "atome", "bindungen", "beschriftungen", "darstellung"}, c)
+    atome = []
+    for a in _list(b.get("atome"), 1, MAX_ATOME, c):
+        a = _item(a, {"element", "position"}, c)
+        atome.append({"element": _element(a.get("element"), c),
+                      "position": [_bounded(x, -LAGE_MAX, LAGE_MAX, c) for x in _list(a.get("position"), 3, 3, c)]})
+    last = len(atome) - 1
+    bindungen, paare = [], set()
+    for e in _list(b.get("bindungen", []), 0, MAX_BINDUNGEN, c):                       # leer: die Oberfläche leitet sie aus Abständen ab
+        e = _item(e, {"von", "bis", "ordnung"}, c)
+        von, bis = _int(e.get("von"), 0, last, c), _int(e.get("bis"), 0, last, c)       # Index ab 0, nur vorhandene Atome
+        paar = (min(von, bis), max(von, bis))
+        if von == bis or paar in paare:                                                  # keine Bindung auf sich selbst, keine doppelte
+            raise ViewError(c)
+        paare.add(paar)
+        bindungen.append({"von": von, "bis": bis, "ordnung": _int(e.get("ordnung", 1), 1, 3, c)})
+    labels = []
+    for lb in _list(b.get("beschriftungen", []), 0, MAX_ATOM_LABELS, c):
+        lb = _item(lb, {"atom", "text"}, c)
+        labels.append({"atom": _int(lb.get("atom"), 0, last, c), "text": _text(lb.get("text"), 40, c)})
+    darstellung = b.get("darstellung", "kugel-stab")
+    if not isinstance(darstellung, str) or darstellung not in DARSTELLUNG:
+        raise ViewError(c)
+    return {"name": _text(b.get("name"), 60, c, optional=True), "atome": atome, "bindungen": bindungen, "beschriftungen": labels,
+            "darstellung": darstellung}
+
+
+def _atom(b: dict[str, Any], c: str) -> dict[str, Any]:
+    _fields(b, {"form", "element", "neutronen", "ladung", "schalen"}, c)
+    element = _element(b.get("element"), c)
+    neutronen = _int(b.get("neutronen", -1), -1, 200, c)                                 # -1: nicht angegeben
+    ladung = _int(b.get("ladung", 0), -3, 3, c)
+    elektronen = ORDNUNGSZAHL[element] - ladung
+    if elektronen < 0:
+        raise ViewError(c)
+    if "schalen" in b:
+        schalen = [_int(s, 0, SCHALE_MAX, c) for s in _list(b["schalen"], 0, MAX_SCHALEN, c)]
+        if sum(schalen) != elektronen:
+            raise ViewError(c)
+    elif ORDNUNGSZAHL[element] <= sum(SCHALEN_REGEL) and elektronen <= sum(SCHALEN_REGEL):    # die Regel stimmt nur bis Ca
+        schalen, rest = [], elektronen
+        for platz in SCHALEN_REGEL:
+            if rest <= 0:
+                break
+            schalen.append(min(platz, rest))
+            rest -= schalen[-1]
+    else:                                                                                # über Ordnungszahl 20 oder 20 Elektronen: Pflicht
+        raise ViewError(c)
+    return {"element": element, "neutronen": neutronen, "ladung": ladung, "schalen": schalen}
+
+
+def _orbital(b: dict[str, Any], c: str) -> dict[str, Any]:
+    _fields(b, {"form", "orbital", "punkte", "startwert"}, c)
+    orbital = b.get("orbital")
+    if not isinstance(orbital, str) or orbital not in ORBITALE:
+        raise ViewError(c)
+    return {"orbital": orbital, "punkte": _int(b.get("punkte", 2500), 500, 5000, c),
+            "startwert": _int(b.get("startwert", 1), 0, MAX_STARTWERT, c)}
+
+
+TEILCHEN_FORMEN: dict[str, Callable[[dict[str, Any], str], dict[str, Any]]] = {
+    "molekuel": _molekuel, "atom": _atom, "orbital": _orbital,
+}
+WEBGL_FORMEN = ("molekuel", "orbital")
+
+
+def _teilchen(b: dict[str, Any], c: str) -> dict[str, Any]:
+    form = b.get("form")
+    if not isinstance(form, str) or form not in TEILCHEN_FORMEN:
+        raise ViewError(c)
+    return {"form": form, **TEILCHEN_FORMEN[form](b, c)}
+
+
 BLOCKS: dict[str, Callable[[dict[str, Any], str], dict[str, Any]]] = {
     "text": _text_block, "liste": _liste, "formel": _formel, "schritte": _schritte, "ergebnis": _ergebnis,
     "kennzahlen": _kennzahlen, "tabelle": _tabelle, "diagramm": _diagramm, "aussagen": _aussagen,
@@ -691,6 +820,7 @@ BLOCKS: dict[str, Callable[[dict[str, Any], str], dict[str, Any]]] = {
     "mail-entwurf": _mail_entwurf, "countdown": _countdown, "dokument": _dokument, "aenderung": _aenderung,
     "szene3d": _szene3d, "plan2d": _plan2d, "vergleich": _vergleich, "zeitstrahl": _zeitstrahl, "gegenueber": _gegenueber,
     "lernkarten": _lernkarten, "quiz": _quiz, "anleitung": _anleitung, "netz": _netz, "simulation": _simulation,
+    "teilchen": _teilchen,
 }
 
 
@@ -732,15 +862,23 @@ def _validate(raw: Any) -> dict[str, Any]:
     stand = _text(raw.get("stand"), 40, "bad_stand", optional=True)
     if art == "markt" and not stand:
         raise ViewError("missing_stand")
-    blocks = []
+    blocks, sims, webgl = [], 0, 0
     for i, b in enumerate(_list(raw.get("bausteine"), 1, MAX_BLOCKS, "bad_blocks")):
         code = f"bad_block_{i + 1}"
         if not isinstance(b, dict) or not isinstance(b.get("typ"), str) or b["typ"] not in BLOCKS:
             raise ViewError(code)
-        blocks.append({"typ": b["typ"], **BLOCKS[b["typ"]](b, code)})
+        block = {"typ": b["typ"], **BLOCKS[b["typ"]](b, code)}
+        sims += block["typ"] == "simulation"
+        webgl += block["typ"] == "szene3d" or (block["typ"] == "teilchen" and block["form"] in WEBGL_FORMEN)
+        if sims > MAX_SIM_PRO_ANSICHT or webgl > MAX_WEBGL_PRO_ANSICHT:                 # Last: der erste Baustein über der Grenze
+            raise ViewError(code)
+        blocks.append(block)
     nrs = {q["nr"] for b in blocks if b["typ"] == "quellen" for q in b["quellen"]}
     for i, b in enumerate(blocks):                         # Quellennummern müssen auf eine genannte Quelle zeigen
         if b["typ"] in ("aussagen", "widerspruch") and any(n not in nrs for a in b["aussagen"] for n in a["quellen"]):
             raise ViewError(f"bad_source_{i + 1}")
-    return {"id": vid, "art": art, "titel": _text(raw.get("titel"), 120, "bad_title"), "stand": stand,
+    view = {"id": vid, "art": art, "titel": _text(raw.get("titel"), 120, "bad_title"), "stand": stand,
             "bausteine": blocks, "schliessen": False}
+    if len(json.dumps(view, ensure_ascii=False).encode("utf-8")) > MAX_JSON:            # ergänzte Standardwerte: die zweite Prüfung muss sie tragen
+        raise ViewError("too_large")
+    return view
