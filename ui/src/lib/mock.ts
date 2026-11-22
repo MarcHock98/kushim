@@ -66,6 +66,14 @@ export class MockSocket implements Socket {
     turn(79000, "Lies mir rechnen.py und gib mir eine Übersicht.", "Zwei Funktionen, neu ist die Prüfung auf leere Eingaben.", DEMO_VIEWS[6]);
     turn(90000, "Zeig mir das Regal in 3D, vorher und nachher.", "Hier ist das Regal, der neue Boden ist hervorgehoben.", DEMO_VIEWS[7]);
     turn(101000, "Zeichne den Grundriss vom Wohnzimmer.", "Hier ist der Grundriss mit Maßen.", DEMO_VIEWS[8]);
+    turn(112000, "Bahn oder Auto nach Hamburg?", "Hier der Vergleich.", DEMO_VIEWS[9]);
+    turn(123000, "Wie ging die Geschichte des Buchdrucks?", "Hier die wichtigsten Daten.", DEMO_VIEWS[10]);
+    turn(134000, "Übersetze mir ein paar Sätze ins Arabische.", "Hier sind die Sätze.", DEMO_VIEWS[11]);
+    turn(145000, "Ich will Hauptstädte üben.", "Hier sind Karten und ein kurzes Quiz.", DEMO_VIEWS[12]);
+    turn(156000, "Wie backe ich Pfannkuchen?", "Hier die Anleitung Schritt für Schritt.", DEMO_VIEWS[13]);
+    turn(167000, "Wie läuft eine Bestellung ab?", "Hier der Ablauf.", DEMO_VIEWS[14]);
+    turn(178000, "Zeig mir den Aufbau der Firma.", "Hier das Organigramm.", DEMO_VIEWS[15]);
+    turn(189000, "Sammle Ideen für den Urlaub.", "Hier die Mindmap.", DEMO_VIEWS[16]);
   }
 
   send(data: string): void {
@@ -224,4 +232,76 @@ export const DEMO_VIEWS: Record<string, unknown>[] = [
       { art: "text", ebene: "Möbel", x: 345, y: 195, text: "Tisch" },
       { art: "mass", ebene: "Maße", von: [0, -30], bis: [500, -30] },
       { art: "mass", ebene: "Maße", von: [530, 0], bis: [530, 400], text: "4 m (Wunsch)" } ] } ] },
+  // P6a: Vergleich, Zeitstrahl, Gegenüberstellung, Lernkarten, Quiz, Anleitung (vollständig wie nach der Backend-Prüfung)
+  { id: "vergleich", art: "antwort", titel: "Bahn oder Auto nach Hamburg (Beispiel)", bausteine: [
+    { typ: "vergleich", optionen: ["Bahn", "Auto", "Fernbus"], kriterien: [
+      { name: "Fahrzeit", werte: ["3:40 h", "4:50 h", "6:10 h"] },
+      { name: "Kosten in Euro", werte: [59.9, 92, 24.99] },
+      { name: "Arbeiten unterwegs", werte: ["gut", "nein", "eingeschränkt"] } ],
+      vorteile: [["schnell", "arbeiten möglich"], ["flexibel vor Ort"], ["günstig"]],
+      nachteile: [["Verspätungen möglich"], ["Stau", "Parkplatzsuche"], []],
+      fazit: "Für eine Tagesreise allein ist die Bahn am bequemsten." } ] },
+  { id: "zeitstrahl", art: "recherche", titel: "Geschichte des Buchdrucks (Beispiel)", bausteine: [
+    { typ: "zeitstrahl", einheit: "Jahren nach Christus", ereignisse: [
+      { zeit: "um 1450", titel: "Gutenberg druckt mit beweglichen Lettern", text: "In Mainz entsteht ein Verfahren mit Metall-Lettern." },
+      { zeit: "1455", titel: "Gutenberg-Bibel fertig", text: "" },
+      { zeit: "1501", titel: "Ende der Inkunabelzeit", text: "Frühdrucke bis 1500 heißen Inkunabeln." },
+      { zeit: "1811", titel: "Schnellpresse von Koenig", text: "Dampfbetrieben, viel schneller als die Handpresse." } ] } ] },
+  { id: "uebersetzung", art: "antwort", titel: "Sätze für die Reise (Beispiel)", bausteine: [
+    { typ: "gegenueber", sprachen: ["Deutsch", "Arabisch"], paare: [
+      { original: "Guten Morgen", uebersetzung: "صباح الخير" },
+      { original: "Danke", uebersetzung: "شكرا" },
+      { original: "Wo ist der Bahnhof?", uebersetzung: "أين محطة القطار؟" } ] } ] },
+  { id: "lernen", art: "lernen", titel: "Hauptstädte üben (Beispiel)", bausteine: [
+    { typ: "lernkarten", karten: [
+      { frage: "Hauptstadt von Portugal?", antwort: "Lissabon" },
+      { frage: "Hauptstadt von Kanada?", antwort: "Ottawa" },
+      { frage: "Hauptstadt von Australien?", antwort: "Canberra" } ] },
+    { typ: "quiz", fragen: [
+      { frage: "Welche Stadt ist die Hauptstadt der Schweiz?", optionen: ["Zürich", "Bern", "Genf"], richtig: 1,
+        erklaerung: "Bern ist Bundesstadt und Sitz der Regierung." },
+      { frage: "Welcher Fluss fließt durch Wien?", optionen: ["Donau", "Rhein", "Elbe", "Moldau"], richtig: 0, erklaerung: "" } ] } ] },
+  { id: "anleitung", art: "lernen", titel: "Pfannkuchen backen (Beispiel)", bausteine: [
+    { typ: "anleitung", aktuell: 0, schritte: [
+      { titel: "Zutaten bereitstellen", text: "250 g Mehl, 3 Eier, 500 ml Milch, eine Prise Salz.", sekunden: 0 },
+      { titel: "Teig rühren", text: "Alles glatt rühren, bis keine Klümpchen mehr da sind.", sekunden: 0 },
+      { titel: "Teig ruhen lassen", text: "Den Teig abgedeckt ruhen lassen.", sekunden: 300 },
+      { titel: "Ausbacken", text: "Wenig Fett in die Pfanne, je Seite etwa eine Minute.", sekunden: 60 } ] } ] },
+  // P6b: Diagramme (Ablauf mit Entscheidung und Rückweg, Organigramm, Mindmap), vollständig wie nach der Backend-Prüfung
+  { id: "ablauf", art: "netz", titel: "Bestellung bearbeiten (Beispiel)", bausteine: [
+    { typ: "netz", form: "ablauf", knoten: [
+      { id: "s", text: "Bestellung eingegangen", art: "start" },
+      { id: "p", text: "Ware auf Lager?", art: "entscheidung" },
+      { id: "v", text: "Ware versenden", art: "schritt" },
+      { id: "n", text: "Ware nachbestellen", art: "schritt" },
+      { id: "w", text: "Lieferung abwarten", art: "" },
+      { id: "r", text: "Rechnung schicken", art: "schritt" },
+      { id: "e", text: "Fertig", art: "ende" } ],
+    kanten: [
+      { von: "s", bis: "p", text: "" }, { von: "p", bis: "v", text: "ja" }, { von: "p", bis: "n", text: "nein" },
+      { von: "n", bis: "w", text: "" }, { von: "w", bis: "p", text: "erneut prüfen" },
+      { von: "v", bis: "r", text: "" }, { von: "r", bis: "e", text: "" } ] } ] },
+  { id: "organigramm", art: "netz", titel: "Aufbau der Firma (Beispiel)", bausteine: [
+    { typ: "netz", form: "baum", knoten: [
+      { id: "gf", text: "Geschäftsführung", art: "" }, { id: "ve", text: "Vertrieb", art: "" }, { id: "en", text: "Entwicklung", art: "" },
+      { id: "vw", text: "Verwaltung", art: "" }, { id: "in", text: "Innendienst", art: "" }, { id: "au", text: "Außendienst", art: "" },
+      { id: "so", text: "Software", art: "" }, { id: "hw", text: "Hardware", art: "" }, { id: "te", text: "Test und Qualität", art: "" },
+      { id: "pe", text: "Personal", art: "" }, { id: "bu", text: "Buchhaltung", art: "" } ],
+    kanten: [
+      { von: "gf", bis: "ve", text: "" }, { von: "gf", bis: "en", text: "" }, { von: "gf", bis: "vw", text: "" },
+      { von: "ve", bis: "in", text: "" }, { von: "ve", bis: "au", text: "" },
+      { von: "en", bis: "so", text: "" }, { von: "en", bis: "hw", text: "" }, { von: "en", bis: "te", text: "" },
+      { von: "vw", bis: "pe", text: "" }, { von: "vw", bis: "bu", text: "" } ] } ] },
+  { id: "mindmap", art: "netz", titel: "Urlaub planen (Beispiel)", bausteine: [
+    { typ: "netz", form: "mindmap", knoten: [
+      { id: "u", text: "Urlaub planen", art: "" },
+      { id: "z", text: "Reiseziel", art: "" }, { id: "z1", text: "Strand", art: "" }, { id: "z2", text: "Berge", art: "" },
+      { id: "b", text: "Budget", art: "" }, { id: "b1", text: "Flug", art: "" }, { id: "b2", text: "Unterkunft", art: "" },
+      { id: "p", text: "Packliste", art: "" }, { id: "p1", text: "Kleidung", art: "" }, { id: "p2", text: "Ausweis und Karten", art: "" },
+      { id: "t", text: "Termine", art: "" }, { id: "t1", text: "Urlaubsantrag", art: "" } ],
+    kanten: [
+      { von: "u", bis: "z", text: "" }, { von: "z", bis: "z1", text: "" }, { von: "z", bis: "z2", text: "" },
+      { von: "u", bis: "b", text: "" }, { von: "b", bis: "b1", text: "" }, { von: "b", bis: "b2", text: "" },
+      { von: "u", bis: "p", text: "" }, { von: "p", bis: "p1", text: "" }, { von: "p", bis: "p2", text: "" },
+      { von: "u", bis: "t", text: "" }, { von: "t", bis: "t1", text: "" } ] } ] },
 ];
