@@ -9,12 +9,14 @@ import { Flashcards, Guide, Quiz } from "./Learn";
 import { Model3D } from "./Model3D";
 import { Net } from "./Net";
 import { Plan2D } from "./Plan2D";
+import { Simulation } from "./Simulation";
 import { Countdown, Mail, MailDraft, Progress, Schedule, Tasks } from "./Live";
 import { Tex } from "./Tex";
 
 // Eine Ansicht von Claude auf der Bühne. Layout je Art (antwort, rechnung, markt, recherche, auftrag, mail, lernen), Bausteine nur als Text.
 // Quellen-Adressen sind Text, kein Link: nichts öffnet sich, nichts wird nachgeladen. Knöpfe in Lernkarten, Quiz und Anleitung
-// ändern nur die Anzeige im Fenster, sie senden nichts. Ebenso Zoom und Verschieben im Diagramm (netz).
+// ändern nur die Anzeige im Fenster, sie senden nichts. Ebenso Zoom und Verschieben im Diagramm (netz) und Pause, Weiter und
+// Neu starten der Simulation.
 
 /** Fängt einen Fehler in einem einzelnen Baustein ab: Er zeigt dann einen Hinweis, der Rest der Oberfläche läuft weiter.
  *  (Das Backend prüft jede Ansicht, aber ein Darstellungsfehler darf nie das ganze Fenster leeren.) */
@@ -101,6 +103,7 @@ function BlockView({ b, sys, sysNo }: { b: Block; sys: SysData | null; sysNo: bo
     case "quiz": return <Quiz b={b} />;
     case "anleitung": return <Guide b={b} />;
     case "netz": return <Net b={b} />;
+    case "simulation": return <Simulation b={b} />;
   }
 }
 
