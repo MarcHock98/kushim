@@ -74,6 +74,9 @@ export class MockSocket implements Socket {
     turn(167000, "Wie läuft eine Bestellung ab?", "Hier der Ablauf.", DEMO_VIEWS[14]);
     turn(178000, "Zeig mir den Aufbau der Firma.", "Hier das Organigramm.", DEMO_VIEWS[15]);
     turn(189000, "Sammle Ideen für den Urlaub.", "Hier die Mindmap.", DEMO_VIEWS[16]);
+    turn(200000, "Zeig mir, wie ein Pendel schwingt.", "Hier ein Pendel mit einem Meter Länge.", DEMO_VIEWS[17]);
+    turn(211000, "Wie fliegt ein schräg geworfener Ball?", "Hier der Wurf unter 45 Grad.", DEMO_VIEWS[18]);
+    turn(222000, "Wie bewegen sich Teilchen in einem Gas?", "Hier ein Gas mit 60 Teilchen.", DEMO_VIEWS[19]);
   }
 
   send(data: string): void {
@@ -304,4 +307,15 @@ export const DEMO_VIEWS: Record<string, unknown>[] = [
       { von: "u", bis: "b", text: "" }, { von: "b", bis: "b1", text: "" }, { von: "b", bis: "b2", text: "" },
       { von: "u", bis: "p", text: "" }, { von: "p", bis: "p1", text: "" }, { von: "p", bis: "p2", text: "" },
       { von: "u", bis: "t", text: "" }, { von: "t", bis: "t1", text: "" } ] } ] },
+  // P5a: Simulationen (Pendel, Wurf, Gas), genau wie nach der Backend-Prüfung: alle Felder mit Standardwerten, stand "" und schliessen false
+  { id: "pendel", art: "simulation", titel: "Pendel, 1 m (Beispiel)", stand: "", schliessen: false, bausteine: [
+    { typ: "simulation", modell: "pendel", parameter: { laenge: 1, winkel: 30, anfangsgeschwindigkeit: 0, daempfung: 0, g: 9.81 },
+      laufzeit: 30, tempo: 0, spur: true, beschreibung: "Ein Fadenpendel ohne Reibung, losgelassen bei 30 Grad." } ] },
+  { id: "wurf", art: "simulation", titel: "Schräger Wurf (Beispiel)", stand: "", schliessen: false, bausteine: [
+    { typ: "simulation", modell: "wurf", parameter: { geschwindigkeit: 20, winkel: 45, hoehe: 1.5, g: 9.81, luftwiderstand: 0 },
+      laufzeit: 30, tempo: 0, spur: true, beschreibung: "Ein Ball, aus 1,5 m Höhe mit 20 m/s unter 45 Grad geworfen, ohne Luftwiderstand." } ] },
+  { id: "gas", art: "simulation", titel: "Gas im Kasten (Beispiel)", stand: "", schliessen: false, bausteine: [
+    { typ: "simulation", modell: "gas",
+      parameter: { anzahl: 60, kasten: [100, 60], radius: 1.5, geschwindigkeit: 0.5, schwerkraft: 0, stoesse: true, startwert: 7 },
+      laufzeit: 30, tempo: 0, spur: true, beschreibung: "60 gleich schnelle Teilchen stoßen sich; die Geschwindigkeiten verteilen sich mit der Zeit." } ] },
 ];

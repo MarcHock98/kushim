@@ -399,6 +399,25 @@ h2, h3 { font-family: var(--font-display); font-weight: 600; letter-spacing: .04
 .n-tree ul { margin-top: var(--s-1); }
 .n-name { color: var(--text); }
 .n-art { color: var(--text-muted); }
+/* ----- Simulation (P5a): Canvas 2D, fester Satz „Simulation, keine Messung“, Zustand in Worten, Knöpfe ändern nur die Anzeige;
+   bei „weniger Bewegung“ ein Standbild statt der Schleife ----- */
+.v-sim { display: grid; gap: var(--s-3); min-width: 0; }
+.s-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s-1) var(--s-3); }
+.s-flag { margin: 0; font-family: var(--font-mono); font-size: var(--fs-xs); letter-spacing: .08em; text-transform: uppercase; color: var(--warn); }
+.s-frame { position: relative; min-width: 0; background: var(--bg-0); border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; }
+.s-canvas { display: block; width: 100%; }
+.s-controls { align-items: center; }
+.s-controls button[aria-disabled="true"] { opacity: .5; cursor: default; }
+.s-controls button[aria-disabled="true"]:hover { border-color: var(--line-strong); }
+.s-state { margin: 0 0 0 auto; font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--arc); overflow-wrap: anywhere; }
+.s-figures caption { text-align: left; padding: var(--s-2) var(--s-3); }
+.s-figures th { width: 60%; font-family: var(--font-ui); font-size: var(--fs-sm); font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--text-muted); background: transparent; }
+.s-curve, .s-dist { margin: 0; display: grid; gap: var(--s-2); min-width: 0; }
+.s-curve canvas, .s-dist canvas { display: block; width: 100%; background: var(--bg-0); border: 1px solid var(--line); border-radius: var(--r-md); }
+.s-legend { margin: 0; padding-left: var(--s-5); display: grid; gap: var(--s-1); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.s-name { color: var(--text); }
+.s-text { display: grid; gap: var(--s-1); }
+.s-text p { margin: 0; max-width: 70ch; overflow-wrap: anywhere; line-height: 1.55; }
 
 /* ===== Responsive Layout =====
    < 800 px:     Leiste unten (vier gleich große Felder), Inhalt darüber

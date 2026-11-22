@@ -89,6 +89,36 @@ def test_katex_is_only_used_in_one_place_and_never_trusts_the_formula():
     assert "trust: true" not in src and "renderToString" not in src   # kein HTML-Text, keine Links aus Formeln
 
 
+def test_no_code_from_strings_no_workers_no_webassembly():
+    """P5 (docs/ui-p5-plan.md, Abschnitte 2 und 9): Claude schickt nur Modellnamen und Zahlen, nie Code. Darum gibt es in der
+    Oberfläche keinen Weg, Text auszuführen, keinen Worker und kein WebAssembly."""
+    bad = re.compile(r"\beval\s*\(|\bnew\s+Function\b|\bFunction\s*\(|\bWebAssembly\b|\bnew\s+(?:Shared)?Worker\b|\bimportScripts\b")
+    hits = [f"{p.name}: {m.group(0)}" for p in SRC for m in bad.finditer(p.read_text(encoding="utf-8"))]
+    assert not hits, hits
+
+
+def test_shader_material_only_in_the_core():
+    users = sorted(p.name for p in SRC if "ShaderMaterial" in p.read_text(encoding="utf-8"))
+    assert users == ["Core3D.tsx"], users                 # keine Shader aus Ansichten, nur der feste Kern
+
+
+def test_physics_has_no_unseeded_randomness():
+    src = (UI / "src" / "lib" / "physics.ts").read_text(encoding="utf-8")
+    assert "Math.random" not in src                       # Zufall nur mit Startwert (gleiche Eingabe, gleiche Simulation)
+    chem = UI / "src" / "lib" / "chem.ts"                 # P5b, sobald es die Datei gibt
+    assert not chem.exists() or "Math.random" not in chem.read_text(encoding="utf-8")
+
+
+def test_csp_never_allows_eval_wasm_blob_or_workers():
+    conf = json.loads((UI / "src-tauri" / "tauri.conf.json").read_text(encoding="utf-8"))
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    meta = re.search(r'http-equiv="Content-Security-Policy"\s+content="([^"]*)"', html)
+    assert meta, "CSP-Meta fehlt in index.html"
+    for csp in (conf["app"]["security"]["csp"], meta.group(1)):
+        for word in ("unsafe-eval", "wasm-unsafe-eval", "blob:", "worker-src"):
+            assert word not in csp, (word, csp)
+
+
 def test_the_view_card_does_not_share_a_class_with_the_main_area():
     card = (UI / "src" / "components" / "stage" / "ViewCard.tsx").read_text(encoding="utf-8")
     assert "className={`view-card view-${view.art}`}" in card and "className={`view " not in card
