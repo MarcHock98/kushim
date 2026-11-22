@@ -297,6 +297,101 @@ describe("layoutNet extreme shapes", () => {
   });
 });
 
+/** Eigene Prüfung (nicht die aus layout.ts): schneidet die Strecke das Innere des Kastens (1 px Rand zählt nicht)? */
+function cuts([x1, y1]: Pt, [x2, y2]: Pt, b: NetBox): boolean {
+  const x0 = b.x + 1, xa = b.x + b.w - 1, y0 = b.y + 1, ya = b.y + b.h - 1, dx = x2 - x1, dy = y2 - y1;
+  let t0 = 0, t1 = 1;
+  for (const [p, q] of [[-dx, x1 - x0], [dx, xa - x1], [-dy, y1 - y0], [dy, ya - y1]]) {
+    if (p === 0) { if (q < 0) return false; continue; }
+    const t = q / p;
+    if (p < 0) { if (t > t1) return false; t0 = Math.max(t0, t); } else { if (t < t0) return false; t1 = Math.min(t1, t); }
+  }
+  return t0 < t1;
+}
+/** Zahl der Paare (Kante, fremder Kasten), bei denen die Linie durch den Kasten läuft. */
+const crossingCount = (l: NetLayout) => l.edges.reduce((n, e) => n + l.boxes.filter((b) => b.id !== e.von && b.id !== e.bis
+  && e.points.some((p, k) => k > 0 && cuts(e.points[k - 1], p, b))).length, 0);
+/** Beschriftungen, die einen Kasten berühren; Größe selbst geschätzt wie in der Komponente (7,2 px je Zeichen + 8, 18 hoch). */
+const labelOnBox = (l: NetLayout) => l.edges.flatMap((e) => {
+  if (!e.label) return [];
+  const w = e.label.text.length * 7.2 + 8, h = 18, r = { x: e.label.x - w / 2, y: e.label.y - h / 2, w, h };
+  expect(e.label.w).toBeCloseTo(w, 6);
+  expect(e.label.h).toBe(h);
+  return l.boxes.filter((b) => overlaps(r as NetBox, b)).map((b) => `${e.von}->${e.bis} "${e.label!.text}" on ${b.id}`);
+});
+/** Zufälliger Ablauf mit Sprüngen über Schichten (bigDag) und Rückwärtskanten mit Beschriftung. */
+function flowWithBack(seed: number, n = 60, m = 120) {
+  const d = bigDag(n, m - 20, seed), r = rng(seed + 100);
+  while (d.kanten.length < m) {
+    const a = Math.floor(r() * n), b = Math.floor(r() * n);
+    if (a > b) d.kanten.push(edge(`a${a}`, `a${b}`, d.kanten.length % 2 ? "zurück" : "noch einmal prüfen"));
+  }
+  return d;
+}
+const DEMO_FLOW = {
+  knoten: [node("s", "Bestellung eingegangen", "start"), node("p", "Ware auf Lager?", "entscheidung"), node("v", "Ware versenden", "schritt"),
+    node("n", "Ware nachbestellen", "schritt"), node("w", "Lieferung abwarten"), node("r", "Rechnung schicken", "schritt"), node("e", "Fertig", "ende")],
+  kanten: [edge("s", "p"), edge("p", "v", "ja"), edge("p", "n", "nein"), edge("n", "w"), edge("w", "p", "erneut prüfen"), edge("v", "r"), edge("r", "e")],
+};
+
+describe("layoutNet routing and labels", () => {
+  it("demo flow: the back edge goes around the reorder node, no edge crosses a third box, no label covers a box", () => {
+    const l = layoutNet("ablauf", DEMO_FLOW.knoten, DEMO_FLOW.kanten);
+    checkLayout(l);
+    expect(crossingCount(l)).toBe(0);
+    expect(labelOnBox(l)).toEqual([]);
+    const backEdge = l.edges.find((e) => e.von === "w" && e.bis === "p")!;
+    expect(backEdge.back).toBe(true);
+    expect(backEdge.points.length).toBeGreaterThan(2);
+    const n = byId(l).get("n")!;
+    for (let k = 1; k < backEdge.points.length; k++) expect(cuts(backEdge.points[k - 1], backEdge.points[k], n)).toBe(false);
+    const [p, q] = backEdge.points.slice(-2);                                               // letzter Abschnitt senkrecht in die Raute
+    expect(p[0]).toBeCloseTo(q[0], 6);
+    expect(q[1]).toBeCloseTo(byId(l).get("p")!.y + byId(l).get("p")!.h, 6);
+  });
+
+  it("random flows with back edges and layer-skipping edges: no label covers a box, crossings do not grow", () => {
+    // Vor der Umleitung gemessen (Kante x fremder Kasten): bigDag 60/120 Seed 3: 169, Seed 11: 161; mit Rückwärtskanten Seed 1: 189, Seed 2: 295.
+    const before: [string, NetLayout, number][] = [
+      ["dag3", layoutNet("ablauf", bigDag().knoten, bigDag().kanten), 169],
+      ["dag11", layoutNet("ablauf", bigDag(60, 120, 11).knoten, bigDag(60, 120, 11).kanten), 161],
+      ["back1", layoutNet("ablauf", flowWithBack(1).knoten, flowWithBack(1).kanten), 189],
+      ["back2", layoutNet("ablauf", flowWithBack(2).knoten, flowWithBack(2).kanten), 295]];
+    for (const [name, l, old] of before) {
+      checkLayout(l);
+      expect(l.edges).toHaveLength(120);
+      expect(crossingCount(l), name).toBeLessThanOrEqual(old);
+      expect(labelOnBox(l), name).toEqual([]);
+    }
+    for (const seed of [4, 5, 6, 7, 8, 9]) {
+      const d = flowWithBack(seed), l = layoutNet("ablauf", d.knoten, d.kanten);
+      checkLayout(l);
+      expect(labelOnBox(l), `seed ${seed}`).toEqual([]);
+      expect(l.edges.some((e) => e.back)).toBe(true);
+    }
+  });
+
+  it("labels avoid boxes in every form, also on self loops and with very long texts", () => {
+    for (const form of FORMS) {
+      const t = bigTree(60, 21);
+      const l = layoutNet(form, t.knoten, t.kanten.map((e, i) => ({ ...e, text: i % 2 ? "Teil von" : "gehört zu Abteilung" })));
+      checkLayout(l);
+      expect(labelOnBox(l), form).toEqual([]);
+      const self = layoutNet(form, [node("a", "Wiederholen"), node("b")], [edge("a", "a", "nochmal"), edge("a", "b", "x".repeat(400))]);
+      checkLayout(self);
+      expect(labelOnBox(self), form).toEqual([]);
+    }
+  });
+
+  it("labels mostly avoid each other in the demo and a small flow", () => {
+    for (const l of [layoutNet("ablauf", DEMO_FLOW.knoten, DEMO_FLOW.kanten),
+      layoutNet("ablauf", [node("p", "Prüfen", "entscheidung"), node("a"), node("b"), node("c")], [edge("p", "a", "ja"), edge("p", "b", "nein"), edge("p", "c", "vielleicht")])]) {
+      const rs = l.edges.filter((e) => e.label).map((e) => ({ x: e.label!.x - e.label!.w / 2, y: e.label!.y - e.label!.h / 2, w: e.label!.w, h: e.label!.h }) as NetBox);
+      for (let i = 0; i < rs.length; i++) for (let j = i + 1; j < rs.length; j++) expect(overlaps(rs[i], rs[j])).toBe(false);
+    }
+  });
+});
+
 describe("layoutNet hostile input", () => {
   it("caps 5000 nodes and 20000 edges to 200 and 400 and returns fast", () => {
     const knoten = Array.from({ length: 5000 }, (_, i) => node(`h${i}`, `Knoten ${i}`));

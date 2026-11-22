@@ -494,6 +494,31 @@ describe("Feindliche ids", () => {
   });
 });
 
+describe("Vorführ-Ablauf „Bestellung bearbeiten“", () => {
+  it("die Rückwärtskante läuft mit allen Knickpunkten außen herum, ihre Beschriftung liegt auf keinem Kasten", () => {
+    const v = parseItem({ ...DEMO_VIEWS.find((x) => x.id === "ablauf")!, seq: 1 }) as View;
+    card(v);
+    const back = svg().querySelector("polyline.n-back")!;
+    const pts = back.getAttribute("points")!.split(" ").map((p) => p.split(",").map(Number));
+    expect(pts.length).toBeGreaterThan(2);                                                  // gezeichnet mit jedem Knick, nicht nur Anfang und Ende
+    expect(back.getAttribute("marker-end")).toMatch(/^url\(#n-arrow-/);
+    const rect = (el: Element) => ["x", "y", "width", "height"].map((a) => Number(el.getAttribute(a)));
+    const boxes = [...svg().querySelectorAll(".n-node")].map((g) => {
+      const s = g.querySelector("rect.n-shape, polygon.n-shape")!;
+      if (s.tagName.toLowerCase() === "rect") return rect(s);
+      const xy = s.getAttribute("points")!.split(" ").map((p) => p.split(",").map(Number));
+      const xs = xy.map((p) => p[0]), ys = xy.map((p) => p[1]);
+      return [Math.min(...xs), Math.min(...ys), Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)];
+    });
+    const labels = [...svg().querySelectorAll(".n-label-bg")].map(rect);
+    expect(labels).toHaveLength(3);
+    for (const [lx, ly, lw, lh] of labels) for (const [bx, by, bw, bh] of boxes) {
+      expect(lx < bx + bw && bx < lx + lw && ly < by + bh && by < ly + lh).toBe(false);
+    }
+    expect(within(svg() as unknown as HTMLElement).getByText("Ware nachbestellen")).toBeInTheDocument();
+  });
+});
+
 describe("Neue Daten in derselben Ansicht", () => {
   it("neu angeordnet, Zoom zurück auf den Startwert, Lage in der Fläche; gleiche Listen ordnen nicht neu an", () => {
     const v = view([FLOW]);
