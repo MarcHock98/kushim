@@ -9,7 +9,7 @@ import { useBoxSize } from "../../lib/useBoxSize";
 // Vergrößern, Verkleinern, Einpassen und Verschieben ändern nur die Anzeige im Fenster: nichts wird gesendet oder gespeichert.
 // Für Vorleser steht der Aufbau zusätzlich als Liste da (Ablauf: jeder Knoten einmal mit seinen Zielen; Baum: verschachtelt).
 
-const LINE_H = 18, CHAR_W = 7.2;
+const LINE_H = 18;                                                      // wie in lib/layout.ts; Beschriftungsgröße kommt von dort
 const FIT_MIN = 0.75, ZOOM_FLOOR = 0.02, ZOOM_MAX = 3, STEP = 1.25, PAN = 0.2;
 const DEFAULT_W = 720, MIN_H = 120;
 const FORM_LABEL = { ablauf: "Ablauf", baum: "Baum", mindmap: "Mindmap" } as const;
@@ -92,6 +92,7 @@ export function Net({ b }: { b: NetBlock }) {
   }
 
   const key = (e: React.KeyboardEvent) => {
+    if (e.ctrlKey || e.altKey || e.metaKey) return;                     // Alt+Pfeil (zurück), Strg+0/+/- gehören dem Browser
     const map: Record<string, Act> = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down", "+": "in", "=": "in", "-": "out", "0": "fit", Home: "fit" };
     if (map[e.key]) { e.preventDefault(); act(map[e.key]); }
   };
@@ -145,8 +146,8 @@ export function Net({ b }: { b: NetBlock }) {
           <g className="n-labels">
             {layout.edges.map((e) => e.label && (
               <g key={e.index} className="n-elabel">
-                <rect className="n-label-bg" x={r1(e.label.x - (e.label.text.length * CHAR_W + 8) / 2)} y={r1(e.label.y - LINE_H / 2)}
-                  width={r1(e.label.text.length * CHAR_W + 8)} height={LINE_H} rx={3} />
+                <rect className="n-label-bg" x={r1(e.label.x - e.label.w / 2)} y={r1(e.label.y - e.label.h / 2)}
+                  width={r1(e.label.w)} height={r1(e.label.h)} rx={3} />
                 <text className="n-label" x={r1(e.label.x)} y={r1(e.label.y)} dy="0.35em" textAnchor="middle">{e.label.text}</text>
               </g>
             ))}

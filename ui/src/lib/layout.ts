@@ -1,6 +1,8 @@
 // Anordnung für Diagramme `netz` (Plan docs/ui-p6-plan.md, Abschnitt 4, P6b): Ablauf in Schichten, sauberer Baum, Mindmap mit
 // Strahlen um die Mitte. Reine Funktionen ohne DOM und ohne Paket. Textbreite mit festen Zeichenmaßen geschätzt.
 // Die Daten prüft das Backend; trotzdem wirft hier nichts und keine Schleife läuft endlos, auch bei Zyklen, doppelten ids oder Kanten ins Leere.
+// Im Ablauf läuft eine Kante, deren gerade Linie einen fremden Kasten schneiden würde, über die Gassen zwischen den Reihen außen herum.
+// Beschriftungen liegen nie auf einem Kasten (geschätzte Größe mit denselben Zeichenmaßen wie die Kästen).
 
 export type NetForm = "ablauf" | "baum" | "mindmap";
 export type NetArt = "start" | "ende" | "entscheidung" | "schritt";
@@ -12,7 +14,8 @@ export interface NetBox { id: string; x: number; y: number; w: number; h: number
 /** Kante als Linienzug; erster und letzter Punkt liegen auf dem Rand der Kästen. `index` ist die Stelle in `kanten`. */
 export interface NetLine {
   index: number; von: string; bis: string; points: Pt[];
-  label: { x: number; y: number; text: string } | null;
+  /** Mitte (x, y) und geschätzte Größe (w, h) der Beschriftung; liegt auf keinem Kasten. */
+  label: { x: number; y: number; text: string; w: number; h: number } | null;
   /** Ablauf: Rückwärtskante eines Zyklus (für die Schichten umgedreht, gezeichnet wie jede andere Linie). */
   back: boolean;
 }
@@ -61,20 +64,139 @@ function borderPoint(b: NetBox, tx: number, ty: number): Pt {
   return [cx + dx * t, cy + dy * t];
 }
 
-/** Mitte eines Linienzugs, gemessen an seiner Länge. */
-function polyMid(pts: Pt[]): Pt {
+/** Punkt an der Stelle `f` (0 bis 1) eines Linienzugs, gemessen an seiner Länge, mit der Nummer des Abschnitts darunter. */
+function pointAt(pts: Pt[], f: number): { p: Pt; seg: number } {
   let total = 0;
   for (let k = 1; k < pts.length; k++) total += Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1]);
-  let rest = total / 2;
+  let rest = total * f;
   for (let k = 1; k < pts.length; k++) {
     const len = Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1]);
     if (len >= rest && len > 0) {
-      const f = rest / len;
-      return [pts[k - 1][0] + (pts[k][0] - pts[k - 1][0]) * f, pts[k - 1][1] + (pts[k][1] - pts[k - 1][1]) * f];
+      const g = rest / len;
+      return { p: [pts[k - 1][0] + (pts[k][0] - pts[k - 1][0]) * g, pts[k - 1][1] + (pts[k][1] - pts[k - 1][1]) * g], seg: k };
     }
     rest -= len;
   }
-  return pts[0];
+  return { p: pts[0], seg: Math.min(1, pts.length - 1) };
+}
+
+/** Schneidet die Strecke p-q das Innere des Kastens (1 px Abstand zum Rand zählt nicht)? Liang-Barsky. */
+export function segmentHitsBox(p: Pt, q: Pt, b: { x: number; y: number; w: number; h: number }, e = 1): boolean {
+  const dx = q[0] - p[0], dy = q[1] - p[1];
+  let t0 = 0, t1 = 1;
+  for (const [a, c] of [[-dx, p[0] - (b.x + e)], [dx, b.x + b.w - e - p[0]], [-dy, p[1] - (b.y + e)], [dy, b.y + b.h - e - p[1]]]) {
+    if (a === 0) { if (c < 0) return false; continue; }
+    const t = c / a;
+    if (a < 0) { if (t > t1) return false; if (t > t0) t0 = t; } else { if (t < t0) return false; if (t < t1) t1 = t; }
+  }
+  return t0 < t1;
+}
+
+/** Wie viele fremde Kästen (nicht Anfang oder Ende) ein Linienzug schneidet. */
+function crossings(pts: Pt[], boxes: NetBox[], a: number, b: number): number {
+  let n = 0;
+  for (let v = 0; v < boxes.length; v++) {
+    if (v === a || v === b) continue;
+    for (let k = 1; k < pts.length; k++) if (segmentHitsBox(pts[k - 1], pts[k], boxes[v])) { n++; break; }
+  }
+  return n;
+}
+
+/** Entfernt doppelte Punkte und Mittelpunkte auf einer Geraden (achsenparallel). */
+function tidy(pts: Pt[]): Pt[] {
+  const out: Pt[] = [];
+  for (const p of pts) {
+    const q = out[out.length - 1];
+    if (q && Math.abs(q[0] - p[0]) < 0.01 && Math.abs(q[1] - p[1]) < 0.01) continue;
+    const r = out[out.length - 2];
+    if (q && r && ((Math.abs(r[0] - q[0]) < 0.01 && Math.abs(q[0] - p[0]) < 0.01) || (Math.abs(r[1] - q[1]) < 0.01 && Math.abs(q[1] - p[1]) < 0.01))) out[out.length - 1] = p;
+    else out.push(p);
+  }
+  return out;
+}
+
+interface Rows { top: number[]; bottom: number[]; of: number[]; spans: [number, number][][] }
+
+/** Reihen des Ablaufs (gleiches y = gleiche Schicht) mit oberer und unterer Kante und den belegten x-Bereichen. */
+function rowsOf(boxes: NetBox[]): Rows {
+  const ys = [...new Set(boxes.map((b) => b.y))].sort((p, q) => p - q);
+  const at = new Map(ys.map((y, i) => [y, i]));
+  const top = ys.slice(), bottom = ys.map(() => -Infinity), spans: [number, number][][] = ys.map(() => []);
+  const of = boxes.map((b) => at.get(b.y)!);
+  boxes.forEach((b, v) => { bottom[of[v]] = Math.max(bottom[of[v]], b.y + b.h); spans[of[v]].push([b.x, b.x + b.w]); });
+  for (const s of spans) s.sort((p, q) => p[0] - q[0]);
+  return { top, bottom, of, spans };
+}
+
+/** Ablauf: Umweg für eine Kante, deren gerade Linie einen fremden Kasten schneidet. Senkrecht aus dem Kasten in die freie
+ *  Gasse zwischen den Reihen, waagerecht zu einer Spalte, die in allen Reihen dazwischen frei ist (Lücke zwischen Kästen oder
+ *  außen daneben), senkrecht bis zur Gasse vor dem Ziel und von dort senkrecht in den Ziel-Kasten. `null`, wenn es nicht geht. */
+function detour(A: NetBox, B: NetBox, ra: number, rb: number, rows: Rows): Pt[] | null {
+  if (ra === rb) return null;
+  const down = rb > ra, half = GAP_Y / 2;
+  const ax = A.x + A.w / 2, bx = B.x + B.w / 2;
+  const yA = down ? rows.bottom[ra] + half : rows.top[ra] - half;
+  const yB = down ? rows.top[rb] - half : rows.bottom[rb] + half;
+  const p0: Pt = [ax, down ? A.y + A.h : A.y], p5: Pt = [bx, down ? B.y : B.y + B.h];
+  const lo = Math.min(ra, rb) + 1, hi = Math.max(ra, rb) - 1;
+  if (lo > hi) return tidy([p0, [ax, yA], [bx, yA], p5]);
+  const busy: [number, number][] = [];
+  for (let r = lo; r <= hi; r++) busy.push(...rows.spans[r]);
+  busy.sort((p, q) => p[0] - q[0]);
+  const merged: [number, number][] = [];
+  for (const s of busy) {
+    const m = merged[merged.length - 1];
+    if (m && s[0] <= m[1]) m[1] = Math.max(m[1], s[1]); else merged.push([s[0], s[1]]);
+  }
+  const gaps: [number, number][] = [[-Infinity, merged[0][0]]];
+  for (let k = 1; k < merged.length; k++) gaps.push([merged[k - 1][1], merged[k][0]]);
+  gaps.push([merged[merged.length - 1][1], Infinity]);
+  const want = (ax + bx) / 2;
+  let best: number | null = null, cost = Infinity;
+  for (const [g0, g1] of gaps) {
+    const room = g1 - g0;
+    if (room < 4) continue;
+    const m = Math.min(GAP_X / 2, room / 2);
+    const x = Number.isFinite(room) ? Math.min(g1 - m, Math.max(g0 + m, want)) : g0 === -Infinity ? Math.min(want, g1 - m) : Math.max(want, g0 + m);
+    const c = Math.abs(x - ax) + Math.abs(x - bx);
+    if (c < cost - 1e-9) { cost = c; best = x; }
+  }
+  if (best === null) return null;
+  return tidy([p0, [ax, yA], [best, yA], [best, yB], [bx, yB], p5]);
+}
+
+type Rect = { x: number; y: number; w: number; h: number };
+const hit = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+
+/** Platz für eine Kantenbeschriftung (Größe w x h, Mitte zurück): erst die Mitte der Linie, dann die Mitten der längsten
+ *  Abschnitte und weitere Stellen entlang der Linie, dann seitlich daneben. Nie auf einem Kasten; andere Beschriftungen
+ *  werden gemieden, wenn es geht. Ist nirgends Platz, steht sie über dem ganzen Diagramm (dort ist sicher kein Kasten). */
+function placeLabel(pts: Pt[], w: number, h: number, boxes: NetBox[], placed: Rect[], above: () => number): Pt {
+  const PAD = 2;
+  const rect = (p: Pt): Rect => ({ x: p[0] - w / 2 - PAD, y: p[1] - h / 2 - PAD, w: w + 2 * PAD, h: h + 2 * PAD });
+  const onBox = (r: Rect) => boxes.some((b) => hit(r, b));
+  const onLabel = (r: Rect) => placed.some((q) => hit(r, q));
+  const segLen = (k: number) => Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1]);
+  const segs = pts.slice(1).map((_, i) => i + 1).sort((p, q) => segLen(q) - segLen(p) || p - q);
+  const spots: { p: Pt; seg: number }[] = [pointAt(pts, 0.5)];
+  for (const k of segs) spots.push({ p: [(pts[k - 1][0] + pts[k][0]) / 2, (pts[k - 1][1] + pts[k][1]) / 2], seg: k });
+  for (const f of [0.4, 0.6, 0.3, 0.7, 0.2, 0.8, 0.1, 0.9]) spots.push(pointAt(pts, f));
+  const side: Pt[] = [];
+  for (const s of spots) {
+    const k = s.seg, len = segLen(k) || 1;
+    const nx = -(pts[k][1] - pts[k - 1][1]) / len, ny = (pts[k][0] - pts[k - 1][0]) / len;
+    const d = Math.abs(nx) * (w / 2) + Math.abs(ny) * (h / 2) + 4;
+    for (const step of [1, 2, 3]) for (const sgn of [1, -1]) side.push([s.p[0] + sgn * nx * d * step, s.p[1] + sgn * ny * d * step]);
+  }
+  for (const list of [spots.map((s) => s.p), side]) {
+    const free = list.find((p) => { const r = rect(p); return !onBox(r) && !onLabel(r); });
+    if (free) return free;
+  }
+  for (const list of [spots.map((s) => s.p), side]) {
+    const free = list.find((p) => !onBox(rect(p)));
+    if (free) return free;
+  }
+  return [spots[0].p[0], above() - h / 2 - PAD - 4];
 }
 
 /** Schichten von oben nach unten: Zyklen per Tiefensuche brechen, längster Weg, Baryzentren, Reihen mittig. */
@@ -250,6 +372,7 @@ export function layoutNet(form: NetForm, knoten: readonly NetNode[], kanten: rea
     else if (form === "mindmap") layoutMindmap(boxes, f);
     else layoutAblauf(boxes, edges, back);
     const tree = new Set<number>();
+    const rows = form === "ablauf" ? rowsOf(boxes) : null;
     const lines: NetLine[] = edges.map((e, j) => {
       const A = boxes[e.a], B = boxes[e.b];
       let pts: Pt[];
@@ -262,14 +385,30 @@ export function layoutNet(form: NetForm, knoten: readonly NetNode[], kanten: rea
         pts = [[px, A.y + A.h], [px, mid], [qx, mid], [qx, B.y]];
       } else {
         pts = [borderPoint(A, B.x + B.w / 2, B.y + B.h / 2), borderPoint(B, A.x + A.w / 2, A.y + A.h / 2)];
+        if (rows) {                                                     // Ablauf: um fremde Kästen herum statt hindurch
+          const straight = crossings(pts, boxes, e.a, e.b);
+          const alt = straight ? detour(A, B, rows.of[e.a], rows.of[e.b], rows) : null;
+          if (alt && crossings(alt, boxes, e.a, e.b) < straight) pts = alt;
+        }
       }
-      const m = e.a === e.b ? ([A.x + A.w + 24, A.y + A.h / 2] as Pt) : polyMid(pts);
-      return { index: e.i, von: A.id, bis: B.id, points: pts, label: e.text ? { x: m[0], y: m[1], text: e.text } : null, back: back[j] };
+      return { index: e.i, von: A.id, bis: B.id, points: pts, label: null, back: back[j] };
+    });
+    // Beschriftungen nach dem Verlegen aller Linien: geschätzte Größe wie die Kästen (Zeichenbreite, Zeilenhöhe), nie auf einem Kasten.
+    const placed: Rect[] = [];
+    let topY = Math.min(...boxes.map((b) => b.y));
+    const above = () => { const y = topY; topY -= lineH + 8; return y; };
+    edges.forEach((e, j) => {
+      if (!e.text) return;
+      const lw = e.text.length * charW + 8, lh = lineH;
+      const [x, y] = placeLabel(lines[j].points, lw, lh, boxes, placed, above);
+      placed.push({ x: x - lw / 2 - 2, y: y - lh / 2 - 2, w: lw + 4, h: lh + 4 });
+      lines[j].label = { x, y, text: e.text, w: lw, h: lh };
     });
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     const grow = (x: number, y: number) => { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); };
     for (const b of boxes) { grow(b.x, b.y); grow(b.x + b.w, b.y + b.h); }
     for (const l of lines) for (const p of l.points) grow(p[0], p[1]);
+    for (const l of lines) if (l.label) { grow(l.label.x - l.label.w / 2, l.label.y - l.label.h / 2); grow(l.label.x + l.label.w / 2, l.label.y + l.label.h / 2); }
     if (!boxes.length) return empty();
     const dx = MARGIN - x0, dy = MARGIN - y0;
     for (const b of boxes) { b.x += dx; b.y += dy; }
