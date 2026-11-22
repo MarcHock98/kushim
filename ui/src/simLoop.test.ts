@@ -499,6 +499,51 @@ describe("simLoop: Tempo halb, normal, doppelt (P5b)", () => {
     }
   });
 
+  it("pause, double tempo, resume: the rate doubles from the next frame, without a jump", () => {
+    const a = aufbau(pendel({ laufzeit: 60 }));
+    a.lauf(1);
+    const tempo = a.loop.getSim().tempo, dt = a.loop.getSim().dt;
+    a.loop.pause();
+    a.loop.setTempoFaktor!(2);
+    a.lauf(1);
+    const z0 = a.loop.getState().simZeit, l0 = a.loop.getState().laufzeit, n = a.frames.length;
+    a.loop.resume();
+    a.lauf(2);
+    const st = a.loop.getState();
+    expect(st.status).toBe("laeuft");
+    expect(st.tempoFaktor).toBe(2);
+    expect(Math.abs((st.simZeit - z0) - 2 * tempo * (st.laufzeit - l0))).toBeLessThanOrEqual(2 * dt);   // doppelte Rate
+    const f = a.frames.slice(n - 1);
+    expect(f[0].snap.zeit).toBe(z0);                                    // das erste Bild nach Weiter setzt dort fort, wo die Pause war
+    for (let i = 1; i < f.length; i++) expect(f[i].snap.zeit - f[i - 1].snap.zeit).toBeLessThanOrEqual((2 * tempo * 1.05) / 30 + dt);
+  });
+
+  it("in slow motion the factor changes nothing: still „Zeitlupe“ and at most 4000 body-steps", () => {
+    const eins = aufbau(schnellesGas()), zwei = aufbau(schnellesGas());
+    eins.lauf(1); zwei.lauf(1);
+    zwei.loop.setTempoFaktor!(2);
+    let max = 0;
+    eins.lauf(2);
+    zwei.lauf(2, 60, () => { max = Math.max(max, zwei.loop.getState().koerperSchritte); });
+    expect(zwei.loop.getState().status).toBe("zeitlupe");
+    expect(max).toBeLessThanOrEqual(MAX_KOERPER_SCHRITTE);
+    expect(zwei.loop.getState().simZeit).toBe(eins.loop.getState().simZeit);   // die Rechengrenze bestimmt die Modellzeit, nicht der Faktor
+    expect(worte(zwei.states)).toEqual(["läuft", ZEITLUPE]);
+  });
+
+  it("counts the bodies outside the extent in every frame of an orbit with attraction", () => {
+    const a = aufbau({ ...basis, modell: "umlauf", laufzeit: 60, parameter: { zentralmasse: 0.01, anziehung: true, koerper: Array.from({ length: 8 }, (_, i) => (
+      { name: `K${i}`, abstand: 1 + 0.3 * i, exzentrizitaet: 0.1, phase: 45 * i, farbe: "arc", masse: 0.01 })) } });
+    a.lauf(20, 60);
+    const aus = a.loop.getSim().ausschnitt;
+    for (const { snap } of a.frames) {
+      const soll = snap.koerper.filter((p) => p.x < aus.minX || p.x > aus.maxX || p.y < aus.minY || p.y > aus.maxY).length;
+      expect(snap.ausserhalb).toBe(soll);
+    }
+    expect(a.frames.every((f) => isFiniteSnapshot(f.snap))).toBe(true);
+    expect(a.loop.getState().koerperSchritte).toBeLessThanOrEqual(MAX_KOERPER_SCHRITTE);
+  });
+
   it("runs the new models: double pendulum, waves, orbits with attraction", () => {
     const eingaben = [
       { ...basis, modell: "doppelpendel", parameter: { laenge1: 1, laenge2: 1, masse1: 1, masse2: 1, winkel1: 120, winkel2: -30, g: 9.81, daempfung: 0 } },

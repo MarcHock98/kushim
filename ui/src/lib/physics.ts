@@ -9,11 +9,13 @@
 // Energie fällt nur); Wurf ohne Luftwiderstand geschlossen, mit Luftwiderstand fester Schritt (Schwerkraft und Bremsung je exakt,
 // im Wechsel); Umlauf geschlossen über die Kepler-Gleichung; Gas mit festem Schritt, elastischen Stößen über ein Raster (Zellen
 // ≤ 4·N + 16) und energieerhaltenden Wänden.
-// P5b (Plan Abschnitt 7): Doppelpendel mit festem Schritt Runge-Kutta vierter Ordnung, die Dämpfung je halber Schritt exakt
-// (ω·e^(−c·dt/2), die Energie fällt dabei nur); Welle als geschlossene Überlagerung von bis zu drei Sinuswellen; Umlauf mit
-// gegenseitiger Anziehung (`anziehung: true`) als Leapfrog (Stoß, Drift, Stoß) mit fester Zentralmasse im Ursprung und kleiner
-// Glättung (Zentralmasse 0,001, Körper untereinander 0,01 der kleinsten großen Halbachse); ohne Anziehung bleibt der Umlauf die
-// geschlossene Kepler-Lösung, Bit für Bit wie in P5a. Dazu Regler-Grenzen (`GRENZEN`, `mitWert`).
+// P5b (Plan Abschnitt 7): Doppelpendel mit festem Raster und Runge-Kutta vierter Ordnung in Teilschritten, die nur vom Zustand
+// abhängen (fängt das „Peitschen“ eines leichten oberen Körpers ab), die Dämpfung je halber Rasterschritt exakt (ω·e^(−c·dt/2), die
+// Energie fällt dabei nur); Welle als geschlossene Überlagerung von bis zu drei Sinuswellen auf höchstens 50 kürzesten Wellenlängen;
+// Umlauf mit gegenseitiger Anziehung (`anziehung: true`) als Leapfrog (Stoß, Drift, Stoß) mit festem Schritt, fester Zentralmasse
+// im Ursprung und kleiner Glättung (Körper untereinander 0,01 der kleinsten großen Halbachse, zur Zentralmasse 0,001, bei schweren
+// Körpern 0,01), der Schritt höchstens 0,05 der Glättungs-Zeitmaße; ohne Anziehung bleibt der Umlauf die geschlossene
+// Kepler-Lösung, Bit für Bit wie in P5a. Dazu Regler-Grenzen (`GRENZEN`, `mitWert`).
 // Typen: `SimModell`, `SimInput` und `SimConfig` bleiben die fünf P5a-Modelle (die Ansicht prüft sie vollständig); die Fassungen
 // mit allen sieben Modellen heißen `SimModellAlle`, `SimInputAlle`, `SimConfigAlle`. `normalizeSim` gibt für eine Eingabe vom Typ
 // `SimInput` eine `SimConfig` zurück, sonst eine `SimConfigAlle`.
@@ -92,6 +94,8 @@ export interface SimSnapshot {
   teilkurven?: Pt[][];
   /** Indizes der Körper, die eine Spur bekommen (Doppelpendel: nur der untere, [1]); fehlt das Feld: alle. */
   spurKoerper?: number[];
+  /** Nur Umlauf mit Anziehung: so viele Körper liegen gerade außerhalb von `ausschnitt` (die Ansicht sagt es in Worten). */
+  ausserhalb?: number;
 }
 /** Standbild für „weniger Bewegung“. `kurve`: Punkte (Zeit in s, Wert); `bahn`/`punkte`: Lagen in Modelleinheiten.
  *  Umlauf mit Anziehung: `bahnen` sind die gerechneten Wege über `dauer` Jahre (`offen: true`, nicht geschlossen zeichnen).
@@ -140,6 +144,8 @@ export interface DoppelpendelKern {
   th1: number; om1: number; th2: number; om2: number; E0: number;
   /** Schwingungsdauern bei kleinen Ausschlägen: gleichsinnig (langsam) und gegensinnig (schnell). */
   Tlangsam: number; Tschnell: number;
+  /** Kreisfrequenz der schnellen Eigenschwingung (Bezug für die Teilschritte) und höchste Zahl der Teilschritte je Rasterschritt. */
+  wRef: number; kmax: number;
 }
 /** Welle: je Welle Amplitude, Wellenzahl k = 2π/λ, Kreisfrequenz ω = 2π·f, Phase (rad) und s = −1 (rechts) oder +1 (links). */
 export interface WelleKern {
@@ -191,6 +197,8 @@ export const MODELLE: readonly SimModell[] = ["pendel", "feder", "wurf", "umlauf
 export const MODELLE_ALLE: readonly SimModellAlle[] = [...MODELLE, "doppelpendel", "welle"];
 /** Stellen, an denen die Welle ausgewertet wird (gleichmäßig von 0 bis `bereich`). */
 export const WELLE_PUNKTE = 400;
+/** Der gezeigte Bereich umfasst höchstens so viele kürzeste Wellenlängen (sonst wäre die Welle mit WELLE_PUNKTE Stellen falsch). */
+export const WELLE_MAX_LAENGEN = 50;
 /** Höchstens so viele Punkte im Weg des Standbilds beim Doppelpendel. */
 export const DOPPELPENDEL_BAHN_MAX = 1200;
 export const FARBEN: readonly Farbe[] = ["arc", "amber", "ok", "warn", "alarm", "text", "gedaempft"];
@@ -208,7 +216,9 @@ const MAX_CALL = 1_000_000;          // Körper-Schritte je Aufruf von `advance`
 const GAS_STANDBILD_S = 10;
 const DP_STANDBILD_S = 10;           // Weg des unteren Doppelpendel-Körpers im Standbild: die ersten 10 s Modellzeit
 const G_AE = TAU * TAU;              // Gravitationskonstante in AE³/(Jahr²·Sonnenmasse)
-const NK_GLAETTUNG_Z = 1e-3, NK_GLAETTUNG = 1e-2;   // Glättung zur Zentralmasse und zwischen Körpern, je mal kleinste Halbachse
+// Glättung zwischen Körpern und zur Zentralmasse, je mal kleinste Halbachse; zur Zentralmasse 0,01 nur bei schweren Körpern (siehe
+// `nkoerperTeile`), sonst 0,001 (dann bleiben auch sehr exzentrische Bahnen bis auf Bruchteile eines Promilles Kepler-genau).
+const NK_GLAETTUNG = 1e-2, NK_GLAETTUNG_Z = 1e-3, NK_GLAETTUNG_Z_SCHWER = 1e-2;
 const NK_PFAD_PUNKTE = 360;          // Punkte je Körper im vorab gerechneten Weg (Umlauf mit Anziehung)
 const fin = Number.isFinite;
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
@@ -408,6 +418,13 @@ function normalisiere(input: unknown): SimConfigAlle {
       if (!wellen.length) wellen.push({ amplitude: 1, wellenlaenge: 2, frequenz: 0.5, phase: 0, richtung: "rechts" });
       let bereich = zahl(p, "bereich", 0, 0, 10000, fix, P);
       if (bereich > 0 && bereich < 0.01) { bereich = 0.01; fix.push(P + "bereich"); }   // 0 = automatisch, sonst 0,01 bis 10 000 m
+      // Höchstens 50 kürzeste Wellenlängen (gegeben oder automatisch): sonst zeigen WELLE_PUNKTE Stellen eine falsche, viel
+      // längere Welle (Alias). Der Bereich wird gekürzt und in `angepasst` genannt; die Textfassung sagt es.
+      const lmin = Math.min(...wellen.map((q) => q.wellenlaenge)), lmax = Math.max(...wellen.map((q) => q.wellenlaenge));
+      if ((bereich > 0 ? bereich : 2 * lmax) > WELLE_MAX_LAENGEN * lmin) {
+        bereich = WELLE_MAX_LAENGEN * lmin;
+        if (!fix.includes(P + "bereich")) fix.push(P + "bereich");
+      }
       return { ...basis, modell: "welle", parameter: { wellen, bereich } };
     }
     case "gas": {
@@ -847,26 +864,49 @@ function dpBeschl(k: DoppelpendelKern, t1: number, w1: number, t2: number, w2: n
   DA2 = (2 * sd * (w1 * w1 * k.L1 * M + g * M * Math.cos(t1) + w2 * w2 * k.L2 * m2 * cd)) / (k.L2 * nenner);
 }
 
-/** Ein fester Schritt: halbe Dämpfung exakt (ω·e^(−c·dt/2); entspricht der Reibungskraft −c·M(θ)·ω, die Energie fällt dabei nur),
- *  Runge-Kutta vierter Ordnung ohne Dämpfung, wieder halbe Dämpfung. Winkel danach auf (−π, π] gebracht. */
-function dpSchritt(k: DoppelpendelKern, dt: number): void {
-  if (k.c > 0) { k.om1 *= k.damp; k.om2 *= k.damp; }
-  const t1 = k.th1, w1 = k.om1, t2 = k.th2, w2 = k.om2, h = 0.5 * dt;
-  dpBeschl(k, t1, w1, t2, w2);
-  const a1 = DA1, b1 = DA2, t1b = t1 + h * w1, w1b = w1 + h * a1, t2b = t2 + h * w2, w2b = w2 + h * b1;
+/** Ein Runge-Kutta-Schritt vierter Ordnung über h ohne Dämpfung; die Beschleunigung am Anfang (a1, b1) ist schon gerechnet. */
+function dpRk4(k: DoppelpendelKern, h: number, a1: number, b1: number): void {
+  const t1 = k.th1, w1 = k.om1, t2 = k.th2, w2 = k.om2, hh = 0.5 * h;
+  const t1b = t1 + hh * w1, w1b = w1 + hh * a1, t2b = t2 + hh * w2, w2b = w2 + hh * b1;
   dpBeschl(k, t1b, w1b, t2b, w2b);
-  const a2 = DA1, b2 = DA2, t1c = t1 + h * w1b, w1c = w1 + h * a2, t2c = t2 + h * w2b, w2c = w2 + h * b2;
+  const a2 = DA1, b2 = DA2, t1c = t1 + hh * w1b, w1c = w1 + hh * a2, t2c = t2 + hh * w2b, w2c = w2 + hh * b2;
   dpBeschl(k, t1c, w1c, t2c, w2c);
-  const a3 = DA1, b3 = DA2, t1d = t1 + dt * w1c, w1d = w1 + dt * a3, t2d = t2 + dt * w2c, w2d = w2 + dt * b3;
+  const a3 = DA1, b3 = DA2, t1d = t1 + h * w1c, w1d = w1 + h * a3, t2d = t2 + h * w2c, w2d = w2 + h * b3;
   dpBeschl(k, t1d, w1d, t2d, w2d);
-  const a4 = DA1, b4 = DA2, s = dt / 6;
-  let n1 = t1 + s * (w1 + 2 * w1b + 2 * w1c + w1d), n2 = t2 + s * (w2 + 2 * w2b + 2 * w2c + w2d);
-  if (n1 > Math.PI || n1 < -Math.PI) n1 -= TAU * Math.round(n1 / TAU);
-  if (n2 > Math.PI || n2 < -Math.PI) n2 -= TAU * Math.round(n2 / TAU);
-  k.th1 = n1; k.th2 = n2;
-  k.om1 = w1 + s * (a1 + 2 * a2 + 2 * a3 + a4);
-  k.om2 = w2 + s * (b1 + 2 * b2 + 2 * b3 + b4);
+  const a4 = DA1, b4 = DA2, s = h / 6;
+  k.th1 = t1 + s * (w1 + 2 * w1b + 2 * w1c + w1d); k.th2 = t2 + s * (w2 + 2 * w2b + 2 * w2c + w2d);
+  k.om1 = w1 + s * (a1 + 2 * a2 + 2 * a3 + a4); k.om2 = w2 + s * (b1 + 2 * b2 + 2 * b3 + b4);
+}
+
+/** Höchstens so viel Winkel (rad) je Teilschritt, gemessen an der schnellsten Bewegung des Zustands. */
+const DP_ETA = TAU / 500;
+
+/** Ein Rasterschritt dt: halbe Dämpfung exakt (ω·e^(−c·dt/2); entspricht der Reibungskraft −c·M(θ)·ω, die Energie fällt dabei
+ *  nur), dann Runge-Kutta vierter Ordnung ohne Dämpfung in Teilschritten, wieder halbe Dämpfung; Winkel danach auf (−π, π].
+ *  Teilschritte: jeder höchstens DP_ETA / Rate des Zustands an seinem Anfang, Rate = größte von |ω1| + |ω2| + ω_schnell,
+ *  |ω1 − ω2| / r und √(|α1| + |α2|) mit r = √((m1 + m2·sin²Δ)/(m1 + m2)). Bei leichtem oberem Körper und fast gestreckten
+ *  Armen (r klein) wird die Massenmatrix fast singulär, der Körper „peitscht“ in sehr kurzer Zeit durch; das fangen die
+ *  Teilschritte ab, ohne das Raster zu ändern. Sie hängen nur vom Zustand ab: gleiche Eingabe, gleiche Zahlen, für jede
+ *  Bildrate. Höchstens `kmax` Teilschritte (dann nimmt der letzte den Rest). Gibt die Zahl der Teilschritte zurück. */
+function dpSchritt(k: DoppelpendelKern, dt: number): number {
   if (k.c > 0) { k.om1 *= k.damp; k.om2 *= k.damp; }
+  const M = k.m1 + k.m2;
+  let rest = dt, n = 0;
+  while (rest > 0) {
+    dpBeschl(k, k.th1, k.om1, k.th2, k.om2);
+    const a1 = DA1, b1 = DA2, sd = Math.sin(k.th1 - k.th2), r = Math.sqrt((k.m1 + k.m2 * sd * sd) / M);
+    const rate = Math.max(Math.abs(k.om1) + Math.abs(k.om2) + k.wRef, Math.abs(k.om1 - k.om2) / r, Math.sqrt(Math.abs(a1) + Math.abs(b1)));
+    let h = DP_ETA / rate;
+    if (!(h < rest) || n >= k.kmax - 1) h = rest;
+    else if (h > 0.5 * rest) h = 0.5 * rest;                         // kein winziger Rest am Ende des Rasterschritts
+    dpRk4(k, h, a1, b1);
+    rest = h === rest ? 0 : rest - h;
+    n++;
+  }
+  if (k.th1 > Math.PI || k.th1 < -Math.PI) k.th1 -= TAU * Math.round(k.th1 / TAU);
+  if (k.th2 > Math.PI || k.th2 < -Math.PI) k.th2 -= TAU * Math.round(k.th2 / TAU);
+  if (k.c > 0) { k.om1 *= k.damp; k.om2 *= k.damp; }
+  return n;
 }
 
 /** Energie in J, Nullpunkt der Lage ganz unten (beide Arme senkrecht nach unten), darum nie negativ. 1 − cos θ = 2·sin²(θ/2). */
@@ -890,6 +930,8 @@ function doppelpendelTeile(p: DoppelpendelParameter): Teile {
   const Tlangsam = TAU / Math.sqrt(x1), Tschnell = TAU / Math.sqrt(x2);
   const kern: DoppelpendelKern = {
     art: "doppelpendel", L1, L2, m1, m2, g, c, damp: 1, th1: p.winkel1 * RAD, om1: 0, th2: p.winkel2 * RAD, om2: 0, E0: 0, Tlangsam, Tschnell,
+    // Teilschritte je Rasterschritt: ohne Peitschen höchstens etwa 3, beim Peitschen etwa 2/r (r ≥ √(m1/(m1+m2))); Obergrenze 1024.
+    wRef: TAU / Tschnell, kmax: Math.min(1024, Math.ceil(4 / Math.sqrt(m1 / M)) + 8),
   };
   const E = dpEnergie(kern);
   // Schritt aus der schnellen Eigenschwingung (/2000), dazu eine Grenze aus der Energie: |ω| ≤ √(2E/λmin) mit der kleinsten
@@ -918,7 +960,8 @@ const dpLagen = (k: DoppelpendelKern): [number, number, number, number] => {
 
 // --- Welle -------------------------------------------------------------------------------------------------------------
 
-function welleTeile(p: WelleParameter): Teile {
+/** `gekuerzt`: `normalizeSim` hat den Bereich auf WELLE_MAX_LAENGEN kürzeste Wellenlängen gekürzt (die Textfassung sagt es). */
+function welleTeile(p: WelleParameter, gekuerzt = false): Teile {
   const n = p.wellen.length, A: number[] = [], k: number[] = [], w: number[] = [], phi: number[] = [], s: number[] = [], lambda: number[] = [], f: number[] = [];
   for (const q of p.wellen) {
     A.push(q.amplitude); k.push(TAU / q.wellenlaenge); w.push(TAU * q.frequenz); phi.push(q.phase * RAD);
@@ -941,7 +984,7 @@ function welleTeile(p: WelleParameter): Teile {
   if (n === 2 && a.amplitude === b.amplitude && a.wellenlaenge === b.wellenlaenge && a.frequenz === b.frequenz && a.richtung !== b.richtung) {
     satz += " Zusammen ergeben sie eine stehende Welle mit festen Knoten.";
   }
-  if (((WELLE_PUNKTE - 1) * Math.min(...lambda)) / bereich < 8) satz += ` Die kürzeste Welle ist für ${WELLE_PUNKTE} Stützpunkte zu fein; das Bild zeigt sie nur grob.`;
+  if (gekuerzt) satz += ` Der gezeigte Bereich wurde auf ${formatZahl(bereich)} m gekürzt (${WELLE_MAX_LAENGEN} kürzeste Wellenlängen), damit die Welle richtig dargestellt wird.`;
   return {
     kern, dt: Tmin / 1000, periode: Tmax, ausschnitt: { minX: 0, maxX: bereich, minY: -1.1 * S, maxY: 1.1 * S }, text: satz, koerper: n, einheit: "s", voraus: 0,
   };
@@ -1013,11 +1056,15 @@ function nkKopie(k: NKoerperKern): NKoerperKern {
 function nkoerperTeile(p: UmlaufParameter, budget: number): Teile {
   const kepler = umlaufTeile(p), uk = kepler.kern as UmlaufKern, bahnen = uk.bahnen, n = bahnen.length, M = p.zentralmasse;
   const amin = Math.min(...bahnen.map((b) => b.a)), Pmin = kepler.periode, Pmax = Math.max(...bahnen.map((b) => b.P));
-  const m = new Float64Array(p.koerper.map((q) => q.masse ?? 0)), summe = m.reduce((a, b) => a + b, 0);
+  const m = new Float64Array(p.koerper.map((q) => q.masse ?? 0)), summe = m.reduce((a, b) => a + b, 0), mmax = Math.max(...m);
+  // Schwere Körper: ein naher Vorbeiflug zweier Körper (Abstand ε) gibt einen Stoß von etwa √(2·G·m/ε), verglichen mit der
+  // Bahngeschwindigkeit √(G·M/a) ist das q = √(2·m·a/(M·ε)) = √(200·m/M). Ab q ≥ 0,1 können Körper einander auf Bahnen dicht an
+  // der Zentralmasse vorbei streuen; dann gilt auch zur Zentralmasse die Glättung 0,01 und eine Schrittgrenze (unten).
+  const schwer = Math.sqrt((2 * mmax) / (M * NK_GLAETTUNG)) >= 0.1;
   const kern: NKoerperKern = {
     art: "nkoerper", n, GM: G_AE * M, m, w: summe > 0 ? m.slice() : new Float64Array(n).fill(1),
     x: new Float64Array(n), y: new Float64Array(n), vx: new Float64Array(n), vy: new Float64Array(n), ax: new Float64Array(n), ay: new Float64Array(n),
-    eps2z: (NK_GLAETTUNG_Z * amin) ** 2, eps2: (NK_GLAETTUNG * amin) ** 2, bahnen, E0: 0, pfade: [], pfadDauer: 0,
+    eps2z: ((schwer ? NK_GLAETTUNG_Z_SCHWER : NK_GLAETTUNG_Z) * amin) ** 2, eps2: (NK_GLAETTUNG * amin) ** 2, bahnen, E0: 0, pfade: [], pfadDauer: 0,
   };
   bahnen.forEach((b, i) => {                                        // Kepler-Lage und -Geschwindigkeit am Start (wie ohne Anziehung)
     const Ed = TAU / b.P / (1 - b.e * Math.cos(b.E));
@@ -1027,15 +1074,27 @@ function nkoerperTeile(p: UmlaufParameter, budget: number): Teile {
   nkBeschl(kern);
   kern.E0 = nkEnergie(kern);
   // Schritt: innerster Umlauf / 2000, bei großer Exzentrizität kleiner (Zeitmaß am Perihel ∝ (1 − e)^1,5, höchstens 20-mal kleiner).
-  const dt = Math.min(...bahnen.map((b) => b.P * clamp((1 - b.e) ** 1.5, 0.05, 1))) / 2000;
+  // Haben die Körper Masse, höchstens 0,05 des Glättungs-Zeitmaßes zweier Körper √(ε³/(G·2·m_max)), bei schweren Körpern auch
+  // 0,05 von √(ε³/(G·(M + m_max))) (Körper dicht an der Zentralmasse): sonst springt ein naher Vorbeiflug zwischen zwei Schritten
+  // und schleudert Körper zahlengemacht hinaus. Fester Schritt (keine wechselnden Teilschritte), damit Leapfrog symplektisch bleibt
+  // und die Energie auch über viele enge Umläufe nicht wegläuft. Reicht die Grenze je Bild nicht, läuft die Zeit langsamer.
+  let dt = Math.min(...bahnen.map((b) => b.P * clamp((1 - b.e) ** 1.5, 0.05, 1))) / 2000;
+  const eps = NK_GLAETTUNG * amin;
+  if (mmax > 0) dt = Math.min(dt, 0.05 * Math.sqrt(eps ** 3 / (G_AE * 2 * mmax)));
+  if (schwer) dt = Math.min(dt, 0.05 * Math.sqrt(eps ** 3 / (G_AE * (M + mmax))));
   // Vorausrechnung: die Wege über einen Umlauf des äußersten Körpers, höchstens die Hälfte des Budgets.
-  const schritte = Math.max(0, Math.min(Math.ceil(Pmax / dt), Math.floor(budget / 2 / n)));
-  const sim = nkKopie(kern), jede = Math.max(1, Math.ceil(schritte / (NK_PFAD_PUNKTE - 1)));
+  // Dieselben Rasterschritte wie im Lauf; jeder nur, wenn auch seine höchsten Kosten (Teilschritte) noch ins halbe Budget passen.
+  const ziel = Math.ceil(Pmax / dt), halb = budget / 2;
+  const sim = nkKopie(kern), jede = Math.max(1, Math.ceil(Math.min(ziel, halb / n) / (NK_PFAD_PUNKTE - 2)));
   const pfade: Pt[][] = Array.from({ length: n }, (_, i) => [[sim.x[i], sim.y[i]]]);
-  for (let s = 1; s <= schritte; s++) {
+  let schritte = 0, kosten = 0;
+  while (schritte < ziel && kosten + n <= halb) {
     nkSchritt(sim, dt);
-    if (s % jede === 0 || s === schritte) for (let i = 0; i < n; i++) pfade[i].push([sim.x[i], sim.y[i]]);
+    kosten += n;
+    schritte++;
+    if (schritte % jede === 0) for (let i = 0; i < n; i++) pfade[i].push([sim.x[i], sim.y[i]]);
   }
+  if (schritte % jede !== 0) for (let i = 0; i < n; i++) pfade[i].push([sim.x[i], sim.y[i]]);
   kern.pfade = pfade.every((q) => q.every((pt) => fin(pt[0]) && fin(pt[1]))) ? pfade : [];
   kern.pfadDauer = schritte * dt;
   // Bildausschnitt: die Kepler-Bahnen und die vorab gerechneten Wege, diese höchstens bis zum Dreifachen der Kepler-Größe.
@@ -1053,7 +1112,7 @@ function nkoerperTeile(p: UmlaufParameter, budget: number): Teile {
     + bahnen.map((b, i) => `${b.name}: Start auf einer Bahn mit großer Halbachse ${formatZahl(b.a)} AE und Exzentrizität ${formatZahl(b.e)}, `
       + `${m[i] > 0 ? `Masse ${formatZahl(m[i])} Sonnenmassen` : "ohne eigene Masse"}, Umlaufzeit dieser Bahn etwa ${formatWert(b.P)} Jahre.`).join(" ");
   return {
-    kern, dt, periode: Pmin, ausschnitt: rahmen(minX, maxX, minY, maxY, 0.06), text: satz, koerper: n, einheit: "Jahre", voraus: schritte * n,
+    kern, dt, periode: Pmin, ausschnitt: rahmen(minX, maxX, minY, maxY, 0.06), text: satz, koerper: n, einheit: "Jahre", voraus: kosten,
   };
 }
 
@@ -1067,7 +1126,10 @@ function teileFuer(cfg: SimConfigAlle, budget: number): Teile {
     case "umlauf": return cfg.parameter.anziehung === true ? nkoerperTeile(cfg.parameter, budget) : umlaufTeile(cfg.parameter);
     case "gas": return gasTeile(cfg.parameter);
     case "doppelpendel": return doppelpendelTeile(cfg.parameter);
-    case "welle": return welleTeile(cfg.parameter);
+    case "welle": {
+      const p = cfg.parameter, lmin = Math.min(...p.wellen.map((q) => q.wellenlaenge));
+      return welleTeile(p, cfg.angepasst.includes("parameter.bereich") && Math.abs(p.bereich - WELLE_MAX_LAENGEN * lmin) <= 1e-12 * p.bereich);
+    }
   }
 }
 
@@ -1121,19 +1183,25 @@ function baue(cfg: SimConfigAlle): SimState {
   return s;
 }
 
-function einSchritt(s: SimState): void {
+/** Ein Rasterschritt; gibt die Körper-Schritte zurück, die er gekostet hat (Doppelpendel: 2 je Teilschritt). */
+function einSchritt(s: SimState): number {
   const k = s.kern;
+  let kosten = s.koerper;
   switch (k.art) {
     case "pendel": pendelSchritt(k, s.dt); break;
     case "feder": federSchritt(k, s.dt); break;
     case "wurf": wurfSchritt(k, s.dt, s.schritt * s.dt); break;
     case "gas": gasSchritt(k, s.dt); break;
-    case "doppelpendel": dpSchritt(k, s.dt); break;
+    case "doppelpendel": kosten = 2 * dpSchritt(k, s.dt); break;
     case "nkoerper": nkSchritt(k, s.dt); break;
     case "umlauf": case "welle": break;
   }
   s.schritt++;
+  return kosten;
 }
+
+/** Höchste Kosten eines Rasterschritts in Körper-Schritten (damit die Grenze je Bild nie überschritten wird). */
+const hoechstKosten = (s: SimState): number => (s.kern.art === "doppelpendel" ? 2 * s.kern.kmax : s.koerper);
 
 /** Rechnet die Simulation um `simSeconds` Modellzeit weiter, in festen Teilschritten auf dem Raster t = n·dt.
  *  Höchstens `maxBodySteps` Körper × Teilschritte; reicht das nicht, bleibt die Zeit zurück (`begrenzt`, kein Nachholen).
@@ -1156,10 +1224,11 @@ export function advance(state: SimState, simSeconds: number, maxBodySteps: numbe
       out = { schritte: n, koerperSchritte: state.koerper, begrenzt: false };
     } else {
       const mb = fin(maxBodySteps) && maxBodySteps > 0 ? Math.min(maxBodySteps, MAX_CALL) : MAX_CALL;
-      const m = Math.min(n, Math.max(1, Math.floor(mb / state.koerper)));
-      let done = 0;
-      while (done < m) {
-        einSchritt(state);
+      // Mindestens ein Rasterschritt; jeder weitere nur, wenn auch seine höchsten Kosten noch unter die Grenze passen.
+      const hoechst = hoechstKosten(state);
+      let done = 0, kosten = 0;
+      while (done < n && (done === 0 || kosten + hoechst <= mb)) {
+        kosten += einSchritt(state);
         done++;
         if (k.art === "wurf" && k.gelandet) break;
       }
@@ -1168,7 +1237,7 @@ export function advance(state: SimState, simSeconds: number, maxBodySteps: numbe
       if (gelandet) state.phase = "gelandet";
       const begrenzt = done < n && !gelandet;
       if (begrenzt) state.soll = state.schritt * state.dt;
-      out = { schritte: done, koerperSchritte: done * state.koerper, begrenzt };
+      out = { schritte: done, koerperSchritte: kosten, begrenzt };
     }
     if (!kernEndlich(k) || !fin(state.zeit)) state.phase = "instabil";
     return out;
@@ -1259,9 +1328,12 @@ export function snapshot(state: SimState): SimSnapshot {
           koerper.push({ x: k.x[i], y: k.y[i], r: 0, farbe: b.farbe, name: b.name });
           kennwerte.push(kw(`umlaufzeit.${i}`, `Umlaufzeit ${b.name}`, b.P, "Jahre"), kw(`abstand.${i}`, `Abstand ${b.name} jetzt`, Math.hypot(k.x[i], k.y[i]), "AE"));
         });
-        const e = nkEnergie(k);
-        kennwerte.push(kw("energie", "Gesamtenergie in Prozent des Starts", Math.abs(k.E0) > 1e-300 ? (e / k.E0) * 100 : 100, "%"));
-        return { ...basis, koerper, anker: [0, 0], kennwerte, verteilung: null };
+        // Die Startenergie ist negativ (gebunden), „Prozent des Starts“ wäre irreführend: darum die Abweichung in Prozent von |E0|.
+        const e = nkEnergie(k), abw = Math.abs(k.E0) > 1e-300 ? ((e - k.E0) / Math.abs(k.E0)) * 100 : 0;
+        kennwerte.push({ id: "energieAbweichung", name: "Energieabweichung", wert: abw, einheit: "%", text: `${formatFest(abw, Math.abs(abw) < 1 ? 2 : 1)} %` });
+        const a = state.ausschnitt;
+        const ausserhalb = koerper.filter((p) => !(p.x >= a.minX && p.x <= a.maxX && p.y >= a.minY && p.y <= a.maxY)).length;
+        return { ...basis, koerper, anker: [0, 0], kennwerte, verteilung: null, ausserhalb };
       }
     }
   } catch {
@@ -1281,6 +1353,7 @@ export function isFiniteSnapshot(s: SimSnapshot | null | undefined): boolean {
     for (const k of s.kennwerte) if (!fin(k.wert)) return false;
     if (s.verteilung && ![...s.verteilung.grenzen, ...s.verteilung.anzahl].every(fin)) return false;
     for (const q of [s.kurve ?? [], ...(s.teilkurven ?? [])]) for (const p of q) if (!fin(p[0]) || !fin(p[1])) return false;
+    if (s.ausserhalb !== undefined && !fin(s.ausserhalb)) return false;
     return true;
   } catch {
     return false;
@@ -1361,14 +1434,18 @@ function baueStandbild(state: SimState): Standbild {
     }
     case "doppelpendel": {
       const frisch = teileFuer(state.config, 0).kern as DoppelpendelKern, dt = state.dt;
-      const n = Math.max(0, Math.min(Math.ceil(DP_STANDBILD_S / dt - 1e-9), Math.floor(rest() / 2)));
-      const jede = Math.max(1, Math.ceil(n / (DOPPELPENDEL_BAHN_MAX - 1)));
+      // So viele Rasterschritte, wie für 10 s nötig sind und mit ihren höchsten Kosten (Teilschritte) ins Budget passen.
+      const ziel = Math.ceil(DP_STANDBILD_S / dt - 1e-9), budget = rest(), hoechst = 2 * frisch.kmax;
+      const jede = Math.max(1, Math.ceil(Math.min(ziel, budget / 2) / (DOPPELPENDEL_BAHN_MAX - 2)));
       const bahn: Pt[] = [[dpLagen(frisch)[2], dpLagen(frisch)[3]]];
-      for (let i = 1; i <= n; i++) {
-        dpSchritt(frisch, dt);
-        if (i % jede === 0 || i === n) { const l = dpLagen(frisch); bahn.push([l[2], l[3]]); }
+      let n = 0, kosten = 0;
+      while (n < ziel && kosten + hoechst <= budget) {
+        kosten += 2 * dpSchritt(frisch, dt);
+        n++;
+        if (n % jede === 0) { const l = dpLagen(frisch); bahn.push([l[2], l[3]]); }
       }
-      state.vorausSchritte += 2 * n;
+      if (n % jede !== 0) { const l = dpLagen(frisch); bahn.push([l[2], l[3]]); }
+      state.vorausSchritte += kosten;
       return { modell: "doppelpendel", start, bahn: bahn.every((p) => fin(p[0]) && fin(p[1])) ? bahn : [], dauer: n * dt };
     }
     case "welle": {

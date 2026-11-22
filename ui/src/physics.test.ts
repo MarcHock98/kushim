@@ -1000,7 +1000,6 @@ describe("Welle", () => {
     expect(snap.kennwerte.map((k) => k.id)).toEqual(["periode.0", "geschwindigkeit.0", "periode.1", "geschwindigkeit.1", "auslenkung"]);
     expect(wert(snap, "periode.0")).toBeCloseTo(1 / 3, 12);
     expect(wert(snap, "geschwindigkeit.1")).toBeCloseTo(1, 12);
-    expect(createSim(welle([w1({ wellenlaenge: 0.01 })], { bereich: 10 })).text).toContain("zu fein");
   });
 
   it("still picture: curve at t = 0 and the envelope over one period of the slowest wave", () => {
@@ -1067,7 +1066,7 @@ describe("Umlauf mit gegenseitiger Anziehung", () => {
       let maxAbw = 0;
       while (s.zeit < 10) {
         schritte(s, 50);
-        maxAbw = Math.max(maxAbw, Math.abs(wert(s, "energie") - 100));
+        maxAbw = Math.max(maxAbw, Math.abs(wert(s, "energieAbweichung")));
       }
       expect(maxAbw, `e = ${e}`).toBeLessThan(0.5);
       const snap = snapshot(s);
@@ -1086,9 +1085,9 @@ describe("Umlauf mit gegenseitiger Anziehung", () => {
     const L0 = drall();
     let maxE = 0;
     for (let i = 0; i < 200; i++) {
-      schritte(s, 100);
+      schritte(s, 1000);
       expect(relativ(drall(), L0)).toBeLessThan(1e-11);
-      maxE = Math.max(maxE, Math.abs(wert(s, "energie") - 100));
+      maxE = Math.max(maxE, Math.abs(wert(s, "energieAbweichung")));
     }
     expect(maxE).toBeLessThan(0.5);
     // Die Anziehung wirkt wirklich: die Bahn weicht von Kepler ab (mehr als ohne Anziehung im selben Lauf).
@@ -1105,9 +1104,19 @@ describe("Umlauf mit gegenseitiger Anziehung", () => {
     expect(createSim(nk([mk(1, 0, 0, "A", 0)])).text).toContain("ohne eigene Masse");
     const snap = snapshot(s);
     expect(snap.modell).toBe("umlauf");
-    expect(snap.kennwerte.map((q) => q.id)).toEqual([...liste.flatMap((_, i) => [`umlaufzeit.${i}`, `abstand.${i}`]), "energie"]);
-    expect(snap.kennwerte[snap.kennwerte.length - 1].name).toBe("Gesamtenergie in Prozent des Starts");
-    expect(s.dt).toBeCloseTo((s.periode * 0.7 ** 1.5) / 2000, 15);
+    expect(snap.kennwerte.map((q) => q.id)).toEqual([...liste.flatMap((_, i) => [`umlaufzeit.${i}`, `abstand.${i}`]), "energieAbweichung"]);
+    expect(snap.kennwerte[snap.kennwerte.length - 1]).toMatchObject({ name: "Energieabweichung", wert: 0, einheit: "%", text: "0,00 %" });
+    expect(snap.ausserhalb).toBe(0);
+    // Schritt: innerster Umlauf / 2000 (mit Exzentrizität), höchstens 0,05·√(ε³/(G·2·m_max)) und 0,05·√(ε³/(G·(M + m_max)))
+    // mit ε = 0,01 der kleinsten Halbachse.
+    const G = TAU * TAU, eps = 0.01;
+    expect(s.dt).toBeCloseTo(Math.min((s.periode * 0.7 ** 1.5) / 2000, 0.05 * Math.sqrt(eps ** 3 / (G * 2 * 0.01)), 0.05 * Math.sqrt(eps ** 3 / (G * 1.01))), 15);
+    expect(createSim(nk([mk(1, 0, 0, "A", 0), mk(2, 0, 0, "B", 0)])).dt).toBeCloseTo(1 / 2000, 15);   // ohne Massen: wie bisher
+    // Glättung zur Zentralmasse: 0,01 bei schweren Körpern (Stoßverhältnis √(200·m/M) ≥ 0,1), sonst 0,001 der kleinsten Halbachse.
+    expect((s.kern as NKoerperKern).eps2z).toBeCloseTo(0.01 ** 2, 15);
+    const leicht = createSim(nk([mk(1, 0, 0, "A", 1e-6), mk(2, 0, 0, "B", 1e-6)]));
+    expect((leicht.kern as NKoerperKern).eps2z).toBeCloseTo(0.001 ** 2, 18);
+    expect(leicht.dt).toBeCloseTo(1 / 2000, 15);                          // keine Grenze aus der Zentralmasse
     for (let i = 0; i < 30; i++) expect(advance(s, s.tempo / 30, 4000).koerperSchritte).toBeLessThanOrEqual(4000);
     expect(advance(s, 1e6, 4000).begrenzt).toBe(true);
     const b = standbild(s);
@@ -1123,7 +1132,7 @@ describe("Umlauf mit gegenseitiger Anziehung", () => {
   it("all massless: each body follows its own orbit and the energy figure is the sum of the orbit energies", () => {
     const s = createSim(nk([mk(1, 0.3, 0, "A", 0), mk(2, 0, 0, "B", 0)]));
     for (let i = 0; i < 40; i++) schritte(s, 100);
-    expect(Math.abs(wert(s, "energie") - 100)).toBeLessThan(0.05);
+    expect(Math.abs(wert(s, "energieAbweichung"))).toBeLessThan(0.05);
     const [x, y] = keplerLage(1, 2, 0, 0, s.zeit);
     expect(Math.hypot(snapshot(s).koerper[1].x - x, snapshot(s).koerper[1].y - y)).toBeLessThan(0.01);
   });
@@ -1309,5 +1318,134 @@ describe("Regler: GRENZEN und mitWert", () => {
     expect(mitWert(null, "laenge", 1)).toBeNull();
     expect(mitWert({ modell: "quatsch", parameter: {} }, "laenge", 1)).toEqual({ modell: "quatsch", parameter: {} });
     expect(mitWert(welle([]), "wellen.0.frequenz", 5)).toEqual(welle([]));   // keine erste Welle: nichts gesetzt
+  });
+
+  it("ignores hostile paths and model names and never pollutes a prototype", () => {
+    const w = welle([w1(), w1({ richtung: "links" })]);
+    for (const feld of ["wellen.5.frequenz", "wellen.-1.frequenz", "wellen.0x0.frequenz", "constructor.prototype.x", "__proto__.polluted", "wellen.0.__proto__.polluted"]) {
+      expect(mitWert(w, feld, 5), feld).toEqual(w);
+    }
+    for (const modell of ["__proto__", "toString", "constructor", "hasOwnProperty"]) {
+      const roh = { ...basis, modell, parameter: { laenge: 1 } };
+      expect(mitWert(roh, "laenge", 5), modell).toEqual(roh);
+      expect(mitWert(roh, "polluted", 5)).toEqual(roh);
+    }
+    const proto = JSON.parse('{"modell":"__proto__","parameter":{"__proto__":{"polluted":1}}}');
+    expect(mitWert(proto, "polluted", 5)).toEqual(proto);
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+    expect(({} as Record<string, unknown>).x).toBeUndefined();
+  });
+});
+
+describe("P5b Nachbesserung: steife Doppelpendel, nahe Vorbeiflüge, Wellen-Alias", () => {
+  /** Unabhängige Rechnung: Lagrange-Gleichungen mit der Massenmatrix (2 x 2 gelöst), fester RK4-Schritt. */
+  function rk4Massenmatrix(p: { laenge1: number; laenge2: number; masse1: number; masse2: number; winkel1: number; winkel2: number; g: number }, h: number, n: number) {
+    const { laenge1: L1, laenge2: L2, masse1: m1, masse2: m2, g } = p, M = m1 + m2;
+    const f = (y: number[]): number[] => {
+      const [t1, w1, t2, w2] = y, d = t1 - t2, c = Math.cos(d), s = Math.sin(d);
+      // [M·L1, m2·L2·c; L1·c, L2] · [α1; α2] = [−m2·L2·w2²·s − M·g·sin t1; L1·w1²·s − g·sin t2]
+      const a11 = M * L1, a12 = m2 * L2 * c, a21 = L1 * c, a22 = L2;
+      const r1 = -m2 * L2 * w2 * w2 * s - M * g * Math.sin(t1), r2 = L1 * w1 * w1 * s - g * Math.sin(t2);
+      const det = a11 * a22 - a12 * a21;
+      return [w1, (r1 * a22 - a12 * r2) / det, w2, (a11 * r2 - a21 * r1) / det];
+    };
+    let y = [(p.winkel1 * Math.PI) / 180, 0, (p.winkel2 * Math.PI) / 180, 0];
+    for (let i = 0; i < n; i++) {
+      const k1 = f(y), k2 = f(y.map((v, j) => v + 0.5 * h * k1[j])), k3 = f(y.map((v, j) => v + 0.5 * h * k2[j])), k4 = f(y.map((v, j) => v + h * k3[j]));
+      y = y.map((v, j) => v + (h / 6) * (k1[j] + 2 * k2[j] + 2 * k3[j] + k4[j]));
+    }
+    return y;
+  }
+  const winkelAbstand = (a: number, b: number) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
+
+  it("double pendulum without damping keeps its energy within 1 % over 10 s also at extreme mass and length ratios", () => {
+    for (const p of [{ masse1: 0.01, masse2: 1000, winkel1: 179, winkel2: -179 }, { masse1: 0.01, masse2: 1000, winkel1: 90, winkel2: 0 },
+      { masse1: 0.1, masse2: 1000, winkel1: 179, winkel2: -179 }, { masse1: 1000, masse2: 0.01, winkel1: 179, winkel2: -179 },
+      { laenge1: 0.05, laenge2: 100, winkel1: 179, winkel2: -179 }, { laenge1: 100, laenge2: 0.05, winkel1: 179, winkel2: -179 }]) {
+      const s = createSim(dp(p)), e0 = dpEnergieTest(s), t0 = performance.now();
+      let maxAbw = 0, teil = 0, raster = 0;
+      while (s.zeit < 10) {
+        const r = schritte(s, Math.max(1, Math.round(0.05 / s.dt)));
+        teil += r.koerperSchritte / 2; raster += r.schritte;
+        maxAbw = Math.max(maxAbw, relativ(dpEnergieTest(s), e0));
+      }
+      console.info(`[physics] doppelpendel ${JSON.stringify(p)}: dt ${s.dt.toExponential(2)} s, ${(teil / raster).toFixed(2)} Teilschritte je Rasterschritt, `
+        + `energy drift over 10 s ${(100 * maxAbw).toExponential(1)} %, ${(performance.now() - t0).toFixed(0)} ms`);
+      expect(s.phase).toBe("laeuft");
+      expect(maxAbw, JSON.stringify(p)).toBeLessThan(0.01);
+      expect(Math.abs(wert(s, "energie") - 100)).toBeLessThan(1);
+    }
+  }, 60_000);
+
+  it("double pendulum follows an independent RK4 with the mass matrix (step dt/20) over 3 s within 1e-6 rad", () => {
+    // Nur nicht steife Fälle: beim Peitschen (oberer Körper 0,01 kg, unterer 1000 kg) vergrößert das Chaos jeden Rundungsunterschied
+    // beider Rechnungen in 3 s auf ganze Radiant; dort prüft der Energietest oben, dass die Rechnung stimmt.
+    for (const p of [{ winkel1: 90, winkel2: 0 }, { winkel1: 120, winkel2: -30, laenge2: 0.7, masse2: 2 }, { winkel1: 150, winkel2: 30, masse1: 1000, masse2: 0.01 }]) {
+      const s = createSim(dp(p)), n = Math.round(3 / s.dt);
+      schritte(s, n);
+      const k = s.kern as DoppelpendelKern, soll = rk4Massenmatrix({ ...(dp().parameter), ...p }, s.dt / 20, 20 * n);
+      const abw = Math.max(winkelAbstand(k.th1, soll[0]), winkelAbstand(k.th2, soll[2]));
+      console.info(`[physics] doppelpendel ${JSON.stringify(p)} gegen RK4 (dt/20) über 3 s: |Δθ| = ${abw.toExponential(1)} rad`);
+      expect(abw, JSON.stringify(p)).toBeLessThan(1e-6);
+    }
+  }, 60_000);
+
+  it("orbits with attraction: close encounters no longer eject bodies by a numerical error; energy within 1 % over 60 years", () => {
+    const zwei = nk([mk(1, 0, 0, "A", 0.01), mk(1.1, 0, 5, "B", 0.01)], { zentralmasse: 0.01 });
+    const acht = (versatz: number) => nk(Array.from({ length: 8 }, (_, i) => mk(1 + 0.3 * i, 0.1, (45 * i + versatz) % 360, `K${i}`, 0.01)), { zentralmasse: 0.01 });
+    for (const [name, input] of [["zwei", zwei], ["acht", acht(0)], ["acht, um 20 Grad gedreht", acht(20)]] as const) {
+      const s = createSim(input), k = s.kern as NKoerperKern, t0 = performance.now();
+      const kepler = Math.max(...(input.parameter.koerper as { abstand: number; exzentrizitaet: number }[]).map((q) => q.abstand * (1 + q.exzentrizitaet)));
+      let maxAbw = 0;
+      while (s.zeit < 60) {
+        schritte(s, 2000);
+        maxAbw = Math.max(maxAbw, Math.abs(wert(s, "energieAbweichung")));
+      }
+      // Zwei Körper: keiner fliegt hinaus (vorher bis 800 AE, rein zahlengemacht). Acht Körper so schwer wie die Zentralmasse
+      // streuen einander wirklich: ein Körper darf dann weiter als das Dreifache der Kepler-Größe hinaus (auf eine weite Bahn oder
+      // ungebunden). Das ist Physik und keine Zahlenpanne, weil die Gesamtenergie dabei auf 1 % erhalten bleibt (Prüfung unten).
+      let draussen = 0, gebunden = 0;
+      const Mges = k.GM / (TAU * TAU) + k.m.reduce((a, b) => a + b, 0);
+      for (let i = 0; i < k.n; i++) {
+        const r = Math.hypot(k.x[i], k.y[i]);
+        if (r > 3 * kepler) { draussen++; if (0.5 * (k.vx[i] ** 2 + k.vy[i] ** 2) < (TAU * TAU * Mges) / r) gebunden++; }
+      }
+      console.info(`[physics] umlauf mit Anziehung (${name}): dt ${s.dt.toExponential(2)} Jahre, energy deviation over 60 years ${maxAbw.toExponential(1)} %, `
+        + `${draussen} Körper weiter als 3 × Kepler (davon ${gebunden} gebunden), ${(performance.now() - t0).toFixed(0)} ms`);
+      if (name === "zwei") expect(draussen).toBe(0);
+      expect(maxAbw, name).toBeLessThan(1);
+      expect(s.dt).toBeLessThanOrEqual(0.05 * Math.sqrt((0.01 ** 3) / (TAU * TAU * 2 * 0.01)) + 1e-15);
+      expect(snapshot(s).ausserhalb).toBe(snapshot(s).koerper.filter((p) => p.x < s.ausschnitt.minX || p.x > s.ausschnitt.maxX || p.y < s.ausschnitt.minY || p.y > s.ausschnitt.maxY).length);
+    }
+  }, 60_000);
+
+  it("counts the bodies outside the extent", () => {
+    const s = createSim(nk([mk(1, 0, 0, "A", 0), mk(2, 0, 0, "B", 0), mk(3, 0, 0, "C", 0)]));
+    const k = s.kern as NKoerperKern;
+    expect(snapshot(s).ausserhalb).toBe(0);
+    k.x[0] = s.ausschnitt.maxX + 1;
+    expect(snapshot(s).ausserhalb).toBe(1);
+    k.y[2] = s.ausschnitt.minY - 0.5;
+    expect(snapshot(s).ausserhalb).toBe(2);
+    expect(snapshot(createSim(dp())).ausserhalb).toBeUndefined();
+    expect(snapshot(createSim(umlauf())).ausserhalb).toBeUndefined();
+  });
+
+  it("waves: a range of more than 50 shortest wavelengths is shortened and noted, the drawn curve keeps the true wavelength", () => {
+    for (const [wellen, bereich] of [[[w1({ wellenlaenge: 0.01 })], 10000], [[w1({ wellenlaenge: 0.01 }), w1({ wellenlaenge: 1, richtung: "links" })], 0]] as const) {
+      const input = welle([...wellen], { bereich }), cfg = normalizeSim(input);
+      expect(cfg.angepasst).toContain("parameter.bereich");
+      expect((cfg.parameter as { bereich: number }).bereich).toBeCloseTo(0.5, 12);
+      const s = createSim(input);
+      expect(s.text).toContain("Der gezeigte Bereich wurde auf 0,5 m gekürzt (50 kürzeste Wellenlängen), damit die Welle richtig dargestellt wird.");
+      expect(s.ausschnitt.maxX).toBeCloseTo(0.5, 12);
+      if (wellen.length > 1) continue;
+      const k = snapshot(s).kurve!, auf: number[] = [];
+      for (let i = 1; i < k.length; i++) if (k[i - 1][1] < 0 && k[i][1] >= 0) auf.push(k[i - 1][0] + (k[i][0] - k[i - 1][0]) * (-k[i - 1][1] / (k[i][1] - k[i - 1][1])));
+      expect(auf.length).toBeGreaterThanOrEqual(48);
+      expect(relativ((auf[auf.length - 1] - auf[0]) / (auf.length - 1), 0.01)).toBeLessThan(0.01);   // die wahre Wellenlänge 0,01 m
+    }
+    expect(normalizeSim(welle([w1({ wellenlaenge: 0.01 })], { bereich: 0.5 })).angepasst).toEqual([]);   // genau 50: bleibt
+    expect(createSim(welle([w1({ wellenlaenge: 0.01 })], { bereich: 0.5 })).text).not.toContain("gekürzt");
   });
 });
