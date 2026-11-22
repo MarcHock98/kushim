@@ -14,6 +14,7 @@ export const FARBE_WORT: Readonly<Record<Farbe, string>> = {
   arc: "Cyan", amber: "Bernstein", ok: "Grün", warn: "Warnfarbe (Bernstein)", alarm: "Rot", text: "Weiß", gedaempft: "Grau",
 };
 const NOT_SHOWN = "Teilchen kann nicht gezeigt werden.";
+export const LOST = "Die 3D-Darstellung wurde vom Browser beendet.";
 const ADJUSTED = "Einige Angaben fehlten oder lagen außerhalb der Grenzen und wurden angepasst.";
 const BOND_R: Record<1 | 2 | 3, number> = { 1: 0.08, 2: 0.05, 3: 0.04 };
 
@@ -122,7 +123,7 @@ export function Molecule3D({ b }: { b: TeilchenBlock }) {
       return built;
     };
   }, [geo]);
-  const { gl, view, onKeyDown } = useOrbitViewer(canvas, build);
+  const { gl, lost, view, onKeyDown } = useOrbitViewer(canvas, build);
   const setLabel = useCallback((i: number) => (el: HTMLSpanElement | null) => { labels.current[i] = el; }, []);
 
   if (!mol || !geo || geo.ungueltig || geo.atomzahl === 0) {          // ungültig oder leer: nie ein leeres Bild, kein Renderer
@@ -166,7 +167,7 @@ export function Molecule3D({ b }: { b: TeilchenBlock }) {
             </div>
           )}
         </div>
-      ) : <p className="v-note" role="note">3D braucht WebGL, das hier nicht verfügbar ist. Die Atomliste unten zeigt den Inhalt.</p>}
+      ) : <p className="v-note" role="note">{lost ? LOST : "3D braucht WebGL, das hier nicht verfügbar ist."} Die Atomliste unten zeigt den Inhalt.</p>}
       {gl && (
         <div className="m-row" role="group" aria-label="Ansicht">
           {ORBIT_BUTTONS.map(([a, t]) => <button key={a} type="button" onClick={() => view(a)}>{t}</button>)}

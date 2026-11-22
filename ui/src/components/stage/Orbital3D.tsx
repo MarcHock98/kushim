@@ -2,7 +2,7 @@ import { useMemo, useRef } from "react";
 import { normalizeTeilchen, orbitalPunkte, PHASEN_FARBE, phaseWort, type OrbitalConfig, type OrbitalWolke } from "../../lib/chem";
 import { ORBIT_BUTTONS, ORBIT_HINT, type V3 } from "../../lib/orbitCamera";
 import type { TeilchenBlock } from "../../lib/stage";
-import { FARBE_WORT } from "./Molecule3D";
+import { FARBE_WORT, LOST } from "./Molecule3D";
 import { useOrbitViewer, type Builder } from "./useOrbitViewer";
 
 // Baustein `teilchen`, Form `orbital` (Plan docs/ui-p5-plan.md, Abschnitt 7, P5b): Punktwolke aus der fest eingebauten
@@ -68,7 +68,7 @@ export function Orbital3D({ b }: { b: TeilchenBlock }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const axisEls = useRef<(HTMLSpanElement | null)[]>([]);
   const build = useMemo<Builder | null>(() => (wolke && !wolke.ungueltig && wolke.anzahl > 0 ? orbitalBuilder(wolke, axisEls) : null), [wolke]);
-  const { gl, view, onKeyDown } = useOrbitViewer(canvas, build);
+  const { gl, lost, view, onKeyDown } = useOrbitViewer(canvas, build);
 
   if (!orb || !wolke || wolke.ungueltig || wolke.anzahl === 0) {     // ungültig oder keine Punkte: nie ein leeres Bild, kein Renderer
     return (
@@ -93,7 +93,7 @@ export function Orbital3D({ b }: { b: TeilchenBlock }) {
             {AXES.map((a, i) => <span key={a} ref={(el) => { axisEls.current[i] = el; }} className="t-tag t-axis" hidden>{a}</span>)}
           </div>
         </div>
-      ) : <p className="v-note" role="note">3D braucht WebGL, das hier nicht verfügbar ist. Die Beschreibung unten zeigt den Inhalt.</p>}
+      ) : <p className="v-note" role="note">{lost ? LOST : "3D braucht WebGL, das hier nicht verfügbar ist."} Die Beschreibung unten zeigt den Inhalt.</p>}
       {gl && (
         <div className="m-row" role="group" aria-label="Ansicht">
           {ORBIT_BUTTONS.map(([a, t]) => <button key={a} type="button" onClick={() => view(a)}>{t}</button>)}

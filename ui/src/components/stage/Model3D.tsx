@@ -153,7 +153,8 @@ export function Model3D({ b }: { b: SceneBlock }) {
       document.addEventListener("visibilitychange", visible);
       const ro = typeof ResizeObserver === "function" ? new ResizeObserver(resize) : null;
       ro?.observe(el);
-      el.addEventListener("webglcontextlost", (e) => { e.preventDefault(); setGl(false); });
+      const lost = (e: Event) => { e.preventDefault(); setGl(false); };
+      el.addEventListener("webglcontextlost", lost);
 
       ctl.current = api;
       resize();
@@ -165,6 +166,7 @@ export function Model3D({ b }: { b: SceneBlock }) {
         el.removeEventListener("pointerdown", down); el.removeEventListener("pointermove", move);
         el.removeEventListener("pointerup", up); el.removeEventListener("pointercancel", up);
         el.removeEventListener("wheel", wheel);
+        el.removeEventListener("webglcontextlost", lost);
         document.removeEventListener("visibilitychange", visible);
         disposables.forEach((d) => d.dispose());
         renderer.dispose();

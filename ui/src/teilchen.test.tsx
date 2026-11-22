@@ -18,7 +18,7 @@ import { ART_LABEL, parseItem, type Block, type TeilchenBlock, type View } from 
 
 interface Fake {
   canvas: HTMLCanvasElement; renders: number; calls: number; disposed: boolean; lost: boolean;
-  objects: THREE.Object3D[]; geometries: Set<THREE.BufferGeometry>; materials: Set<THREE.Material>;
+  objects: THREE.Object3D[]; geometries: Set<THREE.BufferGeometry>; materials: Set<THREE.Material>; eyes: number[][];
 }
 const R = vi.hoisted(() => ({ list: [] as unknown[] }));
 
@@ -26,12 +26,13 @@ vi.mock("three", async (orig) => {
   const T = await orig<typeof import("three")>();
   class FakeRenderer {
     canvas: HTMLCanvasElement; renders = 0; calls = 0; disposed = false; lost = false;
-    objects: THREE.Object3D[] = []; geometries = new Set<THREE.BufferGeometry>(); materials = new Set<THREE.Material>();
+    objects: THREE.Object3D[] = []; geometries = new Set<THREE.BufferGeometry>(); materials = new Set<THREE.Material>(); eyes: number[][] = [];
     constructor(o: { canvas: HTMLCanvasElement }) { this.canvas = o.canvas; R.list.push(this); }
     setPixelRatio() {}
     setSize() {}
-    render(scene: THREE.Scene) {
+    render(scene: THREE.Scene, cam: THREE.Camera) {
       this.renders++;
+      this.eyes.push(cam.position.toArray());
       let n = 0;
       this.objects = [];
       scene.traverseVisible((o) => {
@@ -397,17 +398,18 @@ describe("Ungültig", () => {
   });
 });
 
+/** Merkt sich jeden Listener auf der Zeichenfläche und `visibilitychange` am Dokument. */
+function listenerSpy() {
+  const add = vi.spyOn(EventTarget.prototype, "addEventListener"), rem = vi.spyOn(EventTarget.prototype, "removeEventListener");
+  const ours = (ctx: unknown, type: unknown) => ctx instanceof HTMLCanvasElement || (ctx === document && type === "visibilitychange");
+  return () => {
+    const added = add.mock.calls.map((c, i) => [add.mock.contexts[i], c[0], c[1]] as const).filter(([ctx, t]) => ours(ctx, t));
+    const removed = rem.mock.calls.map((c, i) => [rem.mock.contexts[i], c[0], c[1]] as const);
+    return { added, open: added.filter(([ctx, t, fn]) => !removed.some(([c2, t2, f2]) => c2 === ctx && t2 === t && f2 === fn)) };
+  };
+}
+
 describe("Aufräumen", () => {
-  /** Merkt sich jeden Listener auf der Zeichenfläche und `visibilitychange` am Dokument. */
-  function listenerSpy() {
-    const add = vi.spyOn(EventTarget.prototype, "addEventListener"), rem = vi.spyOn(EventTarget.prototype, "removeEventListener");
-    const ours = (ctx: unknown, type: unknown) => ctx instanceof HTMLCanvasElement || (ctx === document && type === "visibilitychange");
-    return () => {
-      const added = add.mock.calls.map((c, i) => [add.mock.contexts[i], c[0], c[1]] as const).filter(([ctx, t]) => ours(ctx, t));
-      const removed = rem.mock.calls.map((c, i) => [rem.mock.contexts[i], c[0], c[1]] as const);
-      return { added, open: added.filter(([ctx, t, fn]) => !removed.some(([c2, t2, f2]) => c2 === ctx && t2 === t && f2 === fn)) };
-    };
-  }
 
   it.each([["Molekül", WATER], ["Orbital", ORBITAL]] as const)("%s: Abbauen gibt Geometrien, Materialien, Renderer und Listener frei", async (_n, b) => {
     const geoDispose = vi.spyOn(THREE.BufferGeometry.prototype, "dispose");
@@ -445,7 +447,8 @@ describe("Aufräumen", () => {
     await mountGl(WATER);
     const fk = fakes()[0];
     act(() => { fk.canvas.dispatchEvent(new Event("webglcontextlost", { cancelable: true })); });
-    expect(screen.getByText(/3D braucht WebGL/)).toBeInTheDocument();
+    expect(screen.getByText(/Die 3D-Darstellung wurde vom Browser beendet\./)).toBeInTheDocument();
+    expect(screen.queryByText(/3D braucht WebGL/)).toBeNull();
     expect(fk.disposed).toBe(true);
     expect(screen.getAllByRole("row")).toHaveLength(4);
   });
@@ -481,8 +484,12 @@ describe("Text bleibt Text", () => {
 });
 
 describe("Kein Klick sendet etwas", () => {
-  it("Drehen, Zoomen, Tasten und Atomliste in der echten App lassen die gesendeten Nachrichten unverändert", async () => {
+  it("Drehen, Ziehen, Zoomen, Tasten und Atomliste in der echten App lassen die gesendeten Nachrichten unverändert", async () => {
     withWebGL(); const f = frames();
+    const xhr = vi.fn(), beacon = vi.fn(), ws = vi.fn();
+    vi.stubGlobal("XMLHttpRequest", xhr);
+    vi.stubGlobal("WebSocket", ws);                                                    // die App spricht nur über die Mock-Fabrik
+    Object.defineProperty(navigator, "sendBeacon", { configurable: true, writable: true, value: beacon });
     const sock: { current?: MockSocket } = {};
     const loader = async () => ({ client: new ApiClient({ port: 5000, token: TOKEN }, (u) => (sock.current = new MockSocket(u, TOKEN))) });
     render(<App load={loader} />);
@@ -505,8 +512,14 @@ describe("Kein Klick sendet etwas", () => {
       }
       const stage = document.querySelector(".v-teilchen .m-stage")!;
       for (const key of ["ArrowLeft", "ArrowUp", "+", "-", "0", "Enter", " "]) fireEvent.keyDown(stage, { key });
-      fireEvent.wheel(fakes().find((x) => !x.disposed)!.canvas, { deltaY: 50 });
+      const live = fakes().find((x) => !x.disposed)!;
+      fireEvent.wheel(live.canvas, { deltaY: 50 });
+      const r0 = live.renders;
+      fireEvent.pointerDown(live.canvas, { clientX: 5, clientY: 5, pointerId: 2 });
+      fireEvent.pointerMove(live.canvas, { clientX: 60, clientY: 30, pointerId: 2 });
+      fireEvent.pointerUp(live.canvas, { pointerId: 2 });
       f.flush();
+      expect(live.renders).toBe(r0 + 1);                                               // Rad und Ziehen: ein Bild
       const summary = document.querySelector(".v-teilchen summary");
       if (summary) fireEvent.click(summary);
       fireEvent.click(screen.getByText("Beschreibung"));
@@ -515,6 +528,8 @@ describe("Kein Klick sendet etwas", () => {
       const later = sock.current!.sent.map((m) => (m as { type: string }).type);
       expect(later.filter((t) => !pollTypes.has(t))).toEqual([]);
     }
+    for (const spy of [xhr, beacon, ws]) expect(spy).not.toHaveBeenCalled();
+    delete (navigator as unknown as { sendBeacon?: unknown }).sendBeacon;
   }, 20_000);
 
   it("nichts wird gespeichert, geladen oder abgespielt", async () => {
@@ -625,5 +640,220 @@ describe("Bühne und Vorführung", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+// Nachträge aus der Testprüfung: P4a-Betrachter mit WebGL über den falschen Renderer, frühes Abbauen, Kontextverlust, Größenänderung,
+// Atom ohne Elektronen, leere Geometrie, 1s-Orbital, Fokus und globale Listener, Freigabe des Probe-Kontexts, abgesicherte Grenze.
+
+const SCENE3D = { typ: "szene3d", einheit: "cm", hervorheben: [], beschriftungen: [], szenen: [{ name: "s", objekte: [
+  { form: "box", name: "A", farbe: "arc", masse: [10, 20, 30], position: [0, 10, 0], drehung: [0, 0, 0] },
+  { form: "kugel", name: "B", farbe: "amber", masse: [5], position: [20, 5, 0], drehung: [0, 0, 0] }] }] } as unknown as Block;
+const press = (name: string) => fireEvent.click(screen.getByRole("button", { name }));
+
+/** Falscher ResizeObserver, der Beobachtung und Trennung mitschreibt; `fire` meldet eine neue Größe. */
+function fakeRO() {
+  const list: { cb: () => void; observed: Element[]; disconnected: boolean }[] = [];
+  vi.stubGlobal("ResizeObserver", class {
+    rec: (typeof list)[number];
+    constructor(cb: () => void) { this.rec = { cb, observed: [], disconnected: false }; list.push(this.rec); }
+    observe(el: Element) { this.rec.observed.push(el); }
+    unobserve() {}
+    disconnect() { this.rec.disconnected = true; }
+  });
+  return list;
+}
+
+describe("P4a-Betrachter (Model3D) mit WebGL über die gemeinsame Kamerabahn", () => {
+  it("Knopf, Pfeil, Ziehen und Rad je ein Bild; 80 × näher, 80 × weiter, zurück: nie NaN; Strg, Alt, Meta bleiben beim Browser; Abbauen gibt frei", async () => {
+    const spy = listenerSpy();
+    const { f, unmount } = await mountGl(SCENE3D);
+    const fk = fakes()[0], stage = document.querySelector(".v-model .m-stage")!;
+    expect(fk.renders).toBe(1);
+    const step = (fn: () => void, handled = true) => { const n = fk.renders; fn(); f.flush(); expect(fk.renders).toBe(n + (handled ? 1 : 0)); };
+    step(() => press("Links drehen"));
+    step(() => expect(fireEvent.keyDown(stage, { key: "ArrowUp" })).toBe(false));
+    step(() => {
+      fireEvent.pointerDown(fk.canvas, { clientX: 0, clientY: 0, pointerId: 1 });
+      fireEvent.pointerMove(fk.canvas, { clientX: 25, clientY: 15, pointerId: 1 });
+      fireEvent.pointerUp(fk.canvas, { pointerId: 1 });
+    });
+    step(() => fireEvent.wheel(fk.canvas, { deltaY: -120 }));
+    step(() => press("Ansicht zurücksetzen"));
+    const home = fk.eyes[fk.eyes.length - 1];
+    expect(home).toEqual(fk.eyes[0]);
+    for (let i = 0; i < 80; i++) step(() => press("Näher"));
+    const near = fk.eyes[fk.eyes.length - 1];
+    for (let i = 0; i < 80; i++) step(() => press("Weiter weg"));
+    const far = fk.eyes[fk.eyes.length - 1];
+    const dist = (e: number[]) => Math.hypot(e[0] - 10, e[1] - 10, e[2]);               // Mitte der Hüllbox: (10, 10, 0)
+    expect(dist(near)).toBeLessThan(dist(home));
+    expect(dist(far)).toBeGreaterThan(dist(home));
+    expect(dist(far) / dist(near)).toBeCloseTo(50, 5);                                  // Grenzen 0,2 und 10 × Größe
+    step(() => press("Ansicht zurücksetzen"));
+    expect(fk.eyes[fk.eyes.length - 1]).toEqual(home);
+    expect(fk.eyes.flat().every(Number.isFinite)).toBe(true);
+    for (const [key, mod] of [["+", "ctrlKey"], ["0", "ctrlKey"], ["ArrowLeft", "altKey"], ["+", "altKey"], ["ArrowRight", "metaKey"], ["0", "metaKey"]] as const) {
+      step(() => expect(fireEvent.keyDown(stage, { key, [mod]: true }), `${mod}+${key}`).toBe(true), false);
+    }
+    step(() => expect(fireEvent.keyDown(stage, { key: "+" })).toBe(false));
+    step(() => expect(fireEvent.keyDown(stage, { key: "0" })).toBe(false));
+    expect(spy().added.length).toBeGreaterThanOrEqual(6);
+    unmount();
+    expect(fk.disposed).toBe(true);
+    expect(fk.lost).toBe(true);
+    expect(spy().open).toEqual([]);
+    expect(f.pending()).toBe(0);
+  });
+});
+
+describe("Lebenszyklus der Teilchen-Betrachter", () => {
+  it("abgebaut, bevor three.js geladen ist: kein Renderer, keine offenen Listener, kein Fehlerhinweis", async () => {
+    withWebGL(); const f = frames(); const spy = listenerSpy();
+    const v = card([WATER, ETHANOL]);
+    v.rerender(cardEl([WATER]));                                                       // Ethanol verschwindet sofort wieder
+    const other = card(ORBITAL);
+    other.unmount();                                                                   // die ganze Karte geht, bevor three.js da ist
+    await waitFor(() => expect(fakes()).toHaveLength(1));
+    await new Promise((res) => setTimeout(res, 50));
+    expect(fakes()).toHaveLength(1);
+    f.flush();
+    expect(count(instanced(fakes()[0], "SphereGeometry"))).toBe(3);                   // nur Wasser
+    expect(screen.queryByText(/3D braucht WebGL|beendet|kann nicht gezeigt/)).toBeNull();
+    v.unmount();
+    expect(spy().open).toEqual([]);
+    expect(f.pending()).toBe(0);
+  });
+
+  it("Kontextverlust: Hinweis „vom Browser beendet“, Renderer freigegeben, Listener und ResizeObserver getrennt", async () => {
+    const ros = fakeRO(); const spy = listenerSpy();
+    await mountGl(WATER);
+    const fk = fakes()[0];
+    act(() => { fk.canvas.dispatchEvent(new Event("webglcontextlost", { cancelable: true })); });
+    expect(screen.getByText(/Die 3D-Darstellung wurde vom Browser beendet\. Die Atomliste unten zeigt den Inhalt\./)).toBeInTheDocument();
+    expect(fk.disposed).toBe(true);
+    expect(ros.filter((r) => r.observed.includes(fk.canvas))).toHaveLength(1);
+    expect(ros.every((r) => r.disconnected)).toBe(true);
+    expect(spy().open).toEqual([]);
+    expect(screen.getAllByRole("row")).toHaveLength(4);
+  });
+
+  it("ResizeObserver: beobachtet die Zeichenfläche, eine Meldung gibt ein Bild, zwei im selben Takt auch nur eins, getrennt beim Abbauen", async () => {
+    const ros = fakeRO();
+    const { f, unmount } = await mountGl(ORBITAL);
+    const fk = fakes()[0];
+    const ro = ros.find((r) => r.observed.includes(fk.canvas))!;
+    expect(ro).toBeDefined();
+    expect(fk.renders).toBe(1);
+    act(() => ro.cb());
+    f.flush();
+    expect(fk.renders).toBe(2);
+    act(() => { ro.cb(); ro.cb(); });
+    f.flush();
+    expect(fk.renders).toBe(3);
+    unmount();
+    expect(ro.disconnected).toBe(true);
+    expect(f.pending()).toBe(0);
+  });
+});
+
+describe("Randfälle der Formen", () => {
+  it.each([["H", 1, "einfach positiv geladen", "Wasserstoff"], ["He", 2, "zweifach positiv geladen", "Helium"]] as const)(
+    "%s mit Ladung +%i und ohne Elektronen: kein Ring, kein NaN, Ladung in Worten, keine leere Liste", (element, ladung, wort, name) => {
+      card(tb({ form: "atom", element, neutronen: -1, ladung, schalen: [] }));
+      const s = screen.getByRole("region", { name: "Atom" });
+      expect(within(s).getByText(`Ladung: ${wort}`)).toBeInTheDocument();
+      expect(within(s).getByText(new RegExp(`^${name}, ${wort}, .*keine Elektronen\\.`))).toBeInTheDocument();
+      expect(within(s).getByText("Keine Elektronen in der Hülle, nur der Kern.")).toBeInTheDocument();
+      const svg = s.querySelector("svg")!;
+      expect(svg.querySelectorAll(".a-shell, .a-electron")).toHaveLength(0);
+      expect(svg.querySelector(".a-core")).not.toBeNull();
+      expect(svg.outerHTML).not.toMatch(/NaN|Infinity/);
+      expect(s.querySelector("ol, ul")).toBeNull();
+      for (const li of s.querySelectorAll("li")) expect(li.textContent?.trim()).not.toBe("");
+      expect(screen.queryByText(NOT_SHOWN)).toBeNull();
+    });
+
+  it("Geometrie mit 0 Atomen, aber nicht als ungültig gemeldet: nur der Hinweis, kein Renderer", async () => {
+    withWebGL(); frames();
+    const g = vi.mocked(molekuelGeometrie).getMockImplementation()!;
+    vi.mocked(molekuelGeometrie).mockImplementation((c) => ({ ...g(c), atome: [], bindungen: [], zeilen: [], atomzahl: 0, bindungszahl: 0, ungueltig: false }));
+    try {
+      card(WATER);
+      expect(screen.getByText(NOT_SHOWN)).toBeInTheDocument();
+      expect(screen.queryByText(/Summenformel|Atomliste/)).toBeNull();
+      await new Promise((res) => setTimeout(res, 50));
+      expect(R.list).toHaveLength(0);
+    } finally {
+      vi.mocked(molekuelGeometrie).mockImplementation(g);
+    }
+  });
+
+  it("1s-Orbital: eine Punktwolke, zwei Zeichenaufrufe, „Phase minus: 0 Punkte“", async () => {
+    await mountGl(tb({ form: "orbital", orbital: "1s", punkte: 2500, startwert: 1 }));
+    const fk = fakes()[0];
+    expect(fk.objects.filter((o) => (o as THREE.Points).isPoints)).toHaveLength(1);
+    expect(fk.calls).toBe(2);
+    expect(screen.getByRole("list", { name: "Legende" }).textContent).toContain("Phase minus: 0 Punkte");
+    expect(screen.getByRole("list", { name: "Legende" }).textContent).toContain("Phase plus: 2500 Punkte");
+  });
+});
+
+describe("Fokus, globale Listener und Probe-Kontext", () => {
+  it("nach dem Zeigen in der App liegt der Fokus nicht in der Ansicht", async () => {
+    withWebGL(); const f = frames();
+    const sock: { current?: MockSocket } = {};
+    const loader = async () => ({ client: new ApiClient({ port: 5000, token: TOKEN }, (u) => (sock.current = new MockSocket(u, TOKEN))) });
+    render(<App load={loader} />);
+    await waitFor(() => screen.getAllByText(STATE_VIEW.idle.label));
+    sock.current!.show(demo("wasser"));
+    await waitFor(() => screen.getByRole("heading", { name: "Wasser (Beispiel)" }), { timeout: 3000 });
+    await waitFor(() => expect(fakes().some((x) => !x.disposed)).toBe(true));
+    f.flush();
+    expect(document.activeElement?.closest(".v-teilchen") ?? null).toBeNull();
+  });
+
+  it("die Betrachter melden keine Tasten-, Größen- oder Zeiger-Listener an Fenster oder Dokument an", async () => {
+    const add = vi.spyOn(EventTarget.prototype, "addEventListener");
+    const { unmount } = await mountGl([WATER, ORBITAL, SODIUM], 2);
+    const global = add.mock.calls.map((c, i) => [add.mock.contexts[i], String(c[0])] as const)
+      .filter(([ctx]) => ctx === window || ctx === document).map(([, t]) => t);
+    expect(global.filter((t) => /^(keydown|keyup|keypress|resize|pointer|mouse|touch|wheel)/.test(t))).toEqual([]);
+    expect(global.filter((t) => t !== "visibilitychange" && !/^(focus|blur|selectionchange)/.test(t))).toEqual([]);
+    unmount();
+  });
+
+  it("der Probe-Kontext von hasWebGL wird sofort freigegeben (Molekül, Orbital, P4a-Szene)", async () => {
+    withWebGL(); const f = frames();
+    const loseContext = vi.fn();
+    const probe = { getExtension: (n: string) => (n === "WEBGL_lose_context" ? { loseContext } : null) };
+    const getContext = vi.spyOn(HTMLCanvasElement.prototype, "getContext")
+      .mockImplementation(((t: string) => (t.startsWith("webgl") ? probe : null)) as unknown as typeof HTMLCanvasElement.prototype.getContext);
+    const a = card([WATER, ORBITAL]);
+    await waitFor(() => expect(fakes()).toHaveLength(2));
+    a.unmount();
+    const b = card(SCENE3D);
+    await waitFor(() => expect(fakes()).toHaveLength(3));
+    f.flush();
+    b.unmount();
+    const probes = getContext.mock.calls.filter((c) => String(c[0]).startsWith("webgl")).length;
+    expect(probes).toBe(3);
+    expect(loseContext).toHaveBeenCalledTimes(probes);
+  });
+});
+
+describe("Grenze je Ansicht: abgesichertes Lesen", () => {
+  it("ein werfendes `form` leert die Karte nicht; nur dieser Baustein zeigt den Hinweis", () => {
+    frames();
+    const evil = { typ: "teilchen", get form(): string { throw new Error("kaputt"); } } as unknown as Block;
+    const log = console.error;
+    console.error = () => undefined;                                                   // React meldet den abgefangenen Fehler laut
+    try {
+      card([{ typ: "hinweis", text: "Bleibt sichtbar." }, evil, { typ: "hinweis", text: "Auch das." }]);
+    } finally { console.error = log; }
+    expect(screen.getByText("Bleibt sichtbar.")).toBeInTheDocument();
+    expect(screen.getByText("Auch das.")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("konnte nicht angezeigt werden");
+    expect(screen.getByRole("heading", { name: "Titel" })).toBeInTheDocument();
   });
 });

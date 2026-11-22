@@ -42,6 +42,7 @@ export function useOrbitViewer(canvas: RefObject<HTMLCanvasElement | null>, buil
   const active = build !== null;
   const supported = useMemo(() => active && hasWebGL(), [active]);   // nur prüfen, wenn es etwas zu zeigen gibt
   const [failed, setFailed] = useState(false);
+  const [lostCtx, setLostCtx] = useState(false);                     // der Browser hat den Kontext beendet (nicht: WebGL fehlt)
   const gl = supported && !failed;
   const ctl = useRef<{ view(a: OrbitAction): void } | null>(null);
 
@@ -124,7 +125,7 @@ export function useOrbitViewer(canvas: RefObject<HTMLCanvasElement | null>, buil
       const up = () => { drag = null; };
       const wheel = (e: WheelEvent) => { e.preventDefault(); view(orbitWheel(e.deltaY)); };
       const visible = () => { if (!document.hidden && pending) { pending = false; draw(); } };
-      const lost = (e: Event) => { e.preventDefault(); setFailed(true); };
+      const lost = (e: Event) => { e.preventDefault(); setLostCtx(true); setFailed(true); };
       el.addEventListener("pointerdown", down); el.addEventListener("pointermove", move);
       el.addEventListener("pointerup", up); el.addEventListener("pointercancel", up);
       el.addEventListener("wheel", wheel, { passive: false });
@@ -159,5 +160,5 @@ export function useOrbitViewer(canvas: RefObject<HTMLCanvasElement | null>, buil
     const a = orbitKey(e);                                               // mit Strg, Alt oder Meta: null, die Taste gehört dem Browser
     if (a) { e.preventDefault(); view(a); }
   };
-  return { gl, view, onKeyDown };
+  return { gl, lost: lostCtx, view, onKeyDown };
 }

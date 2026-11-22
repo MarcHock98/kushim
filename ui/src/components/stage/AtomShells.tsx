@@ -74,13 +74,16 @@ export function AtomShells({ b }: { b: TeilchenBlock }) {
           <text className="a-count" x={0} y={24} textAnchor="middle">{m.neutronen !== null ? `${m.neutronen} n` : "n ?"}</text>
         </svg>
         <figcaption className="v-note">
-          Kern: {m.protonen} Protonen (p), {m.neutronen !== null ? `${m.neutronen} Neutronen (n)` : "Neutronenzahl nicht angegeben"}.
-          Punkte: Elektronen, Ringe: Schalen von innen nach außen.
+          Kern: {m.protonen} {m.protonen === 1 ? "Proton" : "Protonen"} (p),{" "}
+          {m.neutronen !== null ? `${m.neutronen} ${m.neutronen === 1 ? "Neutron" : "Neutronen"} (n)` : "Neutronenzahl nicht angegeben"}.
+          {shells.length > 0 && " Punkte: Elektronen, Ringe: Schalen von innen nach außen."}
         </figcaption>
       </figure>
-      <ol className="t-legend" aria-label="Schalen">
-        {shells.map((n, k) => <li key={k}>Schale {k + 1}: {n === 1 ? "1 Elektron" : `${n} Elektronen`}</li>)}
-      </ol>
+      {shells.length > 0 ? (
+        <ol className="t-legend" aria-label="Schalen">
+          {shells.map((n, k) => <li key={k}>Schale {k + 1}: {n === 1 ? "1 Elektron" : `${n} Elektronen`}</li>)}
+        </ol>
+      ) : <p className="v-note">Keine Elektronen in der Hülle, nur der Kern.</p>}
       <div className="s-text">
         <span className="label">Beschreibung</span>
         <p>{m.text}</p>

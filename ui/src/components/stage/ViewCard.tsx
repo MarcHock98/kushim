@@ -117,8 +117,18 @@ function BlockView({ b, sys, sysNo }: { b: Block; sys: SysData | null; sysNo: bo
 
 export const SIM_MAX = 2;
 export const WEBGL_MAX = 2;
-const usesWebGL = (b: Block) => b.typ === "szene3d"
-  || (b.typ === "teilchen" && ((b as { form?: unknown }).form === "molekuel" || (b as { form?: unknown }).form === "orbital"));
+/** Liest `form` nur hier außerhalb von BlockGuard, darum abgesichert: ein werfender Wert zählt nicht und darf die Karte nie leeren
+ *  (der Baustein selbst scheitert dann in seinem BlockGuard mit einem Hinweis). */
+function usesWebGL(b: Block): boolean {
+  try {
+    if (b.typ === "szene3d") return true;
+    if (b.typ !== "teilchen") return false;
+    const form: unknown = (b as { form?: unknown }).form;
+    return form === "molekuel" || form === "orbital";
+  } catch {
+    return false;
+  }
+}
 
 /** Je Baustein: "" (zeigen), "sim" oder "webgl" (über der Grenze, nur Hinweis). Gezählt wird in der Reihenfolge der Ansicht. */
 export function overLimit(blocks: Block[]): ("" | "sim" | "webgl")[] {
