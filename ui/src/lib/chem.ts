@@ -299,17 +299,22 @@ function molekuelNorm(src: Obj, fix: string[]): MolekuelConfig {
   // Atome: höchstens 300; unbekannte Elemente fallen mit Hinweis weg, die Indizes der übrigen rücken nach (Tabelle `neu`).
   const rohA = own(src, "atome");
   const listeA: unknown[] = Array.isArray(rohA) ? rohA.slice(0, ATOME_MAX) : [];
-  if (!Array.isArray(rohA) || rohA.length > ATOME_MAX) fix.push("atome");
+  // Fällt ein Atom oder eine angegebene Bindung weg oder muss eine Lage ersetzt werden, wäre das gezeigte Molekül ein anderes
+  // als das gemeinte: dann ist das ganze Molekül ungültig (nie ein falsches Teilchen zeigen).
+  let kaputt = false;
+  if (!Array.isArray(rohA) || rohA.length > ATOME_MAX) { fix.push("atome"); kaputt = true; }
   const atome: MolekuelAtom[] = [];
   const neu: number[] = [];
   for (let i = 0; i < listeA.length; i++) {
     const a = listeA[i], pf = `atome.${i}`;
     neu.push(-1);
-    if (!isObj(a)) { fix.push(pf); continue; }
+    if (!isObj(a)) { fix.push(pf); kaputt = true; continue; }
     const el = elementNachSymbol(own(a, "element"));
-    if (!el) { fix.push(pf + ".element"); continue; }
+    if (!el) { fix.push(pf + ".element"); kaputt = true; continue; }
     neu[i] = atome.length;
+    const vorher = fix.length;
     atome.push({ element: el.symbol, position: lage(own(a, "position"), fix, pf + ".position") });
+    if (fix.length !== vorher) kaputt = true;
   }
   const n = atome.length;
   const index = (v: unknown): number => (ganz(v) && v >= 0 && v < neu.length ? neu[v] : -1);
@@ -319,15 +324,15 @@ function molekuelNorm(src: Obj, fix: string[]): MolekuelConfig {
   const rohB = own(src, "bindungen");
   if (rohB !== undefined) {
     const listeB: unknown[] = Array.isArray(rohB) ? rohB.slice(0, BINDUNGEN_MAX) : [];
-    if (!Array.isArray(rohB) || rohB.length > BINDUNGEN_MAX) fix.push("bindungen");
+    if (!Array.isArray(rohB) || rohB.length > BINDUNGEN_MAX) { fix.push("bindungen"); kaputt = true; }
     const gesehen = new Set<number>();
     for (let i = 0; i < listeB.length; i++) {
       const b = listeB[i], pf = `bindungen.${i}`;
-      if (!isObj(b)) { fix.push(pf); continue; }
+      if (!isObj(b)) { fix.push(pf); kaputt = true; continue; }
       const von = index(own(b, "von")), bis = index(own(b, "bis"));
-      if (von < 0 || bis < 0 || von === bis) { fix.push(pf); continue; }
+      if (von < 0 || bis < 0 || von === bis) { fix.push(pf); kaputt = true; continue; }
       const key = Math.min(von, bis) * ATOME_MAX + Math.max(von, bis);
-      if (gesehen.has(key)) { fix.push(pf); continue; }
+      if (gesehen.has(key)) { fix.push(pf); kaputt = true; continue; }
       gesehen.add(key);
       const rohO = own(b, "ordnung");
       let ordnung: Bindungsordnung = 1;
@@ -354,7 +359,7 @@ function molekuelNorm(src: Obj, fix: string[]): MolekuelConfig {
       beschriftungen.push({ atom, text: t });
     }
   }
-  return { typ: "teilchen", form: "molekuel", name, atome, bindungen, beschriftungen, darstellung, angepasst: fix, ungueltig: n === 0 };
+  return { typ: "teilchen", form: "molekuel", name, atome, bindungen, beschriftungen, darstellung, angepasst: fix, ungueltig: n === 0 || kaputt };
 }
 
 /** Schalen nach der einfachen Regel 2, 8, 8, 2 (nur bis 20 Elektronen sinnvoll). */

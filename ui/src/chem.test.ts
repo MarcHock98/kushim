@@ -358,15 +358,30 @@ describe("Eingabe begrenzen", () => {
     expect(orbital("3d_x2-y2", 1000, 42)).toEqual({ typ: "teilchen", form: "orbital", orbital: "3d_x2-y2", punkte: 1000, startwert: 42, angepasst: [], ungueltig: false });
   });
 
-  it("unbekanntes Element im Molekül fällt mit Hinweis weg, Indizes rücken nach", () => {
+  it("unbekanntes Element im Molekül fällt mit Hinweis weg, Indizes rücken nach, und das Molekül gilt als ungültig", () => {
     const m = molekuel([at("O", 0, 0, 0), at("Xx", 9, 9, 9), at("H", 0.96, 0, 0)], {
       bindungen: [{ von: 0, bis: 2, ordnung: 1 }, { von: 0, bis: 1, ordnung: 1 }], beschriftungen: [{ atom: 2, text: "H" }, { atom: 1, text: "weg" }],
     });
-    expect(m.ungueltig).toBe(false);
+    // Audit 2026-11-23: fehlt ein Atom, wäre das gezeigte Molekül ein anderes als das gemeinte.
+    expect(m.ungueltig).toBe(true);
+    expect(molekuelGeometrie(m).ungueltig).toBe(true);
     expect(m.atome.map((a) => a.element)).toEqual(["O", "H"]);
     expect(m.bindungen).toEqual([{ von: 0, bis: 1, ordnung: 1 }]);
     expect(m.beschriftungen).toEqual([{ atom: 1, text: "H" }]);
     expect(m.angepasst).toEqual(["atome.1.element", "bindungen.1", "beschriftungen.1"]);
+  });
+
+  it("Audit N1: kleingeschriebenes Element oder fehlende Lage machen das Molekül ungültig, statt ein anderes zu zeigen", () => {
+    const klein = molekuel([at("o", 0, 0, 0), at("H", 0.757, 0.586, 0), at("H", -0.757, 0.586, 0)], {
+      name: "Wasser", bindungen: [{ von: 0, bis: 1, ordnung: 1 }, { von: 0, bis: 2, ordnung: 1 }],
+    });
+    expect(klein.ungueltig).toBe(true);
+    expect(molekuelGeometrie(klein).text).not.toContain("H2");
+    const ohneLage = molekuel([at("O", 0, 0, 0), { element: "H", position: null } as unknown as MolekuelAtom]);
+    expect(ohneLage.ungueltig).toBe(true);
+    const zuWeit = molekuel([at("O", 0, 0, 0), at("H", 250, 0, 0)]);
+    expect(zuWeit.ungueltig).toBe(true);
+    expect(molekuel(WASSER).ungueltig).toBe(false);
   });
 
   it("Bindungen ins Leere, auf sich selbst, doppelt oder mit falscher Ordnung", () => {
@@ -418,10 +433,14 @@ describe("Eingabe begrenzen", () => {
     console.info(`[chem] 10 000 Atome normalisieren und Geometrie: ${dauer} ms`);
     expect(m.atome).toHaveLength(300);
     expect(m.angepasst).toContain("atome");
+    // gekürzt heißt: nicht das gemeinte Molekül, also ungültig; die Geometrie bleibt leer
+    expect(m.ungueltig).toBe(true);
+    expect(g.ungueltig).toBe(true);
     expect(gelesen).toBeLessThanOrEqual(300);
-    expect(g.atomzahl).toBe(300);
-    expect(g.bindungszahl).toBeLessThanOrEqual(400);
+    expect(g.atomzahl).toBe(0);
+    expect(g.bindungszahl).toBe(0);
     expect(dauer).toBeLessThan(1000);
+    // die Rechnung für 300 gültige Atome deckt „300 Atome im Gitter …“ unter „Bindungen aus Abständen“ ab
     expect(molekuel(Array.from({ length: 401 }, () => at("H", 0, 0, 0)), {
       bindungen: Array.from({ length: 500 }, (_, i) => ({ von: 0, bis: i + 1, ordnung: 1 })),
     }).bindungen).toHaveLength(299);                                       // 400 gelesen, Indizes über 299 fallen weg
