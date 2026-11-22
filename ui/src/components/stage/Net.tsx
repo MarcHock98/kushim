@@ -92,6 +92,7 @@ export function Net({ b }: { b: NetBlock }) {
   }
 
   const key = (e: React.KeyboardEvent) => {
+    if (e.ctrlKey || e.altKey || e.metaKey) return;                     // Alt+Pfeil (zurück), Strg+0/+/- gehören dem Browser
     const map: Record<string, Act> = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down", "+": "in", "=": "in", "-": "out", "0": "fit", Home: "fit" };
     if (map[e.key]) { e.preventDefault(); act(map[e.key]); }
   };

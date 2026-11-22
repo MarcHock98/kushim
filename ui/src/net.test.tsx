@@ -17,7 +17,16 @@ vi.mock("./lib/layout", async (orig) => {
 });
 
 const TOKEN = "t".repeat(43);
-afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.mocked(layoutNet).mockClear(); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.mocked(layoutNet).mockClear(); });
+
+/** Täuscht eine gemessene Breite der Ansicht vor (ohne ResizeObserver nimmt Net 720 px). */
+function boxWidth(width: number) {
+  vi.stubGlobal("ResizeObserver", class {
+    constructor(private cb: (e: { contentRect: { width: number; height: number } }[]) => void) {}
+    observe() { this.cb([{ contentRect: { width, height: 400 } }]); }
+    disconnect() {}
+  });
+}
 
 type Art = NetBlock["knoten"][number]["art"];
 const k = (id: string, text = id, art: Art = "") => ({ id, text, art });
@@ -32,6 +41,10 @@ const size = () => [Number(svg().getAttribute("width")), Number(svg().getAttribu
 const shift = () => svg().style.transform;
 const frame = () => screen.getByRole("group", { name: /Diagramm-Fläche/ });
 const items = (sel: string) => [...document.querySelectorAll(sel)].map((li) => li.textContent);
+const pos = () => { const m = /translate\((-?[\d.]+)px, (-?[\d.]+)px\)/.exec(shift())!; return [Number(m[1]), Number(m[2])]; };
+const vbox = () => svg().getAttribute("viewBox")!.split(" ").map(Number).slice(2);
+/** Innere Breite und Höhe der Zeichenfläche (Rahmen 1 px je Seite). */
+const inner = (measured = 720) => [measured - 2, Number.parseFloat(frame().style.height) - 2];
 
 const FLOW = net("ablauf", [k("s", "Start", "start"), k("p", "Prüfen", "entscheidung"), k("j", "Ja"), k("n", "Nein", "schritt"), k("x", "Ende", "ende")],
   [e("s", "p"), e("p", "j", "ok"), e("p", "n"), e("j", "x"), e("n", "s", "nochmal")]);
@@ -334,6 +347,179 @@ describe("Kein Klick sendet etwas", () => {
     const later = sock.current!.sent.map((m) => (m as { type: string }).type);
     expect(later.filter((t) => !pollTypes.has(t))).toEqual([]);
     expect(screen.getByRole("heading", { name: "Ablauf" })).toBeInTheDocument();
+  });
+});
+
+describe("Grenzen von Zoom und Verschieben", () => {
+  it.each([["baum", 300], ["baum", 718], ["mindmap", 300], ["mindmap", 718]] as const)(
+    "%s-Stern, Breite %i px: 30x Verkleinern endet genau beim Einpassen-Maßstab, nie 0 oder NaN", (form, width) => {
+      boxWidth(width);
+      card(view([star(form)]));
+      const [W, H] = vbox(), [fw, fh] = inner(width);
+      const fit = Math.min(1, fw / W, fh / H);
+      expect(fit).toBeGreaterThan(0.02);                                                 // hier greift die feste Untergrenze nicht
+      for (let i = 0; i < 30; i++) click("Verkleinern");
+      const [w, h] = size();
+      expect(w).toBeCloseTo(W * fit, 0);
+      expect(h).toBeCloseTo(H * fit, 0);
+      expect(w > 0 && h > 0 && Number.isFinite(w) && Number.isFinite(h)).toBe(true);
+      expect(svg().outerHTML).not.toMatch(/NaN|Infinity/);
+      click("Einpassen");
+      expect(size()).toEqual([w, h]);
+    });
+
+  it("Einpassen bei der Mindmap mit 60 Knoten: passt in Breite und Höhe in die Fläche, liegt ganz darin", () => {
+    card(view([star("mindmap")]));
+    const [fw, fh] = inner();
+    click("Einpassen");
+    const [w, h] = size(), [x, y] = pos();
+    expect(w).toBeLessThanOrEqual(fw + 0.5);
+    expect(h).toBeLessThanOrEqual(fh + 0.5);
+    expect(Math.max(w / fw, h / fh)).toBeGreaterThan(0.99);                              // eine Richtung füllt die Fläche
+    expect(x).toBeGreaterThanOrEqual(-0.5);
+    expect(y).toBeGreaterThanOrEqual(-0.5);
+    expect(x + w).toBeLessThanOrEqual(fw + 0.5);
+    expect(y + h).toBeLessThanOrEqual(fh + 0.5);
+  });
+
+  it("Pfeile nach rechts, oben und unten bleiben am Rand stehen", () => {
+    card(view([star("mindmap")]));
+    const [fw, fh] = inner(), [w, h] = size();
+    expect(w).toBeGreaterThan(fw);
+    expect(h).toBeGreaterThan(fh);
+    for (let i = 0; i < 200; i++) click("Nach rechts");
+    expect(pos()[0]).toBeCloseTo(fw - w, 0);
+    expect(btn("Nach rechts")).toHaveAttribute("aria-disabled", "true");
+    for (let i = 0; i < 200; i++) click("Nach oben");
+    expect(pos()[1]).toBe(0);
+    expect(btn("Nach oben")).toHaveAttribute("aria-disabled", "true");
+    for (let i = 0; i < 200; i++) click("Nach unten");
+    expect(pos()[1]).toBeCloseTo(fh - h, 0);
+    expect(btn("Nach unten")).toHaveAttribute("aria-disabled", "true");
+    expect(btn("Nach oben")).not.toHaveAttribute("aria-disabled");
+  });
+
+  it("Tasten: nur auf der Fläche, „=“ zoomt, mit Strg, Alt oder Meta bleibt die Taste beim Browser", () => {
+    card(view([star("mindmap")]));
+    const s0 = size(), t0 = shift();
+    for (const key of ["+", "-", "0", "ArrowLeft", "ArrowDown"]) {
+      fireEvent.keyDown(btn("Vergrößern"), { key });                                        // außerhalb der Fläche
+      fireEvent.keyDown(document.body, { key });
+    }
+    expect(size()).toEqual(s0);
+    expect(shift()).toBe(t0);
+    for (const [key, mod] of [["ArrowLeft", "altKey"], ["ArrowRight", "altKey"], ["0", "ctrlKey"], ["+", "ctrlKey"], ["-", "ctrlKey"], ["=", "ctrlKey"],
+      ["ArrowUp", "metaKey"], ["+", "metaKey"], ["Home", "altKey"]] as const) {
+      expect(fireEvent.keyDown(frame(), { key, [mod]: true }), `${mod}+${key}`).toBe(true);   // true = nicht verhindert
+    }
+    expect(size()).toEqual(s0);
+    expect(shift()).toBe(t0);
+    expect(fireEvent.keyDown(frame(), { key: "=" })).toBe(false);                           // eigene Taste: verhindert und gezoomt
+    expect(size()[0]).toBeGreaterThan(s0[0]);
+  });
+
+  it("Mausrad: Strg+Rad zoomt und wird verhindert, das bloße Rad ändert nichts und scrollt die Seite", () => {
+    card(view([star("mindmap")]));
+    const s0 = size(), t0 = shift();
+    expect(fireEvent.wheel(frame(), { deltaY: -100 })).toBe(true);
+    expect(fireEvent.wheel(frame(), { deltaY: 100 })).toBe(true);
+    expect(size()).toEqual(s0);
+    expect(shift()).toBe(t0);
+    expect(fireEvent.wheel(frame(), { deltaY: -100, ctrlKey: true })).toBe(false);
+    expect(size()[0]).toBeGreaterThan(s0[0]);
+    expect(fireEvent.wheel(frame(), { deltaY: 100, ctrlKey: true })).toBe(false);
+    expect(fireEvent.wheel(frame(), { deltaY: 100, ctrlKey: true })).toBe(false);
+    expect(size()[0]).toBeLessThan(s0[0]);
+  });
+
+  it("pointercancel beendet das Ziehen; Ziehen über den Rand hinaus bleibt am Diagramm", () => {
+    card(view([star("mindmap")]));
+    const [fw, fh] = inner(), [w, h] = size(), t0 = shift();
+    fireEvent.pointerDown(frame(), { clientX: 100, clientY: 100, pointerId: 1 });
+    fireEvent.pointerCancel(frame(), { pointerId: 1 });
+    fireEvent.pointerMove(frame(), { clientX: 300, clientY: 300, pointerId: 1 });
+    expect(shift()).toBe(t0);                                                              // kein Ziehen mehr
+    fireEvent.pointerDown(frame(), { clientX: 0, clientY: 0, pointerId: 2 });
+    fireEvent.pointerMove(frame(), { clientX: 100000, clientY: 100000, pointerId: 2 });
+    expect(pos()).toEqual([0, 0]);
+    fireEvent.pointerMove(frame(), { clientX: -100000, clientY: -100000, pointerId: 2 });
+    fireEvent.pointerUp(frame(), { pointerId: 2 });
+    expect(pos()[0]).toBeCloseTo(fw - w, 0);
+    expect(pos()[1]).toBeCloseTo(fh - h, 0);
+    const t1 = shift();
+    fireEvent.pointerMove(frame(), { clientX: 500, clientY: 500, pointerId: 2 });           // nach dem Loslassen: nichts
+    expect(shift()).toBe(t1);
+  });
+});
+
+describe("Liste bei schiefen Daten", () => {
+  it("Baum mit Kreis, zwei Wurzeln und Schleife: endet, jeder Knoten einmal, jede Kante in Worten", () => {
+    card(view([net("baum", [k("r1", "R1"), k("r2", "R2"), k("a", "A"), k("b", "B"), k("c", "C"), k("s", "S")],
+      [e("r1", "a"), e("a", "b"), e("b", "c"), e("c", "a", "zurück"), e("r2", "c"), e("s", "s")])]));
+    expect([...document.querySelectorAll(".n-tree > li > .n-name")].map((n) => n.textContent)).toEqual(["R1", "R2", "S"]);
+    expect([...document.querySelectorAll(".n-tree li > .n-name")].map((n) => n.textContent).sort()).toEqual(["A", "B", "C", "R1", "R2", "S"]);
+    const li = (name: string) => [...document.querySelectorAll(".n-tree li")].find((x) => x.querySelector(".n-name")!.textContent === name)!;
+    expect(li("R1").textContent).toBe("R1AB" + "C, führt auch zu A (Beschriftung: zurück)");    // verschachtelt R1 > A > B > C
+    expect(li("C").textContent).toBe("C, führt auch zu A (Beschriftung: zurück)");
+    expect(li("R2").textContent).toBe("R2, führt auch zu C");
+    expect(li("S").textContent).toBe("S, führt auch zu sich selbst");
+    expect(svg().querySelectorAll(".n-edge")).toHaveLength(6);
+  });
+
+  it("reiner Kreis ohne Wurzel: der erste Knoten wird Wurzel, die Liste endet", () => {
+    card(view([net("mindmap", [k("x", "X"), k("y", "Y")], [e("x", "y"), e("y", "x")])]));
+    expect(items(".n-tree > li")).toEqual(["XY, führt auch zu X"]);
+  });
+
+  it("zwei Knoten mit gleichem Text: die Liste nennt sie heute nur über den Text (festgehalten)", () => {
+    card(view([net("ablauf", [k("a", "Prüfen"), k("b", "Prüfen"), k("c", "Ende", "ende")], [e("a", "b"), e("b", "c")])]));
+    expect(items(".n-flat > li")).toEqual(["Prüfen führt zu Prüfen", "Prüfen führt zu Ende", "Ende (Ende) führt nicht weiter"]);
+  });
+});
+
+describe("Feindliche ids", () => {
+  it("ids landen in keinem id-, class-, style- oder marker-end-Attribut; nur in data-id, von React maskiert", () => {
+    const bad = ['"><script>alert(1)</script>', "a b c", "x' onload='y", "url(#evil)"];
+    const { container } = card(view([net("ablauf", bad.map((id, i) => k(id, `Text ${i}`, i ? "" : "start")),
+      [e(bad[0], bad[1], "l"), e(bad[1], bad[2]), e(bad[2], bad[3]), e(bad[3], bad[0])])]));
+    expect(svg().querySelectorAll(".n-node")).toHaveLength(4);
+    expect([...svg().querySelectorAll("[data-id]")].map((n) => n.getAttribute("data-id"))).toEqual(expect.arrayContaining(bad));
+    const hits: string[] = [];
+    for (const el of container.querySelectorAll("*")) {
+      for (const a of el.attributes) if (bad.some((id) => a.value.includes(id))) hits.push(a.name);
+    }
+    expect(new Set(hits)).toEqual(new Set(["data-id"]));
+    expect(hits).toHaveLength(4);
+    expect(container.querySelector("script, [onload]")).toBeNull();
+  });
+});
+
+describe("Neue Daten in derselben Ansicht", () => {
+  it("neu angeordnet, Zoom zurück auf den Startwert, Lage in der Fläche; gleiche Listen ordnen nicht neu an", () => {
+    const v = view([FLOW]);
+    const r = card(v);
+    click("Vergrößern"); click("Vergrößern");
+    expect(screen.getByText("Maßstab 156 %")).toBeInTheDocument();
+    const again = (b: Block, seq: number) => r.rerender(<ViewCard view={{ ...v, seq, bausteine: [b] }} sys={null} sysNo={false} onClose={() => undefined} />);
+    again({ ...FLOW }, 1);                                                                 // neues Objekt, dieselben Listen
+    expect(layoutNet).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Maßstab 156 %")).toBeInTheDocument();                          // Ansicht bleibt
+    const next = net("ablauf", [...FLOW.knoten, k("z", "Neu")], [...FLOW.kanten, e("x", "z")]);
+    again(next, 1);                                                                        // gleiche seq, neue Listen
+    expect(layoutNet).toHaveBeenCalledTimes(2);
+    expect(svg().querySelectorAll(".n-node")).toHaveLength(6);
+    expect(screen.getByText("Maßstab 100 %")).toBeInTheDocument();
+    const [fw, fh] = inner(), [w, h] = size(), [x, y] = pos();
+    expect(w).toBeCloseTo(vbox()[0], 0);
+    expect(x).toBeGreaterThanOrEqual(0);
+    expect(y).toBeGreaterThanOrEqual(0);
+    expect(x + w).toBeLessThanOrEqual(fw + 0.5);
+    expect(y + h).toBeLessThanOrEqual(fh + 0.5);
+    click("Vergrößern");
+    again(TREE, 2);                                                                        // wie vom Backend: neue seq
+    expect(layoutNet).toHaveBeenCalledTimes(3);
+    expect(screen.getByText("Maßstab 100 %")).toBeInTheDocument();
+    expect(svg().querySelectorAll(".n-node")).toHaveLength(TREE.knoten.length);
   });
 });
 
