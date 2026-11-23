@@ -2,6 +2,7 @@
 import io
 import json
 import math
+import re
 import threading
 
 import pytest
@@ -1848,7 +1849,8 @@ def _fuzz_examples():
             *[sim(m, SIM_FULL[m], laufzeit=45, tempo=3, spur=False, beschreibung="b") for m in SIM_FULL],
             *[sim(m, SIM_MIN[m]) for m in SIM_MIN],
             *[teil(f, T_FULL[f]) for f in T_FULL], *[teil(f, T_MIN[f]) for f in T_MIN],
-            teil("atom", {"element": "H", "ladung": 1}), p5_view(SIM_B, MOL_B, ORB_B, ATOM_B, SIM_B)]
+            teil("atom", {"element": "H", "ladung": 1}), p5_view(SIM_B, MOL_B, ORB_B, ATOM_B, SIM_B),
+            *[se(f) for f in SE_ALL], *[schema.validate(se(f)) for f in SE_ALL]]           # P7: auch die schon geprüfte Form
 
 
 def _paths(v, path=()):
@@ -1910,3 +1912,517 @@ def test_p6_views_are_listed_by_tools_list_and_travel_through_the_real_channel_i
     assert b.fetch() == ("ok", ["Hier dein Quiz."])
     got = {i["id"]: i for i in b.stage.since(0)[0]}
     assert got["p6"]["bausteine"][0]["fragen"][0]["richtig"] == 1 and got["n"]["art"] == "netz"
+
+
+# --- P7 Stufe 1: eigene Simulation als Daten (`sim_eigen`, docs/ui-p7-plan.md) ---------------------------------
+
+SE_MIN_ODE = {"name": "Zerfall", "form": "ode", "zustand": [{"name": "u", "start": 1}], "ableitungen": {"u": "-u"},
+              "darstellung": [{"form": "zeitreihe", "groessen": ["u"]}]}
+SE_FILLED_ODE = {                                                                  # was die Oberfläche aus SE_MIN_ODE bekommt
+    "typ": "sim_eigen", "form": "ode", "name": "Zerfall", "beschreibung": "", "parameter": [], "dt": 0.01, "laufzeit": 30, "tempo": 1,
+    "spur": True, "zustand": [{"name": "u", "start": 1, "einheit": ""}], "hilf": [],
+    "ableitungen": {"u": {"rpn": [["v", 1], ["o", "neg"]], "tex": "-u"}}, "kennwerte": [], "erhaltung": None,
+    "darstellung": [{"form": "zeitreihe", "groessen": ["u"]}], "env": {"ode": ["t", "u"]}, "integrator": "rk4", "kosten": 8}
+SE_MIN_TEIL = {"name": "Staub", "form": "teilchen", "anzahl": 1, "kasten": [1, 1], "darstellung": [{"form": "koerper"}]}
+SE_FILLED_TEIL = {
+    "typ": "sim_eigen", "form": "teilchen", "name": "Staub", "beschreibung": "", "parameter": [], "dt": 0.005, "laufzeit": 30, "tempo": 1,
+    "spur": True, "anzahl": 1, "start": "linie", "punkte": [], "startwert": 1, "masse": 1, "kraft": None, "paar": None, "federn": None,
+    "fest": [], "waende": "reflektieren", "kasten": [1, 1], "kennwerte": [], "erhaltung": None, "darstellung": [{"form": "koerper"}],
+    "env": {"kraft": ["t", "x", "y", "vx", "vy", "m"], "paar": ["r"]}, "integrator": "verlet", "kosten": 0}
+SE_PENDEL = {"name": "Gedämpftes Pendel", "form": "ode", "beschreibung": "Pendel mit Reibung.",
+             "parameter": [{"name": "g", "wert": 9.81, "min": 0.1, "max": 30, "einheit": "m/s²"},
+                           {"name": "l", "wert": 1, "min": 0.1, "max": 10, "einheit": "m"},
+                           {"name": "d", "wert": 0.2, "min": 0, "max": 5, "einheit": "1/s"}],
+             "zustand": [{"name": "phi", "start": 1.2, "einheit": "rad"}, {"name": "w", "start": 0, "einheit": "rad/s"}],
+             "ableitungen": {"phi": "w", "w": "-g/l*sin(phi) - d*w"},
+             "darstellung": [{"form": "koerper", "x": "l*sin(phi)", "y": "-l*cos(phi)", "anker": [0, 0]}, {"form": "zeitreihe", "groessen": ["phi"]}],
+             "kennwerte": [{"name": "Energie", "formel": "0.5*(l*w)^2 + g*l*(1-cos(phi))", "einheit": "J/kg"}]}
+SE_RAEUBER = {"name": "Räuber und Beute", "form": "ode",
+              "parameter": [{"name": n, "wert": w, "min": 0, "max": 5} for n, w in (("a", 1.1), ("b", 0.4), ("c", 0.4), ("dd", 0.1))],
+              "zustand": [{"name": "B", "start": 10}, {"name": "R", "start": 5}],
+              "ableitungen": {"B": "a*B - b*B*R", "R": "dd*B*R - c*R"}, "erhaltung": "dd*B - c*log(B) + b*R - a*log(R)",
+              "darstellung": [{"form": "zeitreihe", "groessen": ["B", "R"]}, {"form": "phasenraum", "x": "B", "y": "R"}]}
+SE_LORENZ = {"name": "Lorenz", "form": "ode", "dt": 0.005,
+             "parameter": [{"name": "s", "wert": 10, "min": 0, "max": 50}, {"name": "r", "wert": 28, "min": 0, "max": 100},
+                           {"name": "bb", "wert": 2.6667, "min": 0, "max": 10}],
+             "zustand": [{"name": "x", "start": 1}, {"name": "y", "start": 1}, {"name": "z", "start": 1}],
+             "ableitungen": {"x": "s*(y-x)", "y": "x*(r-z) - y", "z": "x*y - bb*z"},
+             "darstellung": [{"form": "phasenraum", "x": "x", "y": "z"}, {"form": "zeitreihe", "groessen": ["x"]}]}
+SE_KETTE = {"name": "Federkette", "form": "teilchen", "anzahl": 12, "start": "linie", "kasten": [4, 3], "waende": "reflektieren",
+            "fest": [0, 11], "masse": 0.1,                                     # im Plan als Parameter m; m ist im Teilchen-Platz die Masse
+            "parameter": [{"name": "g", "wert": 9.81, "min": 0, "max": 30}, {"name": "c", "wert": 0.3, "min": 0, "max": 5}],
+            "kraft": {"fx": "-c*vx", "fy": "-m*g - c*vy"}, "federn": {"kette": True, "k": 40, "l0": 0.25, "daempfung": 0.05},
+            "darstellung": [{"form": "koerper"}]}
+SE_GAS = {"name": "Abstoßende Teilchen", "form": "teilchen", "anzahl": 3, "start": "liste", "kasten": [10, 5], "waende": "periodisch",
+          "punkte": [[1, 1], [2, 2, 0.5, -0.5], [3, 1]], "masse": 2, "startwert": 7, "dt": 0.001, "laufzeit": 60, "tempo": 2.5, "spur": False,
+          "beschreibung": "Drei Teilchen.", "parameter": [{"name": "k", "wert": 1, "min": 0, "max": 10, "einheit": "N m²"}],
+          "paar": {"f_r": "k/r^2", "reichweite": 4, "mindestabstand": 0.1}, "federn": {"paare": [[0, 2]], "k": 5, "l0": 1},
+          "fest": [1], "darstellung": [{"form": "koerper"}, {"form": "pfeile"}]}
+SE_ALL = [SE_MIN_ODE, SE_MIN_TEIL, SE_PENDEL, SE_RAEUBER, SE_LORENZ, SE_KETTE, SE_GAS]
+SE_JUNK = chr(0x202e) + chr(0) + chr(27) + chr(0x2066) + chr(10)
+
+
+def se(fields, art="simulation"):
+    return {"id": "se", "art": art, "titel": "Eigene Simulation", "bausteine": [{"typ": "sim_eigen", **fields}]}
+
+
+def se_block(fields):
+    return schema.validate(se(fields))["bausteine"][0]
+
+
+def se_bad(fields, detail=None):
+    with pytest.raises(schema.ViewError) as e:
+        schema.validate(se(fields))
+    assert e.value.code == "bad_block_1", e.value.code
+    if detail is not None:
+        assert e.value.detail == detail, e.value.detail
+    return e.value
+
+
+def ode(**kw):
+    return {**SE_MIN_ODE, **kw}
+
+
+def teil2(**kw):
+    return {**SE_MIN_TEIL, **kw}
+
+
+def _states(n):
+    return {"zustand": [{"name": f"u{i}", "start": 0} for i in range(n)], "ableitungen": {f"u{i}": "0" for i in range(n)},
+            "darstellung": [{"form": "zeitreihe", "groessen": ["u0"]}]}
+
+
+def _bal(k, leaf):
+    if k == 1:
+        return leaf
+    return "(" + _bal(k // 2, leaf) + "+" + _bal(k - k // 2, leaf) + ")"
+
+
+def test_p7_minimal_ode_gets_every_default():
+    assert se_block(SE_MIN_ODE) == SE_FILLED_ODE
+
+
+def test_p7_minimal_particles_get_every_default():
+    assert se_block(SE_MIN_TEIL) == SE_FILLED_TEIL
+
+
+def test_p7_pendulum_example_keeps_every_value_and_gets_rpn_tex_and_env():
+    b = se_block(SE_PENDEL)
+    assert b["env"] == {"ode": ["t", "phi", "w", "g", "l", "d"]}
+    assert [p["name"] for p in b["parameter"]] == ["g", "l", "d"] and b["parameter"][0] == SE_PENDEL["parameter"][0]
+    assert b["ableitungen"]["phi"] == {"rpn": [["v", 2]], "tex": "w"}
+    assert b["ableitungen"]["w"]["rpn"] == [["v", 3], ["o", "neg"], ["v", 4], ["o", "/"], ["v", 1], ["f", "sin"], ["o", "*"], ["v", 5],
+                                            ["v", 2], ["o", "*"], ["o", "-"]]
+    assert b["darstellung"][0]["anker"] == [0, 0] and b["darstellung"][1] == {"form": "zeitreihe", "groessen": ["phi"]}
+    assert b["kennwerte"][0]["name"] == "Energie" and b["kennwerte"][0]["einheit"] == "J/kg"
+    assert b["beschreibung"] == "Pendel mit Reibung." and b["integrator"] == "rk4" and b["kosten"] == 4 * (1 + 11)
+    assert "-g/l" not in json.dumps(b)                                         # kein Formeltext in der geprüften Ansicht
+
+
+def test_p7_predator_prey_lorenz_and_spring_chain_examples_pass():
+    rb = se_block(SE_RAEUBER)
+    assert rb["erhaltung"]["rpn"][-1] == ["o", "-"] and rb["darstellung"][1] == {"form": "phasenraum", "x": "B", "y": "R"}
+    assert se_block(SE_LORENZ)["dt"] == 0.005
+    k = se_block(SE_KETTE)
+    assert k["federn"] == {"paare": [[i, i + 1] for i in range(11)], "k": 40, "l0": 0.25, "daempfung": 0.05}
+    assert k["env"]["kraft"] == ["t", "x", "y", "vx", "vy", "m", "g", "c"] and k["masse"] == 0.1
+    assert k["integrator"] == "euler_semi" and k["kosten"] == (4 + 8) * 12
+
+
+def test_p7_full_particle_example_keeps_every_value():
+    b = se_block(SE_GAS)
+    assert b["punkte"] == [[1, 1, 0, 0], [2, 2, 0.5, -0.5], [3, 1, 0, 0]] and b["start"] == "liste" and b["startwert"] == 7
+    assert b["paar"]["reichweite"] == 4 and b["paar"]["mindestabstand"] == 0.1 and b["paar"]["f_r"]["tex"] == r"\frac{k}{r^{2}}"
+    assert b["federn"] == {"paare": [[0, 2]], "k": 5, "l0": 1, "daempfung": 0} and b["fest"] == [1] and b["waende"] == "periodisch"
+    assert (b["dt"], b["laufzeit"], b["tempo"], b["spur"], b["masse"]) == (0.001, 60, 2.5, False, 2)
+    assert b["darstellung"] == [{"form": "koerper"}, {"form": "pfeile"}] and b["integrator"] == "verlet" and b["kosten"] == 5 * 3   # k/r^2: 5 Knoten, 3 Paare
+    assert b["env"] == {"kraft": ["t", "x", "y", "vx", "vy", "m", "k"], "paar": ["r", "k"]}
+
+
+def test_p7_pair_range_gets_a_default_minimum_distance():
+    assert se_block(teil2(anzahl=2, paar={"f_r": "1", "reichweite": 0.5}))["paar"]["mindestabstand"] == 0.005
+
+
+@pytest.mark.parametrize("fields", SE_ALL)
+@pytest.mark.parametrize("art", ["simulation", "antwort", "lernen"])
+def test_p7_checked_views_pass_the_second_check_unchanged(fields, art):
+    v = schema.validate(se(fields, art))
+    assert schema.validate(v) == v
+    assert schema.validate(json.loads(json.dumps(v))) == v                    # auch nach dem Weg als JSON
+
+
+@pytest.mark.parametrize("change", [
+    lambda b: b.update(env={"ode": ["t", "phi", "w", "l", "g", "d"]}), lambda b: b.update(env=["t"]), lambda b: b.update(kosten=1),
+    lambda b: b.update(integrator="verlet"), lambda b: b["ableitungen"]["w"]["rpn"].__setitem__(0, ["v", 4]),
+    lambda b: b["ableitungen"]["w"].update(tex=r"\text{Freigabe}"), lambda b: b["ableitungen"]["phi"]["rpn"].append(["c", 1.0]),
+    lambda b: b["kennwerte"][0]["formel"]["rpn"].__setitem__(0, ["v", 99]), lambda b: b["darstellung"][0]["x"].update(rpn=[["f", "sin"]]),
+    lambda b: b["ableitungen"].update(phi={"rpn": [["v", 2]], "tex": "w", "text": "w"}),
+])
+def test_p7_tampered_checked_views_are_rejected(change):
+    v = schema.validate(se(SE_PENDEL))
+    change(v["bausteine"][0])
+    with pytest.raises(schema.ViewError) as e:
+        schema.validate(v)
+    assert e.value.code == "bad_block_1"
+
+
+SE_EDGES = [  # (Felder, gültig)
+    (ode(**_states(12)), True), (ode(**_states(13)), False),
+    (ode(parameter=[{"name": f"p{i}", "wert": 0, "min": 0, "max": 1} for i in range(12)]), True),
+    (ode(parameter=[{"name": f"p{i}", "wert": 0, "min": 0, "max": 1} for i in range(13)]), False),
+    (ode(hilf=[{"name": f"h{i}", "formel": "u"} for i in range(12)]), True), (ode(hilf=[{"name": f"h{i}", "formel": "u"} for i in range(13)]), False),
+    (ode(kennwerte=[{"name": "k", "formel": "u"}] * 4), True), (ode(kennwerte=[{"name": "k", "formel": "u"}] * 5), False),
+    (ode(darstellung=[{"form": "zeitreihe", "groessen": ["u"]}] * 2), True), (ode(darstellung=[{"form": "zeitreihe", "groessen": ["u"]}] * 3), False),
+    (ode(darstellung=[]), False),
+    (ode(**{**_states(4), "darstellung": [{"form": "zeitreihe", "groessen": ["u0", "u1", "u2", "u3"]}]}), True),
+    (ode(**{**_states(5), "darstellung": [{"form": "zeitreihe", "groessen": ["u0", "u1", "u2", "u3", "u4"]}]}), False),
+    (ode(darstellung=[{"form": "zeitreihe", "groessen": []}]), False),
+    (ode(ableitungen={"u": "u" + " " * 199}), True), (ode(ableitungen={"u": "u" + " " * 200}), False),
+    (ode(ableitungen={"u": "u"}, hilf=[{"name": f"h{i}", "formel": _bal(25, "u")} for i in range(11)] + [{"name": "hz", "formel": "-" + _bal(30, "u")}]), True),
+    (ode(ableitungen={"u": "-u"}, hilf=[{"name": f"h{i}", "formel": _bal(25, "u")} for i in range(11)] + [{"name": "hz", "formel": "-" + _bal(30, "u")}]), False),
+    (teil2(anzahl=300), True), (teil2(anzahl=301), False), (teil2(anzahl=0), False),
+    (teil2(anzahl=100, paar={"f_r": "1", "reichweite": 1}), True), (teil2(anzahl=101, paar={"f_r": "1", "reichweite": 1}), False),
+    (teil2(anzahl=300, federn={"paare": [[i, j] for i in range(30) for j in range(i + 1, 30)][:400], "k": 1, "l0": 0}), True),
+    (teil2(anzahl=300, federn={"paare": [[i, j] for i in range(30) for j in range(i + 1, 30)][:401], "k": 1, "l0": 0}), False),
+    (teil2(anzahl=100, paar={"f_r": "-" + _bal(15, "r"), "reichweite": 1}, kraft={"fx": _bal(4, "x"), "fy": "-" + _bal(4, "y")}), True),
+    (teil2(anzahl=100, paar={"f_r": "-" + _bal(15, "r"), "reichweite": 1}, kraft={"fx": "-" + _bal(4, "x"), "fy": "-" + _bal(4, "y")}), False),
+    (ode(dt=1e-5), True), (ode(dt=0.99e-5), False), (ode(dt=1), True), (ode(dt=1.001), False), (ode(dt=0), False),
+    (ode(laufzeit=5), True), (ode(laufzeit=4.99), False), (ode(laufzeit=60), True), (ode(laufzeit=60.01), False),
+    (ode(tempo=0.1), True), (ode(tempo=0.099), False), (ode(tempo=100), True), (ode(tempo=100.1), False), (ode(tempo=0), False),
+    (teil2(kasten=[0.1, 0.1]), True), (teil2(kasten=[0.0999, 0.1]), False), (teil2(kasten=[1000, 1000]), True),
+    (teil2(kasten=[1000.1, 1000]), False), (teil2(kasten=[1, 10]), True), (teil2(kasten=[1, 10.01]), False), (teil2(kasten=[1]), False),
+    (ode(parameter=[{"name": "p", "wert": 1, "min": 1, "max": 2}]), True), (ode(parameter=[{"name": "p", "wert": 2, "min": 1, "max": 2}]), True),
+    (ode(parameter=[{"name": "p", "wert": 0.99, "min": 1, "max": 2}]), False), (ode(parameter=[{"name": "p", "wert": 1, "min": 1, "max": 1}]), False),
+    (ode(parameter=[{"name": "p", "wert": 0, "min": -1e12, "max": 1e12}]), True),
+    (ode(parameter=[{"name": "p", "wert": 0, "min": -1.0001e12, "max": 1}]), False),
+    (ode(zustand=[{"name": "u", "start": 1e9}]), True), (ode(zustand=[{"name": "u", "start": -1.000001e9}]), False),
+    (teil2(masse=1e6), True), (teil2(masse=1.0001e6), False), (teil2(masse=0), False), (teil2(masse=-1), False),
+    (teil2(startwert=schema.MAX_STARTWERT), True), (teil2(startwert=schema.MAX_STARTWERT + 1), False), (teil2(startwert=-1), False),
+    (teil2(anzahl=2, kasten=[4, 2], paar={"f_r": "1", "reichweite": 4}), True),
+    (teil2(anzahl=2, kasten=[4, 2], paar={"f_r": "1", "reichweite": 4.01}), False),
+    (teil2(anzahl=2, paar={"f_r": "1", "reichweite": 0}), False),
+    (teil2(anzahl=2, paar={"f_r": "1", "reichweite": 1, "mindestabstand": 0.999}), True),
+    (teil2(anzahl=2, paar={"f_r": "1", "reichweite": 1, "mindestabstand": 1}), False),
+    (teil2(anzahl=2, paar={"f_r": "1", "reichweite": 1, "mindestabstand": 0}), False),
+    (teil2(anzahl=2, federn={"kette": True, "k": 1e6, "l0": 1000, "daempfung": 1e4}), True),
+    (teil2(anzahl=2, federn={"kette": True, "k": 1.0001e6, "l0": 0}), False), (teil2(anzahl=2, federn={"kette": True, "k": 0, "l0": 0}), False),
+    (teil2(anzahl=2, federn={"kette": True, "k": 1, "l0": 1000.1}), False),
+    (teil2(anzahl=2, federn={"kette": True, "k": 1, "l0": 0, "daempfung": 10001}), False),
+    (teil2(anzahl=1, federn={"kette": True, "k": 1, "l0": 0}), False),
+    (teil2(anzahl=2, federn={"kette": True, "paare": [[0, 1]], "k": 1, "l0": 0}), False),
+    (teil2(anzahl=2, federn={"k": 1, "l0": 0}), False), (teil2(anzahl=2, federn={"kette": False, "k": 1, "l0": 0}), False),
+    (teil2(anzahl=2, federn={"paare": [[0, 1]], "k": 1, "l0": 0}), True),
+    (teil2(anzahl=2, federn={"paare": [[0, 2]], "k": 1, "l0": 0}), False), (teil2(anzahl=2, federn={"paare": [[1, 1]], "k": 1, "l0": 0}), False),
+    (teil2(anzahl=2, federn={"paare": [[0, 1], [1, 0]], "k": 1, "l0": 0}), False), (teil2(anzahl=2, federn={"paare": [], "k": 1, "l0": 0}), False),
+    (teil2(anzahl=2, federn={"paare": [[0, 1, 1]], "k": 1, "l0": 0}), False),
+    (teil2(anzahl=3, fest=[0, 1, 2]), True), (teil2(anzahl=3, fest=[0, 0]), False), (teil2(anzahl=3, fest=[3]), False),
+    (teil2(anzahl=3, fest=[0, 1, 2, 0]), False),
+    (teil2(start="liste", punkte=[[1, 1]]), True), (teil2(start="liste", punkte=[[1.001, 1]]), False), (teil2(start="liste", punkte=[[0, -0.001]]), False),
+    (teil2(start="liste", punkte=[[0, 0, 1e6, -1e6]]), True), (teil2(start="liste", punkte=[[0, 0, 1e6 + 1, 0]]), False),
+    (teil2(start="liste", punkte=[[0, 0, 1]]), False), (teil2(start="liste", punkte=[[0, 0], [1, 1]]), False), (teil2(start="liste"), False),
+    (teil2(start="gitter", punkte=[[0, 0]]), False), (teil2(start="gitter", punkte=[]), True), (teil2(start="zufall"), True),
+    (ode(darstellung=[{"form": "koerper", "x": "u", "y": "u", "anker": [1e6, -1e6]}]), True),
+    (ode(darstellung=[{"form": "koerper", "x": "u", "y": "u", "anker": [1e6 + 1, 0]}]), False),
+    (ode(darstellung=[{"form": "koerper", "x": "u", "y": "u", "anker": None}]), True),
+    (ode(darstellung=[{"form": "koerper", "x": "u", "y": "u", "anker": [0]}]), False), (ode(darstellung=[{"form": "koerper", "x": "u"}]), False),
+    (ode(name="x" * 60), True), (ode(name="x" * 61), False), (ode(beschreibung="x" * 400), True), (ode(beschreibung="x" * 401), False),
+    (ode(zustand=[{"name": "u", "start": 1, "einheit": "x" * 20}]), True), (ode(zustand=[{"name": "u", "start": 1, "einheit": "x" * 21}]), False),
+    (ode(kennwerte=[{"name": "x" * 40, "formel": "u"}]), True), (ode(kennwerte=[{"name": "x" * 41, "formel": "u"}]), False),
+    (ode(zustand=[{"name": "u" * 24, "start": 1}], ableitungen={"u" * 24: "1"}, darstellung=[{"form": "zeitreihe", "groessen": ["u" * 24]}]), True),
+    (ode(zustand=[{"name": "u" * 25, "start": 1}], ableitungen={"u" * 25: "1"}, darstellung=[{"form": "zeitreihe", "groessen": ["u" * 25]}]), False),
+]
+
+
+@pytest.mark.parametrize("fields,ok", SE_EDGES)
+def test_p7_limits_just_inside_pass_and_just_outside_are_rejected(fields, ok):
+    if ok:
+        v = schema.validate(se(fields))
+        assert schema.validate(v) == v
+    else:
+        se_bad(fields)
+
+
+@pytest.mark.parametrize("fields,detail", [
+    (ode(ableitungen={"u": "sqrt(u)"}, zustand=[{"name": "u", "start": -1e-9}]), "ableitungen.0:nicht_endlich"),
+    (ode(ableitungen={"u": "log(u)"}, zustand=[{"name": "u", "start": 0}]), "ableitungen.0:nicht_endlich"),
+    (ode(ableitungen={"u": "1/u"}, zustand=[{"name": "u", "start": 0}]), "ableitungen.0:nicht_endlich"),
+    (ode(hilf=[{"name": "h", "formel": "1/(u-1)"}]), "hilf.0.formel:nicht_endlich"),
+    (ode(darstellung=[{"form": "koerper", "x": "u", "y": "1/(u-1)"}]), "darstellung.0.y:nicht_endlich"),
+    (teil2(kasten=[2, 2], kraft={"fx": "1/(x-1)", "fy": "0"}), "kraft.fx:nicht_endlich"),
+    (teil2(start="liste", punkte=[[0.5, 0.5, 0, 3]], kraft={"fx": "0", "fy": "1/(vy-3)"}), "kraft.fy:nicht_endlich"),
+    (teil2(anzahl=2, paar={"f_r": "1/(r-0.5)", "reichweite": 0.5, "mindestabstand": 0.1}), "paar.f_r:nicht_endlich"),
+    (teil2(anzahl=2, paar={"f_r": "log(r-0.1)", "reichweite": 0.5, "mindestabstand": 0.1}), "paar.f_r:nicht_endlich"),
+])
+def test_p7_probe_at_t0_rejects_non_finite_derivatives_and_forces(fields, detail):
+    se_bad(fields, detail)
+
+
+@pytest.mark.parametrize("fields", [
+    ode(ableitungen={"u": "sqrt(u)"}, zustand=[{"name": "u", "start": 0}]), ode(ableitungen={"u": "log(u)"}, zustand=[{"name": "u", "start": 1e-300}]),
+    teil2(kasten=[2.5, 2.5], kraft={"fx": "1/(x-1)", "fy": "0"}), teil2(anzahl=2, paar={"f_r": "1/r", "reichweite": 0.5, "mindestabstand": 1e-9}),
+    ode(kennwerte=[{"name": "k", "formel": "1/(u-1)"}]), ode(erhaltung="log(u-1)"),                  # Kennwerte und Erhaltung: nur angezeigt
+])
+def test_p7_probe_passes_just_inside(fields):
+    v = schema.validate(se(fields))
+    assert schema.validate(v) == v
+
+
+@pytest.mark.parametrize("fields,detail", [
+    (ode(zustand=[{"name": "t", "start": 1}], ableitungen={"t": "1"}, darstellung=[{"form": "zeitreihe", "groessen": ["t"]}]), "zustand.0.name:name_doppelt"),
+    (ode(parameter=[{"name": "sin", "wert": 1, "min": 0, "max": 2}]), "parameter.0.name:name_ungueltig"),
+    (ode(parameter=[{"name": "pi", "wert": 1, "min": 0, "max": 2}]), "parameter.0.name:name_ungueltig"),
+    (ode(parameter=[{"name": "u", "wert": 1, "min": 0, "max": 2}]), "parameter.0.name:name_doppelt"),
+    (ode(hilf=[{"name": "u", "formel": "1"}]), "hilf.0.name:name_doppelt"),
+    (ode(parameter=[{"name": "1a", "wert": 1, "min": 0, "max": 2}]), "parameter.0.name:name_ungueltig"),
+    (ode(parameter=[{"name": "a" + chr(0x0430), "wert": 1, "min": 0, "max": 2}]), "parameter.0.name:name_ungueltig"),
+    (ode(parameter=[{"wert": 1, "min": 0, "max": 2}]), "parameter.0.name:name_ungueltig"),
+    (teil2(parameter=[{"name": "m", "wert": 1, "min": 0, "max": 2}]), "parameter.0.name:name_doppelt"),
+    (teil2(parameter=[{"name": "x", "wert": 1, "min": 0, "max": 2}]), "parameter.0.name:name_doppelt"),
+    (teil2(parameter=[{"name": "vy", "wert": 1, "min": 0, "max": 2}]), "parameter.0.name:name_doppelt"),
+    (teil2(parameter=[{"name": "r", "wert": 1, "min": 0, "max": 2}]), "parameter.0.name:name_doppelt"),
+    (teil2(parameter=[{"name": "t", "wert": 1, "min": 0, "max": 2}]), "parameter.0.name:name_doppelt"),
+    (ode(ableitungen={}), "ableitungen.0:fehlt"), (ode(ableitungen={"u": "1", "v": "1"}), "ableitungen:unbekannter_name"),
+    (ode(ableitungen=["-u"]), "ableitungen:ungueltig"), (ode(ableitungen={"u": "q"}), "ableitungen.0:unbekannter_name@0"),
+    (ode(ableitungen={"u": "x"}), "ableitungen.0:unbekannter_name@0"),             # x gibt es nur im Teilchen-Platz
+    (teil2(kraft={"fx": "phi", "fy": "0"}), "kraft.fx:unbekannter_name@0"), (teil2(anzahl=2, paar={"f_r": "x", "reichweite": 1}), "paar.f_r:unbekannter_name@0"),
+    (teil2(kraft={"fx": "1"}), "kraft.fy:kein_text"), (ode(code="x"), "unbekanntes_feld"), (ode(anzahl=2), "unbekanntes_feld"),
+    (teil2(zustand=[{"name": "u", "start": 1}]), "unbekanntes_feld"), (teil2(kennwerte=[{"name": "k", "formel": "1"}]), "kennwerte:nur_ode"),
+    (teil2(erhaltung="1"), "erhaltung:nur_ode"), (ode(darstellung=[{"form": "pfeile"}]), "darstellung.0:form"),
+    (teil2(darstellung=[{"form": "zeitreihe", "groessen": ["x"]}]), "darstellung.0:form"),
+    (teil2(darstellung=[{"form": "koerper", "x": "x"}]), "darstellung.0:ungueltig"),
+    (ode(darstellung=[{"form": "zeitreihe", "groessen": ["t"]}]), "darstellung.0.groessen.0:unbekannter_name"),
+    (ode(darstellung=[{"form": "zeitreihe", "groessen": ["u", "u"]}]), "darstellung.0.groessen:doppelt"),
+    (ode(darstellung=[{"form": "phasenraum", "x": "u", "y": "-u"}]), "darstellung.0.y:unbekannter_name"),
+    (ode(hilf=[{"name": "h", "formel": "u"}], darstellung=[{"form": "zeitreihe", "groessen": ["h"]}]), "darstellung.0.groessen.0:unbekannter_name"),
+    (ode(form="sde"), "form:ungueltig"), (ode(ableitungen={"u": "1e999"}), "ableitungen.0:zahl@0"),
+    (ode(ableitungen={"u": "sin(u, u)"}), "ableitungen.0:stelligkeit@0"), (ode(ableitungen={"u": "u" + chr(0x2212) + "1"}), "ableitungen.0:zeichen@1"),
+])
+def test_p7_names_and_fields_are_rejected_with_a_fixed_path(fields, detail):
+    se_bad(fields, detail)
+
+
+@pytest.mark.parametrize("base,field", [(SE_MIN_ODE, f) for f in SE_MIN_ODE] + [(SE_MIN_TEIL, f) for f in SE_MIN_TEIL])
+def test_p7_missing_required_fields_are_rejected(base, field):
+    se_bad({k: v for k, v in base.items() if k != field})
+
+
+@pytest.mark.parametrize("fields", [SE_MIN_ODE, SE_MIN_TEIL])
+@pytest.mark.parametrize("extra", [{"formel": "sin(x)"}, {"code": "x"}, {"html": "<b>"}, {"skript": "x"}, {"adresse": "https://example.org"},
+                                   {"pfad": "C:/x"}, {"modell": "pendel"}, {"rezept": "lorenz"}])
+def test_p7_unknown_fields_are_rejected(fields, extra):
+    se_bad({**fields, **extra}, "unbekanntes_feld")
+
+
+SE_NUMERIC = [
+    lambda n: ode(parameter=[{"name": "p", "wert": n, "min": 0, "max": 2}]), lambda n: ode(parameter=[{"name": "p", "wert": 1, "min": n, "max": 2}]),
+    lambda n: ode(parameter=[{"name": "p", "wert": 1, "min": 0, "max": n}]), lambda n: ode(zustand=[{"name": "u", "start": n}]),
+    lambda n: ode(dt=n), lambda n: ode(laufzeit=n), lambda n: ode(tempo=n), lambda n: teil2(anzahl=n), lambda n: teil2(masse=n),
+    lambda n: teil2(kasten=[n, 1]), lambda n: teil2(kasten=[1, n]), lambda n: teil2(startwert=n), lambda n: teil2(start="liste", punkte=[[n, 0]]),
+    lambda n: teil2(start="liste", punkte=[[0, 0, n, 0]]), lambda n: teil2(anzahl=2, paar={"f_r": "1", "reichweite": n}),
+    lambda n: teil2(anzahl=2, paar={"f_r": "1", "reichweite": 1, "mindestabstand": n}), lambda n: teil2(anzahl=2, federn={"kette": True, "k": n, "l0": 0}),
+    lambda n: teil2(anzahl=2, federn={"kette": True, "k": 1, "l0": n}), lambda n: teil2(anzahl=2, federn={"kette": True, "k": 1, "l0": 0, "daempfung": n}),
+    lambda n: teil2(anzahl=2, fest=[n]), lambda n: teil2(anzahl=2, federn={"paare": [[n, 1]], "k": 1, "l0": 0}),
+    lambda n: ode(darstellung=[{"form": "koerper", "x": "u", "y": "u", "anker": [n, 0]}]),
+]
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf"), 10**400, -10**400, True, False, "1", None, [1], {"a": 1}])
+@pytest.mark.parametrize("make", SE_NUMERIC)
+def test_p7_non_finite_huge_and_non_numbers_are_rejected_everywhere(make, value):
+    se_bad(make(value))
+
+
+@pytest.mark.parametrize("make,valid", [
+    (lambda n: teil2(anzahl=n), 2), (lambda n: teil2(startwert=n), 1), (lambda n: teil2(anzahl=2, fest=[n]), 0),
+    (lambda n: teil2(anzahl=2, federn={"paare": [[n, 1]], "k": 1, "l0": 0}), 0),
+])
+def test_p7_integer_fields_take_only_real_integers(make, valid):
+    assert schema.validate(se(make(valid)))
+    se_bad(make(float(valid)))
+    se_bad(make(valid + 0.5))
+
+
+SE_ENUMS = [
+    lambda v: ode(form=v), lambda v: teil2(start=v), lambda v: teil2(waende=v), lambda v: ode(darstellung=[{"form": v}]),
+    lambda v: ode(spur=v), lambda v: teil2(anzahl=2, federn={"kette": v, "k": 1, "l0": 0}), lambda v: ode(ableitungen={"u": v}),
+    lambda v: ode(darstellung=[{"form": "zeitreihe", "groessen": [v]}]), lambda v: ode(darstellung=[{"form": "phasenraum", "x": v, "y": "u"}]),
+    lambda v: ode(parameter=[{"name": v, "wert": 1, "min": 0, "max": 2}]), lambda v: ode(zustand=[{"name": v, "start": 1}]),
+]
+
+
+@pytest.mark.parametrize("value", [[1], {"a": 1}, ["ode"], {"linie": 1}, 1, None])
+@pytest.mark.parametrize("make", SE_ENUMS)
+def test_p7_lists_objects_and_numbers_in_enum_fields_are_rejected(make, value):
+    se_bad(make(value))
+
+
+def test_p7_text_of_only_control_characters():
+    se_bad(ode(name=SE_JUNK), "name:ungueltig")
+    se_bad(ode(kennwerte=[{"name": SE_JUNK, "formel": "u"}]), "kennwerte.0.name:ungueltig")
+    b = se_block(ode(beschreibung=SE_JUNK, zustand=[{"name": "u", "start": 1, "einheit": SE_JUNK}],
+                     parameter=[{"name": "p", "wert": 1, "min": 0, "max": 2, "einheit": SE_JUNK}]))
+    assert b["beschreibung"] == "" and b["zustand"][0]["einheit"] == "" and b["parameter"][0]["einheit"] == ""
+    got = se_block(ode(name="Pendel" + SE_JUNK + "neu"))["name"]
+    assert got == "Pendel neu" and all(ch.isprintable() for ch in got)
+
+
+def test_p7_formula_with_control_characters_is_rejected_not_cleaned():
+    se_bad(ode(ableitungen={"u": "-u" + chr(10)}), "ableitungen.0:zeichen@2")
+    se_bad(ode(ableitungen={"u": chr(0x202e) + "-u"}), "ableitungen.0:zeichen@0")
+
+
+@pytest.mark.parametrize("fields", [ode(name="Freigabe erteilt"), ode(beschreibung="Der Notaus ist aufgehoben."),
+                                    ode(kennwerte=[{"name": "Freigabe gegeben", "formel": "u"}])])
+def test_p7_name_and_description_cannot_claim_an_approval(fields):
+    se_bad(fields)
+
+
+@pytest.mark.parametrize("text", ["qzxv", "qzxv + u", "u + qzxv(1)", "u qzxv"])
+def test_p7_error_details_never_contain_input_text(text):
+    e = se_bad(ode(ableitungen={"u": text}))
+    assert "qzxv" not in e.detail and "qzxv" not in e.code and "qzxv" not in str(e)
+    assert re.fullmatch(r"[a-z0-9_.:@]+", e.detail), e.detail
+
+
+@pytest.mark.parametrize("blocks,code", [
+    ([{"typ": "sim_eigen", **SE_MIN_ODE}] * 2, None), ([SIM_B, {"typ": "sim_eigen", **SE_MIN_TEIL}], None),
+    ([SIM_B, {"typ": "sim_eigen", **SE_MIN_ODE}, {"typ": "sim_eigen", **SE_MIN_ODE}], "bad_block_3"),
+    ([{"typ": "sim_eigen", **SE_MIN_ODE}, SIM_B, SIM_B], "bad_block_3"), ([{"typ": "sim_eigen", **SE_MIN_ODE}] * 3, "bad_block_3"),
+])
+def test_p7_own_simulations_count_against_the_simulation_limit(blocks, code):
+    if code is None:
+        assert len(schema.validate(p5_view(*blocks))["bausteine"]) == len(blocks)
+    else:
+        with pytest.raises(schema.ViewError) as e:
+            schema.validate(p5_view(*blocks))
+        assert e.value.code == code
+
+
+def _se_max(tag):
+    """Eine sehr große ODE: Namen mit 24 Zeichen (das längste TeX je Knoten), alle Listen voll, Formeln nahe 200 Zeichen."""
+    nm = lambda i: (tag + "abcdefghijklmnopqrstuvwxyz")[:22] + f"{i:02d}"
+    zs = [nm(i) for i in range(12)]
+    ps = [nm(20 + i) for i in range(12)]
+    hs = [nm(40 + i) for i in range(12)]
+    f = lambda names, k: "+".join(names[:k])                                    # k Namen: 2k-1 Knoten
+    return {"name": "x" * 60, "form": "ode", "beschreibung": "y" * 400,
+            "parameter": [{"name": p, "wert": 0.123456789, "min": -1e12, "max": 1e12, "einheit": "e" * 20} for p in ps],
+            "zustand": [{"name": z, "start": 0.987654321, "einheit": "e" * 20} for z in zs],
+            "hilf": [{"name": h, "formel": "(" + f(zs, 3) + ")*(" + f(ps, 3) + ")"} for h in hs],                 # je 11
+            "ableitungen": {z: "(" + f(zs, 3) + ")-(" + f(hs, 3) + ")" for z in zs},                               # je 11
+            "kennwerte": [{"name": "k" * 40, "formel": f(ps, 4), "einheit": "e" * 20}] * 4,                        # je 7
+            "erhaltung": f(zs, 4), "darstellung": [{"form": "koerper", "x": f(zs, 4), "y": f(ps, 4), "anker": [0, 0]},
+                                                   {"form": "zeitreihe", "groessen": zs[:4]}]}
+
+
+def test_p7_a_very_large_simulation_fits_the_json_limit_after_expansion_and_passes_the_second_check():
+    view = se(_se_max("a"))
+    v = schema.validate(view)
+    size = len(json.dumps(v, ensure_ascii=False).encode("utf-8"))
+    assert size <= schema.MAX_JSON and schema.validate(v) == v
+    assert size > len(json.dumps(view, ensure_ascii=False).encode("utf-8"))   # die geprüfte Form ist größer als die Eingabe
+
+
+def test_p7_an_input_under_the_limit_whose_expansion_is_over_it_is_rejected_at_the_first_check():
+    blocks = [{"typ": "sim_eigen", **_se_max("a")}, {"typ": "sim_eigen", **_se_max("b")}]
+    size = lambda v: len(json.dumps(v, ensure_ascii=False).encode("utf-8"))
+    assert size(schema.validate(p5_view(*blocks))) - size(p5_view(*blocks)) > 2000          # die Erweiterung ist deutlich
+    text = [{"typ": "text", "absaetze": []}]
+    while True:                                                               # Eingabe mit Text bis knapp unter die Grenze füllen
+        para = text[-1]["absaetze"]
+        if len(para) == 12:
+            text.append({"typ": "text", "absaetze": []})
+            para = text[-1]["absaetze"]
+        para.append("z" * 1200)
+        if size(p5_view(*blocks, *text)) > schema.MAX_JSON:
+            para[-1] = "z" * max(1, 1200 - (size(p5_view(*blocks, *text)) - schema.MAX_JSON))
+            break
+    view = p5_view(*blocks, *text)
+    assert schema.MAX_JSON - 10 <= size(view) <= schema.MAX_JSON
+    with pytest.raises(schema.ViewError) as e:
+        schema.validate(view)
+    assert e.value.code == "too_large"
+
+
+def test_p7_seeded_fuzz_on_own_simulations_gives_views_or_fixed_errors():
+    import copy
+    import random
+    rnd = random.Random(23)
+    junk = [None, True, 0, -1, 1.5, float("nan"), float("inf"), 10**400, "", "x" * 300, chr(0x202e), [], [None], {}, {"a": 1},
+            "u", "-u", "phi", "sin(", "1e999", "liste", "kette", "ode", "teilchen", "koerper", "pfeile", ["v", 0], [["v", 99]],
+            {"rpn": [["v", 0]], "tex": "t"}, {"rpn": [["c", 1.0]], "tex": "1"}, 300, 101, 0.005]
+    examples = [se(f) for f in SE_ALL] + [schema.validate(se(f)) for f in SE_ALL]
+    for _ in range(3000):
+        view = copy.deepcopy(rnd.choice(examples))
+        for _ in range(rnd.randint(1, 3)):
+            path = rnd.choice(list(_paths(view))[1:])
+            parent = view
+            for key in path[:-1]:
+                parent = parent[key]
+            if rnd.random() < 0.15 and isinstance(parent, dict):
+                parent.pop(path[-1])
+                break
+            parent[path[-1]] = copy.deepcopy(rnd.choice(junk))
+        try:
+            got = schema.validate(view)
+        except schema.ViewError as e:
+            assert len(e.code) <= 20 and (e.detail == "" or re.fullmatch(r"[a-z0-9_.:@]{1,80}", e.detail)), (e.code, e.detail)
+            continue
+        assert schema.validate(got) == got
+        assert len(json.dumps(got, ensure_ascii=False).encode("utf-8")) <= schema.MAX_JSON
+
+
+def test_zeige_tool_names_sim_eigen_its_fields_grammar_and_example():
+    props = ch.ZEIGE_TOOL["inputSchema"]["properties"]
+    assert "sim_eigen" in props["bausteine"]["items"]["properties"]["typ"]["enum"]
+    desc = props["bausteine"]["description"]
+    block = desc[desc.index("sim_eigen{"):]
+    for name in ("form:ode|teilchen", "parameter", "wert", "min", "max", "zustand", "start", "hilf", "ableitungen", "kennwerte", "erhaltung",
+                 "darstellung", "koerper", "zeitreihe", "groessen", "phasenraum", "anzahl", "kasten", "linie|gitter|zufall|liste", "punkte",
+                 "masse", "kraft", "fx", "fy", "paar", "f_r", "reichweite", "federn", "kette", "paare", "l0", "daempfung", "fest", "waende",
+                 "pfeile", "dt", "laufzeit", "tempo", "spur", "t x y vx vy m", "paar: r", "pi", "wenn(b,a,c)", "clamp", "≤200"):
+        assert name in block, name
+    assert all(f in block for f in schema.formel.FUNKTIONEN)
+    assert 600 <= len(block) <= 1100                                           # knapp: etwa 700 bis 1000 Zeichen
+    assert "sim_eigen" in ch.ZEIGE_TOOL["description"] and "keine Formeln" in ch.ZEIGE_TOOL["description"]
+
+
+def test_instructions_say_built_in_models_first_then_sim_eigen_unchecked_and_at_most_two_quiet_corrections():
+    ins = ch.INSTRUCTIONS
+    assert "nie Formeln oder Code" in ins and "sim_eigen" in ins
+    assert ins.index("zuerst immer ein eingebautes Modell") < ins.index("sim_eigen")
+    assert "eigene, nicht geprüfte Simulation" in ins and "höchstens zweimal" in ins and "keine Messung" in ins
+
+
+def test_p7_sim_eigen_is_listed_by_tools_list_and_travels_through_the_real_channel_into_the_bridge_store(channel):
+    c, out, root = channel
+    c.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+    zeige = {t["name"]: t for t in json.loads(out.getvalue().splitlines()[-1])["result"]["tools"]}["zeige"]
+    assert "sim_eigen" in zeige["inputSchema"]["properties"]["bausteine"]["items"]["properties"]["typ"]["enum"]
+    assert "sim_eigen{" in zeige["inputSchema"]["properties"]["bausteine"]["description"]
+    b = br.Bridge(root)
+    assert call(c, out, se(SE_PENDEL))["content"][0]["text"] == "Wird gezeigt."
+    r = call(c, out, {**se(ode(ableitungen={"u": "qzxv*u"})), "id": "kaputt"})
+    text = r["content"][0]["text"]
+    assert r["isError"] is True and "bad_block_1:ableitungen.0:unbekannter_name@0" in text and "qzxv" not in text
+    c.say("Hier dein Pendel.")
+    assert b.fetch() == ("ok", ["Hier dein Pendel."])
+    got = {i["id"]: i for i in b.stage.since(0)[0]}
+    assert set(got) == {"se"} and got["se"]["bausteine"][0] == schema.validate(se(SE_PENDEL))["bausteine"][0]
+
+
+def test_p7_bridge_drops_invalid_own_simulations_that_got_past_the_channel(channel):
+    c, out, root = channel
+    b = br.Bridge(root)
+    c.show(se(SE_LORENZ))
+    good = schema.validate(se(SE_LORENZ))
+    bad_rpn = json.loads(json.dumps(good))
+    bad_rpn["id"], bad_rpn["bausteine"][0]["ableitungen"]["x"]["rpn"] = "rpn", [["v", 99]]
+    bad_env = json.loads(json.dumps(good))
+    bad_env["id"], bad_env["bausteine"][0]["env"]["ode"] = "env", ["t", "y", "x", "z", "s", "r", "bb"]
+    text = {**se(ode(ableitungen={"u": "eval(u)"})), "id": "text"}
+    for v in (bad_rpn, bad_env, text):
+        c._views.append(v)
+    c.say("Hier Lorenz.")
+    assert b.fetch() == ("ok", ["Hier Lorenz."])
+    assert [i["id"] for i in b.stage.since(0)[0]] == ["se"]

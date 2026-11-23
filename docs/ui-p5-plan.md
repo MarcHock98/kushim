@@ -30,6 +30,12 @@ Shader, keine Skripte und keine Funktionen. Gründe:
 
 Wer ein Modell braucht, das es nicht gibt, bekommt von Claude eine Erklärung, ein `diagramm` mit Stützpunkten oder eine `szene3d`.
 
+> **Nachtrag 2026-11-23: für `sim_eigen` aufgehoben am 2026-11-23.** Grund: Der Nutzer hat entschieden, dass Claude eigene
+> Simulationen beschreiben darf, wenn kein eingebautes Modell passt (P7, `docs/ui-p7-plan.md`). Der Parser steht nicht in der
+> Oberfläche, sondern im Backend (`src/kushim/stage/formel.py`, eigene feste Importliste, kein `eval`, kein `ast`, Tiefenzähler).
+> Die Oberfläche bekommt nur geprüfte Befehlsfolgen (RPN) für eine Stapelmaschine mit festen Befehlen und parst nie Text; die CSP
+> bleibt unverändert. Für alle anderen Bausteine, auch `simulation`, gilt dieser Abschnitt weiter: nur Modellnamen und Zahlen.
+
 ## 3. P5a: Baustein `simulation`
 
 Neue Art **`simulation`**, Beschriftung „Simulation“. Die Ansicht trägt immer sichtbar den festen Satz **„Simulation, keine Messung“**.

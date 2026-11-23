@@ -425,3 +425,29 @@ def test_persona_keeps_every_safety_rule():
                  "Zeigen ersetzt nie eine Freigabe", "keine Anlageempfehlung", "Zugangsdaten",
                  "keine Hintergrund-Sitzungen", "Spracherkennung kann sich verhören"):
         assert rule in text, rule
+
+
+def test_sim_eigen_instructions_ask_for_nothing_with_an_effect():
+    """P7 Stufe 1: Der neue Satz erklärt nur Zeigen und Sprechen; Formeln nur in sim_eigen, korrigiert wird höchstens zweimal."""
+    text = ch.INSTRUCTIONS
+    start = text.index("Nimm zuerst immer ein eingebautes Modell")
+    part = text[start:text.index("Für Moleküle", start)]
+    assert "nur dort sind Formeln erlaubt, sonst nirgends" in part and "eigene, nicht geprüfte Simulation" in part
+    assert "höchstens zweimal" in part and "sag es kurz" in part
+    import re
+    for word in ("datei", "befehl", "ausführ", "install", "speicher", "schreib", "bash", "freigabe", "lösch", "start"):
+        assert not re.search(r"\b" + word, part, re.I), word
+
+
+def test_sim_eigen_rejection_reaches_claude_with_a_fixed_path_but_no_input_text():
+    out = io.StringIO()
+    c = ch.Channel(out, log=lambda s: None)
+    view = {"id": "e", "art": "simulation", "titel": "T", "bausteine": [{
+        "typ": "sim_eigen", "name": "n", "form": "ode", "zustand": [{"name": "u", "start": 1}],
+        "ableitungen": {"u": "u + geheimwort"}, "darstellung": [{"form": "zeitreihe", "groessen": ["u"]}]}]}
+    c.handle({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "zeige", "arguments": view}})
+    result = lines(out)[-1]["result"]
+    assert result["isError"] is True and c.take_views() == []
+    assert result["content"][0]["text"] == "Ansicht abgelehnt (bad_block_1:ableitungen.0:unbekannter_name@4). Bitte Format prüfen."
+    c.handle({"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "zeige", "arguments": {"id": "BAD"}}})
+    assert lines(out)[-1]["result"]["content"][0]["text"] == "Ansicht abgelehnt (bad_id). Bitte Format prüfen."
