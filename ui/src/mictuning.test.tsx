@@ -2,9 +2,10 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import {
-  BROKEN_FILE, levelToSens, meterPct, MicTuning, NOTE_NOW, NOT_RUNNING, parseBound, parseTuning, SAVE_NOTE, SEND_DELAY_MS, sensToLevel, TUNING_IDLE_MS,
-  TUNING_POLL_MS, tuningError,
+  BROKEN_FILE, levelToSens, meterPct, MicTuning, NEWER_LIVE, newerAfterSave, NOTE_NOW, NOT_RUNNING, outsideNote, parseBound, parseTuning,
+  SAVE_NOTE, SEND_DELAY_MS, sensToLevel, TUNING_IDLE_MS, TUNING_POLL_MS, tuningError,
 } from "./components/MicTuning";
+import { LIVE_CLAMPED, MicStep, type StepCtx } from "./components/SetupSteps";
 import { ApiClient } from "./lib/api";
 import { STATE_VIEW } from "./lib/avatarState";
 import { MockSocket } from "./lib/mock";
@@ -12,6 +13,10 @@ import { MockSocket } from "./lib/mock";
 /** Kasten „Mikrofon“ (voice.tuning.*) gegen das gefälschte Backend. Zeitgeber gefälscht: Entprellen und Abfrage genau prüfbar. */
 
 const TOKEN = "t".repeat(43);
+/** Feste Mock-Zeit mitten im Sprechen: RMS und Spitze liegen dann über 1.000 und zeigen den Tausenderpunkt. */
+const FIXED_NOW = 1745;
+/** Ganze Zahl im deutschen Format, mit oder ohne Tausenderpunkt. */
+const DE_INT = String.raw`\d{1,3}(?:\.\d{3})*`;
 type Msg = Record<string, unknown> & { type: string };
 
 afterEach(() => {
@@ -26,7 +31,12 @@ const tick = (ms = 0) => act(async () => { await vi.advanceTimersByTimeAsync(ms)
 async function mount(prep?: (m: MockSocket) => void, props: { kill?: boolean; visible?: boolean } = {}) {
   vi.useFakeTimers();
   let sock!: MockSocket;
-  const client = new ApiClient({ port: 5000, token: TOKEN }, (u) => { sock = new MockSocket(u, TOKEN); prep?.(sock); return sock; });
+  const client = new ApiClient({ port: 5000, token: TOKEN }, (u) => {
+    sock = new MockSocket(u, TOKEN);
+    sock.now = () => FIXED_NOW;                          // Pegel unabhängig von der echten Uhr (sonst wackeln die Zahlen)
+    prep?.(sock);
+    return sock;
+  });
   await client.connect();
   render(<MicTuning client={{ current: client }} connected kill={props.kill ?? false} visible={props.visible ?? true} />);
   await tick();
@@ -130,13 +140,14 @@ describe("Kasten Mikrofon", () => {
     expect(box().getByText("Unterbrechen ab 250")).toBeInTheDocument();
     expect(box().getByText("Schwelle 200")).toBeInTheDocument();
     expect(box().getByText("Schwelle 250")).toBeInTheDocument();
-    expect(box().getByText(/^RMS \d/)).toBeInTheDocument();
-    expect(box().getByText(/^Spitze \d/)).toBeInTheDocument();
+    expect(box().getByText(new RegExp(`^RMS ${DE_INT}$`))).toBeInTheDocument();
+    expect(box().getByText(new RegExp(`^Spitze ${DE_INT}$`))).toBeInTheDocument();
+    expect(box().getByText(/^RMS \d{1,3}\.\d{3}$/)).toBeInTheDocument();       // feste Zeit: über 1.000, mit Tausenderpunkt
     expect(box().getByText(NOTE_NOW)).toBeInTheDocument();
     expect(slider("Empfindlichkeit Sprechen").value).toBe(String(levelToSens(200, [80, 600])));
     expect(slider("Empfindlichkeit Sprechen")).toHaveAttribute("aria-valuetext", "Schwelle 200, nach rechts empfindlicher");
     const meter = box().getByRole("meter", { name: /Mikrofonpegel/ });
-    expect(meter.getAttribute("aria-valuetext")).toMatch(/^RMS \d+, Spitze \d+/);
+    expect(meter.getAttribute("aria-valuetext")).toMatch(new RegExp(`^RMS ${DE_INT}, Spitze ${DE_INT}$`));
     expect(document.querySelectorAll(".mic-mark")).toHaveLength(2);
     // Erweitert: eingeklappt, Pause bis Satzende mit Dateiwert 2,5 s, Mindestdauer 240 ms
     const adv = box().getByText("Erweitert").closest("details")!;
@@ -426,6 +437,137 @@ describe("Kasten Mikrofon", () => {
     for (const el of Array.from(document.querySelectorAll<HTMLElement>(".mic-fill, .mic-peak, .mic-mark"))) {
       expect(el.getAttribute("style")).toMatch(/^(width|left): \d+(\.\d+)?%;?$/);
     }
+  });
+});
+
+describe("Werte außerhalb des Reglerbereichs, Mock wie das Backend, Hinweise", () => {
+  it("outsideNote: kein Hinweis im Bereich, sonst Wert, Bereich und wohin Verschieben setzt", () => {
+    expect(outsideNote(250, [150, 1500])).toBe("");
+    expect(outsideNote(150, [150, 1500])).toBe("");
+    expect(outsideNote(5000, [150, 1500]))
+      .toBe("Aktueller Wert 5.000 liegt außerhalb des Reglerbereichs (150 bis 1.500); Verschieben setzt ihn auf höchstens 1.500.");
+    expect(outsideNote(50, [80, 600])).toBe("Aktueller Wert 50 liegt außerhalb des Reglerbereichs (80 bis 600); Verschieben setzt ihn auf mindestens 80.");
+    expect(outsideNote(4, [0.6, 3], " s", 1)).toBe("Aktueller Wert 4,0 s liegt außerhalb des Reglerbereichs (0,6 s bis 3,0 s); Verschieben setzt ihn auf höchstens 3,0 s.");
+  });
+
+  it("Unterbrechen 5000 (aus der Datei): Hinweis am Regler statt stillem Sprung; nach dem Verschieben weg", async () => {
+    const { sent } = await mount((m) => { m.tuningValues = { ...m.tuningValues, barge_in_level: 5000 }; });
+    const note = box().getByText(/^Aktueller Wert 5\.000 liegt außerhalb des Reglerbereichs \(150 bis 1\.500\); Verschieben setzt ihn auf höchstens 1\.500\.$/);
+    const s = slider("Empfindlichkeit Unterbrechen");
+    expect(s.getAttribute("aria-describedby")).toContain(note.id);
+    expect(s.value).toBe("0");                                          // Regler am linken Rand, Wert selbst unverändert
+    expect(box().getByText("Unterbrechen ab 5.000")).toBeInTheDocument();
+    expect(sent("voice.tuning.set")).toHaveLength(0);                   // nur anzeigen, nichts korrigieren
+    await act(async () => { fireEvent.change(s, { target: { value: "1" } }); });
+    expect(box().queryByText(/außerhalb des Reglerbereichs/)).toBeNull();
+    await tick(SEND_DELAY_MS + 1);
+    const v = (sent("voice.tuning.set")[0].values as Record<string, number>).barge_in_level;
+    expect(v).toBeLessThanOrEqual(1500);
+    expect(v).toBe(sensToLevel(1, [150, 1500]));
+  });
+
+  it("ohne Sprachdienst, Datei mit Sprechen 50: Hinweis auch dort", async () => {
+    await mount((m) => { m.tuningActive = false; m.tuningFile = { ...m.tuningFile, speech_level: 50 }; });
+    expect(box().getByText(/^Aktueller Wert 50 liegt außerhalb des Reglerbereichs \(80 bis 600\); Verschieben setzt ihn auf mindestens 80\.$/)).toBeInTheDocument();
+  });
+
+  it("voiceTune im Mock wie LiveTuning._stepped: ein Dateiwert unter der Grenze wird bei „empfindlicher“ nicht angehoben", () => {
+    const m = new MockSocket("ws://127.0.0.1:1", TOKEN);
+    m.tuningFile = { ...m.tuningFile, speech_level: 50, barge_in_level: 2000 };
+    m.voiceTune(1);
+    expect(m.tuningValues.speech_level).toBe(50);                      // nie in die falsche Richtung
+    expect(m.tuningValues.barge_in_level).toBe(1428.6);                // 2000 / 1,4, schon im Bereich
+    m.voiceTune(2);
+    expect(m.tuningValues.speech_level).toBe(50);
+    m.voiceTune(-1);
+    expect(m.tuningValues.speech_level).toBe(80);                      // weniger empfindlich: 70 auf die Grenze 80, höher als 50
+    expect(m.tuningValues.barge_in_level).toBe(2000);                  // 2800 auf 1500 begrenzt, nie unter den Dateiwert
+    m.voiceTune(0);
+    expect(m.tuningValues.speech_level).toBe(50);
+    m.tuningFile = { ...m.tuningFile, speech_level: 700 };
+    m.voiceTune(2);
+    expect(m.tuningValues.speech_level).toBe(357.1);                   // 700 / 1,96
+    m.close();
+  });
+
+  it("Mock: Prototyp-Schlüssel sind keine Werte (bad_request)", async () => {
+    const { sock } = await mount();
+    const ask = (values: unknown) => new Promise<unknown>((resolve) => {
+      sock.onmessage = (e) => resolve(JSON.parse(String(e.data)));
+      sock.send(JSON.stringify({ type: "voice.tuning.set", token: TOKEN, confirm: true, values }));
+    });
+    expect(await ask({ toString: 5 })).toEqual({ ok: false, error: "bad_request" });
+    expect(await ask({ constructor: 5 })).toEqual({ ok: false, error: "bad_request" });
+    expect(await ask({ hasOwnProperty: 300 })).toEqual({ ok: false, error: "bad_request" });
+    expect(sock.tuningVersion).toBe(0);
+  });
+
+  it("„Merken“, und inzwischen gilt schon ein neuerer Stand: freundlicher Hinweis", async () => {
+    const { sock } = await mount((m) => { m.voiceTune(1); m.tuningNewerOnSave = true; });
+    await click(btn("Merken"));
+    await click(within(box().getByRole("alertdialog")).getByRole("button", { name: "Dauerhaft merken" }));
+    expect(sock.tuningSaves).toBe(1);
+    expect(box().getByRole("status")).toHaveTextContent(NEWER_LIVE);
+    expect(box().getByRole("status")).toHaveTextContent(/^Gemerkt, die alte Datei liegt als wakewords\.toml\.bak daneben\./);
+    expect(btn("Merken")).toBeEnabled();                                // der neuere Stand lässt sich wieder merken
+    expect(newerAfterSave({ ok: false, error: "x" }, null)).toBe(false);
+  });
+
+  it("ohne neueren Stand kein solcher Hinweis", async () => {
+    await mount((m) => m.voiceTune(1));
+    await click(btn("Merken"));
+    await click(within(box().getByRole("alertdialog")).getByRole("button", { name: "Dauerhaft merken" }));
+    expect(box().getByRole("status")).not.toHaveTextContent(NEWER_LIVE);
+  });
+
+  it("Setup-Pegeltest: live_clamped gibt einen kurzen Hinweis; Datei unverändert, live begrenzt", async () => {
+    vi.useFakeTimers();
+    let sock!: MockSocket;
+    const client = new ApiClient({ port: 5000, token: TOKEN }, (u) => {
+      sock = new MockSocket(u, TOKEN);
+      sock.now = () => FIXED_NOW;
+      sock.voice = { active: true, state: "idle", level: 0.3 };
+      sock.levelApplyLive = true;
+      sock.levelOverride = { ok: true, state: "done", seconds_left: 0, suggestion: { speech_level: 240, barge_in_level: 5000 } };
+      return sock;
+    });
+    await client.connect();
+    const said: string[] = [];
+    const ctx: StepCtx = {
+      read: (t, d = {}) => client.call(t, d), write: (t, d = {}) => client.call(t, { ...d, confirm: true }), locked: false,
+      say: (t) => { said.push(t); }, done: async () => {},
+    };
+    render(<MicStep ctx={ctx} />);
+    await tick();
+    await click(screen.getByRole("button", { name: "Pegeltest starten" }));
+    await tick(600);
+    await click(screen.getByRole("button", { name: "Übernehmen" }));
+    expect(said.at(-1)).toBe(`Pegel übernommen. ${LIVE_CLAMPED}`);
+    expect(sock.tuningFile.barge_in_level).toBe(5000);
+    expect(sock.tuningValues.barge_in_level).toBe(1500);
+  });
+
+  it("Setup-Pegeltest ohne Begrenzung: nur „Pegel übernommen.“", async () => {
+    vi.useFakeTimers();
+    const client = new ApiClient({ port: 5000, token: TOKEN }, (u) => {
+      const s = new MockSocket(u, TOKEN);
+      s.voice = { active: true, state: "idle", level: 0.3 };
+      s.levelApplyLive = true;
+      s.levelOverride = { ok: true, state: "done", seconds_left: 0, suggestion: { speech_level: 240, barge_in_level: 320 } };
+      return s;
+    });
+    await client.connect();
+    const said: string[] = [];
+    const ctx: StepCtx = {
+      read: (t, d = {}) => client.call(t, d), write: (t, d = {}) => client.call(t, { ...d, confirm: true }), locked: false,
+      say: (t) => { said.push(t); }, done: async () => {},
+    };
+    render(<MicStep ctx={ctx} />);
+    await tick();
+    await click(screen.getByRole("button", { name: "Pegeltest starten" }));
+    await tick(600);
+    await click(screen.getByRole("button", { name: "Übernehmen" }));
+    expect(said.at(-1)).toBe("Pegel übernommen.");
   });
 });
 

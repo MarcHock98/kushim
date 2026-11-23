@@ -17,6 +17,8 @@ export interface StepCtx {
 }
 
 export const NO_VOICE = "Starte kushim mit Sprache, dann geht der Test.";
+/** Pegel übernommen, für den laufenden Betrieb aber auf die erlaubten Grenzen begrenzt (`live_clamped` von voice.level_apply). */
+export const LIVE_CLAMPED = "Für den laufenden Betrieb wurde mindestens ein Wert auf den erlaubten Bereich begrenzt; in wakewords.toml steht der Vorschlag unverändert.";
 const VOICE_POLL_MS = 250;
 const LEVEL_POLL_MS = 500;
 const LEVEL_DEADLINE_MS = 60_000;
@@ -231,7 +233,7 @@ export function MicStep({ ctx }: { ctx: StepCtx }) {
   const apply = async () => {
     if (!lv.sug) return;
     const r = await write("voice.level_apply", { speech_level: lv.sug.speech_level, barge_in_level: lv.sug.barge_in_level });
-    if (r.ok) say("Pegel übernommen.");
+    if (r.ok) say(r.live_clamped === true ? `Pegel übernommen. ${LIVE_CLAMPED}` : "Pegel übernommen.");
   };
 
   const pct = Math.round(voice.level * 100);
