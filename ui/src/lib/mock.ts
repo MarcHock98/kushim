@@ -111,6 +111,9 @@ export class MockSocket implements Socket {
   voiceUnavailable = false;                             // Variante: kein Sprachdienst (Pegeltest und Wake-Word-Test gehen nicht)
   levelUnavailable = false;                             // Variante: Sprachdienst läuft, der Pegeltest steht aber nicht zur Verfügung
   levelStart: number | null = null;                     // Pegeltest: 3 s still sein, dann 6 s sprechen, dann Vorschlag
+  /** Variante: Sprachprozess läuft mit Schwellen zur Laufzeit; level_apply gilt dann sofort (restart_needed false) und meldet
+   *  `live_clamped: true`, wenn ein Wert auf die Live-Grenzen begrenzt wurde (in der Datei steht er unverändert). */
+  levelApplyLive = false;
   now = () => Date.now();
 
   /** Wie beim ersten Start: alle Schritte offen. */
@@ -195,6 +198,14 @@ export class MockSocket implements Socket {
         const a = msg.speech_level, b = msg.barge_in_level;
         if (typeof a !== "number" || typeof b !== "number" || a < 50 || a > 5000 || b < 100 || b > 20000) return { ok: false, error: "bad_level" };
         this.levels = { speech_level: a, barge_in_level: b };
+        if (this.levelApplyLive) {                      // wie mit laufendem Sprachprozess: gilt sofort, live auf die Grenzen begrenzt
+          const fit = (k: "speech_level" | "barge_in_level", x: number) => Math.max(this.tuningBounds[k][0], Math.min(this.tuningBounds[k][1], x));
+          this.tuningFile = { ...this.tuningFile, speech_level: a, barge_in_level: b };
+          this.tuningValues = { ...this.tuningValues, speech_level: fit("speech_level", a), barge_in_level: fit("barge_in_level", b) };
+          this.tuningStep = 0; this.tuningSource = "ui"; this.tuningVersion += 1;
+          const clamped = this.tuningValues.speech_level !== a || this.tuningValues.barge_in_level !== b;
+          return { ok: true, ...this.levels, restart_needed: false, ...(clamped ? { live_clamped: true } : {}) };
+        }
         return { ok: true, ...this.levels, restart_needed: true };
       }
       case "wake.get": return { ok: true, words: this.words, max: 12 };
@@ -228,6 +239,8 @@ export class MockSocket implements Socket {
   tuningFileBroken = false;
   /** Es gibt noch keine wakewords.toml: „Merken“ legt keine Sicherung an (backup: false). */
   tuningNoFile = false;
+  /** Tests: zwischen Speichern und Antwort wird schon wieder per Stimme verstellt (die Antwort zeigt einen neueren Stand). */
+  tuningNewerOnSave = false;
   /** Tests: das nächste set/reset/save genau so ablehnen (danach wieder normal). */
   tuningFail: "invalid" | "kill" | "unavailable" | "bad_request" | "confirm_required" | "broken_file" | "not_saved" | null = null;
   tuningSaves = 0;                                      // wie oft „Merken“ die Datei geschrieben hätte
@@ -235,9 +248,12 @@ export class MockSocket implements Socket {
    *  begrenzt und auf 0,1 gerundet, Grundlage sind die Dateiwerte. */
   voiceTune(step: number): void {
     this.tuningStep = Math.max(-2, Math.min(2, Math.round(step)));
-    const stepped = (k: "speech_level" | "barge_in_level") => {
+    const stepped = (k: "speech_level" | "barge_in_level") => {     // wie LiveTuning._stepped: nie in die falsche Richtung
       const [lo, hi] = this.tuningBounds[k];
-      return Math.round(Math.max(lo, Math.min(hi, this.tuningFile[k] / 1.4 ** this.tuningStep)) * 10) / 10;
+      const base = this.tuningFile[k], s = this.tuningStep;
+      if (s === 0) return base;
+      const value = Math.max(lo, Math.min(hi, base / 1.4 ** s));
+      return Math.round((s > 0 ? Math.min(base, value) : Math.max(base, value)) * 10) / 10;
     };
     this.tuningValues = { ...this.tuningValues, speech_level: stepped("speech_level"), barge_in_level: stepped("barge_in_level") };
     this.tuningSource = "voice";
@@ -268,7 +284,7 @@ export class MockSocket implements Socket {
     if (type === "voice.tuning.set") {                  // Form zuerst: ein nicht leeres Objekt mit bekannten Namen und Zahlen
       const v = msg.values as Record<string, unknown> | null;
       const ok = !!v && typeof v === "object" && !Array.isArray(v) && Object.keys(v).length > 0
-        && Object.entries(v).every(([k, x]) => k in this.tuningBounds && typeof x === "number" && Number.isFinite(x));
+        && Object.entries(v).every(([k, x]) => Object.hasOwn(this.tuningBounds, k) && typeof x === "number" && Number.isFinite(x));
       if (!ok) return { ok: false, error: "bad_request" };
       patch = v as Record<string, number>;
     }
@@ -285,6 +301,7 @@ export class MockSocket implements Socket {
       const backup = !this.tuningNoFile;
       this.tuningFile = { ...this.tuningValues }; this.tuningNoFile = false; this.tuningSaves += 1;
       this.tuningStep = 0; this.tuningSource = "ui"; this.tuningVersion += 1;
+      if (this.tuningNewerOnSave) { this.tuningNewerOnSave = false; this.voiceTune(1); }   // gleich danach per Stimme verstellt
       return { ok: true, ...this.tuningState(), backup };
     }
     const inside = Object.entries(patch).every(([k, x]) => {

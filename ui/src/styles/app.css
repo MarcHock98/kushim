@@ -705,6 +705,7 @@ h2, h3 { font-family: var(--font-display); font-weight: 600; letter-spacing: .04
 .mic-slider input[type="range"] { flex: 1 1 100%; width: 100%; min-width: 0; min-height: var(--hit); margin: 0; accent-color: var(--arc); }
 .mic-slider input[type="range"]:disabled { cursor: default; }
 .mic-ends { flex: 1 1 100%; display: flex; justify-content: space-between; gap: var(--s-3); margin-top: calc(-1 * var(--s-2)); font-size: var(--fs-xs); color: var(--text-muted); }
+.mic-out { flex: 1 1 100%; margin: 0; padding: var(--s-2) var(--s-3); border-left: 2px solid var(--warn); color: var(--text); font-size: var(--fs-sm); overflow-wrap: anywhere; }
 .mic-adv { min-width: 0; border-top: 1px solid var(--line); }
 .mic-adv summary { cursor: pointer; min-height: var(--hit); display: flex; align-items: center; font-family: var(--font-mono); font-size: var(--fs-xs); letter-spacing: var(--track-label); text-transform: uppercase; color: var(--text-muted); }
 .mic-adv-body { display: grid; gap: var(--s-4); padding-top: var(--s-2); }

@@ -95,7 +95,14 @@ export function tuningError(error: string, what = "Nichts wurde geändert."): st
   }
 }
 
-const stepWord = (s: number) => (s > 0 ? `+${s}` : s < 0 ? `−${-s}` : "0");
+export const NEWER_LIVE = "Inzwischen gilt schon ein neuerer Stand (etwa per Stimme verstellt). Er wirkt bis zum Neustart; merken kannst du ihn erneut.";
+/** Nach `save`: gilt inzwischen ein neuerer Live-Stand? Erkennbar am Stand in der Antwort: Die aktiven Werte weichen schon
+ *  wieder von den eben gespeicherten Dateiwerten ab (ein eigenes Feld dafür liefert das Backend bislang nicht). */
+export function newerAfterSave(r: ApiReply, s: TuningState | null): boolean {
+  return r.ok && !!s?.values && !!s.file_values && TUNING_KEYS.some((k) => s.values![k] !== s.file_values![k]);
+}
+
+const stepWord =(s: number) => (s > 0 ? `+${s}` : s < 0 ? `−${-s}` : "0");
 /** Fokus nie einer offenen Freigabe-Leiste wegnehmen. */
 const approvalOpen = () => document.querySelector(".approval") !== null;
 
@@ -103,20 +110,32 @@ type Phase = "loading" | "ready" | "offline" | "unknown" | "error";
 
 interface SliderProps {
   id: string; label: string; value: number; min: number; max: number; step: number; text: string; valueText: string;
-  low?: string; high?: string; disabled: boolean; onChange: (v: number) => void; onGrab: () => void;
+  low?: string; high?: string; note?: string; disabled: boolean; onChange: (v: number) => void; onGrab: () => void;
 }
 
-function Slider({ id, label, value, min, max, step, text, valueText, low, high, disabled, onChange, onGrab }: SliderProps) {
-  const hint = low && high ? `${id}-ends` : undefined;
+function Slider({ id, label, value, min, max, step, text, valueText, low, high, note, disabled, onChange, onGrab }: SliderProps) {
+  const ends = low && high ? `${id}-ends` : "";
+  const out = note ? `${id}-out` : "";
   return (
     <div className="mic-slider">
       <label htmlFor={id}>{label}</label>
       <span className="mic-num">{text}</span>
       <input id={id} type="range" min={min} max={max} step={step} value={value} disabled={disabled} aria-valuetext={valueText}
-        aria-describedby={hint} onChange={(e) => onChange(Number(e.target.value))} onPointerDown={onGrab} />
-      {low && high && <span className="mic-ends" id={hint}><span>{low}</span><span>{high}</span></span>}
+        aria-describedby={[out, ends].filter(Boolean).join(" ") || undefined} onChange={(e) => onChange(Number(e.target.value))}
+        onPointerDown={onGrab} />
+      {low && high && <span className="mic-ends" id={ends}><span>{low}</span><span>{high}</span></span>}
+      {note && <p className="mic-out" id={out}>{note}</p>}
     </div>
   );
+}
+
+/** Hinweis, wenn der aktuelle Wert außerhalb des Reglerbereichs liegt (etwa aus der Datei über den Pegeltest): Der Regler steht
+ *  dann am Rand, und Verschieben setzt einen Wert im Bereich. Kein stiller Sprung. Leer, wenn der Wert im Bereich liegt. */
+export function outsideNote(value: number, [lo, hi]: [number, number], unit = "", digits = 0): string {
+  if (!finite(value) || (value >= lo && value <= hi)) return "";
+  const n = (x: number) => `${de(x, digits)}${unit}`;
+  return `Aktueller Wert ${n(value)} liegt außerhalb des Reglerbereichs (${n(lo)} bis ${n(hi)}); Verschieben setzt ihn auf `
+    + (value > hi ? `höchstens ${n(hi)}.` : `mindestens ${n(lo)}.`);
 }
 
 export function MicTuning({ client, connected, kill, visible = true, sendDelay = SEND_DELAY_MS }: {
@@ -259,10 +278,11 @@ export function MicTuning({ client, connected, kill, visible = true, sendDelay =
     if (r.ok) {
       const s = parseTuning(r);
       setData((d) => s ?? (d?.values ? { ...d, file_values: { ...d.values }, step: 0 } : d));
-      setNote(r.backup === false
+      const head = r.backup === false
         ? "Gemerkt. Die Werte gelten jetzt auch nach dem Neustart. Eine Sicherung gab es nicht, weil wakewords.toml noch fehlte."
         : r.backup === true ? "Gemerkt, die alte Datei liegt als wakewords.toml.bak daneben. Die Werte gelten jetzt auch nach dem Neustart."
-        : "Gemerkt. Die Werte gelten jetzt auch nach dem Neustart.");
+        : "Gemerkt. Die Werte gelten jetzt auch nach dem Neustart.";
+      setNote(newerAfterSave(r, s) ? `${head} ${NEWER_LIVE}` : head);
     } else setNote(tuningError(r.error, "Nichts wurde gespeichert."));
   };
 
@@ -275,6 +295,7 @@ export function MicTuning({ client, connected, kill, visible = true, sendDelay =
   const shown = (k: TuningKey, digits = 0) => (values ? de(val(k), digits) : "unbekannt");
   const b = data?.bounds ?? TUNING_BOUNDS;
   const differs = !!values && !!file && TUNING_KEYS.some((k) => values[k] !== file[k]);
+  const outside = (k: TuningKey, unit = "", digits = 0) => (values ? outsideNote(val(k), b[k], unit, digits) : "");
   const fileNote = (k: TuningKey, unit = "", digits = 0) =>
     values && file && file[k] !== val(k) ? ` (Datei ${de(file[k], digits)}${unit})` : "";
   const status = phase === "loading" ? "lädt" : phase === "offline" ? "keine Verbindung" : phase === "unknown" ? "nicht verfügbar"
@@ -323,21 +344,23 @@ export function MicTuning({ client, connected, kill, visible = true, sendDelay =
         <Slider id={`${uid}-speech`} label="Empfindlichkeit Sprechen" min={0} max={SENS_MAX} step={1}
           value={levelToSens(speech, b.speech_level)} text={`Schwelle ${shown("speech_level")}${fileNote("speech_level")}`}
           valueText={`Schwelle ${shown("speech_level")}, nach rechts empfindlicher`} low="weniger empfindlich" high="empfindlicher"
-          disabled={locked} onGrab={grab} onChange={(p) => change("speech_level", sensToLevel(p, b.speech_level))} />
+          note={outside("speech_level")} disabled={locked} onGrab={grab} onChange={(p) => change("speech_level", sensToLevel(p, b.speech_level))} />
         <Slider id={`${uid}-barge`} label="Empfindlichkeit Unterbrechen" min={0} max={SENS_MAX} step={1}
           value={levelToSens(barge, b.barge_in_level)} text={`Schwelle ${shown("barge_in_level")}${fileNote("barge_in_level")}`}
           valueText={`Schwelle ${shown("barge_in_level")}, nach rechts empfindlicher`} low="weniger empfindlich" high="empfindlicher"
-          disabled={locked} onGrab={grab} onChange={(p) => change("barge_in_level", sensToLevel(p, b.barge_in_level))} />
+          note={outside("barge_in_level")} disabled={locked} onGrab={grab} onChange={(p) => change("barge_in_level", sensToLevel(p, b.barge_in_level))} />
         <details className="mic-adv">
           <summary>Erweitert</summary>
           <div className="mic-adv-body">
             <Slider id={`${uid}-pause`} label="Pause bis Satzende" min={b.end_silence_seconds[0]} max={b.end_silence_seconds[1]} step={0.1}
               value={val("end_silence_seconds")} text={values ? `${shown("end_silence_seconds", 1)} s${fileNote("end_silence_seconds", " s", 1)}` : "unbekannt"}
-              valueText={values ? `${shown("end_silence_seconds", 1)} Sekunden` : "unbekannt"} disabled={locked} onGrab={grab}
+              valueText={values ? `${shown("end_silence_seconds", 1)} Sekunden` : "unbekannt"} note={outside("end_silence_seconds", " s", 1)}
+              disabled={locked} onGrab={grab}
               onChange={(v) => change("end_silence_seconds", Math.round(v * 10) / 10)} />
             <Slider id={`${uid}-ms`} label="Mindestdauer Unterbrechen" min={b.barge_in_ms[0]} max={b.barge_in_ms[1]} step={10}
               value={val("barge_in_ms")} text={values ? `${shown("barge_in_ms")} ms${fileNote("barge_in_ms", " ms")}` : "unbekannt"}
-              valueText={values ? `${shown("barge_in_ms")} Millisekunden` : "unbekannt"} disabled={locked} onGrab={grab}
+              valueText={values ? `${shown("barge_in_ms")} Millisekunden` : "unbekannt"} note={outside("barge_in_ms", " ms")}
+              disabled={locked} onGrab={grab}
               onChange={(v) => change("barge_in_ms", Math.round(v))} />
           </div>
         </details>
