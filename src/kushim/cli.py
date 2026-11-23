@@ -16,6 +16,7 @@ Starten
   kushim start [ordner]        Dasselbe in einem bestimmten freigegebenen Ordner [--no-ui] [--mic NAME] [--out NAME]
   kushim kill                  NOTAUS: stoppt alle kushim-Dienste
   kushim resume                Notaus bewusst aufheben
+  kushim restart               laufendes kushim start neu starten (nur auf ausdrücklichen Befehl)
 
 Mikrofon
   kushim voice level           Mikrofonpegel messen, Schwellen vorschlagen [--apply] [--mic NAME]
@@ -130,7 +131,44 @@ def _watch_channel(folder, started: float, done, check=None) -> str:
     return state
 
 
+def _pause() -> None:
+    """Wartet auf einen Tastendruck (Windows: eine beliebige Taste; sonst Enter). Nie über eine Shell."""
+    try:
+        import msvcrt
+    except ImportError:
+        msvcrt = None
+    try:
+        if msvcrt is not None:
+            print("Eine Taste drücken, um das Fenster zu schließen.", flush=True)
+            msvcrt.getch()
+        else:
+            input("Enter drücken, um das Fenster zu schließen.")
+    except (EOFError, OSError):
+        pass
+
+
 def _start(args, cfg: Config, root) -> int:
+    """`kushim start`; im durch Neustart erzeugten Prozess (launch.RESTARTED_ENV) bleibt das Fenster bei einem Abbruch
+    (Rückgabe ungleich 0, z. B. Notaus, nicht angemeldet, Ordner unzulässig) offen, bis eine Taste gedrückt wird. Sonst
+    schlösse sich die neue Konsole sofort, und die Meldung wäre weg. Das Kennzeichen gilt nur für diesen Prozess."""
+    import os
+    from .channel import launch
+    after_restart = os.environ.pop(launch.RESTARTED_ENV, None) == "1"
+    try:
+        rc = _start_run(args, cfg, root)
+    except Exception:                                 # noqa: BLE001 (nur nach Neustart: Fehler sichtbar lassen, dann Ende)
+        if not after_restart:
+            raise
+        import traceback
+        traceback.print_exc()
+        _pause()
+        return 1
+    if rc and after_restart:
+        _pause()
+    return rc
+
+
+def _start_run(args, cfg: Config, root) -> int:
     """`kushim start [ordner]`: Claude Code mit dem kushim-Channel im freigegebenen Ordner (eigenes Fenster), dann `kushim talk`."""
     from .channel import launch
     from .claude_cli import base as claude_base
@@ -188,6 +226,8 @@ def _start(args, cfg: Config, root) -> int:
     import time as _time
     from .procflags import kill_tree
     started = _time.time() - 2.0
+    restart_asked = threading.Event()
+    (root / launch.RESTART_FILE).unlink(missing_ok=True)   # alte Marke gilt nicht für diesen Start
     window = launch.launch(exe, folder, root, model=model, effort=effort)
     print(f"Claude Code startet im Fenster \"kushim-Claude\" im Ordner «{chosen.name}»"
           + (f" (Modell {model}" + (f", Aufwand {effort}" if effort else "") + ")" if model else "") + ".")
@@ -202,6 +242,17 @@ def _start(args, cfg: Config, root) -> int:
             print("\nClaude-Fenster geschlossen: kushim beendet sich.")
             _thread.interrupt_main()
     threading.Thread(target=watch_window, daemon=True).start()
+
+    def watch_restart():                              # `kushim restart` (nur auf Befehl des Nutzers): sauber beenden, dann neu
+        while not done.is_set():
+            if launch.restart_requested(root):
+                restart_asked.set()
+                print()
+                print("Neustart angefordert: kushim beendet sich und startet neu.")
+                _thread.interrupt_main()
+                return
+            _time.sleep(1.0)
+    threading.Thread(target=watch_restart, daemon=True).start()
     with_ui = not getattr(args, "no_ui", False)       # Standard: mit Oberfläche (Wunsch des Nutzers 2026-11-11)
     talk = ["talk"] + (["--mic", args.mic] if args.mic else []) + (["--out", args.out] if args.out else []) + (["--ui"] if with_ui else [])
     ui_proc: list = []
@@ -223,6 +274,12 @@ def _start(args, cfg: Config, root) -> int:
         if window.poll() is None:
             kill_tree(window.pid)
         print("Claude-Sitzung beendet (der Verlauf bleibt in Claude Code erhalten).")
+        if restart_asked.is_set() and not is_triggered(root):     # erst nach dem vollständigen Aufräumen (Mikrofon, Port frei)
+            try:
+                launch.restart(launch.restart_argv(chosen.name, args.mic, args.out, bool(getattr(args, "no_ui", False))))
+                print("kushim startet in einem neuen Fenster neu.")
+            except OSError as e:
+                print(f"Neustart nicht möglich: {e}")
 
 
 def _open_ui_window(root, done, procs: list, popen=None, wait=None, on_close=None) -> None:
@@ -404,6 +461,7 @@ def _main(argv: list[str] | None = None) -> int:
     ki.add_argument("hexkey")
     sub.add_parser("kill", help="Notaus: stoppt laufende kushim-Dienste")
     sub.add_parser("resume", help="Notaus aufheben (nur bewusst durch den Nutzer)")
+    sub.add_parser("restart", help="laufendes kushim start neu starten (nur auf ausdrücklichen Befehl des Nutzers)")
     st = sub.add_parser("start", help="Claude Code mit dem kushim-Channel im freigegebenen Ordner starten, dann Sprechen per Wake Word")
     st.add_argument("folder", nargs="?", help="Name eines freigegebenen Ordners (kushim claude folders)")
     st.add_argument("--mic", help="Namensteil des Mikrofons, sonst Systemstandard")
@@ -548,6 +606,12 @@ def _main(argv: list[str] | None = None) -> int:
             else:
                 print("Übernehmen mit: kushim voice level --apply")
             return 0
+        return 0
+    if args.cmd == "restart":
+        from .channel import launch
+        launch.request_restart(root)
+        print("Neustart angefordert: das laufende kushim start beendet sich und startet in einem neuen Fenster neu. "
+              "Dort den Hinweis zum Entwicklungs-Channel noch einmal bestätigen.")
         return 0
     if args.cmd == "start":
         return _start(args, cfg, root)
