@@ -322,6 +322,8 @@ class Pipeline:
                 if not called.is_set():                          # Chat nie aufgerufen (Notaus, Unterbrechen, Fehler)
                     self._drop(entry, "killed" if self.kill.fired else "cancelled" if self._interrupted.is_set()
                                else "send_failed")
+                elif not reports and entry is not None:          # Chat ohne `on_send` lief: nie auf `pending` stehen lassen
+                    self._note("sent", entry)
         reply = " ".join(sentences)
         self.history.append({"role": "assistant", "content": reply})
         self.dialog.reply_done()

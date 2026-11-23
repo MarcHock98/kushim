@@ -14,6 +14,7 @@ from typing import Any, Callable, Iterable
 from ..safety.killswitch import KillSwitch
 from .audio import UtteranceCollector
 from .pipeline import Pipeline, Result
+from .tts import split_sentences
 
 ACK_TEXT = "Ja?"
 
@@ -60,6 +61,9 @@ class TalkLoop:
         self.on_frame = on_frame         # nur Anzeige: (Frame, Phase) je Frame, Fehler stören nie
         self.on_barge = on_barge
         self._barged = False             # in der laufenden Runde wurde unterbrochen
+        self._replay: str | None = None  # Rest einer Meldung, die nur ein Geräusch ohne Text unterbrochen hat: kommt einmal
+        self._rest: str | None = None    # noch nicht gesprochener Rest der zuletzt unterbrochenen Meldung (wartet aufs Ergebnis)
+        self._replaying = False          # die laufende Meldung ist schon ein nachgereichter Rest (höchstens einmal je Meldung)
         from collections import deque
         self._ring: Any = deque(maxlen=preroll_frames) if preroll_frames > 0 else None
         self._collecting: UtteranceCollector | None = None
@@ -131,13 +135,20 @@ class TalkLoop:
         """Meldung von sich aus. Mit `barge` über den Worker wie eine Antwort: Die Frame-Schleife liest weiter das Mikrofon,
         damit Unterbrechen, Wake Word und Notaus auch während der Meldung greifen. Kein Leeren des Mikrofon-Puffers danach
         (sonst ginge ein gesprochener Notaus verloren); die Meldung erzeugt keine Zeile „Du“."""
-        msg = self.announce()
-        if not msg or self.say is None:
+        if self.say is None:
+            return None
+        replay, self._replay = self._replay, None
+        msg = replay or self.announce()
+        if not msg:
             return None
         self.on_note(f"Meldung: {msg}")
-        self._turn_mode, self._barged = "announce", False
-        if self._pool is None:
-            return self._process(self._announce_job(msg))
+        self._turn_mode, self._barged, self._replaying = "announce", False, bool(replay)
+        if self._pool is None:                   # ohne Unterbrechen: synchron; danach eigene Stimme aus dem Puffer verwerfen
+            try:
+                res = self._announce_job(msg)
+            finally:
+                self.flush()
+            return self._process(res)
         if self.barge is not None:
             self.barge.reset()
         self._busy = self._pool.submit(self._announce_job, msg)
@@ -184,8 +195,14 @@ class TalkLoop:
         self._busy = None
         if res.outcome == self.ANNOUNCED and self._barged:
             res = replace(res, outcome=self.ANNOUNCE_INTERRUPTED)
+            if not self._replaying:              # Rest merken; nachgereicht nur, wenn die Unterbrechung leer war
+                sents = split_sentences(res.reply) or [res.reply]
+                # der zuletzt gezählte Satz kann mittendrin abgebrochen sein (Speaker zählt ihn trotzdem): er kommt mit
+                done = max(0, res.spoken - 1) if isinstance(res.spoken, int) else 0
+                self._rest = " ".join(sents[done:]) or None
         if self._cancelled:                                      # nach dem Ende der abgebrochenen Antwort kurz bestätigen
             self._cancelled = False
+            self._rest = None                    # "abbrechen": den Rest der Meldung nicht nachreichen
             confirm = getattr(self.pipeline, "say_cancelled", None)
             if confirm is not None:
                 confirm()
@@ -238,6 +255,10 @@ class TalkLoop:
 
     def _process(self, res: Result) -> str | None:
         """Ergebnis einer Antwort: anzeigen, Gespräch fortsetzen oder beenden."""
+        if res.outcome != self.ANNOUNCE_INTERRUPTED:
+            rest, self._rest = self._rest, None
+            if rest and res.outcome == "empty":   # nur Geräusch, kein Text: Rest einmal nachreichen
+                self._replay = rest
         if self._turn_mode == "direct" and res.outcome in ("wake_only", "empty"):
             self._collecting, self._mode = self._ask_again(), "ack"      # nur Rest des Wake Words oder nichts Verständliches
             return None

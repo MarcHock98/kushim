@@ -432,3 +432,136 @@ def test_interruption_before_the_worker_starts_sends_nothing_and_the_line_says_c
     assert sent == []                                             # nichts ging an Claude
     e = notes.since(0)[-1]
     assert e["status"] == "dropped" and e["reason"] == "cancelled"
+
+
+# --- Nachprüfung (M1, M2, N1, N4) -----------------------------------------------------------------------------------------
+
+def test_the_old_interrupted_turn_never_closes_the_request_of_the_new_turn(tmp_path):
+    entered1, release1, entered2, release2 = (threading.Event() for _ in range(4))
+
+    def fetch(n):
+        if n == 1:
+            entered1.set()
+            assert release1.wait(timeout=5)
+            return "ok", ["Alt."]                                 # Ergebnis der alten Frage, kommt nach dem Unterbrechen
+        entered2.set()
+        assert release2.wait(timeout=5)
+        return "ok", ["Neu."]
+    b, tasks = Bridge(fetch), TaskRegistry()
+    chat = cc.ClaudeChat(b, tasks, clock=Clock())
+    p, kill, _ = live_parts(tmp_path, stt_says("Frage eins", "Frage zwei"), chat=chat, play=lambda wav: None)
+    results = {}
+    t1 = threading.Thread(target=lambda: results.setdefault(1, p.handle(PCM)))
+    t1.start()
+    assert entered1.wait(timeout=5)
+    p.interrupt()
+    t1.join(timeout=5)
+    t2 = threading.Thread(target=lambda: results.setdefault(2, p.handle(PCM)))
+    t2.start()                                                    # Runde 2 öffnet ihre Anfrage, wartet auf die Sperre
+    deadline = time.monotonic() + 5
+    while len(b.sent) < 2 and time.monotonic() < deadline:
+        time.sleep(0.01)
+    release1.set()                                                # Abruf 1 liefert jetzt "Alt."
+    assert entered2.wait(timeout=5)                               # alte Runde ist fertig, Runde 2 ruft ab
+    assert chat.request_open() and tasks.active() == [cc.TASK_NAME]          # "abbrechen" erreicht Claude weiter
+    release2.set()
+    t2.join(timeout=5)
+    assert results[2].reply == "Neu." and not chat.request_open() and tasks.active() == []
+    assert chat.announcement() == "Alt."
+
+
+def test_without_barge_the_mic_buffer_is_flushed_after_an_announcement(tmp_path):
+    flushed = []
+    p, kill, _ = live_parts(tmp_path, stt_says("x"), play=lambda wav: None)
+    loop = TalkLoop([QUIET] * 3, p, kill, wake=lambda f: False, flush=lambda: flushed.append(1),
+                    announce=once("Eins. Zwei."), say=p.say_text)
+    assert loop.run() == "ended" and flushed == [1]
+
+
+class StepPlayer:
+    """Jeder Satz „spielt“, bis er gestoppt wird oder 0,6 s vergehen; zählt die begonnenen Sätze."""
+
+    def __init__(self):
+        self.played, self._lock, self._current = [], threading.Lock(), threading.Event()
+
+    def stop(self):
+        self._current.set()
+
+    def __call__(self, wav):
+        ev = threading.Event()
+        with self._lock:
+            self._current = ev
+            self.played.append(wav)
+        ev.wait(timeout=0.6)
+
+    def reached(self, n):
+        deadline = time.monotonic() + 5
+        while len(self.played) < n and time.monotonic() < deadline:
+            time.sleep(0.005)
+        return len(self.played) >= n
+
+
+class Gated:
+    def __init__(self, frames, gates):
+        self.frames, self.gates = frames, gates
+
+    def __iter__(self):
+        for i, f in enumerate(self.frames):
+            if i in self.gates:
+                assert self.gates[i]()
+            time.sleep(0.01)
+            yield f
+
+
+def test_an_announcement_interrupted_only_by_noise_is_replayed_once_and_not_in_a_loop(tmp_path):
+    player, shown = StepPlayer(), []
+    p, kill, _ = live_parts(tmp_path, stt_says(""), play=player)              # Geräusch: Spracherkennung liefert nichts
+    burst = [LOUD] * 4 + [QUIET] * 3
+    frames = [QUIET] * 2 + burst + [QUIET] * 2 + burst + [QUIET] * 30
+    loop = TalkLoop(Gated(frames, {2: lambda: player.reached(1), 11: lambda: player.reached(2)}), p, kill,
+                    wake=lambda f: False, barge=BargeIn(), new_collector=collector,
+                    on_result=lambda r: shown.append(r.outcome), announce=once("Eins. Zwei. Drei."), say=p.say_text)
+    assert loop.run() == "ended"
+    assert shown == ["announce_interrupted", "empty", "announce_interrupted", "empty"]   # einmal nachgereicht, dann Schluss
+    assert player.played == ["Eins.", "Eins."]
+
+
+def test_a_replayed_rest_plays_to_the_end(tmp_path):
+    player, shown = StepPlayer(), []
+    p, kill, _ = live_parts(tmp_path, stt_says(""), play=player)
+    frames = [QUIET] * 2 + [LOUD] * 4 + [QUIET] * 3 + [QUIET] * 300
+    loop = TalkLoop(Gated(frames, {2: lambda: player.reached(2)}), p, kill, wake=lambda f: False, barge=BargeIn(),
+                    new_collector=collector, on_result=lambda r: shown.append(r.outcome),
+                    announce=once("Eins. Zwei. Drei."), say=p.say_text)
+    assert loop.run() == "ended"
+    assert shown == ["announce_interrupted", "empty", "announced"]
+    assert player.played == ["Eins.", "Zwei.", "Zwei.", "Drei."]               # nur der nicht gehörte Rest kommt nochmal
+
+
+def test_cancel_drops_the_rest_of_an_interrupted_announcement(tmp_path):
+    player, shown = StepPlayer(), []
+    p, kill, _ = live_parts(tmp_path, stt_says("abbrechen", ""), play=player)
+    burst = [LOUD] * 4 + [QUIET] * 3
+    frames = [QUIET] * 2 + burst + [QUIET] * 40
+    loop = TalkLoop(Gated(frames, {2: lambda: player.reached(1)}), p, kill, wake=lambda f: False, barge=BargeIn(),
+                    new_collector=collector, on_result=lambda r: shown.append(r.outcome),
+                    announce=once("Eins. Zwei. Drei."), say=p.say_text)
+    loop.run()
+    assert "Drei." not in player.played and "announced" not in shown
+
+
+def test_a_chat_without_on_send_never_stays_pending_after_an_early_interruption(tmp_path):
+    notes, started, release = Transcript(), threading.Event(), threading.Event()
+
+    def chat(messages):
+        started.set()
+        release.wait(timeout=5)                                   # noch kein Text
+        yield "Zu spät."
+    p, kill, _ = live_parts(tmp_path, stt_says("Frage"), chat=chat, notes=notes, play=lambda wav: None)
+    threading.Thread(target=lambda: (started.wait(5), p.interrupt())).start()
+    try:
+        assert p.handle(PCM).outcome == "interrupted"
+    finally:
+        release.set()
+    e = notes.since(0)[-1]
+    assert e["status"] == "sent"                                  # der Chat wurde aufgerufen: nicht mehr "pending"

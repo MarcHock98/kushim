@@ -63,6 +63,7 @@ class ClaudeChat:
         # Nur Anzeige; ein Fehler darin stört die Runde nie.
         self.on_send: Callable[[str], None] | None = None
         self._fetch_lock = threading.Lock()     # nie zwei Abrufe von `/reply` gleichzeitig (alte und neue Runde)
+        self._request_lock = threading.RLock()  # schützt `_request` (alte Runde im Hintergrund, neue Runde, Leerlauf)
         self._late_lock = threading.Lock()
         self._late: list[str] = []              # nach einem Stopp abgeholte Texte, kommen als Meldung
 
@@ -93,26 +94,32 @@ class ClaudeChat:
 
     # --- offene Anfrage: "abbrechen" erreicht Claude, bis ein Ergebnis da ist (auch nach SILENT und LATE)
     def _open(self) -> Any:
-        """Neue Anfrage an Claude ist unterwegs: als abbrechbare Aufgabe anmelden (ersetzt eine ältere, noch offene)."""
-        self._close()
+        """Neue Anfrage an Claude ist unterwegs: als abbrechbare Aufgabe anmelden (ersetzt eine ältere, noch offene).
+        Gibt den Eintrag (key, Token) zurück; eine Runde schließt später nur ihren eigenen Eintrag."""
         holder: dict[str, Any] = {}
 
         def cancel() -> None:                          # "abbrechen": Claude bekommt kind="cancel", danach ist nichts mehr offen
             self.bridge.cancel()
-            if self._request is holder.get("entry"):
-                self._close()
-        key, token = self.tasks.begin(TASK_NAME, cancel=cancel)
-        holder["entry"] = self._request = (key, token)
-        return token
+            self._close(holder.get("entry"))
+        with self._request_lock:
+            self._close()
+            key, token = self.tasks.begin(TASK_NAME, cancel=cancel)
+            holder["entry"] = self._request = (key, token)
+            return holder["entry"]
 
-    def _close(self) -> None:
-        """Ergebnis da, Notaus oder Verbindung weg: nichts mehr offen, "abbrechen" sagt dann ehrlich, dass nichts läuft."""
-        if self._request is not None:
-            self.tasks.end(self._request[0])
-            self._request = None
+    def _close(self, entry: Any = None) -> None:
+        """Ergebnis da, Notaus oder Verbindung weg: nichts mehr offen, "abbrechen" sagt dann ehrlich, dass nichts läuft.
+        Mit `entry`: nur schließen, wenn das noch die offene Anfrage ist (eine alte, unterbrochene Runde schließt nie die
+        Anfrage der neuen)."""
+        with self._request_lock:
+            if self._request is None or (entry is not None and self._request is not entry):
+                return
+            key, self._request = self._request[0], None
+            self.tasks.end(key)
 
     def request_open(self) -> bool:
-        return self._request is not None
+        with self._request_lock:
+            return self._request is not None
 
     def __call__(self, messages: list[dict[str, str]], stop: Callable[[], bool] | None = None, **_: Any) -> Iterator[str]:
         stopped = stop if stop is not None else (lambda: False)
@@ -128,7 +135,8 @@ class ClaudeChat:
             return
         start = self.clock()
         deadline, said, heard = start + self.patience, False, False     # said: etwas gesagt (auch Füllwort); heard: von Claude
-        token = self._open()
+        mine = self._open()
+        token = mine[1]
         while not token.cancelled():
             if stopped():                             # Unterbrechen/Notaus: kein weiteres `/reply`, Anfrage bleibt offen
                 return
@@ -156,7 +164,7 @@ class ClaudeChat:
             if stopped():                             # während des Abrufs unterbrochen: nachreichen statt verwerfen
                 self.defer(notes + (texts if status == "ok" else []))
                 if (status == "ok" and texts and final) or status in ("kill", "not_running"):
-                    self._close()
+                    self._close(mine)                 # nur die eigene Anfrage; eine neuere bleibt offen
                 return
             if notes:
                 yield " ".join(notes + texts)
@@ -165,15 +173,15 @@ class ClaudeChat:
                 yield " ".join(texts)
                 said = heard = True
                 if final:
-                    self._close()
+                    self._close(mine)
                     return                            # Ergebnis da; nach einem Zwischenstand („Ich schaue …“) weiter warten
                 continue
             if status == "kill":
-                self._close()
+                self._close(mine)
                 yield earcon.mark(KILLED)
                 return
             if status == "not_running":
-                self._close()
+                self._close(mine)
                 yield LOST
                 return
             if not heard and self.clock() - start >= SILENT_AFTER:
