@@ -1,5 +1,5 @@
 // Gefälschtes Backend für Entwicklung und Tests (kein Netz). Antwortet wie `ApiCore`: Token zuerst, neutrale Fehler.
-import type { Socket } from "./api";
+import type { Socket, TuningBounds, TuningValues } from "./api";
 
 /** Ein Eintrag wie `transcript.get` ihn liefert (src/kushim/voice/transcript.py), mit allen Feldern. */
 export interface MockEntry {
@@ -76,6 +76,7 @@ export class MockSocket implements Socket {
     if (query.has("freigabe")) this.pending = [{ request_id: "demo1", tool_name: "Bash", description: "Tests ausführen (Beispiel)",
       input_preview: "cd ui && npx vitest run", digest: "d".repeat(64), summary: "Claude möchte die Tests ausführen.", truncated: false }];
     this.setupFromUrl();                                // E3: ?mock&setup (Erststart), ?mock&setup&novoice (ohne Sprachdienst)
+    this.tuningFromUrl();                               // Mikrofon: ?mock&mic=aus (Sprachdienst aus), ?mock&mic=stimme (per Stimme verstellt)
     queueMicrotask(() => (this.fail ? this.onerror?.() : this.onopen?.()));
   }
 
@@ -211,6 +212,101 @@ export class MockSocket implements Socket {
   }
   // ===== Ende E3 =====
 
+  // ===== Mikrofon-Schwellen zur Laufzeit (voice.tuning.*), genau wie das Backend (api/voice_api.py, voice/tuning.py; routine/
+  // mic-tuning): Grenzen als {min, max} plus Stufe, `version`, Pegel als Rohwerte 0 bis 32767; set/reset/save antworten mit dem
+  // ganzen Stand, save zusätzlich mit `backup`. Fehler in derselben Reihenfolge: bad_request, confirm_required, kill, unavailable,
+  // invalid bzw. broken_file/not_saved. =====
+  /** Läuft der Sprachdienst für die Schwellen? Im Browser zeigt `?mock&mic=aus` den deaktivierten Kasten. */
+  tuningActive = true;
+  tuningFile: TuningValues = { speech_level: 200, barge_in_level: 250, barge_in_ms: 240, end_silence_seconds: 2.5 };
+  tuningValues: TuningValues = { ...this.tuningFile };
+  tuningBounds: TuningBounds = { speech_level: [80, 600], barge_in_level: [150, 1500], barge_in_ms: [160, 400], end_silence_seconds: [0.6, 3.0] };
+  tuningStep = 0;
+  tuningSource: "ui" | "voice" | "file" = "file";
+  tuningVersion = 0;
+  /** wakewords.toml fehlerhaft: ohne Sprachdienst sind values/file_values null, „Merken“ lehnt mit broken_file ab (`?mock&mic=kaputt`). */
+  tuningFileBroken = false;
+  /** Es gibt noch keine wakewords.toml: „Merken“ legt keine Sicherung an (backup: false). */
+  tuningNoFile = false;
+  /** Tests: das nächste set/reset/save genau so ablehnen (danach wieder normal). */
+  tuningFail: "invalid" | "kill" | "unavailable" | "bad_request" | "confirm_required" | "broken_file" | "not_saved" | null = null;
+  tuningSaves = 0;                                      // wie oft „Merken“ die Datei geschrieben hätte
+  /** Wie die Sprachsteuerung („Mikrofon empfindlicher“): Stufe -2 bis 2, Faktor 1,4 je Stufe auf Sprechen und Unterbrechen,
+   *  begrenzt und auf 0,1 gerundet, Grundlage sind die Dateiwerte. */
+  voiceTune(step: number): void {
+    this.tuningStep = Math.max(-2, Math.min(2, Math.round(step)));
+    const stepped = (k: "speech_level" | "barge_in_level") => {
+      const [lo, hi] = this.tuningBounds[k];
+      return Math.round(Math.max(lo, Math.min(hi, this.tuningFile[k] / 1.4 ** this.tuningStep)) * 10) / 10;
+    };
+    this.tuningValues = { ...this.tuningValues, speech_level: stepped("speech_level"), barge_in_level: stepped("barge_in_level") };
+    this.tuningSource = "voice";
+    this.tuningVersion += 1;
+  }
+  /** Simulierter Pegel (Rohwerte): ruhiger Raum um 40, beim Sprechen bis etwa 2.000, Spitze gut doppelt so hoch, abhängig von `now`. */
+  private tuningLevel(): { rms: number; peak: number } {
+    const t = this.now() / 1000;
+    const speech = Math.max(0, Math.sin(t * 0.9)) ** 2;
+    const rms = Math.round((40 + 1960 * speech * (0.7 + 0.3 * Math.abs(Math.sin(t * 7.3)))) * 10) / 10;
+    return { rms, peak: Math.min(32767, Math.round(rms * (2.1 + 0.4 * Math.abs(Math.sin(t * 3.1))) * 10) / 10) };
+  }
+  private tuningState(): Record<string, unknown> {
+    const bounds = { ...Object.fromEntries(Object.entries(this.tuningBounds).map(([k, [min, max]]) => [k, { min, max }])), step: { min: -2, max: 2 } };
+    if (!this.tuningActive) {                           // wie ohne Sprachprozess: Werte aus der Datei (oder null), Pegel 0
+      const file = this.tuningFileBroken ? null : { ...this.tuningFile };
+      return { active: false, values: file, file_values: file ? { ...file } : null, bounds, step: 0, rms: 0, peak: 0,
+        last_source: "file", version: 0 };
+    }
+    return { active: true, values: { ...this.tuningValues }, file_values: { ...this.tuningFile }, bounds, step: this.tuningStep,
+      ...this.tuningLevel(), last_source: this.tuningSource, version: this.tuningVersion };
+  }
+  private tuningReply(msg: Record<string, unknown>): unknown {
+    const type = String(msg.type);
+    if (type === "voice.tuning.get") return { ok: true, ...this.tuningState() };
+    if (!["voice.tuning.set", "voice.tuning.reset", "voice.tuning.save"].includes(type)) return { ok: false, error: "unknown_type" };
+    let patch: Record<string, number> = {};
+    if (type === "voice.tuning.set") {                  // Form zuerst: ein nicht leeres Objekt mit bekannten Namen und Zahlen
+      const v = msg.values as Record<string, unknown> | null;
+      const ok = !!v && typeof v === "object" && !Array.isArray(v) && Object.keys(v).length > 0
+        && Object.entries(v).every(([k, x]) => k in this.tuningBounds && typeof x === "number" && Number.isFinite(x));
+      if (!ok) return { ok: false, error: "bad_request" };
+      patch = v as Record<string, number>;
+    }
+    if (msg.confirm !== true) return { ok: false, error: "confirm_required" };
+    if (this.tuningFail) { const error = this.tuningFail; this.tuningFail = null; return { ok: false, error }; }
+    if (this.kill) return { ok: false, error: "kill" };
+    if (!this.tuningActive) return { ok: false, error: "unavailable" };
+    if (type === "voice.tuning.reset") {
+      this.tuningValues = { ...this.tuningFile }; this.tuningStep = 0; this.tuningSource = "ui"; this.tuningVersion += 1;
+      return { ok: true, ...this.tuningState() };
+    }
+    if (type === "voice.tuning.save") {
+      if (this.tuningFileBroken) return { ok: false, error: "broken_file" };
+      const backup = !this.tuningNoFile;
+      this.tuningFile = { ...this.tuningValues }; this.tuningNoFile = false; this.tuningSaves += 1;
+      this.tuningStep = 0; this.tuningSource = "ui"; this.tuningVersion += 1;
+      return { ok: true, ...this.tuningState(), backup };
+    }
+    const inside = Object.entries(patch).every(([k, x]) => {
+      const [lo, hi] = this.tuningBounds[k as keyof TuningBounds];
+      return x >= lo && x <= hi && (k !== "barge_in_ms" || Number.isInteger(x));
+    });
+    if (!inside) return { ok: false, error: "invalid" };
+    this.tuningValues = { ...this.tuningValues, ...(patch as Partial<TuningValues>) };
+    this.tuningSource = "ui";
+    this.tuningVersion += 1;
+    return { ok: true, ...this.tuningState() };
+  }
+  private tuningFromUrl(): void {
+    if (typeof location === "undefined") return;
+    const q = new URLSearchParams(location.search);
+    if (!q.has("mock")) return;
+    if (q.get("mic") === "aus") this.tuningActive = false;
+    if (q.get("mic") === "kaputt") { this.tuningActive = false; this.tuningFileBroken = true; }
+    if (q.get("mic") === "stimme") this.voiceTune(1);
+  }
+  // ===== Ende Mikrofon-Schwellen =====
+
   /** Vorführung im Browser (`?mock&demo`): erst ein reines Gespräch (Kern bleibt groß), dann zeigt „Claude“ der Reihe nach
    *  Rechnung, Markt, Recherche und Systemzustand. Nur Mock, Beispieldaten. */
   demo(): void {
@@ -271,6 +367,7 @@ export class MockSocket implements Socket {
     else if (msg.type === "safety.status") reply = { ok: true, kill: this.kill };
     else if (msg.type === "voice.state") reply = this.voiceReply();                                         // E3: mit wake_count/wake_last
     else if (msg.type && SETUP_TYPES.has(msg.type)) reply = this.setupReply(msg as Record<string, unknown>);   // E3
+    else if (msg.type?.startsWith("voice.tuning.")) reply = this.tuningReply(msg as Record<string, unknown>);  // Mikrofon-Schwellen
     else if (msg.type === "transcript.get") {
       const since = (msg as { since?: number }).since ?? 0;
       const entries = this.entries.filter((e) => e.rev > since);                 // since ist eine rev, keine id
