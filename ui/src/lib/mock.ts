@@ -47,8 +47,141 @@ export class MockSocket implements Socket {
     if (pick === "alt" || pick === "keine") this.usage = usageDemo(pick);
     if (query.has("freigabe")) this.pending = [{ request_id: "demo1", tool_name: "Bash", description: "Tests ausführen (Beispiel)",
       input_preview: "cd ui && npx vitest run", digest: "d".repeat(64), summary: "Claude möchte die Tests ausführen.", truncated: false }];
+    this.setupFromUrl();                                // E3: ?mock&setup (Erststart), ?mock&setup&novoice (ohne Sprachdienst)
     queueMicrotask(() => (this.fail ? this.onerror?.() : this.onopen?.()));
   }
+
+  // ===== E3 Setup-Assistent (Mock): setup.*, audio.*, voice.level_*, wake.*; Formen wie im Vertrag, Beispieldaten =====
+  setupSteps: Record<string, "open" | "done" | "skipped"> = Object.fromEntries(SETUP_IDS.map((s) => [s, "done"]));
+  checks: { id: string; label: string; ok: boolean; hint: string }[] = [
+    { id: "pkg_faster_whisper", label: "Python-Paket faster_whisper (Spracherkennung)", ok: true, hint: "" },
+    { id: "pkg_sounddevice", label: "Python-Paket sounddevice (Mikrofon)", ok: true, hint: "" },
+    { id: "model_whisper", label: "Whisper-Modell", ok: true, hint: "" },
+    { id: "model_piper", label: "Piper-Stimme", ok: true, hint: "" },
+    { id: "model_kws", label: "Wake-Word-Modell", ok: true, hint: "" },
+    { id: "gpu_libs", label: "GPU-Bibliotheken (cuBLAS/cuDNN)", ok: true, hint: "" },
+    { id: "kill_off", label: "Notaus nicht aktiv", ok: true, hint: "kushim resume" },
+    { id: "vault", label: "Vault vorhanden", ok: false, hint: "kushim memory init" },
+    { id: "claude_installed", label: "Claude Code installiert", ok: true, hint: "" },
+    { id: "claude_version", label: "Claude Code mindestens 2.1.234 (ist 2.1.240)", ok: true, hint: "" },
+    { id: "claude_login", label: "In Claude Code angemeldet", ok: false, hint: "claude auth login" },
+  ];
+  claudeChecking = false;                               // erste Claude-Prüfung läuft: Platzhalter statt claude_*, Schritt „Wird geprüft“
+  checksReply: Record<string, unknown> | null = null;   // Tests: setup.checks genau so beantworten (Fehler, kaputte Einträge)
+  levelOverride: Record<string, unknown> | null = null; // Tests: voice.level_result genau so beantworten
+  noWakeCount = false;                                  // Variante: älterer Sprachdienst ohne wake_count/wake_last
+  devices: { inputs: string[]; outputs: string[] } | null = {
+    inputs: ["Mikrofon (USB Audio Device)", "Headset-Mikrofon (Jabra Evolve 65)", "Mikrofonarray (Realtek Audio)"],
+    outputs: ["Lautsprecher (Realtek Audio)", "Kopfhörer (Jabra Evolve 65)"],
+  };
+  audio = { mic: "", out: "" };
+  levels = { speech_level: 200, barge_in_level: 250 };
+  words: { phrase: string; enabled: boolean }[] = ["hey kushim", "kushim", "kush", "hallo kush", "hi kushim", "kushi"].map((phrase) => ({ phrase, enabled: true }));
+  wakeCount = 0;
+  wakeLast = "";
+  voiceUnavailable = false;                             // Variante: kein Sprachdienst (Pegeltest und Wake-Word-Test gehen nicht)
+  levelUnavailable = false;                             // Variante: Sprachdienst läuft, der Pegeltest steht aber nicht zur Verfügung
+  levelStart: number | null = null;                     // Pegeltest: 3 s still sein, dann 6 s sprechen, dann Vorschlag
+  now = () => Date.now();
+
+  /** Wie beim ersten Start: alle Schritte offen. */
+  firstStart(): void { for (const s of SETUP_IDS) this.setupSteps[s] = "open"; }
+  /** Wie der Sprachdienst ein Wake Word erkennt (nur Zähler und Name). */
+  wake(phrase: string): void { this.wakeCount += 1; this.wakeLast = phrase; }
+  /** Vorführung im Browser: Pegel bewegt sich, alle 6 s wird ein aktives Wake Word „erkannt“. */
+  setupDemo(): void {
+    this.voice = { active: !this.voiceUnavailable, state: "idle", level: 0 };
+    if (this.voiceUnavailable) return;
+    let t = 0;
+    this.setupTimers.push(
+      setInterval(() => { t += 1; this.voice = { ...this.voice, level: Math.round((0.15 + 0.35 * Math.abs(Math.sin(t / 4))) * 100) / 100 }; }, 200),
+      setInterval(() => { const on = this.words.filter((w) => w.enabled); if (on.length) this.wake(on[this.wakeCount % on.length].phrase); }, 6000));
+  }
+  private setupTimers: ReturnType<typeof setInterval>[] = [];
+  private stopSetupDemo(): void { this.setupTimers.splice(0).forEach(clearInterval); }
+  private setupFromUrl(): void {
+    if (typeof location === "undefined") return;
+    const q = new URLSearchParams(location.search);
+    if (!q.has("mock") || !q.has("setup")) return;
+    this.voiceUnavailable = q.has("novoice");
+    this.firstStart();
+    this.setupDemo();
+    this.claudeChecking = true;                         // die erste Claude-Prüfung dauert ein paar Sekunden
+    this.setupTimers.push(setTimeout(() => { this.claudeChecking = false; }, 8000));
+  }
+  private setupStatus(): Record<string, unknown> {
+    return { ok: true, kill: this.kill,
+      steps: SETUP_IDS.map((s) => (s === "claude" && this.claudeChecking
+        ? { step: s, title: SETUP_TITLES[s], status: "open", detail: "Wird geprüft" }
+        : { step: s, title: SETUP_TITLES[s], status: this.setupSteps[s], detail: "" })),
+      first_start: SETUP_IDS.some((s) => this.setupSteps[s] === "open"),
+      restricted: SETUP_IDS.filter((s) => this.setupSteps[s] === "skipped").map((s) => `${SETUP_TITLES[s]}: ${SETUP_SKIPPED[s]}`) };
+  }
+  private voiceReply(): Record<string, unknown> {
+    if (this.voiceUnavailable) return { ok: true, active: false, state: "idle", level: 0, wake_count: 0, wake_last: "" };
+    return this.noWakeCount ? { ok: true, ...this.voice } : { ok: true, ...this.voice, wake_count: this.wakeCount, wake_last: this.wakeLast };
+  }
+  private levelResult(): Record<string, unknown> {
+    if (this.levelOverride) return { ...this.levelOverride };
+    if (this.voiceUnavailable) return { ok: true, state: "unavailable", seconds_left: 0, suggestion: null };
+    if (this.levelStart === null) return { ok: true, state: "idle", seconds_left: 0, suggestion: null };
+    const t = (this.now() - this.levelStart) / 1000;
+    if (t < 3) return { ok: true, state: "quiet", seconds_left: Math.ceil(3 - t), suggestion: null };
+    if (t < 9) return { ok: true, state: "speak", seconds_left: Math.ceil(9 - t), suggestion: null };
+    return { ok: true, state: "done", seconds_left: 0, suggestion: { speech_level: 240, barge_in_level: 320 } };
+  }
+  /** Antwort auf die Setup-Typen; undefined = kein Setup-Typ. Schreibende brauchen confirm: true und lehnen bei Notaus mit „kill“ ab. */
+  private setupReply(msg: Record<string, unknown>): unknown {
+    const type = String(msg.type);
+    const writes = ["setup.skip", "setup.reopen", "setup.done", "audio.set", "voice.level_test", "voice.level_apply", "wake.set"];
+    if (writes.includes(type)) {
+      if (msg.confirm !== true) return { ok: false, error: "confirm_required" };
+      if (this.kill) return { ok: false, error: "kill" };
+    }
+    const step = typeof msg.step === "string" && (SETUP_IDS as readonly string[]).includes(msg.step) ? msg.step : null;
+    switch (type) {
+      case "setup.status": return this.setupStatus();
+      case "setup.skip": case "setup.reopen": case "setup.done":
+        if (!step) return { ok: false, error: "bad_step" };
+        if (type === "setup.done" && !["audio_voice", "wake_words", "safety"].includes(step)) return { ok: false, error: "not_allowed" };
+        this.setupSteps[step] = type === "setup.skip" ? "skipped" : type === "setup.done" ? "done" : "open";
+        return this.setupStatus();
+      case "setup.checks":
+        if (this.checksReply) return { ...this.checksReply };
+        return { ok: true, checks: this.claudeChecking
+          ? [...this.checks.filter((c) => !c.id.startsWith("claude")), { id: "claude_checking", label: "Claude Code wird geprüft", ok: false, hint: "" }]
+          : this.checks };
+      case "audio.devices": return this.devices ? { ok: true, ...this.devices } : { ok: false, error: "unavailable" };
+      case "audio.get": return { ok: true, ...this.audio };
+      case "audio.set":
+        if (typeof msg.mic !== "string" || typeof msg.out !== "string") return { ok: false, error: "bad_device" };
+        this.audio = { mic: msg.mic, out: msg.out };
+        return { ok: true, ...this.audio, restart_needed: true };
+      case "voice.level_test":
+        if (this.voiceUnavailable || this.levelUnavailable) return { ok: false, error: "unavailable" };
+        this.levelStart = this.now();
+        return { ok: true };
+      case "voice.level_result": return this.levelResult();
+      case "voice.level_apply": {
+        const a = msg.speech_level, b = msg.barge_in_level;
+        if (typeof a !== "number" || typeof b !== "number" || a < 50 || a > 5000 || b < 100 || b > 20000) return { ok: false, error: "bad_level" };
+        this.levels = { speech_level: a, barge_in_level: b };
+        return { ok: true, ...this.levels, restart_needed: true };
+      }
+      case "wake.get": return { ok: true, words: this.words, max: 12 };
+      case "wake.set": {
+        const w = Array.isArray(msg.words) ? msg.words as { phrase?: unknown; enabled?: unknown }[] : [];
+        const ok = w.length >= 1 && w.length <= 12 && w.every((x) => typeof x.phrase === "string" && /^[a-zäöüß]+( [a-zäöüß]+){0,3}$/.test(x.phrase)
+          && x.phrase.length >= 3 && x.phrase.length <= 40 && typeof x.enabled === "boolean")
+          && new Set(w.map((x) => x.phrase)).size === w.length && w.some((x) => x.enabled === true);
+        if (!ok) return { ok: false, error: "bad_words" };
+        this.words = w.map((x) => ({ phrase: x.phrase as string, enabled: x.enabled as boolean }));
+        return { ok: true, words: this.words, max: 12, restart_needed: true };
+      }
+      default: return undefined;
+    }
+  }
+  // ===== Ende E3 =====
 
   /** Vorführung im Browser (`?mock&demo`): erst ein reines Gespräch (Kern bleibt groß), dann zeigt „Claude“ der Reihe nach
    *  Rechnung, Markt, Recherche und Systemzustand. Nur Mock, Beispieldaten. */
@@ -103,7 +236,8 @@ export class MockSocket implements Socket {
     let reply: unknown;
     if (msg.token !== this.token) reply = { ok: false, error: "unauthorized" };
     else if (msg.type === "safety.status") reply = { ok: true, kill: this.kill };
-    else if (msg.type === "voice.state") reply = { ok: true, ...this.voice };
+    else if (msg.type === "voice.state") reply = this.voiceReply();                                         // E3: mit wake_count/wake_last
+    else if (msg.type && SETUP_TYPES.has(msg.type)) reply = this.setupReply(msg as Record<string, unknown>);   // E3
     else if (msg.type === "transcript.get") {
       const since = (msg as { since?: number }).since ?? 0;
       const entries = this.entries.filter((e) => e.id > since);
@@ -172,7 +306,7 @@ export class MockSocket implements Socket {
     queueMicrotask(() => this.onmessage?.({ data: JSON.stringify(reply) }));
   }
 
-  close(): void { queueMicrotask(() => this.onclose?.()); }
+  close(): void { this.stopSetupDemo(); queueMicrotask(() => this.onclose?.()); }   // E3: Vorführungs-Intervalle aufräumen
 }
 
 /** E2b: Beispiel für `usage.get` (erfundene Werte, nur im Mock), vollständig wie vom Backend: frisch (vor 2 min), veraltet
@@ -188,6 +322,21 @@ export function usageDemo(kind: "frisch" | "alt" | "keine"): Record<string, unkn
   }
   return { available: true, model: "Opus", context_pct: 42, five_h_pct: 30, seven_d_pct: 12, cost_usd: null, stand: now - 120, stale: false };
 }
+// ===== E3 Setup-Assistent (Mock): Schritte, Titel und Folgen des Überspringens wie setup/status.py (plus claude, folder) =====
+const SETUP_IDS = ["system", "claude", "audio_voice", "wake_words", "folder", "safety"] as const;
+const SETUP_TYPES = new Set(["setup.status", "setup.skip", "setup.reopen", "setup.done", "setup.checks", "audio.devices", "audio.get",
+  "audio.set", "voice.level_test", "voice.level_result", "voice.level_apply", "wake.get", "wake.set"]);
+const SETUP_TITLES: Record<string, string> = { system: "Systemcheck und Vault", claude: "Claude Code", audio_voice: "Mikrofon und Lautsprecher",
+  wake_words: "Wake Words", folder: "Arbeitsordner", safety: "Sicherheit und Notaus" };
+const SETUP_SKIPPED: Record<string, string> = {
+  system: "Kein Gedächtnis. Notaus und Sicherheitsregeln gelten weiter.",
+  claude: "Ohne Claude Code bekommt kushim keine Antworten.",
+  audio_voice: "Es gelten die Windows-Standardgeräte und die Standard-Pegel.",
+  wake_words: "Es gelten die Standard-Wörter aus der Vorlage.",
+  folder: "Claude arbeitet nur in Ordnern, die schon freigegeben sind.",
+  safety: "Der Notaus wirkt trotzdem.",
+};
+// ===== Ende E3 =====
 
 /** Beispiel-Ansichten für die Vorführung (erfundene Beispielwerte, nur im Mock). */
 export const DEMO_VIEWS: Record<string, unknown>[] = [

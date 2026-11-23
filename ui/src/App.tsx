@@ -15,6 +15,7 @@ import { HaltedBanner, KillButton } from "./components/KillButton";
 import { ApiClient, type Credentials } from "./lib/api";
 import { isAvatarState, resolveState, STATE_VIEW, type AvatarState } from "./lib/avatarState";
 import { MockSocket } from "./lib/mock";
+import { SetupHost } from "./components/SetupWizard";      // E3: Setup-Assistent
 import { avatarSize, coreSmall, useBoxSize } from "./lib/useBoxSize";
 import { CompactBar, UsageLine, useUsage } from "./components/CompactBar";   // E2: kleines Fenster und Verbrauch
 import { windowCommand } from "./lib/windowCmd";
@@ -384,6 +385,8 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
         {!compact && state === "halted" && <HaltedBanner onResume={() => void doResume()} />}
         {!compact && pending.length > 0 && state === "asking" && <PermissionBar request={pending[0]} more={pending.length - 1} onDecide={(p, a) => void decide(p, a)} />}
         {!compact && <div className="toast" role="status" aria-live="polite">{toast}</div>}
+        {/* E3: Setup-Assistent, Eintrag „Einrichtung“ und Zeile für den eingeschränkten Modus; offen verdeckt er .content per CSS */}
+        <SetupHost client={client} connected={connected} kill={kill === true} view={view} />
         <div className="content">
           <MemoryPanel client={client} connected={connected} active={!compact && view === "memory"} />
           {view === "dashboard" && (
