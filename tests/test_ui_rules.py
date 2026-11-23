@@ -174,3 +174,58 @@ def test_the_view_card_does_not_share_a_class_with_the_main_area():
     card = (UI / "src" / "components" / "stage" / "ViewCard.tsx").read_text(encoding="utf-8")
     assert "className={`view-card view-${view.art}`}" in card and "className={`view " not in card
     assert ".view-card {" in CSS and CSS.count(chr(10) + ".view {") == 1     # .view gehört nur dem Hauptbereich (Scrollen)
+
+
+# --- P7 Stufe 1: eigene Simulationen (sim_eigen) -------------------------------------------------------------------------
+
+FORMEL = UI / "src" / "lib" / "formel.ts"
+EIGEN_SIM = UI / "src" / "lib" / "eigenSim.ts"
+# Ein Fall je Opcode einer Stapelmaschine: Operationen, einstellige Operation und Funktionsnamen der festen Liste.
+OPCODE_FALL = re.compile(
+    r"\bcase\s+[\"'](?:\+|-|\*|/|\^|<|<=|>|>=|==|!=|neg|sin|cos|tan|asin|acos|atan|sinh|cosh|tanh|exp|log|log10|sqrt|abs|sign|floor|ceil"
+    r"|atan2|min|max|hypot|mod|clamp|wenn)[\"']\s*:")
+
+
+def test_only_formel_ts_executes_opcodes():
+    """P7 (Plan Stufe 1): Formeln kommen als RPN vom Backend und laufen nur über die Stapelmaschine in `formel.ts`. Keine andere
+    Datei verteilt Opcodes auf Rechenschritte (kein zweiter Interpreter), und nur `formel.ts` legt den Stapel an."""
+    assert FORMEL.exists() and EIGEN_SIM.exists()
+    for sample in ('case "neg": return', "case '+': x", 'case "wenn" :'):
+        assert OPCODE_FALL.search(sample), sample                    # die Regel selbst erkennt die Formen
+    for sample in ('case "laeuft":', 'case "pendel":', 'case "koerper":'):
+        assert not OPCODE_FALL.search(sample), sample
+    users = sorted(p.name for p in SRC if OPCODE_FALL.search(p.read_text(encoding="utf-8")))
+    assert users == ["formel.ts"], users
+    src = FORMEL.read_text(encoding="utf-8")
+    assert "export function pruefeRpn(" in src and "export function kompiliere(" in src
+    assert "GEPRUEFT.has(" in src                                      # übersetzt wird nur, was die Prüfung angenommen hat
+    defs = sorted(p.name for p in SRC if re.search(r"\bfunction\s+(?:pruefeRpn|kompiliere)\b", p.read_text(encoding="utf-8")))
+    assert defs == ["formel.ts"], defs
+
+
+def test_formel_and_eigen_sim_have_no_text_parser():
+    """Die Oberfläche liest nie Formeltext: in `formel.ts` (und im Rechenkern `eigenSim.ts`) kein Zerleger, keine Zeichen-für-Zeichen-
+    Auswertung, keine regulären Ausdrücke über Text; eigenSim.ts nimmt Formeln nur über `formel.ts`."""
+    bad = re.compile(
+        r"\bnew\s+RegExp\b|\bRegExp\s*\(|\.(?:match|matchAll|split|charAt|search|exec|test)\s*\(|[Tt]oken|[Pp]ars(?:e|er|ing)|[Ll]exer|\bscanner\b"
+        r"|(?:^|[=(,:!&|?;{}\[]\s*)/(?![/*])(?:\\.|[^/\n\\])+/[dgimsuy]*")
+    for sample in ("const r = /a+b/g;", "x.split(',')", "tokenize(s)", "parseFormel(t)", 'new RegExp("x")', "s.charAt(0)"):
+        assert bad.search(sample), sample
+    for sample in ("const q = a / b / c;", "st[sp - 1] / b", "// Kommentar mit / Strich"):
+        assert not bad.search(sample), sample
+    src = FORMEL.read_text(encoding="utf-8")
+    code = "\n".join(l.split("//", 1)[0] for l in src.splitlines())
+    assert not bad.search(code), bad.search(code)
+    assert not re.search(r"[Tt]oken|[Pp]arser|[Ll]exer", src)            # auch nicht in Kommentaren
+    sim = EIGEN_SIM.read_text(encoding="utf-8")
+    sim_code = "\n".join(l.split("//", 1)[0] for l in sim.splitlines())
+    hits = [m.group(0) for m in bad.finditer(sim_code)]
+    assert not hits, hits
+    assert re.search(r'from "\./formel"', sim)
+
+
+def test_eigen_sim_has_no_unseeded_randomness_and_no_code_from_strings():
+    for p in (FORMEL, EIGEN_SIM):
+        src = p.read_text(encoding="utf-8")
+        assert "Math.random" not in src, p.name                        # Zufall nur über mulberry32(startwert)
+        assert not re.search(r"\beval\s*\(|\bFunction\s*\(|\bnew\s+Function\b|\bWorker\b|\bimport\s*\(", src), p.name
