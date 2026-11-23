@@ -677,3 +677,48 @@ h2, h3 { font-family: var(--font-display); font-weight: 600; letter-spacing: .04
   .setup-add { grid-template-columns: minmax(0, 1fr); }
 }
 /* ===== Ende E3 ===== */
+/* ===== Kasten „Mikrofon“ (Sicherheit): Pegelbalken logarithmisch mit zwei Marken (Sprechen durchgezogen, Unterbrechen gestrichelt,
+   dazu Legende mit Zahl), Regler mit Zahl daneben, „Erweitert“ eingeklappt, Bestätigung für „Merken“ im Kasten ===== */
+.mic-tune { display: grid; gap: var(--s-4); align-content: start; min-width: 0; }
+.mic-tune[data-active="nein"] .mic-meter-box, .mic-tune[data-active="nein"] .mic-legend { opacity: .6; }
+.mic-text { margin: 0; max-width: 70ch; color: var(--text-muted); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.mic-text code { font-family: var(--font-mono); color: var(--arc); }
+.mic-lock { margin: 0; padding: var(--s-3) var(--s-4); border: 1px solid var(--alarm); border-radius: var(--r-md); background: var(--alarm-bg); color: var(--alarm); }
+.mic-meter-box { display: grid; gap: var(--s-1); min-width: 0; overflow: hidden; padding: var(--s-1) 0; }
+.mic-meter { position: relative; height: 14px; background: var(--line); border-radius: var(--r-sm); }
+.mic-fill { position: absolute; top: 0; bottom: 0; left: 0; background: var(--arc); border-radius: var(--r-sm); transition: width var(--t-fast) linear; }
+.mic-peak { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--text); }
+.mic-mark { position: absolute; top: calc(-1 * var(--s-1)); bottom: calc(-1 * var(--s-1)); width: 0; margin-left: -1px; border-left: 2px solid var(--amber); }
+.mic-mark-barge { border-left-style: dashed; }
+.mic-scale { position: relative; height: 1.4em; font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text-muted); }
+.mic-tick { position: absolute; top: 0; white-space: nowrap; transform: translateX(-50%); }
+.mic-tick-first { transform: none; }                                  /* 10 steht am linken Rand, die übrigen mittig unter ihrer Stelle */
+.mic-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-4); font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text); }
+.mic-legend li { display: inline-flex; align-items: center; gap: var(--s-2); white-space: nowrap; }
+.mic-key { display: inline-block; width: 0; height: 14px; border-left: 2px solid var(--amber); }
+.mic-key-barge { border-left-style: dashed; }
+.mic-voice { margin: 0; font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--amber); }
+.mic-fields { margin: 0; padding: 0; border: 0; display: grid; gap: var(--s-4); min-width: 0; }
+.mic-slider { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s-1) var(--s-3); min-width: 0; }
+.mic-slider label { flex: 0 1 auto; min-width: 0; overflow-wrap: break-word; }
+.mic-num { margin-left: auto; font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text-muted); text-align: right; overflow-wrap: anywhere; }
+.mic-slider input[type="range"] { flex: 1 1 100%; width: 100%; min-width: 0; min-height: var(--hit); margin: 0; accent-color: var(--arc); }
+.mic-slider input[type="range"]:disabled { cursor: default; }
+.mic-ends { flex: 1 1 100%; display: flex; justify-content: space-between; gap: var(--s-3); margin-top: calc(-1 * var(--s-2)); font-size: var(--fs-xs); color: var(--text-muted); }
+.mic-out { flex: 1 1 100%; margin: 0; padding: var(--s-2) var(--s-3); border-left: 2px solid var(--warn); color: var(--text); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.mic-adv { min-width: 0; border-top: 1px solid var(--line); }
+.mic-adv summary { cursor: pointer; min-height: var(--hit); display: flex; align-items: center; font-family: var(--font-mono); font-size: var(--fs-xs); letter-spacing: var(--track-label); text-transform: uppercase; color: var(--text-muted); }
+.mic-adv-body { display: grid; gap: var(--s-4); padding-top: var(--s-2); }
+.mic-fields:disabled .mic-slider label, .mic-fields:disabled .mic-adv summary { color: var(--text-muted); }
+.mic-actions { display: flex; flex-wrap: wrap; gap: var(--s-3); }
+.mic-confirm { display: grid; gap: var(--s-3); padding: var(--s-3) var(--s-4); border: 1px solid var(--amber); border-radius: var(--r-md); background: var(--bg-3); }
+.mic-confirm-h { margin: 0; font-family: var(--font-display); font-weight: 600; font-size: var(--fs-md); color: var(--amber); }
+.mic-msg { min-height: var(--s-5); color: var(--text-muted); font-size: var(--fs-sm); }
+.mic-msg p { margin: 0; max-width: 70ch; overflow-wrap: anywhere; }
+@media (min-width: 800px) {
+  .mic-tune { max-width: 880px; }
+}
+@media (max-width: 599px) {
+  .mic-actions button { flex: 1 1 0; }
+}
+/* ===== Ende Mikrofon ===== */

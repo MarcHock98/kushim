@@ -12,7 +12,7 @@ Echo-Schutz (`echo_guard`, in wakewords.toml `echo_schutz = true`, nur für Laut
 - solange kushim spricht und `echo_tail_ms` danach muss der Pegel `echo_factor`-mal so hoch sein wie sonst,
 - die ersten `echo_ignore_ms` der ersten eigenen Wiedergabe einer Runde zählen nicht (nur einmal je Runde, `reset`), nicht bei
   jedem Satz neu.
-Ein Notaus, der lauter ist als `echo_factor × level`, greift auch dann; in der kurzen Sperrzeit am Anfang nicht (dafür gibt es
+Ein Notaus, der lauter ist als `echo_factor × level` (gedeckelt auf `ECHO_CAP` = 1500), greift auch dann; in der kurzen Sperrzeit am Anfang nicht (dafür gibt es
 die Notaus-Verknüpfung). Kopfhörer bleiben die beste Lösung.
 """
 from __future__ import annotations
@@ -25,26 +25,46 @@ import numpy as np
 ECHO_FACTOR = 2.0               # Echo-Schutz: Schwelle während eigener Wiedergabe so viel höher
 ECHO_IGNORE_MS = 400            # Echo-Schutz: so lange zählt am Anfang der ersten Wiedergabe einer Runde nichts
 ECHO_TAIL_MS = 320              # Echo-Schutz: nach dem Ende eigener Wiedergabe gilt die erhöhte Schwelle noch so lange
+# Echo-Schutz: die erhöhte Schwelle höchstens so hoch (= Live-Obergrenze von barge_in_level, voice/tuning.py). Ein normal laut
+# gesprochener Notaus (RMS um 2000) kommt so auch mit Echo-Schutz und an der strengsten Live-Grenze durch (Safety-Audit).
+ECHO_CAP = 1500.0
 
 
 class BargeIn:
     # Standardwerte wie in wakeconfig (barge_in_level 250, barge_in_ms 240): empfindlich, ein überhörter Notaus wiegt schwerer.
     def __init__(self, level: float = 250.0, min_ms: int = 240, frame_ms: int = 80, preroll_ms: int = 480,
                  echo_guard: bool = False, echo_factor: float = ECHO_FACTOR, echo_ignore_ms: int = ECHO_IGNORE_MS,
-                 echo_tail_ms: int = ECHO_TAIL_MS):
+                 echo_tail_ms: int = ECHO_TAIL_MS, tuning: Any = None):
+        """`tuning` (optional, `voice.tuning.LiveTuning`): dann gelten bei JEDEM Frame dessen `barge_in_level` und
+        `barge_in_ms` (statt `level`/`min_ms`); eine Änderung wirkt ab dem nächsten Frame. Der Echo-Faktor bleibt."""
         self.level = level
+        self.frame_ms = frame_ms
+        self.preroll_frames = max(0, round(preroll_ms / frame_ms))
+        self.tuning = tuning
         self.need = max(1, round(min_ms / frame_ms))
         self.echo_guard = echo_guard
         self.echo_factor = max(1.0, echo_factor)
         self.ignore_frames = max(0, round(echo_ignore_ms / frame_ms))
         self.tail_frames = max(0, round(echo_tail_ms / frame_ms))
         self._run = 0
-        self._recent: deque[np.ndarray] = deque(maxlen=self.need + max(0, round(preroll_ms / frame_ms)))
+        self._recent: deque[np.ndarray] = deque(maxlen=self.need + self.preroll_frames)
+        self._live()
         self._was_speaking = False
         self._ignore = 0
         self._tail = 0
         self._ignored_this_turn = False
         self.last_rms = 0.0             # Pegel des zuletzt gesehenen Frames (für talk.log beim Auslösen, nur eine Zahl)
+
+    def _live(self) -> None:
+        """Schwelle und Mindestdauer aus `tuning` übernehmen (falls vorhanden); der Vorlauf-Puffer wächst bzw. schrumpft mit."""
+        if self.tuning is None:
+            return
+        v = self.tuning.values
+        self.level = float(v.barge_in_level)
+        self.need = max(1, round(v.barge_in_ms / self.frame_ms))
+        size = self.need + self.preroll_frames
+        if self._recent.maxlen != size:
+            self._recent = deque(self._recent, maxlen=size)
 
     def reset(self) -> None:
         """Neue Runde (kushim beginnt zu antworten)."""
@@ -57,11 +77,13 @@ class BargeIn:
     def threshold(self, speaking: bool = False) -> float:
         """Pegel, ab dem ein Frame als Sprechen des Nutzers zählt (mit Echo-Schutz während eigener Wiedergabe höher)."""
         if self.echo_guard and (speaking or self._tail > 0):
-            return self.level * self.echo_factor
+            # gedeckelt auf ECHO_CAP, aber nie unter der normalen Schwelle (ein Dateiwert über der Deckelung bleibt, wie er ist)
+            return max(self.level, min(self.level * self.echo_factor, ECHO_CAP))
         return self.level
 
     def feed(self, frame: Any, speaking: bool = False) -> bool:
         """True, sobald der Nutzer lange genug laut genug spricht. `speaking`: kushim spielt gerade selbst Ton ab."""
+        self._live()
         f = np.asarray(frame, dtype=np.int16)
         self._recent.append(f)
         if self.echo_guard:
