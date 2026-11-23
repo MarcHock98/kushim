@@ -384,3 +384,31 @@ def test_interim_sprich_is_marked_and_the_result_is_final(tmp_path):
 
 def test_instructions_keep_kushim_work_in_the_foreground():
     assert "keine Hintergrund-Sitzungen" in ch.INSTRUCTIONS and "Hintergrund-Agenten" in ch.INSTRUCTIONS
+
+
+def test_instructions_make_claude_speak_as_kushim_in_first_person():
+    text = ch.INSTRUCTIONS
+    assert text.startswith("Du bist kushim.")                                  # Claude IST kushim (Wunsch des Nutzers 2026-11-23)
+    assert '("ich")' in text and "dass du kushim bist" in text
+    assert "Sag nie, dass du etwas weitergibst oder dass Claude oder jemand anderes daran arbeitet" in text
+    assert "antworte ehrlich" in text                                          # auf ausdrückliche Frage nach dem Modell keine Lüge
+    # einfache Gesprächsbeiträge: sofort genau ein sprich, keine anderen Werkzeuge; längere Arbeit: erst ein kurzer Satz
+    assert "sofort genau ein `sprich` mit der Antwort, ohne zwischenstand und ohne andere Werkzeuge" in text
+    assert "zwischenstand=true und EINEM kurzen, natürlichen Satz" in text and "ein bis drei kurze Sätze" in text
+    assert "ohne Markdown, Code, Pfade und Listen" in text
+    # Kern (Nutzer 2026-11-23: „claude soll kushim annehmen und an das TTS seinen text geben“): alles geht über sprich
+    assert "Alles, was du dem Nutzer auf eine kushim-Nachricht sagst, gibst du als Text an kushims Stimme" in text
+    assert "Keine Antwort auf eine kushim-Nachricht endet ohne `sprich`" in text
+    desc = ch.SPRICH_TOOL["description"]
+    assert "als kushim in der ersten Person" in desc and "Erwähne nie Claude oder eine Weitergabe" in desc
+    assert "kein Markdown" in desc and "keine Listen" in desc and str(ch.MAX_SPOKEN) in desc
+
+
+def test_persona_keeps_every_safety_rule():
+    text = ch.INSTRUCTIONS
+    for rule in ("Es gelten dieselben Regeln und Freigaben", "frag kurz nach statt zu raten",
+                 'kind="cancel" heißt: Der Nutzer hat per Stimme abgebrochen', "nichts Neues beginnen",
+                 'kind="kill" ist der NOTAUS: sofort aufhören, keine Werkzeuge mehr benutzen',
+                 "Zeigen ersetzt nie eine Freigabe", "keine Anlageempfehlung", "Zugangsdaten",
+                 "keine Hintergrund-Sitzungen", "Spracherkennung kann sich verhören"):
+        assert rule in text, rule

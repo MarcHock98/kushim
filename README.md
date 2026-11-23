@@ -155,7 +155,7 @@ barge_in = true             # Unterbrechen: Dazwischensprechen stoppt kushim sof
 barge_in_level = 250.0      # Mikrofonpegel, ab dem es als Unterbrechen zählt (höher = unempfindlicher, z. B. bei Lautsprechern)
 speech_level = 200.0        # Mikrofonpegel, ab dem es als Sprechen zählt; passt es nicht zu deinem Mikrofon: `kushim voice level --apply`
 preroll_seconds = 1.0       # so viel Audio VOR dem Wake Word (nur im Speicher) kommt zum Befehl dazu, damit der Anfang nicht fehlt
-barge_in_ms = 240           # so lange muss der Pegel anhalten
+barge_in_ms = 400           # so lange muss der Pegel anhalten (mit Lautsprechern: barge_in_level erhöhen)
 
 [[wakeword]]
 name = "hey kushim"         # beliebiges Wort/Wendung: nur Buchstaben und Leerzeichen

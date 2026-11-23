@@ -26,8 +26,22 @@ def test_mcp_config_names_only_the_kushim_channel_server(tmp_path):
 def test_argv_loads_only_the_kushim_server_as_development_channel():
     argv = launch.claude_argv(EXE, Path("C:/k/run/kushim-mcp.json"), "sid")
     assert argv == [str(EXE), "--session-id", "sid", "--name", "kushim", "--strict-mcp-config", "--mcp-config",
-                    str(Path("C:/k/run/kushim-mcp.json")), "--dangerously-load-development-channels", "server:kushim"]
+                    str(Path("C:/k/run/kushim-mcp.json")), "--allowedTools", "mcp__kushim__sprich,mcp__kushim__zeige",
+                    "--dangerously-load-development-channels", "server:kushim"]
     assert not any("skip-permissions" in a or "bypass" in a.lower() for a in argv)
+
+
+def test_argv_pre_allows_exactly_the_two_kushim_tools_and_nothing_broader():
+    argv = launch.claude_argv(EXE, Path("C:/k/run/kushim-mcp.json"), "sid")
+    flags = [a for a in argv if a.lower().replace("-", "").startswith(("allowedtools", "allowtools", "tools", "permission"))
+             or "dangerously-skip" in a or a.startswith("--allow")]
+    assert flags == ["--allowedTools"]                                         # genau eine Freigabe-Angabe, kein Modus
+    allowed = argv[argv.index("--allowedTools") + 1].split(",")
+    assert allowed == ["mcp__kushim__sprich", "mcp__kushim__zeige"]
+    assert not any(ch in a for a in allowed for ch in "*?() ")                  # kein Platzhalter, kein Muster, kein Leerzeichen
+    lowered = " ".join(argv).lower()
+    assert not any(t in lowered for t in ("bash", "powershell", "write", "edit", "webfetch", "mcp__kushim__*"))
+    assert "--disallowedTools" not in argv and "--permission-mode" not in argv
 
 
 def test_env_drops_foreign_keys_and_turns_telemetry_off():

@@ -1,8 +1,9 @@
 """Antwortweg über Claude Code (Roadmap v2 B4): Befehl über die Brücke senden, `sprich`-Antworten vorlesen.
 
 Seit 2026-11-11 (Wunsch des Nutzers) keine feste Quittung mehr: Claude sagt zuerst selbst kurz, was es vorhat
-(`sprich` mit zwischenstand=true), dann das Ergebnis. Nur wenn Claude ACK_AFTER Sekunden schweigt, sagt kushim einmal
-„Claude arbeitet.“.
+(`sprich` mit zwischenstand=true), dann das Ergebnis. Seit 2026-11-23 ist Claude für den Nutzer kushim selbst: Was kushim
+von sich aus sagt, nennt nie „Claude“ und nie eine Weitergabe. Schweigt Claude FILLER_AFTER Sekunden, sagt kushim einmal
+ein kurzes Füllwort in der ersten Person („Moment.“), reihum aus FILLERS.
 
 Ersetzt den Platzhalter `not_connected` in der Pipeline. Wartet in kurzen Abständen (POLL Sekunden) auf Claudes Antwort,
 damit "abbrechen" und der Notaus schnell greifen. Braucht Claude länger als `patience`, sagt kushim das und liest die
@@ -19,13 +20,18 @@ from ..channel import speakable
 from ..channel.bridge import Bridge
 from ..tasks import TaskRegistry
 
-ACK = "Claude arbeitet."          # nur, wenn Claude nach ACK_AFTER Sekunden noch nichts gesagt hat
-ACK_AFTER = 10.0
-NOT_RUNNING = "Claude ist gerade nicht verbunden. Starte kushim zusammen mit Claude."
-KILLED = "Der Notaus ist aktiv, ich gebe nichts weiter."
-FAILED = "Das konnte ich nicht an Claude geben."
-LATE = "Claude arbeitet noch. Ich sag Bescheid, sobald eine Antwort kommt."
-LOST = "Die Verbindung zu Claude ist weg."
+FILLERS = ("Moment.", "Ich schau mal.", "Einen Augenblick.")    # reihum, höchstens eins je Runde
+FILLER_AFTER = 2.5              # Sekunden ohne `sprich`, bis kushim ein Füllwort sagt
+NOT_RUNNING = "Ich bin gerade nicht startklar. Starte mich bitte mit kushim start neu."
+KILLED = "Der Notaus ist aktiv. Ich mache nichts, bis du ihn aufhebst."
+FAILED = "Das hat gerade nicht geklappt. Sag es bitte noch einmal."
+LATE = "Das dauert etwas länger, ich melde mich gleich."
+LOST = "Ich bin gerade nicht erreichbar. Starte mich bitte neu."
+# Schutz gegen eine stumme Runde: Der Channel sieht kein Ende einer Claude-Runde (nur Werkzeugaufrufe an kushim). Laut
+# Anweisung kommt aber immer zuerst ein `sprich` (Antwort oder Zwischenstand). Kam SILENT_AFTER Sekunden gar nichts, endet die
+# Runde mit diesem Satz; eine spätere Antwort liest kushim trotzdem vor (`announcement`).
+SILENT = "Ich habe gerade keine Antwort für dich. Wenn gleich nichts kommt, frag mich bitte noch einmal."
+SILENT_AFTER = 25.0
 POLL = 2.0                      # Sekunden je Abruf: so schnell greifen Abbrechen und Notaus
 PATIENCE = 180.0                # so lange wartet eine Runde auf Claude, danach kommt die Antwort als Meldung
 ANNOUNCE_EVERY = 2.0            # so oft fragt die Schleife im Leerlauf nach verspäteten Antworten
@@ -42,6 +48,13 @@ class ClaudeChat:
         self.bridge, self.tasks, self.patience, self.clock = bridge, tasks, patience, clock
         self._next_announce = 0.0
         self._announced: list[str] = []         # request_ids, die schon vorgelesen wurden (neueste hinten)
+        self._fillers = 0                       # wie viele Füllwörter schon gesagt wurden (bestimmt das nächste)
+
+    def filler(self) -> str:
+        """Nächstes Füllwort, reihum (deterministisch, damit Tests und Nutzer wissen, was kommt)."""
+        text = FILLERS[self._fillers % len(FILLERS)]
+        self._fillers += 1
+        return text
 
     def permission_notes(self) -> list[str]:
         """Ansagen für neue, noch offene Freigabe-Anfragen; jede nur einmal."""
@@ -57,14 +70,23 @@ class ClaudeChat:
             yield {"not_running": NOT_RUNNING, "kill": KILLED}.get(status, FAILED)
             return
         start = self.clock()
-        deadline, said = start + self.patience, False
+        deadline, said, heard = start + self.patience, False, False     # said: etwas gesagt (auch Füllwort); heard: von Claude
         with self.tasks.running("Claude arbeitet", cancel=self.bridge.cancel) as token:     # "abbrechen" sagt es auch Claude
             while not token.cancelled():
-                left = deadline - self.clock()
+                now = self.clock()
+                left = deadline - now
                 if left <= 0:
                     yield LATE
                     return
-                status, texts = self.bridge.fetch(wait=min(POLL, left))
+                wait = min(POLL, left)
+                if not said:
+                    until_filler = start + FILLER_AFTER - now
+                    if until_filler <= 0:
+                        yield self.filler()           # Claude hat sich noch nicht gemeldet: kurz, natürlich, einmal
+                        said = True
+                        continue
+                    wait = min(wait, until_filler)    # pünktlich nach FILLER_AFTER nachsehen, nicht erst beim nächsten POLL
+                status, texts = self.bridge.fetch(wait=wait)
                 if token.cancelled():
                     return
                 notes = self.permission_notes()
@@ -73,18 +95,18 @@ class ClaudeChat:
                     return                            # bei einer Freigabe wartet Claude: Runde beenden, damit zugehört wird
                 if texts:
                     yield " ".join(texts)
-                    said = True
+                    said = heard = True
                     if getattr(self.bridge, "last_final", True):
                         return                        # Ergebnis da; nach einem Zwischenstand („Ich schaue …“) weiter warten
                     continue
-                if not said and self.clock() - start >= ACK_AFTER:
-                    yield ACK                         # Claude hat sich noch nicht gemeldet: kurz Bescheid geben
-                    said = True
                 if status == "kill":
                     yield KILLED
                     return
                 if status == "not_running":
                     yield LOST
+                    return
+                if not heard and self.clock() - start >= SILENT_AFTER:
+                    yield SILENT                      # vermutlich stumm beendet (oder Claude hält sich nicht an „zuerst sprich“)
                     return
 
     def announcement(self) -> str | None:

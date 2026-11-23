@@ -29,6 +29,9 @@ WINDOW_TITLE = "kushim-Claude"
 CONFIG = Path("run") / "kushim-mcp.json"
 SESSION_FILE = Path("run") / "claude-session.txt"
 CREATE_NEW_CONSOLE = 0x00000010               # Windows: Claude bekommt ein eigenes, sichtbares Terminalfenster
+# Vorab erlaubt (Claude Code 2.1.329: `--allowedTools`, Namen `mcp__<server>__<werkzeug>`): nur Vorlesen und Anzeigen über
+# kushim. Kein Platzhalter, kein Bash, kein Schreiben; jedes andere Werkzeug fragt wie gewohnt im Terminal nach.
+ALLOWED_TOOLS = (f"mcp__{SERVER_NAME}__sprich", f"mcp__{SERVER_NAME}__zeige")
 _UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
 
@@ -61,7 +64,10 @@ def job_id(session_id: str) -> str:
 
 
 def claude_argv(exe: Path, config: Path, session_id: str) -> list[str]:
+    """`--allowedTools` gibt genau die beiden kushim-Werkzeuge frei (Stimme und Anzeige, ohne andere Wirkung). Ohne diese
+    Freigabe wartet jedes `sprich` auf eine Rückfrage im Claude-Fenster, und der Nutzer hört nichts. Alles andere fragt weiter."""
     return [str(exe), "--session-id", session_id, "--name", SESSION_NAME, "--strict-mcp-config", "--mcp-config", str(config),
+            "--allowedTools", ",".join(ALLOWED_TOOLS),
             "--dangerously-load-development-channels", f"server:{SERVER_NAME}"]
 
 

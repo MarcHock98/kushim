@@ -49,7 +49,7 @@ class Settings:
     follow_up_seconds: float = 8.0       # Gespräch: nach einer Antwort so lange ohne Wake Word zuhören (0 = aus)
     barge_in: bool = True                # Unterbrechen: Sprechen stoppt kushim sofort (Kopfhörer empfohlen)
     barge_in_level: float = 250.0        # Mikrofonpegel (0 bis 32767), ab dem es als Unterbrechen zählt; höher = unempfindlicher
-    barge_in_ms: int = 240               # so lange muss der Pegel anhalten
+    barge_in_ms: int = 400               # so lange muss der Pegel anhalten (2026-11-23: 240 ließ Geräusche und Echo unterbrechen)
     speech_level: float = 200.0          # Mikrofonpegel, ab dem es als Sprechen zählt (Beginn und Ende einer Äußerung)
     preroll_seconds: float = 1.0         # so viel Audio VOR dem Wake Word (nur im Speicher) kommt zum Befehl dazu
 
