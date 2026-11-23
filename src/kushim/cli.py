@@ -278,7 +278,7 @@ def _api_start(cfg: Config, root, extra=None, level_test=None):
         print("Hinweis: Vault nicht offen, Notaus-Aktionen werden nicht im Audit protokolliert.")
     token = new_token()
     core = ApiCore(token)
-    register_voice(core, root, level_test=level_test)
+    register_voice(core, root, level_test=level_test, audit=store.audit if store else None)
     register_system(core, root)                        # Systemzustand (nur lesen, nur lokale Messwerte)
     register_setup(core, root, lambda: _vault_state(cfg), list_devices=list_devices,
                    audit=store.audit if store else None, claude=ClaudeProbe().get, folders_ok=_folders_ok,
@@ -454,7 +454,8 @@ def _main(argv: list[str] | None = None) -> int:
     if args.cmd == "setup":
         from .claude_cli.base import ClaudeProbe
         from .setup import status as setup_status
-        steps = setup_status.compute(root, lambda: _vault_state(cfg), claude=ClaudeProbe().get, folders=_folders_ok)
+        steps = setup_status.compute(root, lambda: _vault_state(cfg), claude=ClaudeProbe(spawn=lambda fn: fn()).get,
+                                     folders=_folders_ok)                      # im Terminal: auf das Ergebnis warten
         marks = {"done": "[ok]      ", "skipped": "[übersprungen] ", "open": "[offen]   "}
         for s in steps:
             print(f"{marks[s.status]}{s.title}: {s.detail}")

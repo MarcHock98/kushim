@@ -54,6 +54,8 @@ def _claude_fact(claude: Callable[[], Any] | None) -> tuple[bool, str]:
         st = claude()
     except Exception:                                    # noqa: BLE001 (Anzeige: nie abstürzen, nie Systemtext)
         return False, "Nicht prüfbar"
+    if getattr(st, "checking", False):
+        return False, "Wird geprüft"
     if not st.installed:
         return False, "Claude Code nicht gefunden"
     if st.version is None or st.version < MIN_VERSION:

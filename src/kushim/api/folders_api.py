@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from ..claude_cli import folders as cfolders
+from ..config import CONFIG_LOCK
 from .protocol import ApiCore, ApiError
 
 TTL = 120.0
@@ -83,9 +84,10 @@ def register_folders(core: ApiCore, load: Callable[[], Any], validate: Callable[
             raise ApiError("confirm_required")
         name, path = take(payload)
         try:
-            name, path = check(name, str(path))                       # erneut prüfen: zwischen Vorschau und Klick kann sich etwas ändern
-            cfg = load()
-            cfg.set_claude_folders([f.entry() for f in known()] + [cfolders.Folder(name, path).entry()])
+            with CONFIG_LOCK:                                          # Lesen-Ändern-Schreiben als Einheit (auch gegen audio.set)
+                name, path = check(name, str(path))                   # erneut prüfen: zwischen Vorschau und Klick kann sich etwas ändern
+                cfg = load()
+                cfg.set_claude_folders([f.entry() for f in known()] + [cfolders.Folder(name, path).entry()])
         except ValueError:
             raise ApiError("refused")
         except ApiError:
@@ -103,15 +105,16 @@ def register_folders(core: ApiCore, load: Callable[[], Any], validate: Callable[
         name = payload.get("name")
         if not isinstance(name, str):
             raise ApiError("bad_request")
-        current = known()
-        if not any(f.name == name for f in current):
-            raise ApiError("not_found")
-        if busy(name):
-            raise ApiError("in_use")                                   # erst den Lauf stoppen
-        try:
-            load().set_claude_folders([f.entry() for f in current if f.name != name])
-        except Exception:                                              # noqa: BLE001
-            raise ApiError("not_saved")
+        with CONFIG_LOCK:                                              # Lesen-Ändern-Schreiben als Einheit
+            current = known()
+            if not any(f.name == name for f in current):
+                raise ApiError("not_found")
+            if busy(name):
+                raise ApiError("in_use")                               # erst den Lauf stoppen
+            try:
+                load().set_claude_folders([f.entry() for f in current if f.name != name])
+            except Exception:                                          # noqa: BLE001
+                raise ApiError("not_saved")
         note("claude_folder_remove", f"name={name}")
         return listing({})
 

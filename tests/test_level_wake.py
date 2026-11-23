@@ -179,6 +179,30 @@ def test_level_apply_limits_and_confirm(tmp_path):
     assert api("voice.level_apply", speech_level=300, barge_in_level=400, confirm=True) == {"ok": False, "error": "broken_file"}
 
 
+def test_level_apply_is_audited_only_when_written(tmp_path):
+    statefile.StatePublisher(tmp_path).phase("idle", 0.1)
+    token = new_token()
+    core = ApiCore(token)
+    seen = []
+    register_voice(core, tmp_path, audit=lambda event, detail: seen.append((event, detail)))
+
+    def call(**kw):
+        return json.loads(core.handle(json.dumps({"token": token, "type": "voice.level_apply", **kw})))
+    assert call(speech_level=10, barge_in_level=400, confirm=True)["error"] == "invalid"
+    assert call(speech_level=300, barge_in_level=400)["error"] == "confirm_required"
+    assert seen == []
+    assert call(speech_level=300, barge_in_level=400, confirm=True)["ok"]
+    assert seen == [("setup_levels", "api")]                                    # nie Werte oder Pfade im Audit
+
+    def boom(event, detail):
+        raise RuntimeError("Audit kaputt")
+    core2 = ApiCore(token)
+    register_voice(core2, tmp_path, audit=boom)
+    r = json.loads(core2.handle(json.dumps({"token": token, "type": "voice.level_apply", "speech_level": 250,
+                                            "barge_in_level": 400, "confirm": True})))
+    assert r["ok"] and wakeconfig.load(tmp_path).settings.speech_level == 250
+
+
 def test_voice_types_need_the_token(tmp_path):
     api = make_api(tmp_path, LevelTest())
     for t in ("voice.level_test", "voice.level_result", "voice.level_apply"):

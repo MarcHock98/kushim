@@ -2,6 +2,8 @@
 import json
 import sys
 import threading
+import time
+import tomllib
 import types
 from pathlib import Path
 from types import SimpleNamespace
@@ -20,6 +22,7 @@ from kushim.voice import wakeconfig
 DEVICES = {"inputs": ["Mikro A", "Mikro B (USB)"], "outputs": ["Box", "Kopfhörer"]}
 TOKENISH = "sk-ant-api03-FAKEtokenFAKEtokenFAKEtoken"
 READY = ClaudeState(True, (2, 1, 400), True)
+SYNC = lambda fn: fn()                                                       # Prüfung im selben Thread (Tests)
 
 
 def make_api(tmp_path, claude=lambda: READY, folders_ok=lambda: True, list_devices=lambda: DEVICES, audit=None,
@@ -108,7 +111,7 @@ def test_checks_contain_no_paths_tokens_or_account_data(tmp_path, monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", TOKENISH)
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", TOKENISH)
     exe = fake_claude_exe(tmp_path)
-    probe = ClaudeProbe(find=lambda: exe, run=FakeRun())
+    probe = ClaudeProbe(find=lambda: exe, run=FakeRun(), spawn=SYNC)
     api = make_api(tmp_path, claude=probe.get)
     blob = json.dumps([api("setup.checks"), api("setup.status")])
     for leak in (TOKENISH, "geheim", "example.com", str(tmp_path), "Users", "claude.exe", "AppData", "sk-ant", api.token):
@@ -119,7 +122,7 @@ def test_checks_contain_no_paths_tokens_or_account_data(tmp_path, monkeypatch):
 def test_claude_cli_runs_at_most_once_per_30_seconds_and_hidden(tmp_path):
     exe = fake_claude_exe(tmp_path)
     run, t = FakeRun(), [100.0]
-    probe = ClaudeProbe(find=lambda: exe, run=run, clock=lambda: t[0])
+    probe = ClaudeProbe(find=lambda: exe, run=run, clock=lambda: t[0], spawn=SYNC)
     api = make_api(tmp_path, claude=probe.get)
     for _ in range(5):
         assert api("setup.checks")["ok"] and api("setup.status")["ok"]
@@ -140,7 +143,7 @@ def test_claude_cli_runs_at_most_once_per_30_seconds_and_hidden(tmp_path):
 def test_claude_probe_is_safe_from_parallel_api_threads(tmp_path):
     exe = fake_claude_exe(tmp_path)
     run = FakeRun()
-    probe = ClaudeProbe(find=lambda: exe, run=run)
+    probe = ClaudeProbe(find=lambda: exe, run=run, spawn=SYNC)
     threads = [threading.Thread(target=probe.get) for _ in range(8)]
     for th in threads:
         th.start()
@@ -152,12 +155,54 @@ def test_claude_probe_is_safe_from_parallel_api_threads(tmp_path):
 def test_claude_probe_reads_the_version_again_after_an_update(tmp_path):
     exe = fake_claude_exe(tmp_path)
     run = FakeRun()
-    probe = ClaudeProbe(find=lambda: exe, run=run)
+    probe = ClaudeProbe(find=lambda: exe, run=run, spawn=SYNC)
     assert probe.get() == ClaudeState(True, (2, 1, 400), True) and probe.get().ready
     exe.write_bytes(b"neue Version")                                         # andere Größe: neues Programm
     probe.get()
     assert [c[0][-1] for c in run.calls].count("--version") == 2
-    assert ClaudeProbe(find=lambda: None, run=run).get() == ClaudeState(False)
+    assert ClaudeProbe(find=lambda: None, run=run, spawn=SYNC).get() == ClaudeState(False)
+
+
+def test_claude_probe_never_blocks_the_api_and_runs_one_check_at_a_time(tmp_path):
+    exe = fake_claude_exe(tmp_path)
+    gate, started = threading.Event(), threading.Event()
+    inner = FakeRun()
+
+    def slow_run(argv, **kw):                                                # die CLI hängt, bis der Test sie freigibt
+        started.set()
+        assert gate.wait(5)
+        return inner(argv, **kw)
+    probe = ClaudeProbe(find=lambda: exe, run=slow_run)                       # Standard: Prüfung im Hintergrund-Thread
+    api = make_api(tmp_path, claude=probe.get)
+    t0 = time.monotonic()
+    r = api("setup.checks")
+    s = api("setup.status")
+    for _ in range(5):
+        assert probe.get().checking
+    assert time.monotonic() - t0 < 2 and started.wait(2)
+    assert [c for c in r["checks"] if c["id"].startswith("claude")] == [
+        {"id": "claude_checking", "label": "Claude Code wird geprüft", "ok": False, "hint": ""}]
+    assert step(s, "claude") == {"step": "claude", "title": "Claude Code", "status": "open", "detail": "Wird geprüft"}
+    gate.set()
+    deadline = time.monotonic() + 5
+    while probe.get().checking and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert probe.get() == ClaudeState(True, (2, 1, 400), True)
+    assert [c[0][-1] for c in inner.calls] == ["--version", "--json"]       # genau eine Prüfung trotz vieler Anfragen
+    assert {c["id"] for c in api("setup.checks")["checks"]} >= {"claude_installed", "claude_version", "claude_login"}
+
+
+def test_claude_probe_survives_a_failing_cli_and_a_failing_thread_start(tmp_path):
+    exe = fake_claude_exe(tmp_path)
+
+    def broken(argv, **kw):
+        raise RuntimeError("kaputt")
+    assert ClaudeProbe(find=lambda: exe, run=broken, spawn=SYNC).get() == ClaudeState(True)     # installiert, nicht bereit
+
+    def no_thread(fn):
+        raise RuntimeError("keine Threads")
+    probe = ClaudeProbe(find=lambda: exe, run=FakeRun(), spawn=no_thread)
+    assert probe.get().checking and probe.get().checking                       # nächster Aufruf versucht es erneut
 
 
 def test_safe_text_drops_paths_and_tokens():
@@ -197,17 +242,17 @@ def test_status_claude_and_folder_failures_stay_neutral(tmp_path):
 
 
 def test_claude_and_folder_steps_can_be_skipped_but_not_faked(api):
-    r = api("setup.skip", step="folder")
+    r = api("setup.skip", step="folder", confirm=True)
     assert r["ok"]
     assert step(r, "folder")["status"] == "done"                           # die Tatsache gewinnt über das Überspringen
     for s in ("claude", "folder"):
-        assert api("setup.done", step=s) == {"ok": False, "error": "not_allowed"}
+        assert api("setup.done", step=s, confirm=True) == {"ok": False, "error": "not_allowed"}
 
 
 def test_skipped_claude_and_folder_explain_the_consequence(tmp_path):
     api = make_api(tmp_path, claude=lambda: ClaudeState(False), folders_ok=lambda: False)
-    api("setup.skip", step="claude")
-    r = api("setup.skip", step="folder")
+    api("setup.skip", step="claude", confirm=True)
+    r = api("setup.skip", step="folder", confirm=True)
     assert step(r, "claude")["status"] == "skipped" and step(r, "folder")["status"] == "skipped"
     assert any(n.startswith("Claude Code:") for n in r["restricted"]) and any(n.startswith("Arbeitsordner:") for n in r["restricted"])
 
@@ -363,6 +408,89 @@ def test_audio_without_device_list_or_with_broken_config_is_neutral(tmp_path):
     api2 = make_api(tmp_path)
     assert api2("audio.set", mic="Mikro A", out="", confirm=True) == {"ok": False, "error": "broken_file"}
     assert api.cfg.read_text(encoding="utf-8") == "[audio\nmic = "            # kaputte Datei bleibt unangetastet
+
+
+AUDIO_VARIANTS = {
+    "comment_on_header": ('[memory]\nlocation = "local:~/v"\n\n[audio] # Geräte\nmic = "alt"\nout = ""\n\n[gpu]\nwhisper = "1"\n', True),
+    "spaced_header": ('[ audio ]\nmic = "alt"\n[claude]\nfolders = ["p|C:/p"]\n', True),
+    "inline_table": ('audio = {mic = "alt"}\n[gpu]\nwhisper = "auto"\n', False),
+    "dotted_keys": ('audio.mic = "alt"\naudio.out = ""\n[gpu]\nwhisper = "auto"\n', False),
+    "multiline_string": ('[audio]\nnote = """\nmic = "im Text"\n"""\nmic = "alt"\n', False),
+}
+
+
+@pytest.mark.parametrize("name", sorted(AUDIO_VARIANTS))
+def test_set_audio_never_corrupts_unusual_but_valid_files(tmp_path, name):
+    text, handled = AUDIO_VARIANTS[name]
+    f = tmp_path / "config.toml"
+    f.write_text(text, encoding="utf-8")
+    before = tomllib.loads(text)
+    api = make_api(tmp_path)
+    r = api("audio.set", mic="Mikro A", out="Box", confirm=True)
+    after_text = f.read_text(encoding="utf-8")
+    after = tomllib.loads(after_text)                                         # die Datei bleibt immer lesbar
+    Config.load(f)
+    if handled:
+        assert r == {"ok": True, "mic": "Mikro A", "out": "Box", "restart_needed": True}
+        expected = {**before, "audio": {**before["audio"], "mic": "Mikro A", "out": "Box"}}
+        assert after == expected                                              # alles andere unverändert
+    else:
+        assert r == {"ok": False, "error": "not_saved"}
+        assert after_text == text                                             # nichts geschrieben, nichts umgedeutet
+    assert not [p for p in tmp_path.iterdir() if p.suffix == ".tmp"]
+
+
+def test_config_writers_refuse_a_broken_file_and_keep_it(tmp_path):
+    from kushim.config import NotSaved
+    f = tmp_path / "config.toml"
+    f.write_text("[audio]\nmic = \n", encoding="utf-8")
+    with pytest.raises(NotSaved):
+        Config(path=f).set_audio("Mikro A", "")
+    with pytest.raises(NotSaved):
+        Config(path=f).set_claude_folders(["a|C:/a"])
+    assert f.read_text(encoding="utf-8") == "[audio]\nmic = \n"
+
+
+def test_concurrent_config_writers_never_lose_or_break_anything(tmp_path):
+    """audio.set (Setup) und claude.folder_* schreiben dieselbe config.toml: eine gemeinsame Sperre, eigene Temp-Dateien."""
+    f = tmp_path / "config.toml"
+    f.write_text('[memory]\nlocation = "local:~/v"\n', encoding="utf-8")
+    errors = []
+
+    def audio_writer(i):
+        try:
+            for n in range(25):
+                Config.load(f).set_audio(f"Mikro {i}-{n}", "")
+        except Exception as e:                                                # noqa: BLE001
+            errors.append(e)
+
+    def folder_writer():
+        try:
+            from kushim.config import CONFIG_LOCK
+            for n in range(25):
+                with CONFIG_LOCK:                                             # wie folders_api: lesen, ändern, schreiben als Einheit
+                    cfg = Config.load(f)
+                    cfg.set_claude_folders(list(cfg.claude_folders) + [f"f{n}|C:/f{n}"])
+        except Exception as e:                                                # noqa: BLE001
+            errors.append(e)
+    threads = [threading.Thread(target=audio_writer, args=(i,)) for i in range(3)] + [threading.Thread(target=folder_writer)]
+    for th in threads:
+        th.start()
+    for th in threads:
+        th.join()
+    assert errors == []
+    cfg = Config.load(f)
+    assert len(cfg.claude_folders) == 25 and cfg.audio_mic.startswith("Mikro ") and cfg.memory_location == "local:~/v"
+    assert not [p for p in tmp_path.iterdir() if p.suffix == ".tmp"]
+
+
+def test_folders_api_and_audio_set_share_one_lock(tmp_path):
+    import inspect
+    from kushim.api import folders_api
+    from kushim import config
+    src = inspect.getsource(folders_api)
+    assert src.count("with CONFIG_LOCK:") == 2 and folders_api.CONFIG_LOCK is config.CONFIG_LOCK
+    assert ".toml.tmp" not in inspect.getsource(config)                       # keine gemeinsame feste Temp-Datei mehr
 
 
 def test_config_reads_audio_untrusted(tmp_path):

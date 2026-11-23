@@ -33,9 +33,14 @@ _UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 
 
 def _num(value: Any) -> float | None:
+    """Nur endliche Zahlen; NaN, Infinity und 1e400 (json liest sie als float) gelten als fehlend: `round()` würde abstürzen."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
-    return float(value)
+    try:
+        n = float(value)
+    except OverflowError:                                               # riesige ganze Zahl
+        return None
+    return n if math.isfinite(n) else None
 
 
 def _get(data: Any, *keys: str) -> Any:
@@ -73,7 +78,7 @@ def render(data: Any) -> str:
 
 def _finite(value: Any, low: float, high: float) -> float | None:
     n = _num(value)
-    return n if n is not None and math.isfinite(n) and low <= n <= high else None
+    return n if n is not None and low <= n <= high else None
 
 
 def usage(data: Any, now: float | None = None) -> dict[str, Any]:

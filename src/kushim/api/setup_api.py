@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from ..claude_cli.base import MIN_VERSION
+from ..config import NotSaved
 from ..doctor import Check, claude_checks, run_checks
 from ..safety import killswitch
 from ..setup import state as setup_state
@@ -31,6 +32,10 @@ MAX_TEXT = 120
 MAX_PHRASE = 60
 # Pfade (Laufwerk, UNC, Home, absolute Unix-Pfade) und tokenartige Zeichenketten gehören nie in Anzeigetexte.
 _UNSAFE = re.compile(r"[A-Za-z]:[\\/]|\\\\|~[\\/]|(^|\s)/\w|[A-Za-z0-9_+=-]{24,}")
+
+
+class _Checking(Exception):
+    """Die Claude-Prüfung läuft noch (`ClaudeState.checking`)."""
 
 
 def safe_text(text: Any, fallback: str = "") -> str:
@@ -68,16 +73,23 @@ def register_setup(core: ApiCore, root: Path, vault_state: Callable[[], str],
     def status(_: dict[str, Any]) -> dict[str, Any]:
         return overview()
 
+    # Schreiben `run/setup-state.json`: wie alle schreibenden Setup-Typen nur mit `confirm: true` und nie bei Notaus
+    # (`kushim setup` im Terminal liest nur und benutzt die API nicht).
     def skip(payload: dict[str, Any]) -> dict[str, Any]:
-        setup_state.mark(root, _step(payload), "skipped")
+        step = _step(payload)
+        guard(payload)
+        setup_state.mark(root, step, "skipped")
         return overview()
 
     def reopen(payload: dict[str, Any]) -> dict[str, Any]:
-        setup_state.mark(root, _step(payload), "open")
+        step = _step(payload)
+        guard(payload)
+        setup_state.mark(root, step, "open")
         return overview()
 
     def done(payload: dict[str, Any]) -> dict[str, Any]:
         step = _step(payload)
+        guard(payload)
         if step not in setup_status.MANUAL_DONE:      # die anderen Schritte ergeben sich aus echten Fakten
             raise ApiError("not_allowed")
         setup_state.mark(root, step, "done")
@@ -109,8 +121,12 @@ def register_setup(core: ApiCore, root: Path, vault_state: Callable[[], str],
         if claude is not None:
             try:
                 st = claude()
+                if getattr(st, "checking", False):    # erste Prüfung läuft noch im Hintergrund: später erneut fragen
+                    raise _Checking()
                 found += claude_checks(lambda: "claude" if st.installed else None, lambda _exe: st.version,
                                        lambda _exe: st.logged_in, MIN_VERSION)
+            except _Checking:
+                found.append(Check("Claude Code wird geprüft", False, "", "claude_checking"))
             except Exception:                         # noqa: BLE001 (nie Systemtext nach außen)
                 found.append(Check("Claude Code prüfbar", False, "kushim doctor im eigenen Terminal", "claude_installed"))
         out = []
@@ -144,10 +160,10 @@ def register_setup(core: ApiCore, root: Path, vault_state: Callable[[], str],
         cfg = config()
         try:
             cfg.set_audio(mic, out)
+        except (NotSaved, OSError):                   # Gegenprobe gescheitert oder Datei nicht beschreibbar: nichts geändert
+            raise ApiError("not_saved")
         except ValueError:
             raise ApiError("bad_request")
-        except OSError:
-            raise ApiError("not_saved")
         _audit("setup_audio")
         return {"mic": mic, "out": out, "restart_needed": True}
 

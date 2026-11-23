@@ -118,6 +118,26 @@ def test_statusline_script_has_no_network_and_writes_only_usage_json():
         assert bad not in src, bad
     assert src.count("open(") == 2 and src.count('"wb"') == 1 and src.count('"rb"') == 1
     assert src.count("os.replace(") == 1 and 'USAGE_FILE = Path("run") / "usage.json"' in src
+    assert src.count(".replace(") == src.count("os.replace(") == 1          # kein Path.replace, kein str.replace als Umweg
+    assert src.count("unlink(") <= 1                                          # nur die eigene Temp-Datei aufräumen
+    for bad in ("rename", "os.remove", "rmdir", "touch", "chmod", "removedirs", "copy", "move"):
+        assert bad not in src, bad
+
+
+def test_statusline_never_crashes_on_nan_infinity_or_huge_numbers(monkeypatch, capsys):
+    import io
+    import sys
+    for raw in ('{"model": {"display_name": "Opus 5.5"}, "context_window": {"used_percentage": NaN}}',
+                '{"model": {"display_name": "Opus 5.5"}, "context_window": {"used_percentage": Infinity}}',
+                '{"model": {"display_name": "Opus 5.5"}, "context_window": {"used_percentage": 1e400}}',
+                '{"model": {"display_name": "Opus 5.5"}, "context_window": {"used_percentage": -Infinity}}',
+                '{"model": {"display_name": "Opus 5.5"}, "cost": {"total_cost_usd": NaN}}',
+                '{"model": {"display_name": "Opus 5.5"}, "rate_limits": {"five_hour": {"used_percentage": 1e999}}}',
+                '{"model": {"display_name": "Opus 5.5"}, "cost": {"total_cost_usd": 1' + "0" * 400 + '}}'):
+        monkeypatch.setattr(sys, "stdin", io.TextIOWrapper(io.BytesIO(raw.encode())))
+        assert sl.main() == 0
+    assert capsys.readouterr().out.splitlines() == ["Opus 5.5"] * 7          # kaputte Zahl = fehlt, nie "nan USD"
+    assert sl.render({**FULL, "cost": {"total_cost_usd": float("inf")}}) == "Opus 5.5 · Kontext 42% · 5h 30% · 7d 12%"
 
 
 # --- Statuszeile schreibt run/usage.json nur für die kushim-Sitzung (E2b) ------------------------------------------

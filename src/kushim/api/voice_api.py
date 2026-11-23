@@ -17,7 +17,7 @@ from __future__ import annotations
 import math
 from dataclasses import replace
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from ..safety import killswitch
 from ..voice import statefile
@@ -30,8 +30,10 @@ def _level(value: Any) -> float:
     return float(value)
 
 
-def register_voice(core: ApiCore, root: Path, level_test: Any = None) -> None:
-    """`level_test`: der `LevelTest` des Sprachprozesses (nur mit `kushim talk --ui`), sonst None."""
+def register_voice(core: ApiCore, root: Path, level_test: Any = None,
+                   audit: Callable[[str, str], None] | None = None) -> None:
+    """`level_test`: der `LevelTest` des Sprachprozesses (nur mit `kushim talk --ui`), sonst None.
+    `audit(event, detail)`: Audit-Eintrag nach dem Übernehmen der Pegel (nie Werte oder Pfade)."""
 
     def guard(payload: dict[str, Any]) -> None:
         if payload.get("confirm") is not True:
@@ -68,6 +70,11 @@ def register_voice(core: ApiCore, root: Path, level_test: Any = None) -> None:
             raise ApiError("invalid")                  # außerhalb der Grenzen von wakeconfig.validate
         except OSError:
             raise ApiError("not_saved")
+        if audit is not None:
+            try:
+                audit("setup_levels", "api")
+            except Exception:                          # noqa: BLE001 (ein Audit-Fehler macht das Speichern nicht rückgängig)
+                pass
         return {"speech_level": speech, "barge_in_level": barge, "restart_needed": True}
 
     for name, fn in (("voice.state", state), ("voice.level_test", level_test_start), ("voice.level_result", level_result),
