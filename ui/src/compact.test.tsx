@@ -5,6 +5,7 @@ import { parseUsage, standText, USAGE_HINT, USAGE_POLL_MS, usageParts, useUsage,
 import { ApiClient } from "./lib/api";
 import { STATE_VIEW } from "./lib/avatarState";
 import { DEMO_VIEWS, MockSocket, transcriptEntry, usageDemo } from "./lib/mock";
+import { ARM_MS } from "./components/PermissionBar";
 import { clockText } from "./components/Transcript";
 
 const TS = 1_790_000_000;                                  // feste Erkennungszeit für die Zeile „Du“
@@ -183,6 +184,21 @@ describe("NOTAUS im kleinen Fenster", () => {
   });
 });
 
+/** Hält die Sperre der Freigabe-Leiste (ARM_MS) fest, bis der Test sie löst. Sonst misst der Test die echte Uhr: Unter Last
+ *  vergehen zwischen dem Erscheinen der Leiste und der Prüfung „gesperrt“ leicht mehr als 700 ms. Alle anderen Zeitgeber laufen echt. */
+function holdArm() {
+  const real = globalThis.setTimeout;
+  const held: { fn: () => void; ms: number }[] = [];
+  vi.spyOn(globalThis, "setTimeout").mockImplementation(((fn: () => void, ms?: number, ...rest: unknown[]) => {
+    if (ms !== ARM_MS) return real(fn, ms, ...rest);
+    held.push({ fn, ms });
+    const stub = real(() => undefined, 2 ** 31 - 1) as unknown as { unref?: () => void };   // eigener Zeitgeber für clearTimeout
+    stub.unref?.();
+    return stub;
+  }) as unknown as typeof setTimeout);
+  return { held, release: () => act(() => { for (const h of held.splice(0)) h.fn(); }) };
+}
+
 describe("Freigabe im kleinen Fenster", () => {
   it("wächst, blinkt, zeigt den ganzen Text mit Sperre und Fokus auf Ablehnen, holt nie den Fenster-Fokus und wird danach wieder klein", async () => {
     tauri(true);
@@ -190,6 +206,7 @@ describe("Freigabe im kleinen Fenster", () => {
     const sock: { current?: MockSocket } = {};
     await start(sock);
     await toSmall();
+    const arm = holdArm();
     sock.current!.pending = [{ ...REQ }];
     const bar = await screen.findByRole("alertdialog", {}, { timeout: 3000 });
     expect(compactBox()).toContainElement(bar);
@@ -204,8 +221,13 @@ describe("Freigabe im kleinen Fenster", () => {
     const allow = within(bar).getByRole("button", { name: "Erlauben" });
     expect(deny).toBeDisabled();                                        // 700 ms Sperre
     expect(allow).toBeDisabled();
-    await waitFor(() => expect(deny).toBeEnabled(), { timeout: 2000 });
-    expect(deny).toHaveFocus();                                          // Standardfokus auf Ablehnen
+    await waitFor(() => expect(arm.held.map((h) => h.ms)).toEqual([ARM_MS]));   // die Sperre läuft, genau eine, 700 ms
+    expect(deny).toBeDisabled();
+    expect(allow).toBeDisabled();
+    expect(deny).not.toHaveFocus();
+    arm.release();                                                      // 700 ms sind um
+    await waitFor(() => { expect(deny).toBeEnabled(); expect(deny).toHaveFocus(); });   // Standardfokus auf Ablehnen (eigener Effekt)
+    expect(allow).toBeEnabled();
     expect(winFocus).not.toHaveBeenCalled();
     expect(invoke.mock.calls.every(([cmd]) => WINDOW_CMDS.includes(cmd))).toBe(true);
     await act(async () => { fireEvent.click(deny); });

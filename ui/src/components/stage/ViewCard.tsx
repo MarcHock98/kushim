@@ -159,9 +159,11 @@ export function ViewCard({ view, sys, sysNo, onClose }: { view: View; sys: SysDa
   const vorher = neu ? hist.jetzt : hist.vorher;
   return (
     <article className={`view-card view-${view.art}`} aria-labelledby={`v-${view.id}`}>
-      <div className="panel-head">
-        <h2 id={`v-${view.id}`}>{view.titel || ART_LABEL[view.art]}</h2>
-        <span className="label">{ART_LABEL[view.art]}{view.stand && ` · Stand: ${view.stand}`}</span>
+      <div className="panel-head view-head">
+        <div className="view-title">
+          <h2 id={`v-${view.id}`}>{view.titel || ART_LABEL[view.art]}</h2>
+          <span className="label">{ART_LABEL[view.art]}{view.stand && ` · Stand: ${view.stand}`}</span>
+        </div>
         <button type="button" className="ghost-icon" aria-label="Schließen (Esc)" title="Schließen (Esc)" onClick={onClose}><IconCross /></button>
       </div>
       {view.art === "markt" && !view.stand && <p className="v-note">Stand: unbekannt</p>}
