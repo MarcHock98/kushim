@@ -72,3 +72,56 @@ def test_is_ok_checks_size_and_hash(tmp_path, monkeypatch):
     assert not fm.is_ok(fm.Item("a.bin", 4, None))
     assert not fm.is_ok(fm.Item("a.bin", 3, "0" * 64))
     assert not fm.is_ok(fm.Item("fehlt.bin", 3, None))
+
+
+# --- Stimme Kokoro "Martin" (Piper ist entfernt) ---------------------------------------------------------------------------
+
+def test_kokoro_martin_is_pinned_and_piper_is_gone():
+    items = {i.dest: i for i in fm.ITEMS}
+    assert not any("piper" in d for d in items)
+    onnx, voices = items["models/kokoro/kokoro-martin.onnx"], items["models/kokoro/voices-martin.npz"]
+    for it in (onnx, voices, items["models/kokoro/README.md"]):
+        assert it.hf_repo == "Godelaune/Kokoro-82M-ONNX-German-Martin"
+        assert it.hf_revision == "a1cba7fbf0e72fbae38f0a3a48ce0dc8e6077804"
+        assert it.sha256 and len(it.sha256) == 64 and it.local
+    assert (onnx.size, onnx.sha256[:8]) == (325512630, "c302f1d8") and (voices.size, voices.sha256[:8]) == (522506, "5b9c8553")
+
+
+class NoDownload(Exception):
+    pass
+
+
+def forbid_downloads(monkeypatch):
+    def boom(*a, **k):
+        raise NoDownload()
+    monkeypatch.setattr(fm.urllib.request, "urlopen", boom)
+    fake_hub = type(sys)("huggingface_hub")
+    fake_hub.hf_hub_download = boom
+    monkeypatch.setitem(sys.modules, "huggingface_hub", fake_hub)
+
+
+def test_local_copy_is_taken_instead_of_a_download_and_the_original_stays(monkeypatch, tmp_path):
+    monkeypatch.setattr(fm, "ROOT", tmp_path)
+    forbid_downloads(monkeypatch)
+    src = tmp_path / "tools" / "eval" / "a.onnx"
+    src.parent.mkdir(parents=True)
+    src.write_bytes(b"modell")
+    item = fm.Item("models/kokoro/a.onnx", 6, hashlib.sha256(b"modell").hexdigest(), "repo", "rev", "a.onnx",
+                   local=("tools/eval/a.onnx",))
+    fm.fetch(item)
+    assert (tmp_path / "models" / "kokoro" / "a.onnx").read_bytes() == b"modell" and src.read_bytes() == b"modell"
+    assert fm.is_ok(item) and not list((tmp_path / "models" / "kokoro").glob("tmp*"))
+
+
+def test_local_copy_with_wrong_hash_is_not_used(monkeypatch, tmp_path):
+    monkeypatch.setattr(fm, "ROOT", tmp_path)
+    forbid_downloads(monkeypatch)
+    src = tmp_path / "tools" / "eval" / "a.onnx"
+    src.parent.mkdir(parents=True)
+    src.write_bytes(b"MODELL")                                   # gleiche Größe, anderer Inhalt
+    item = fm.Item("models/kokoro/a.onnx", 6, hashlib.sha256(b"modell").hexdigest(), "repo", "rev", "a.onnx",
+                   local=("tools/eval/a.onnx",))
+    assert not fm.adopt_local(item)
+    with pytest.raises(NoDownload):                              # dann erst (und nur dann) der Download
+        fm.fetch(item)
+    assert not (tmp_path / "models" / "kokoro" / "a.onnx").exists()

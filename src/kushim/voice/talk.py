@@ -17,6 +17,15 @@ from .pipeline import Pipeline, Result
 from .tts import split_sentences
 
 ACK_TEXT = "Ja?"
+TTS_READY_WAIT = 60.0          # so lange wartet `kushim talk` beim Start auf die Stimme (erster GPU-Start bis 20 s)
+
+
+def cached_texts() -> tuple[str, ...]:
+    """Feste Sätze aus kushims Code, die die Stimme einmal rechnet und dann wiederverwendet (Satz-Cache). Nur Konstanten."""
+    from . import claude_chat as cc
+    from . import pipeline as pl
+    return (ACK_TEXT, *cc.FILLERS, pl.CANCEL_REPLY, pl.END_REPLY, pl.NOTHING_REPLY, pl.SHUTDOWN_REPLY, cc.LATE, cc.SILENT,
+            cc.FAILED, cc.NOT_RUNNING, cc.LOST, cc.KILLED)
 
 
 class TalkLoop:
@@ -286,14 +295,21 @@ def build_live(root: Path, out_device: int | None, in_device: int | None = None,
                whisper_device: str = "cuda", whisper_index: int = 0, tasks: Any = None,
                on_note: Callable[[str], None] = lambda s: None):
     """Echte Komponenten. Antworten kommen von Claude Code über den kushim-Channel (Roadmap v2 B4); `pipeline.chat` ist ein
-    `ClaudeChat` mit `announcement()` für verspätete Antworten. Freigaben gibt es nie per Stimme (keine Sprecher-Prüfung)."""
+    `ClaudeChat` mit `announcement()` für verspätete Antworten. Freigaben gibt es nie per Stimme (keine Sprecher-Prüfung).
+
+    Reihenfolge: zuerst Whisper (größter GPU-Verbraucher), danach der Sprachausgabe-Worker (Kokoro „Martin“, eigener Prozess,
+    auf derselben Karte; ohne Karte auf dem Prozessor). `pipeline.tts` ist der Worker (Zustand, Beenden)."""
+    import threading
+
     from ..channel.bridge import Bridge
     from ..tasks import TaskRegistry
     from . import audio
     from .claude_chat import ClaudeChat
     from .dialog import Dialog
+    from .earcon import chime_wav, hint_wav
     from .stt import SpeechToText
-    from .tts import PiperEngine, Speaker
+    from .tts import SentenceCache, Speaker
+    from .ttsworker import KokoroWorker
 
     import os
     os.environ.setdefault("CUDA_DEVICE_ORDER", "PCI_BUS_ID")   # Kartennummern wie in nvidia-smi
@@ -303,16 +319,30 @@ def build_live(root: Path, out_device: int | None, in_device: int | None = None,
     else:                             # ohne NVIDIA-Karte oder per Einstellung: Prozessor
         stt = SpeechToText.from_local(str(root / "models" / "whisper-large-v3-turbo"), device="cpu",
                                       compute_type="int8")
-    engine = PiperEngine.from_local(str(root / "models" / "piper" / "de_DE-thorsten-high.onnx"))
+    worker = KokoroWorker.for_root(root, "cuda" if whisper_device == "cuda" else "cpu", device_id=whisper_index)
+    worker.on_note = on_note
+    worker.start()
+    if not worker.wait_ready(TTS_READY_WAIT):
+        on_note(f"Sprachausgabe noch nicht bereit ({worker.state}): Antworten kommen bis dahin als Text mit Hinweiston.")
+    cache = SentenceCache(worker, cached_texts())
     dialog = Dialog(audio.stop_playback)
-    kill = KillSwitch(root, [audio.stop_playback])
-    speaker = Speaker(engine, lambda wav: audio.play_wav(wav, out_device), kill.poll)   # Marker-Datei stoppt sofort
-    from .earcon import chime_wav
+    kill = KillSwitch(root, [audio.stop_playback, worker.kill])           # Notaus beendet auch den Worker (kill_tree)
+    speaker = Speaker(cache, lambda wav: audio.play_wav(wav, out_device), kill.poll)   # Marker-Datei stoppt sofort
     speaker.chime = chime_wav()                 # Signalton vor kushims eigenen Ansagen (Freigabe, Notaus), nie vor `sprich`
-    ack_wav = engine.synthesize(ACK_TEXT)
+    speaker.hint = hint = hint_wav()            # Stimme ausgefallen: Hinweiston, der Text steht im Fenster
+    speaker.on_unspoken = lambda text: on_note(f"Ohne Stimme: {text}")
+    threading.Thread(target=cache.warm, kwargs={"stop": lambda: kill.fired}, daemon=True, name="kushim-tts-warm").start()
+
+    def ack() -> None:
+        try:
+            wav = cache.synthesize(ACK_TEXT)    # aus dem Satz-Cache, sonst einmal gerechnet
+        except Exception:                       # noqa: BLE001 (Stimme fehlt: Hinweiston statt Stille)
+            wav = hint
+        audio.play_wav(wav, out_device)
     mic = audio.Mic(in_device)
     tasks = tasks if tasks is not None else TaskRegistry()
     bridge = Bridge(root)
     pipeline = Pipeline(stt, ClaudeChat(bridge, tasks), speaker, dialog, kill, commands=commands,
                         wake_names=tuple(wake_names), tasks=tasks)
-    return pipeline, kill, mic, lambda: audio.play_wav(ack_wav, out_device)
+    pipeline.tts = worker
+    return pipeline, kill, mic, ack

@@ -15,16 +15,25 @@ class Check:
     id: str = ""           # feste kurze Kennung für die Oberfläche (`setup.checks`), z. B. "model_whisper"
 
 
-MODULES = [("faster_whisper", "Spracherkennung"), ("piper", "Sprachausgabe"),
+MODULES = [("faster_whisper", "Spracherkennung"),
            ("sherpa_onnx", "Wake Word (freie Wörter)"), ("sounddevice", "Audio"),
            ("openwakeword", "Wake Word"), ("sentencepiece", "freie Wake Words"), ("sqlcipher3", "Vault"), ("keyring", "Schluesselbund")]
 
 FILES = [
     ("Whisper-Modell", "models/whisper-large-v3-turbo/model.bin"),
-    ("Piper-Stimme", "models/piper/de_DE-thorsten-high.onnx"),
+    ("Stimme Kokoro Martin", "models/kokoro/kokoro-martin.onnx"),
     ("Wake-Word-Modell (freie Wörter)", "models/kws/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01/bpe.model"),
 ]
-FILE_IDS = ("model_whisper", "model_piper", "model_kws")
+FILE_IDS = ("model_whisper", "model_tts", "model_kws")
+# Sprachausgabe im eigenen venv (Kindprozess): Interpreter und die drei Pakete, die der Worker braucht. Nur nachsehen, nichts starten.
+TTS_VENV = Path("tools") / "kokoro" / "venv"
+TTS_PACKAGES = ("onnxruntime", "kokoro_onnx", "espeakng_loader")
+
+
+def tts_venv_ok(root: Path) -> bool:
+    venv = root / TTS_VENV
+    site = venv / "Lib" / "site-packages"
+    return (venv / "Scripts" / "python.exe").is_file() and all((site / p / "__init__.py").is_file() for p in TTS_PACKAGES)
 
 
 def run_checks(root: Path, vault_state: Callable[[], str] | None = None) -> list[Check]:
@@ -35,6 +44,7 @@ def run_checks(root: Path, vault_state: Callable[[], str] | None = None) -> list
                             "install.ps1 erneut ausfuehren", f"pkg_{mod}"))
     for (name, rel), cid in zip(FILES, FILE_IDS):
         checks.append(Check(name, (root / rel).exists(), "install.ps1 erneut ausfuehren", cid))
+    checks.append(Check("Sprachausgabe-Umgebung (tools/kokoro/venv)", tts_venv_ok(root), "install.ps1 erneut ausfuehren", "tts_venv"))
     nv = importlib.util.find_spec("nvidia")
     gpu_libs = bool(nv and any((Path(p) / "cublas" / "bin").is_dir() for p in (nv.submodule_search_locations or [])))
     checks.append(Check("GPU-Bibliotheken (cuBLAS/cuDNN)", gpu_libs, "install.ps1 erneut ausfuehren", "gpu_libs"))

@@ -50,7 +50,7 @@ def test_checks_lists_doctor_and_claude_checks_with_fixed_ids(api):
     r = api("setup.checks")
     assert r["ok"] is True and isinstance(r["checks"], list)
     ids = [c["id"] for c in r["checks"]]
-    assert {"pkg_faster_whisper", "model_whisper", "model_piper", "model_kws", "gpu_libs", "kill_off", "vault",
+    assert {"pkg_faster_whisper", "model_whisper", "model_tts", "tts_venv", "model_kws", "gpu_libs", "kill_off", "vault",
             "claude_installed", "claude_version", "claude_login"} <= set(ids)
     assert len(ids) == len(set(ids))
     for c in r["checks"]:

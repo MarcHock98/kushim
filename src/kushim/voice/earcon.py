@@ -17,6 +17,8 @@ import wave
 MARK = "\x07"                   # BEL: nicht druckbar, wird aus jedem fremden Text entfernt
 RATE = 22050
 TONES = ((660.0, 0.12), (990.0, 0.18))      # zwei Töne aufwärts, zusammen 0,3 s
+# Hinweiston, wenn die Stimme ausfällt (Text statt Sprache): zwei tiefe Töne abwärts, klar anders als der Zweiklang oben
+HINT_TONES = ((523.0, 0.14), (0.0, 0.06), (392.0, 0.22))
 VOLUME = 0.25
 
 
@@ -27,8 +29,17 @@ def mark(text: str) -> str:
 
 def chime_wav(rate: int = RATE) -> bytes:
     """Zweiklang als 16-bit-Mono-WAV (mit kurzem Ein- und Ausblenden, damit es nicht knackt)."""
+    return _tones_wav(TONES, rate)
+
+
+def hint_wav(rate: int = RATE) -> bytes:
+    """Hinweiston: Die Stimme ist gerade nicht verfügbar, die Antwort steht als Text da (nie still bleiben)."""
+    return _tones_wav(HINT_TONES, rate)
+
+
+def _tones_wav(tones, rate: int) -> bytes:
     samples: list[int] = []
-    for freq, seconds in TONES:
+    for freq, seconds in tones:
         n = int(rate * seconds)
         fade = max(1, int(rate * 0.01))
         for i in range(n):

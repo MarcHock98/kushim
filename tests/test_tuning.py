@@ -427,7 +427,7 @@ def test_pipeline_voice_command_lowers_thresholds_locally(tmp_path):
     assert r.outcome == "command" and not called                  # nichts an Claude
     assert t.values.speech_level < FILE.speech_level and t.values.barge_in_level < FILE.barge_in_level   # empfindlicher SENKT
     assert t.snapshot()["source"] == "voice" and t.snapshot()["step"] == 1
-    assert played == ["Mikrofon empfindlicher, Stufe plus eins.", "„Mikrofon normal“ setzt zurück."]
+    assert played == ["Mikrofon empfindlicher, Stufe plus eins.", "Mikrofon normal setzt zurück."]
     assert r.reply == tuning_reply(1, 1, True)
     item = notes.since(0)[0]
     assert item["status"] == "dropped" and item["reason"] == "command"
@@ -439,12 +439,12 @@ def test_pipeline_voice_command_less_normal_and_edges(tmp_path):
     p, played, called, _, _ = build(tmp_path, "Mikrofon weniger empfindlich", t)
     p.handle(PCM)
     assert t.snapshot()["step"] == -1 and t.values.speech_level > FILE.speech_level
-    assert played[-2:] == ["Mikrofon weniger empfindlich, Stufe minus eins.", "„Mikrofon normal“ setzt zurück."]
+    assert played[-2:] == ["Mikrofon weniger empfindlich, Stufe minus eins.", "Mikrofon normal setzt zurück."]
     p.handle(PCM)
     played.clear()
     p.handle(PCM)                                                 # schon -2: bleibt, ehrliche Ansage
     assert t.snapshot()["step"] == -2
-    assert played == ["Mikrofon ist schon am unempfindlichsten, Stufe minus zwei.", "„Mikrofon normal“ setzt zurück."]
+    assert played == ["Mikrofon ist schon am unempfindlichsten, Stufe minus zwei.", "Mikrofon normal setzt zurück."]
     p.stt = FakeSTT("Mikrofon normal")
     played.clear()
     r = p.handle(PCM)

@@ -6,6 +6,8 @@ erkannten Worts (nie Audio, nie Gesprochenes).
 Der Zeitstempel dient als Lebenszeichen: ist er älter als `MAX_AGE`, läuft kein Sprachdienst (`active: false`).
 Der Leser vertraut der Datei nicht: unbekannte Zustände, falsche Typen oder alte Stempel ergeben "inaktiv"; ein ungültiger
 Zähler oder Name ergibt 0 bzw. "" (alte Dateien ohne diese Felder bleiben gültig).
+Feld `tts`: Zustand der Sprachausgabe (loading | ready | cpu | failed | off), für einen Chip der Oberfläche. Fehlt es oder ist es
+ungültig, gilt "off".
 """
 from __future__ import annotations
 
@@ -19,6 +21,7 @@ from pathlib import Path
 from typing import Callable
 
 STATES = ("idle", "listening", "thinking", "speaking", "asking", "alarm", "halted")
+TTS_STATES = ("loading", "ready", "cpu", "failed", "off")      # Sprachausgabe: lädt, GPU, Prozessor, ausgefallen, aus
 FILE = Path("run") / "voice-state.json"
 MAX_AGE = 5.0                      # Sekunden ohne Lebenszeichen = kein Sprachdienst
 MIN_GAP = 0.2                      # höchstens 5 Schreibvorgänge pro Sekunde (Pegel und Lebenszeichen)
@@ -49,7 +52,14 @@ class StatePublisher:
         self._last_level = 0.0
         self._wake_count = 0
         self._wake_last = ""
+        self._tts = "off"
         self._lock = threading.Lock()                # Sprach-Schleife und Antwort-Thread schreiben dieselbe Datei
+
+    def tts(self, state: str) -> None:
+        """Zustand der Sprachausgabe (`KokoroWorker.on_state`); sofort schreiben, Unbekanntes wird "off"."""
+        with self._lock:
+            self._tts = state if state in TTS_STATES else "off"
+        self._write(self._state(), self._last_level)
 
     def alarm(self) -> None:
         """Unbekannte Stimme: kurz "alarm" zeigen (keine Antwort, kein Ton)."""
@@ -88,7 +98,7 @@ class StatePublisher:
             now = self._clock()
             level = round(min(1.0, max(0.0, float(level))), 3)
             data = {"state": state, "level": level, "ts": now,
-                    "wake_count": self._wake_count, "wake_last": self._wake_last}
+                    "wake_count": self._wake_count, "wake_last": self._wake_last, "tts": self._tts}
             tmp = self._path.with_suffix(".tmp")
             try:
                 self._path.parent.mkdir(exist_ok=True)
@@ -116,9 +126,13 @@ def _wake_last(value: object) -> str:
     return value if isinstance(value, str) and WAKE_NAME.fullmatch(value) else ""
 
 
+def _tts(value: object) -> str:
+    return value if isinstance(value, str) and value in TTS_STATES else "off"
+
+
 def read(root: Path, now: float | None = None) -> dict:
-    """{"active", "state", "level", "wake_count", "wake_last"}; bei Fehlern oder alter Datei inaktiv."""
-    off = {"active": False, "state": "idle", "level": 0.0, "wake_count": 0, "wake_last": ""}
+    """{"active", "state", "level", "wake_count", "wake_last", "tts"}; bei Fehlern oder alter Datei inaktiv."""
+    off = {"active": False, "state": "idle", "level": 0.0, "wake_count": 0, "wake_last": "", "tts": "off"}
     try:
         with open(root / FILE, "rb") as f:
             raw = f.read(MAX_FILE_BYTES + 1)
@@ -133,7 +147,8 @@ def read(root: Path, now: float | None = None) -> dict:
         if (time.time() if now is None else now) - ts > MAX_AGE:
             return off
         return {"active": True, "state": state, "level": min(1.0, max(0.0, float(level))),
-                "wake_count": _wake_count(data.get("wake_count", 0)), "wake_last": _wake_last(data.get("wake_last", ""))}
+                "wake_count": _wake_count(data.get("wake_count", 0)), "wake_last": _wake_last(data.get("wake_last", "")),
+                "tts": _tts(data.get("tts", "off"))}
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return off
 
