@@ -10,7 +10,10 @@ Eine Änderung wirkt deshalb ab dem nächsten Frame, auch mitten in einer Äuße
 Grenzen: `set` und `step_by` halten die LIVE-GRENZEN (`BOUNDS`) ein, sonst ValueError bzw. Begrenzung. Die Startwerte aus
 `wakewords.toml` gelten unverändert, auch wenn sie außerhalb liegen (die Datei prüft `wakeconfig.validate` mit eigenen Grenzen).
 Sicherheit: Auch an der strengsten Grenze (speech 600, barge 1500 über 400 ms) lösen normal laut gesprochene Frames (RMS um
-2000) Äußerung und Unterbrechen noch aus; ein gesprochenes „Notaus“ kommt also durch (tests/test_tuning.py).
+2000) Äußerung und Unterbrechen noch aus; ein gesprochenes „Notaus“ kommt also durch (tests/test_tuning.py). Das gilt auch
+mit Echo-Schutz, während kushim spricht: dessen erhöhte Schwelle ist auf `bargein.ECHO_CAP` (= 1500, die Live-Obergrenze)
+gedeckelt. Die Sperrzeit am Anfang der ersten Wiedergabe einer Runde (`echo_ignore_ms`) bleibt; dafür gibt es die
+Notaus-Verknüpfung. `voice.level_apply` übernimmt Werte live nur begrenzt auf diese Grenzen (`adopt_file(clamp=True)`).
 
 Stufen (`step_by`, Sprachbefehl „Mikrofon empfindlicher“): Faktor 1,4 je Stufe auf `speech_level` und `barge_in_level`,
 ausgehend von den Dateiwerten, -2..+2. Plus heißt EMPFINDLICHER, also niedrigere Schwellen. Ein Wert wird an die Grenzen
@@ -57,7 +60,7 @@ def _number(key: str, value: Any) -> float | int:
     """Prüft Typ und Grenze eines Live-Werts; ValueError sonst. `barge_in_ms` muss ganzzahlig sein."""
     if key not in BOUNDS:
         raise ValueError(f"unbekannter Wert {key!r}")
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+    if not _finite(value):
         raise ValueError(f"{key} muss eine Zahl sein")
     lo, hi = BOUNDS[key]
     if not lo <= value <= hi:
@@ -67,6 +70,16 @@ def _number(key: str, value: Any) -> float | int:
             raise ValueError("barge_in_ms muss ganzzahlig sein")
         return int(value)
     return float(value)
+
+
+def _finite(value: Any) -> bool:
+    """Endliche Zahl (int/float, kein bool). Riesige Ganzzahlen (OverflowError bei der Umwandlung) zählen nicht."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        return False
 
 
 def _clamp(key: str, value: float) -> float:
@@ -157,16 +170,23 @@ class LiveTuning:
         self._notify(snap)
         return snap
 
-    def adopt_file(self, source: str = "ui", **values: Any) -> dict[str, Any]:
-        """Nach dem Speichern in `wakewords.toml` (schon von `wakeconfig.validate` geprüft): die gespeicherten Werte sind die
-        neuen Dateiwerte UND die aktuellen Werte, Stufe 0. Keine Live-Grenzen (die Datei hat eigene)."""
+    def adopt_file(self, source: str = "ui", expect_version: int | None = None, clamp: bool = False,
+                   **values: Any) -> dict[str, Any] | None:
+        """Nach dem Speichern in `wakewords.toml` (schon von `wakeconfig.validate` geprüft): die gespeicherten Werte werden die
+        neue Bezugsgröße für `reset`/Stufen (`file_values`) UND die aktuellen Werte, Stufe 0.
+        `clamp`: live nur innerhalb der Live-Grenzen übernehmen (`voice.level_apply`; die Datei behält die Werte).
+        `expect_version`: nur übernehmen, wenn sich seitdem nichts geändert hat; sonst bleibt der neuere Live-Stand und das
+        Ergebnis ist None."""
         self._check_source(source)
         clean: dict[str, Any] = {}
         for k, v in values.items():
-            if k not in KEYS or isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+            if k not in KEYS or not _finite(v):
                 raise ValueError(f"ungültiger Wert {k!r}")
-            clean[k] = int(v) if k == "barge_in_ms" else float(v)
+            v = _clamp(k, float(v)) if clamp else v
+            clean[k] = int(round(v)) if k == "barge_in_ms" else float(v)
         with self._lock:
+            if expect_version is not None and expect_version != self._version:
+                return None
             self._file = replace(self._file, **clean)
             self._values = replace(self._values, **clean)
             self._step = 0
@@ -197,7 +217,7 @@ class LiveTuning:
     def observe(self, rms: float) -> None:
         try:
             r = float(rms)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             return
         if not math.isfinite(r) or r < 0:
             return

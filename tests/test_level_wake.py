@@ -134,7 +134,7 @@ def test_level_api_happy_path(tmp_path):
     r = api("voice.level_result")
     assert r["ok"] and r["state"] == "done" and set(r["suggestion"]) == {"speech_level", "barge_in_level"}
     applied = api("voice.level_apply", confirm=True, **r["suggestion"])
-    assert applied == {"ok": True, **r["suggestion"], "restart_needed": True}
+    assert applied == {"ok": True, **r["suggestion"], "restart_needed": True, "live_clamped": False, "live_changed": False}
     s = wakeconfig.load(tmp_path).settings
     assert (s.speech_level, s.barge_in_level) == (r["suggestion"]["speech_level"], r["suggestion"]["barge_in_level"])
 

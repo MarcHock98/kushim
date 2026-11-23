@@ -9,8 +9,12 @@ bekommt jeden Frame der Sprach-Schleife). Ohne diesen Prozess (z. B. `kushim ser
 antwortet "unavailable", `voice.level_result` meldet `state: "unavailable"`. Es wird nie ein zweites Mikrofon geöffnet.
 - `voice.level_test` {confirm: true} startet (oder beginnt neu): 3 s Ruhe, dann 6 s Sprechen.
 - `voice.level_result` -> {state: idle|quiet|speak|done|unavailable, seconds_left, suggestion: {speech_level, barge_in_level}|null}
-- `voice.level_apply` {speech_level, barge_in_level, confirm: true} schreibt geprüft über `wakeconfig.save`. Läuft
-  `kushim talk` (mit `LiveTuning`), gelten die Werte sofort (`restart_needed: false`), sonst ab dem nächsten Start (`true`).
+- `voice.level_apply` {speech_level, barge_in_level, confirm: true} schreibt geprüft über `wakeconfig.save` (mit
+  Sicherungskopien wie `voice.tuning.save`) -> {speech_level, barge_in_level, restart_needed, live_clamped, live_changed}.
+  Läuft `kushim talk` (mit `LiveTuning`), gelten die Werte sofort (`restart_needed: false`), live aber nur innerhalb der
+  Live-Grenzen (`live_clamped: true`, wenn begrenzt; die Datei bekommt die Werte unverändert), damit ein gesprochener Notaus
+  erreichbar bleibt. Wurde live in der Zwischenzeit etwas geändert, gilt der neuere Live-Stand (`live_changed: true`,
+  `restart_needed: true`). Ohne talk: `restart_needed: true`, beide Flags false.
 
 Mikrofon-Schwellen zur Laufzeit (`voice/tuning.py`, nur im Sprachprozess `kushim talk --ui`):
 - `voice.tuning.get` -> {active, values, file_values, bounds, step, rms, peak, last_source, version}. Ohne Sprachprozess
@@ -18,14 +22,16 @@ Mikrofon-Schwellen zur Laufzeit (`voice/tuning.py`, nur im Sprachprozess `kushim
 - `voice.tuning.set` {values: {speech_level?, barge_in_level?, barge_in_ms?, end_silence_seconds?}, confirm: true}: wirkt ab
   dem nächsten Frame, nicht gespeichert. Außerhalb der Live-Grenzen "invalid", falscher Typ "bad_request".
 - `voice.tuning.reset` {confirm: true}: zurück auf die Dateiwerte, Stufe 0.
-- `voice.tuning.save` {confirm: true}: schreibt die aktuellen Werte über `wakeconfig.save` (geprüft, atomar), vorher Kopie
-  `wakewords.toml.bak`. Danach sind es die neuen Dateiwerte (Stufe 0). Audit `voice_tuning_saved` ohne Werte.
+- `voice.tuning.save` {confirm: true}: liest die aktuellen Werte unter `wakeconfig.SAVE_LOCK` und schreibt sie über
+  `wakeconfig.save` (geprüft, atomar). Vorher `wakewords.toml.bak` (letzte Fassung) und beim allerersten Mal einmalig
+  `wakewords.toml.orig.bak` (nie überschrieben). Danach sind es die neuen Dateiwerte (Stufe 0), außer es wurde live
+  inzwischen etwas geändert (`live_changed: true`, der neuere Live-Stand bleibt). Antwort: get-Objekt + {backup,
+  saved_values, live_changed}. Audit `voice_tuning_saved` ohne Werte.
 Schreibende Typen brauchen `confirm: true` und sind bei aktivem Notaus gesperrt ("kill"); ohne Sprachprozess "unavailable".
 """
 from __future__ import annotations
 
 import math
-import threading
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, Callable
@@ -34,14 +40,40 @@ from ..safety import killswitch
 from ..voice import statefile
 from .protocol import ApiCore, ApiError
 
-BACKUP = "wakewords.toml.bak"
-_SAVE_LOCK = threading.Lock()          # Sicherungskopie und Speichern gehören zusammen
+BACKUP = "wakewords.toml.bak"          # letzte Fassung vor dem Speichern
+ORIGINAL = "wakewords.toml.orig.bak"   # Fassung vor dem allerersten Speichern über die API, wird nie überschrieben
 
 
 def _level(value: Any) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ApiError("bad_request")
-    return float(value)
+    try:
+        if not math.isfinite(value):
+            raise ApiError("bad_request")
+        return float(value)
+    except OverflowError:                              # riesige Ganzzahl
+        raise ApiError("bad_request")
+
+
+def _backup(root: Path) -> bool:
+    """Vor dem Schreiben: `wakewords.toml.bak` = letzte Fassung (jedes Mal neu), beim allerersten Mal zusätzlich
+    `wakewords.toml.orig.bak` (wird nie überschrieben). Beides atomar über eine Temp-Datei. False, wenn es noch keine eigene
+    Datei gibt. OSError geht an den Aufrufer (dann wird nicht gespeichert)."""
+    from ..voice import wakeconfig
+    target = wakeconfig.path(root)
+    if not target.is_file():
+        return False
+    data = target.read_bytes()
+    orig = root / ORIGINAL
+    if not orig.exists():
+        tmp = orig.with_name(orig.name + ".tmp")
+        tmp.write_bytes(data)
+        tmp.replace(orig)
+    bak = root / BACKUP
+    tmp = bak.with_name(bak.name + ".tmp")
+    tmp.write_bytes(data)
+    tmp.replace(bak)
+    return True
 
 
 def _tuning_values(payload: dict[str, Any]) -> dict[str, float]:
@@ -90,29 +122,46 @@ def register_voice(core: ApiCore, root: Path, level_test: Any = None,
             return {"state": "unavailable", "seconds_left": 0.0, "suggestion": None}
         return level_test.result()
 
+    def write_file(new: Any) -> bool:
+        """Sicherungskopien, dann geprüft und atomar schreiben (unter `wakeconfig.SAVE_LOCK`). Gibt `backup` zurück."""
+        from ..voice import wakeconfig
+        try:
+            wakeconfig.validate(new, root)
+        except ValueError:
+            raise ApiError("invalid")                  # außerhalb der Grenzen von wakeconfig.validate
+        try:
+            backup = _backup(root)
+            wakeconfig.save(root, new)
+        except ValueError:
+            raise ApiError("invalid")
+        except OSError:
+            raise ApiError("not_saved")
+        return backup
+
     def level_apply(payload: dict[str, Any]) -> dict[str, Any]:
         speech, barge = _level(payload.get("speech_level")), _level(payload.get("barge_in_level"))
         guard(payload)
         from ..voice import wakeconfig
-        try:
-            cfg = wakeconfig.load(root)
-        except ValueError:
-            raise ApiError("broken_file")
-        try:
-            wakeconfig.save(root, replace(cfg, settings=replace(cfg.settings, speech_level=speech, barge_in_level=barge)))
-        except ValueError:
-            raise ApiError("invalid")                  # außerhalb der Grenzen von wakeconfig.validate
-        except OSError:
-            raise ApiError("not_saved")
-        write_audit("setup_levels")
+        clamped = changed = False
         restart = True
-        if live():                                     # talk läuft: die gespeicherten Werte gelten sofort
+        with wakeconfig.SAVE_LOCK:                     # dieselbe Sperre wie wakeconfig.save und voice.tuning.save
+            version = tuning.version if live() else None    # Live-Stand vor dem Schreiben
             try:
-                tuning.adopt_file(source="ui", speech_level=speech, barge_in_level=barge)
-                restart = False
+                cfg = wakeconfig.load(root)
             except ValueError:
-                pass
-        return {"speech_level": speech, "barge_in_level": barge, "restart_needed": restart}
+                raise ApiError("broken_file")
+            write_file(replace(cfg, settings=replace(cfg.settings, speech_level=speech, barge_in_level=barge)))
+            if version is not None:                    # talk läuft: live gelten die Werte sofort, aber nur in den Live-Grenzen
+                snap = tuning.adopt_file(source="ui", expect_version=version, clamp=True,
+                                         speech_level=speech, barge_in_level=barge)
+                if snap is None:                       # inzwischen live geändert: der neuere Stand gilt
+                    changed = True
+                else:
+                    restart = False
+                    clamped = (snap["values"]["speech_level"], snap["values"]["barge_in_level"]) != (speech, barge)
+        write_audit("setup_levels")
+        return {"speech_level": speech, "barge_in_level": barge, "restart_needed": restart,
+                "live_clamped": clamped, "live_changed": changed}
 
     # --- Mikrofon-Schwellen zur Laufzeit
     def tuning_state() -> dict[str, Any]:
@@ -158,37 +207,18 @@ def register_voice(core: ApiCore, root: Path, level_test: Any = None,
         if not live():
             raise ApiError("unavailable")
         from ..voice import wakeconfig
-        current = tuning.values.as_dict()
-        with _SAVE_LOCK:
+        with wakeconfig.SAVE_LOCK:                     # Werte unter derselben Sperre lesen, mit der gespeichert wird
+            snap = tuning.snapshot()
+            current, version = snap["values"], snap["version"]
             try:
                 cfg = wakeconfig.load(root)
             except ValueError:
                 raise ApiError("broken_file")
-            new = replace(cfg, settings=replace(cfg.settings, **current))
-            try:
-                wakeconfig.validate(new, root)
-            except ValueError:
-                raise ApiError("invalid")
-            target = wakeconfig.path(root)
-            backup = False
-            try:
-                if target.is_file():                   # Sicherungskopie vorher, ebenfalls atomar
-                    bak = root / BACKUP
-                    tmp = bak.with_name(bak.name + ".tmp")
-                    tmp.write_bytes(target.read_bytes())
-                    tmp.replace(bak)
-                    backup = True
-                wakeconfig.save(root, new)
-            except ValueError:
-                raise ApiError("invalid")
-            except OSError:
-                raise ApiError("not_saved")
-        try:
-            tuning.adopt_file(source="ui", **current)  # gespeichert: das sind jetzt die Dateiwerte (Stufe 0)
-        except ValueError:
-            pass
+            backup = write_file(replace(cfg, settings=replace(cfg.settings, **current)))
+            # gespeichert: das sind jetzt die Dateiwerte (Stufe 0), aber nur, wenn live inzwischen nichts geändert wurde
+            adopted = tuning.adopt_file(source="ui", expect_version=version, **current)
         write_audit("voice_tuning_saved")
-        return {**tuning_state(), "backup": backup}
+        return {**tuning_state(), "backup": backup, "saved_values": current, "live_changed": adopted is None}
 
     for name, fn in (("voice.state", state), ("voice.level_test", level_test_start), ("voice.level_result", level_result),
                      ("voice.level_apply", level_apply), ("voice.tuning.get", tuning_get), ("voice.tuning.set", tuning_set),
