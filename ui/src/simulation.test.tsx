@@ -471,14 +471,26 @@ describe("Kennwerte", () => {
 });
 
 describe("Kein Klick sendet etwas", () => {
+  /** Die üblichen Abfragen der App im großen Fenster (Startseite ohne Systemzustand). */
+  const POLLS = ["safety.status", "voice.state", "approvals.get", "transcript.get", "safety.overview", "stage.get"];
   it("Pause, Weiter, Neu starten und Tasten lassen die gesendeten Nachrichten unverändert, während die Bilder laufen", async () => {
     recordingCtx(); const f = fakeFrames();
     const sock: { current?: MockSocket } = {};
     const loader = async () => ({ client: new ApiClient({ port: 5000, token: TOKEN }, (u) => (sock.current = new MockSocket(u, TOKEN))) });
-    render(<App load={loader} />);
+    const app = <App load={loader} />;
+    const { rerender } = render(app);
     await waitFor(() => screen.getAllByText(STATE_VIEW.idle.label));
+    const loops = vi.mocked(createSimLoop).mock.calls.length;
     sock.current!.show(DEMO_VIEWS.find((v) => v.id === "pendel")!);
     await waitFor(() => screen.getByRole("heading", { name: "Pendel, 1 m (Beispiel)" }), { timeout: 3000 });
+    // Erst messen, wenn alle üblichen Abfragen laufen: voice.state kommt nur im 200-ms-Takt, ohne sofortigen ersten Ruf. Kam die
+    // Ansicht schon mit der ersten Bühnen-Abfrage, fehlte voice.state sonst in pollTypes und tauchte erst „später“ auf.
+    await waitFor(() => expect(sock.current!.sent.map((m) => (m as { type: string }).type)).toEqual(expect.arrayContaining(POLLS)));
+    // Die Ansicht kam aus einer Abfrage (außerhalb von act): waitFor sieht den Commit, bevor React dessen useEffect ausführt
+    // (der Scheduler gibt nach jedem Commit die Hand ab, unter Last länger). Ohne Effekt keine Taktschleife, dann laufen die
+    // falschen Bilder ins Leere. React führt offene Effekte vor jeder neuen Arbeit aus: dasselbe Element neu geben holt sie nach.
+    rerender(app);
+    expect(vi.mocked(createSimLoop).mock.calls.length).toBeGreaterThan(loops);       // die Schleife steht, bevor gemessen wird
     const pollTypes = new Set(sock.current!.sent.map((m) => (m as { type: string }).type));
     const before = JSON.stringify(sock.current!.sent);
 

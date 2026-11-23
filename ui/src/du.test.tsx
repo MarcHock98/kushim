@@ -51,10 +51,14 @@ describe("Zeile „Du“ im Verlauf (App)", () => {
     await waitFor(() => log().getByText("Zehn Uhr."), { timeout: 3000 });
     expect(youRows()).toHaveLength(1);
     expect(log().getAllByRole("listitem")).toHaveLength(1);
-    await new Promise((r) => setTimeout(r, 1300));
-    const gets = sock.current!.sent.filter((m) => (m as { type: string }).type === "transcript.get") as { since: number }[];
-    expect(gets[gets.length - 1].since).toBe(sock.current!.revSeq);                           // since ist die höchste rev
-  });
+    const n = sock.current!.sent.length;
+    await waitFor(() => {                                                                      // die nächste Abfrage nach der Antwort
+      const gets = sock.current!.sent.slice(n).filter((m) => (m as { type: string }).type === "transcript.get") as { since: number }[];
+      expect(gets.length).toBeGreaterThan(0);
+      expect(gets[gets.length - 1].since).toBe(sock.current!.revSeq);                         // since ist die höchste rev
+    }, { timeout: 3000 });
+    expect(youRows()).toHaveLength(1);                                                         // nichts doppelt, auch danach
+  }, 15_000);                                                    // drei echte Abfragen im Sekundentakt nacheinander, plus Start
 
   it("der Aufklappzustand bleibt, wenn der Eintrag per rev aktualisiert wird", async () => {
     const sock: { current?: MockSocket } = {};
@@ -256,5 +260,20 @@ describe("Breiten (CSS)", () => {
     expect(wide).toContain("grid-template-columns: max-content 1fr");
     expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \.you-chev \{ transition: none; \} \}/);
     expect(block(".you-chev")).toContain("transition: transform var(--t-fast)");
+  });
+  it("Chevron: zu ohne Drehung (▾), auf um die waagrechte Achse gedreht (▴), nie seitlich; bei weniger Bewegung nur das Endbild", () => {
+    render(<Transcript entries={[entry({ id: 1, heard: "Hallo" })]} />);
+    const row = youRows()[0];
+    const chev = row.querySelector(".you-chev")!;
+    expect(chev).not.toHaveClass("is-open");
+    expect(block(".you-chev")).not.toContain("transform:");                  // zu: das Symbol zeigt von sich aus nach unten
+    expect(chev.querySelector("path")).toHaveAttribute("d", "M6 9l6 6 6-6");
+    fireEvent.click(row);
+    expect(chev).toHaveClass("is-open");
+    expect(block(".you-chev.is-open")).toBe(" transform: rotateX(180deg); ");    // ▴, auch jedes Zwischenbild zeigt nie nach links
+    expect(css).not.toMatch(/\.you-chev[^{]*\{[^}]*rotate\(/);                // keine Drehung in der Ebene (läuft über 90°)
+    expect(css).not.toMatch(/prefers-reduced-motion[^{]*\{[^}]*\.you-chev\.is-open/);   // Endbild bleibt auch ohne Bewegung
+    fireEvent.click(row);
+    expect(chev).not.toHaveClass("is-open");
   });
 });

@@ -39,13 +39,28 @@ const STAGE_POLL_MS = 1000;
  *  Was gezeigt wird, entscheidet Claude Code über das Werkzeug `zeige` (stage.get), nie die Oberfläche selbst. */
 type Shown = string | null;
 
-/** Bühnenwechsel mit Animation (View Transitions in WebView2/Chromium); ohne Unterstützung oder bei weniger Bewegung sofort. */
-function staged(change: () => void): void {
-  const doc = document as Document & { startViewTransition?: (cb: () => void) => unknown };
+/** Bühnenwechsel mit Animation (View Transitions in WebView2/Chromium); ohne Unterstützung oder bei weniger Bewegung sofort.
+ *  Startet ein neuer Wechsel, bevor der vorige fertig ist, überspringt der Browser den vorigen (AbortError „Transition was
+ *  skipped“, im verdeckten Fenster InvalidStateError). Dann scheitern `ready` und je nach Fall `finished`: gewollt, darum still
+ *  abgefangen, damit kein unbehandelter Fehler in der Konsole landet. Der Wechsel selbst (flushSync) läuft trotzdem.
+ *  Wirft der Wechsel selbst, scheitern alle drei mit demselben Fehler: der bleibt sichtbar, einmal (über `updateCallbackDone`). */
+export function staged(change: () => void): void {
+  type Transition = { ready?: Promise<unknown>; finished?: Promise<unknown>; updateCallbackDone?: Promise<unknown> };
+  const doc = document as Document & { startViewTransition?: (cb: () => void) => Transition | undefined };
   const calm = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
-  if (doc.startViewTransition && !calm) doc.startViewTransition(() => flushSync(change));
+  if (doc.startViewTransition && !calm) {
+    const t = doc.startViewTransition(() => flushSync(change));
+    const quiet = (p: Promise<unknown> | undefined, onlySkip: boolean) => {
+      if (!p || typeof p.then !== "function") return;
+      p.then(undefined, (e: unknown) => { if (onlySkip && !skipped(e)) throw e; });
+    };
+    quiet(t?.ready, false);
+    quiet(t?.finished, false);
+    quiet(t?.updateCallbackDone, true);
+  }
   else change();
 }
+const skipped = (e: unknown) => e instanceof DOMException && (e.name === "AbortError" || e.name === "InvalidStateError");
 
 export type Loader = () => Promise<{ client: ApiClient }>;
 

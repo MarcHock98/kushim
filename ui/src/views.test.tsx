@@ -4,8 +4,8 @@ import { App } from "./App";
 import { ViewCard } from "./components/stage/ViewCard";
 import { ApiClient } from "./lib/api";
 import { STATE_VIEW } from "./lib/avatarState";
-import { MockSocket } from "./lib/mock";
-import { parseItem, type Block, type View } from "./lib/stage";
+import { EIGEN_DEMOS, MockSocket } from "./lib/mock";
+import { ART_LABEL, parseItem, type Block, type View } from "./lib/stage";
 
 // Ansichten, die Claude über `zeige` schickt (Plan docs/ui-p2-plan.md, Abschnitt 5).
 
@@ -21,10 +21,16 @@ async function open() {
   const loader = async () => ({
     client: new ApiClient({ port: 5000, token: TOKEN }, (u) => (sock.current = new MockSocket(u, TOKEN))),
   });
-  render(<App load={loader} />);
+  const app = <App load={loader} />;
+  const { rerender } = render(app);
+  // Ansichten kommen aus Abfragen (außerhalb von act): waitFor sieht den Commit, bevor React dessen useEffect ausführt (der
+  // Scheduler gibt nach jedem Commit die Hand ab, unter Last länger). React führt offene Effekte vor jeder neuen Arbeit aus:
+  // dasselbe Element neu geben holt sie sofort nach, etwa den Esc-Listener der Bühne.
+  flushEffects = () => rerender(app);
   await waitFor(() => screen.getAllByText(STATE_VIEW.idle.label));
   return sock;
 }
+let flushEffects = () => {};
 const heading = (name: string) => waitFor(() => screen.getByRole("heading", { name }), { timeout: 3000 });
 
 describe("Ansichten je Art", () => {
@@ -164,6 +170,47 @@ describe("Diagramm", () => {
   });
 });
 
+describe("Kartenkopf mit langem Titel (375, 800, 1440 px)", () => {
+  const nodeFs = "node:fs";                                       // Stildatei als Text, nur im Test gelesen
+  const cssText = async () => ((await import(/* @vite-ignore */ nodeFs)) as { readFileSync(p: string, e: string): string })
+    .readFileSync("src/styles/app.css", "utf-8").replace(/\r\n/g, "\n");
+  const block = (css: string, sel: string) => css.match(new RegExp(`\\n${sel.replace(/[.[\]"=]/g, "\\$&")} \\{([^}]*)\\}`))?.[1] ?? "";
+  const LANG = `${"Gedämpftes Doppelpendel mit Reibung und ".repeat(2)}Donaudampfschifffahrtsgesellschaftskapitänsmütze`.slice(0, 120);
+
+  it("jede Art, auch die eigene Simulation: Titel und Art links in einem Block, Schließen rechts daneben, nie darunter", () => {
+    const arts = Object.keys(ART_LABEL) as View["art"][];
+    const eigen = EIGEN_DEMOS[0] as unknown as Omit<View, "seq">;
+    for (const [art, bausteine] of [...arts.map((a) => [a, [{ typ: "hinweis", text: "h" }]] as const), ["simulation", eigen.bausteine] as const]) {
+      const { unmount } = card(view(art, bausteine as Block[], { titel: LANG, stand: "s".repeat(40) }));
+      const head = document.querySelector(".view-card > .view-head")!;
+      expect(head).toHaveClass("panel-head");
+      const kids = [...head.children];
+      expect(kids.map((k) => k.className)).toEqual(["view-title", "ghost-icon"]);   // genau zwei Spalten: Text, Knopf
+      expect(kids[1]).toBe(screen.getByRole("button", { name: "Schließen (Esc)" }));
+      expect(within(kids[0] as HTMLElement).getByRole("heading", { level: 2 })).toHaveTextContent(LANG);
+      expect(kids[0].querySelector(".label")).toHaveTextContent(ART_LABEL[art]);
+      unmount();
+    }
+  });
+
+  it("CSS: Kopf bricht nicht um, Titel schrumpft und bricht auch lange Wörter, Knopf behält seine Breite; keine festen Breiten", async () => {
+    const css = await cssText();
+    expect(block(css, ".view-head")).toContain("flex-wrap: nowrap");
+    expect(block(css, ".view-head")).toContain("align-items: flex-start");             // Knopf oben rechts, auch bei drei Zeilen Titel
+    expect(block(css, ".view-title")).toContain("flex: 1 1 0");
+    expect(block(css, ".view-title")).toContain("min-width: 0");
+    expect(block(css, ".view-title")).toContain("flex-wrap: wrap");                    // Art rückt bei Platzmangel unter den Titel
+    expect(block(css, ".view-title h2")).toContain("min-width: 0");
+    expect(block(css, ".view-title h2")).toContain("overflow-wrap: anywhere");
+    expect(block(css, ".view-title .label")).toContain("white-space: normal");         // langer Stand läuft nicht aus der Karte
+    expect(block(css, ".view-head .ghost-icon")).toContain("flex: none");
+    expect(css.indexOf("\n.view-title .label {")).toBeGreaterThan(css.indexOf("\n.panel-head .label {"));   // gewinnt gegen nowrap
+    for (const sel of [".view-head", ".view-title", ".view-title h2", ".view-title .label"]) {
+      expect(block(css, sel)).not.toMatch(/(^|[^-])width: \d+px/);
+    }
+  });
+});
+
 describe("Formprüfung (parseItem)", () => {
   it("übergeht Fremdes und kürzt Titel, Stand und die Zahl der Bausteine", () => {
     expect(parseItem(null)).toBeNull();
@@ -226,6 +273,7 @@ describe("Bühne mit Ansichten", () => {
     const sock = await open();
     show(sock, "a", "Erste");
     await heading("Erste");
+    flushEffects();                                                   // erst dann hängt der Esc-Listener (siehe open)
     await act(async () => { fireEvent.keyDown(window, { key: "Escape" }); });
     expect(document.querySelector("article.view-card")).toBeNull();
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Übersicht" })); });

@@ -129,7 +129,7 @@ function YouRow({ e, open, onToggle }: { e: Entry; open: boolean; onToggle: () =
         <span className="you-head">
           <span className="who">Du · {time}</span>
           <span className={isKilled(e) ? "you-chip is-alarm" : "you-chip"}>{STATUS_ICON[e.status]}{word}</span>
-          <span className="you-chev"><IconChevron /></span>
+          <span className={open ? "you-chev is-open" : "you-chev"}><IconChevron /></span>
         </span>
         <span className="you-text">{text}</span>
       </button>

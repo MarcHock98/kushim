@@ -170,9 +170,11 @@ describe("Zoom und Verschieben", () => {
     expect(shift()).not.toBe(t0);
     click("Nach links");
     expect(shift()).toBe(t0);
-    for (let i = 0; i < 200; i++) click("Nach links");                                     // Rand: bleibt am Diagramm
+    const left = btn("Nach links");                                                        // einmal suchen: 200 getByRole sind unter Last zu langsam
+    for (let i = 0; i < 200; i++) fireEvent.click(left);                                   // Rand: bleibt am Diagramm
     expect(shift()).toMatch(/^translate\(0px, /);
-    expect(btn("Nach links")).toHaveAttribute("aria-disabled", "true");
+    expect(btn("Nach links")).toBe(left);                                                  // derselbe Knopf, nicht ersetzt
+    expect(left).toHaveAttribute("aria-disabled", "true");
     click("Einpassen");
     expect(size()[0]).toBeLessThanOrEqual(720);
     expect(size()[0]).toBeGreaterThan(700);                                                // ganz sichtbar in 718 px Breite
@@ -326,20 +328,35 @@ describe("Kein Klick sendet etwas", () => {
     const store = vi.spyOn(Storage.prototype, "setItem");
     const sock: { current?: MockSocket } = {};
     const loader = async () => ({ client: new ApiClient({ port: 5000, token: TOKEN }, (u) => (sock.current = new MockSocket(u, TOKEN))) });
-    render(<App load={loader} />);
+    const app = <App load={loader} />;
+    const { rerender } = render(app);
     await waitFor(() => screen.getAllByText(STATE_VIEW.idle.label));
     sock.current!.show({ id: "netz", art: "netz", titel: "Ablauf", bausteine: [star("ablauf", 30)] });
-    await waitFor(() => screen.getByRole("heading", { name: "Ablauf" }), { timeout: 3000 });
+    const heading = await screen.findByRole("heading", { name: "Ablauf" }, { timeout: 3000 });
+    // Erst messen, wenn alle üblichen Abfragen laufen: voice.state kommt nur im 200-ms-Takt, ohne sofortigen ersten Ruf. Kam die
+    // Ansicht schon mit der ersten Bühnen-Abfrage, fehlte voice.state sonst in pollTypes und tauchte erst „später“ auf.
+    const POLLS = ["safety.status", "voice.state", "approvals.get", "transcript.get", "safety.overview", "stage.get"];
+    await waitFor(() => expect(sock.current!.sent.map((m) => (m as { type: string }).type)).toEqual(expect.arrayContaining(POLLS)));
+    // Die Ansicht kam aus einer Abfrage (außerhalb von act): waitFor sieht den Commit, bevor React dessen useEffect ausführt,
+    // und erst dort hängt der Mausrad-Listener der Fläche. React führt offene Effekte vor jeder neuen Arbeit aus: dasselbe
+    // Element neu geben holt sie nach. So prüft der Test die echte, fertig verdrahtete Ansicht.
+    rerender(app);
     const pollTypes = new Set(sock.current!.sent.map((m) => (m as { type: string }).type));
     const before = JSON.stringify(sock.current!.sent);
 
-    for (const name of ["Vergrößern", "Verkleinern", "Einpassen", "Nach links", "Nach rechts", "Nach oben", "Nach unten", "Vergrößern", "Nach rechts"]) click(name);
-    for (const key of ["+", "-", "0", "Home", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "="]) fireEvent.keyDown(frame(), { key });
-    fireEvent.pointerDown(frame(), { clientX: 10, clientY: 10, pointerId: 1 });
-    fireEvent.pointerMove(frame(), { clientX: 60, clientY: 30, pointerId: 1 });
-    fireEvent.pointerUp(frame(), { pointerId: 1 });
-    fireEvent.wheel(frame(), { deltaY: -100, ctrlKey: true });
-    fireEvent.click(screen.getByText(/Als Liste zeigen/));
+    // Suchen nur in der Karte: getByRole über die ganze App mit 30 Knoten ist unter Last langsam (früher Zeitüberschreitung,
+    // danach räumte cleanup die Seite ab und die letzte Zeile fand die Überschrift nicht mehr).
+    const inCard = within(heading.closest("article")!);
+    const area = inCard.getByRole("group", { name: /Diagramm-Fläche/ });
+    for (const name of ["Vergrößern", "Verkleinern", "Einpassen", "Nach links", "Nach rechts", "Nach oben", "Nach unten", "Vergrößern", "Nach rechts"]) {
+      fireEvent.click(inCard.getByRole("button", { name }));
+    }
+    for (const key of ["+", "-", "0", "Home", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "="]) fireEvent.keyDown(area, { key });
+    fireEvent.pointerDown(area, { clientX: 10, clientY: 10, pointerId: 1 });
+    fireEvent.pointerMove(area, { clientX: 60, clientY: 30, pointerId: 1 });
+    fireEvent.pointerUp(area, { pointerId: 1 });
+    fireEvent.wheel(area, { deltaY: -100, ctrlKey: true });
+    fireEvent.click(inCard.getByText(/Als Liste zeigen/));
 
     expect(JSON.stringify(sock.current!.sent)).toBe(before);                              // nichts dazugekommen
     expect(store).not.toHaveBeenCalled();
@@ -347,7 +364,7 @@ describe("Kein Klick sendet etwas", () => {
     const later = sock.current!.sent.map((m) => (m as { type: string }).type);
     expect(later.filter((t) => !pollTypes.has(t))).toEqual([]);
     expect(screen.getByRole("heading", { name: "Ablauf" })).toBeInTheDocument();
-  });
+  }, 15_000);
 });
 
 describe("Grenzen von Zoom und Verschieben", () => {

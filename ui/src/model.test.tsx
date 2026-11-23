@@ -220,11 +220,15 @@ describe("Formprüfung und Bühne", () => {
   it("ein Plan erscheint auf der Bühne wie jede andere Ansicht", async () => {
     const sock: { current?: MockSocket } = {};
     const loader = async () => ({ client: new ApiClient({ port: 5000, token: TOKEN }, (u) => (sock.current = new MockSocket(u, TOKEN))) });
-    render(<App load={loader} />);
+    const app = <App load={loader} />;
+    const { rerender } = render(app);
     await waitFor(() => screen.getAllByText(STATE_VIEW.idle.label));
     sock.current!.show({ id: "plan", art: "plan", titel: "Grundriss", bausteine: [PLAN] });
     await waitFor(() => screen.getByRole("img", { name: /Plan: 8 Elemente/ }), { timeout: 3000 });
     expect(screen.getByRole("heading", { name: "Grundriss" })).toBeInTheDocument();
+    // Die Ansicht kam aus einer Abfrage (außerhalb von act): waitFor sieht den Commit, bevor React dessen useEffect ausführt,
+    // und erst dort hängt der Esc-Listener. React führt offene Effekte vor jeder neuen Arbeit aus: dasselbe Element neu geben.
+    rerender(app);
     await act(async () => { fireEvent.keyDown(window, { key: "Escape" }); });
     expect(screen.queryByRole("img", { name: /Plan:/ })).toBeNull();
   });
