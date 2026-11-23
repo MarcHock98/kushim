@@ -31,6 +31,7 @@ SESSION_NAME = "kushim"
 WINDOW_TITLE = "kushim-Claude"
 CONFIG = Path("run") / "kushim-mcp.json"
 SESSION_FILE = Path("run") / "claude-session.txt"
+RESTART_FILE = Path("run") / "restart.flag"       # Neustart-Marke: `kushim restart` legt sie ab, `kushim start` löscht sie
 USAGE_FILE = Path("run") / "usage.json"      # schreibt scripts/statusline.py nur für diese Sitzung (session_id = SESSION_FILE)
 CREATE_NEW_CONSOLE = 0x00000010               # Windows: Claude bekommt ein eigenes, sichtbares Terminalfenster
 # Vorab erlaubt (Claude Code 2.1.329: `--allowedTools`, Namen `mcp__<server>__<werkzeug>`): nur Vorlesen und Anzeigen über
@@ -147,3 +148,37 @@ def stop(exe: Path, root: Path, run: Callable[..., Any] = subprocess.run) -> boo
         pass
     (root / SESSION_FILE).unlink(missing_ok=True)
     return True
+
+def request_restart(root: Path) -> Path:
+    """Bittet das laufende `kushim start` um einen Neustart (nur auf ausdrücklichen Befehl des Nutzers, siehe Skill
+    kushim-restart). Die Marke enthält nichts, nur ihr Vorhandensein zählt; `kushim start` löscht sie und startet neu."""
+    path = root / RESTART_FILE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("restart", encoding="utf-8")
+    return path
+
+
+def restart_requested(root: Path) -> bool:
+    """Liegt eine Neustart-Marke vor? Wenn ja, wird sie dabei gelöscht (einmalig)."""
+    path = root / RESTART_FILE
+    if not path.is_file():
+        return False
+    path.unlink(missing_ok=True)
+    return True
+
+
+def restart_argv(folder_name: str, mic: str | None = None, out: str | None = None, no_ui: bool = False,
+                 python: str = sys.executable) -> list[str]:
+    """Befehlszeile für das neue `kushim start` (gleicher Ordner, gleiche Geräte). Nur feste Teile und die schon geprüften Werte."""
+    return [python, "-c", "import sys; from kushim.cli import main; sys.exit(main())", "start", folder_name,
+            *(["--mic", mic] if mic else []), *(["--out", out] if out else []), *(["--no-ui"] if no_ui else [])]
+
+
+def restart(argv: list[str], popen: Callable[..., Any] = subprocess.Popen) -> Any:
+    """Startet `kushim start` neu in einem eigenen Fenster. Erst aufrufen, wenn das alte vollständig beendet ist (Mikrofon, Port)."""
+    env = claude_env()
+    for name in ("CLAUDECODE", "CLAUDE_CODE_CHILD_SESSION"):     # sonst lehnt `kushim start` den Start ab
+        env.pop(name, None)
+    flags = CREATE_NEW_CONSOLE if os.name == "nt" else 0
+    return popen(argv, env=env, creationflags=flags)
+
