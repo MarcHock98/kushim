@@ -1,4 +1,4 @@
-import io
+import os
 import wave
 from pathlib import Path
 
@@ -109,12 +109,17 @@ def test_build_detector_fails_clearly_without_kws_model(tmp_path):
 
 
 # --- echtes Modell (nur wenn vorhanden) -----------------------------------------------------
+# Testaudio: einmalig mit der früheren Piper-Stimme (thorsten-high) erzeugt, 16 kHz, 16 bit, mono (tests/data/kws, < 1 MB).
+# Feste Dateien statt Synthese bei jedem Lauf: keine Stimme im Test nötig und jedes Mal dasselbe Signal.
+DATA = Path(__file__).resolve().parent / "data" / "kws"
+MODELS = Path(os.environ.get("KUSHIM_MODELS_ROOT") or ROOT)       # Modelle liegen nicht im Git (auch nicht im Worktree)
+POSITIVE = ("pos1.wav", "pos2.wav", "pos3.wav", "pos4.wav", "pos5.wav", "pos6.wav", "pos7.wav", "pos8.wav")
 
-def _pcm(engine, text):
-    w = wave.open(io.BytesIO(engine.synthesize(text)))
-    x = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16).astype(np.float32)
-    n = int(len(x) * 16000 / w.getframerate())
-    return np.interp(np.linspace(0, len(x) - 1, n), np.arange(len(x)), x).astype(np.int16)
+
+def _pcm(name):
+    with wave.open(str(DATA / name)) as w:
+        assert w.getframerate() == 16000 and w.getsampwidth() == 2 and w.getnchannels() == 1
+        return np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16)
 
 
 def _count(det, pcm):
@@ -122,25 +127,25 @@ def _count(det, pcm):
     return sum(det.process(pcm[i:i + 1280]) is not None for i in range(0, len(pcm) - 1279, 1280))
 
 
-@pytest.mark.skipif(not (ROOT / KWS_DIR / "bpe.model").exists()
-                    or not (ROOT / "models" / "piper" / "de_DE-thorsten-high.onnx").exists(),
-                    reason="Modelle nicht vorhanden")
+def test_kws_fixtures_are_small_wavs():
+    files = sorted(DATA.glob("*.wav"))
+    assert {f.name for f in files} == set(POSITIVE) | {"neg1.wav"}
+    assert sum(f.stat().st_size for f in files) < 1_000_000
+    assert all(len(_pcm(f.name)) > 8000 for f in files)
+
+
+@pytest.mark.skipif(not (MODELS / KWS_DIR / "bpe.model").exists(), reason="KWS-Modell nicht vorhanden")
 def test_real_model_blockwise_like_the_microphone(tmp_path):
-    from kushim.voice.tts import PiperEngine
-    eng = PiperEngine.from_local(str(ROOT / "models" / "piper" / "de_DE-thorsten-high.onnx"))
     cfg = WakeConfig(words=(WakeWord("hey kushim"), WakeWord("kushim")))
     (tmp_path / "models").mkdir()
     # echtes Modell aus dem Projekt benutzen, aber Keyword-Datei in tmp_path schreiben
-    det = KwsDetector.from_model(ROOT / KWS_DIR, [(w.name, 0.15, 2.0) for w in cfg.words],
+    det = KwsDetector.from_model(MODELS / KWS_DIR, [(w.name, 0.15, 2.0) for w in cfg.words],
                                  tmp_path / "kw.txt")
-    positives = sum(_count(KwsDetector.from_model(ROOT / KWS_DIR, [(w.name, 0.15, 2.0) for w in cfg.words],
-                                                  tmp_path / "kw.txt"), _pcm(eng, t))
-                    for t in ("hey kushim", "kushim, wie spät ist es?", "hey kushim!", "Okay, kushim.",
-                              "hey kushim, mach das Licht an", "kushim", "Hey kushim, hörst du mich?",
-                              "Kushim! Wie spät ist es?"))
-    # Piper klingt bei jedem Lauf leicht anders (Zufallsrauschen im Stimmmodell) und die Erkennungsrate
-    # liegt bei rund 60 %: bei 8 Versuchen ist ein zufälliger Totalausfall vernachlässigbar.
+    positives = sum(_count(KwsDetector.from_model(MODELS / KWS_DIR, [(w.name, 0.15, 2.0) for w in cfg.words],
+                                                  tmp_path / "kw.txt"), _pcm(name))
+                    for name in POSITIVE)
+    # Die Erkennungsrate lag mit synthetischer Stimme bei rund 60 %; mindestens ein Treffer ist die feste Untergrenze.
     assert positives >= 1
-    quiet = _count(det, _pcm(eng, "Guten Morgen, ich möchte heute noch einkaufen gehen und danach Kaffee trinken."))
+    quiet = _count(det, _pcm("neg1.wav"))
     assert quiet == 0
     assert _count(det, (np.random.default_rng(0).normal(size=80000) * 2000).astype(np.int16)) == 0
