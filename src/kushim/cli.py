@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import argparse
 
-from .config import Config
+from .config import Config, NotSaved
 from .memory import open_store
 from .memory.keys import get_or_create_key, store_key
 from .memory.migrate import backup, migrate
@@ -48,6 +48,10 @@ Einstellungen: config.toml (Vault, Grafikkarte, Claude-Ordner, gemerkte Geräte 
 """
 
 
+CLAUDE_SECTION_NOT_SAVED = ("config.toml hat eine ungewöhnliche Form und wurde nicht geändert. "
+                            "Bitte den Abschnitt [claude] als normale Tabelle schreiben.")
+
+
 def _gpu_plan(cfg: Config):
     """Karten lesen und gemäß [gpu] in config.toml verteilen. Gibt (Karten, Plan) zurück; falsche Einstellung: ValueError."""
     from . import gpu
@@ -81,14 +85,22 @@ def _claude_dev(args, cfg: Config, root) -> int:
         if input("Freigeben? (j/N): ").strip().lower() not in ("j", "ja", "y", "yes"):
             print("Nicht freigegeben.")
             return 1
-        cfg.set_claude_folders([f.entry() for f in known] + [cfolders.Folder(args.name, path).entry()])
+        try:
+            cfg.set_claude_folders([f.entry() for f in known] + [cfolders.Folder(args.name, path).entry()])
+        except NotSaved:
+            print(CLAUDE_SECTION_NOT_SAVED)
+            return 3
         print(f"Ordner «{args.name}» ist freigegeben.")
         return 0
     if action == "remove":
         if not any(f.name == args.name for f in known):
             print("Diesen Ordner gibt es nicht.")
             return 2
-        cfg.set_claude_folders([f.entry() for f in known if f.name != args.name])
+        try:
+            cfg.set_claude_folders([f.entry() for f in known if f.name != args.name])
+        except NotSaved:
+            print(CLAUDE_SECTION_NOT_SAVED)
+            return 3
         print(f"Freigabe für «{args.name}» entzogen.")
         return 0
 
@@ -652,7 +664,14 @@ def _main(argv: list[str] | None = None) -> int:
         elif args.sub == "backup":
             print("Backup:", backup(cfg))
         elif args.sub == "migrate":
-            dst = migrate(cfg, args.to)
+            from .memory.migrate import ConfigNotSwitched
+            try:
+                dst = migrate(cfg, args.to)
+            except ConfigNotSwitched as e:
+                print(f"Die Vault-Kopie liegt geprüft in {e.dst}, aber config.toml hat eine ungewöhnliche Form und wurde nicht "
+                      "geändert: kushim benutzt weiter den alten Vault (er bleibt unverändert). Bitte den Abschnitt [memory] als "
+                      "normale Tabelle schreiben und die Migration wiederholen oder location von Hand setzen.")
+                return 3
             print(f"Migriert nach {dst}. Alter Vault bleibt als Rollback erhalten.")
     elif args.cmd == "key":
         if args.sub == "export":
