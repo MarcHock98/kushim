@@ -404,6 +404,16 @@ def test_instructions_make_claude_speak_as_kushim_in_first_person():
     assert "kein Markdown" in desc and "keine Listen" in desc and str(ch.MAX_SPOKEN) in desc
 
 
+def test_instructions_allow_foreground_delegation_with_own_model_choice_and_no_new_rights():
+    text = ch.INSTRUCTIONS
+    assert "an Unter-Agenten geben, deren Ergebnis du abwartest" in text            # Vordergrund, kein Hintergrund-Agent
+    assert "Das Modell je Unter-Agent wählst du selbst" in text and "das stärkste für schwieriges Nachdenken oder Code" in text
+    assert "danach sprichst du das Ergebnis in deinen eigenen Worten per `sprich`" in text
+    assert "Für Unter-Agenten gelten alle Regeln und Freigaben unverändert; vorab erlaubt ist für sie nichts" in text
+    assert "selbst weder `sprich` noch `zeige` benutzen" in text
+    assert "keine Hintergrund-Agenten" in text                                      # bleibt verboten
+
+
 def test_persona_keeps_every_safety_rule():
     text = ch.INSTRUCTIONS
     for rule in ("Es gelten dieselben Regeln und Freigaben", "frag kurz nach statt zu raten",

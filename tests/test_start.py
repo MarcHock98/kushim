@@ -47,7 +47,50 @@ def test_argv_pre_allows_exactly_the_two_kushim_tools_and_nothing_broader():
 def test_env_drops_foreign_keys_and_turns_telemetry_off():
     env = launch.claude_env({"PATH": "p", "ANTHROPIC_API_KEY": "x", "OPENAI_API_KEY": "y", "KUSHIM_X": "z",
                              "CLAUDE_CODE_OAUTH_TOKEN": "keep"})
-    assert env == {"PATH": "p", "CLAUDE_CODE_OAUTH_TOKEN": "keep", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"}
+    assert env == {"PATH": "p", "CLAUDE_CODE_OAUTH_TOKEN": "keep", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+                   "CLAUDE_CODE_GB_DISK_CACHE_WHEN_TELEMETRY_OFF": "1"}          # Option b: Telemetrie bleibt aus
+
+
+def test_model_and_effort_go_into_argv_only_from_the_fixed_set():
+    argv = launch.claude_argv(EXE, Path("C:/k/run/kushim-mcp.json"), "sid", model="sonnet", effort="high")
+    assert argv[argv.index("--model") + 1] == "sonnet" and argv[argv.index("--effort") + 1] == "high"
+    assert argv.count("--model") == 1 and argv.count("--effort") == 1
+    assert argv[argv.index("--allowedTools") + 1] == "mcp__kushim__sprich,mcp__kushim__zeige"   # bleibt genau die zwei
+    assert argv[-2:] == ["--dangerously-load-development-channels", "server:kushim"]
+    assert "--model" not in launch.claude_argv(EXE, Path("c.json"), "sid", model="", effort="")  # leer = Standard von Claude Code
+    only_effort = launch.claude_argv(EXE, Path("c.json"), "sid", model="", effort="max")
+    assert "--model" not in only_effort and only_effort[only_effort.index("--effort") + 1] == "max"
+    assert launch.check_options(" Opus ", "XHIGH") == ("opus", "xhigh")
+    for model, effort in (("gpt-5", ""), ("sonnet --dangerously-skip-permissions", ""), ("", "ultra"), ("", "high;rm"),
+                          ("claude-sonnet-5-5", "")):
+        with pytest.raises(ValueError):
+            launch.claude_argv(EXE, Path("c.json"), "sid", model=model, effort=effort)
+    assert launch.MODELS == ("sonnet", "opus", "haiku", "fable") and launch.EFFORTS == ("low", "medium", "high", "xhigh", "max")
+
+
+def test_config_claude_model_and_effort_defaults_and_overrides(tmp_path):
+    from kushim.config import Config
+    assert (Config.load(tmp_path / "fehlt.toml").claude_model, Config.load(tmp_path / "fehlt.toml").claude_effort) == ("sonnet", "high")
+    p = tmp_path / "config.toml"
+    p.write_text('[claude]\nfolders = []\n', encoding="utf-8")
+    assert (Config.load(p).claude_model, Config.load(p).claude_effort) == ("sonnet", "high")       # ohne Angabe: Standard
+    p.write_text('[claude]\nmodel = "Opus"\neffort = ""\n', encoding="utf-8")
+    c = Config.load(p)
+    assert (c.claude_model, c.claude_effort) == ("opus", "") and launch.check_options(c.claude_model, c.claude_effort) == ("opus", "")
+    p.write_text('[claude]\nmodel = 5\neffort = "wild"\n', encoding="utf-8")
+    c = Config.load(p)
+    with pytest.raises(ValueError):
+        launch.check_options(c.claude_model, "")
+    with pytest.raises(ValueError):
+        launch.check_options("", c.claude_effort)
+
+
+def test_example_config_documents_model_and_effort():
+    import tomllib
+    root = Path(__file__).resolve().parents[1]
+    data = tomllib.loads((root / "config.example.toml").read_text(encoding="utf-8"))
+    assert data["claude"]["model"] == "sonnet" and data["claude"]["effort"] == "high"
+    assert launch.check_options(data["claude"]["model"], data["claude"]["effort"]) == ("sonnet", "high")
 
 
 def test_launch_opens_claude_in_the_folder(tmp_path, monkeypatch):
@@ -57,6 +100,9 @@ def test_launch_opens_claude_in_the_folder(tmp_path, monkeypatch):
     assert seen["cwd"] == str(tmp_path / "proj") and seen["creationflags"] == launch.CREATE_NEW_CONSOLE
     assert seen["argv"][:5] == ["cmd.exe", "/k", "title", "kushim-Claude", "&"]                 # Fenster bleibt sichtbar
     assert seen["argv"][-1] == "server:kushim" and seen["env"]["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] == "1"
+    assert seen["env"]["CLAUDE_CODE_GB_DISK_CACHE_WHEN_TELEMETRY_OFF"] == "1"
+    a = seen["argv"]
+    assert a[a.index("--model") + 1] == "sonnet" and a[a.index("--effort") + 1] == "high"     # Standard: Sonnet, Aufwand hoch
     sid = launch.read_session(tmp_path)
     assert (tmp_path / "run" / "kushim-mcp.json").exists() and sid and seen["argv"][seen["argv"].index("--session-id") + 1] == sid
 
@@ -120,10 +166,12 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(cfolders, "validate_path", lambda raw, vault: real(raw, vault, home=tmp_path / "home"))
     launched, talked, stopped = [], [], []
     window = Window()
-    monkeypatch.setattr(launch, "launch", lambda exe, folder, root: launched.append((exe, folder)) or window)
+    options = []
+    monkeypatch.setattr(launch, "launch", lambda exe, folder, root, **kw: launched.append((exe, folder)) or options.append(kw) or window)
     monkeypatch.setattr(launch, "stop", lambda exe, root: stopped.append(exe) or True)
     monkeypatch.setattr(cli, "_main", lambda argv: talked.append(argv) or 0)
-    return SimpleNamespace(proj=proj, cfg=cfgfile, launched=launched, talked=talked, stopped=stopped, window=window, mp=monkeypatch)
+    return SimpleNamespace(proj=proj, cfg=cfgfile, launched=launched, talked=talked, stopped=stopped, window=window, mp=monkeypatch,
+                           options=options)
 
 
 class Window:
@@ -161,6 +209,32 @@ def test_start_launches_claude_in_the_only_folder_then_talks(env, capsys):
     assert env.stopped == [EXE] and env.window.closed.is_set()                           # kushim endet: Claude und Fenster auch
     out = capsys.readouterr().out
     assert "Entwicklungs-Channel bestätigen" in out and "beendet sich alles" in out
+    assert env.options == [{"model": "sonnet", "effort": "high"}] and "Modell sonnet, Aufwand high" in out
+
+
+def test_start_refuses_an_unknown_model_from_config_before_launching(env, capsys):
+    env.cfg.write_text(env.cfg.read_text(encoding="utf-8") + 'model = "gpt-5"\n', encoding="utf-8")
+    assert start(env) == 2 and env.launched == [] and env.talked == []
+    assert "[claude] in config.toml" in capsys.readouterr().out
+
+
+def test_channel_watch_warns_once_in_terminal_and_by_voice_only_when_off(tmp_path, capsys):
+    import threading
+    from kushim.channel import claude_log
+    launch.NOTICES.clear()
+    done = threading.Event()
+    assert cli._watch_channel(tmp_path, 0.0, done, check=lambda d, since: "on") == "on"
+    assert cli._watch_channel(tmp_path, 0.0, done, check=lambda d, since: "unknown") == "unknown"
+    assert capsys.readouterr().out == "" and cli._notice() is None
+    assert cli._watch_channel(tmp_path, 0.0, done, check=lambda d, since: "off") == "off"
+    assert claude_log.TERMINAL_HINT in capsys.readouterr().out
+    assert cli._notice() == claude_log.SPOKEN_HINT and cli._notice() is None           # genau einmal per Stimme
+    assert "claude" not in claude_log.SPOKEN_HINT.lower() and claude_log.SPOKEN_HINT.startswith("Mein ")
+    done.set()                                                                          # kushim endet schon: nichts mehr sagen
+    assert cli._watch_channel(tmp_path, 0.0, done, check=lambda d, since: "off") == "off" and cli._notice() is None
+    def boom(d, since):
+        raise OSError("kaputt")
+    assert cli._watch_channel(tmp_path, 0.0, threading.Event(), check=boom) == "unknown"
 
 
 def test_closing_the_claude_window_ends_kushim(env, capsys):

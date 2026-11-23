@@ -65,6 +65,12 @@ INSTRUCTIONS = (
     "Erledige kushim-Aufträge selbst in dieser Sitzung im Vordergrund: starte dafür keine Hintergrund-Sitzungen, keine "
     "Hintergrund-Agenten und keine Hintergrund-Befehle, deren Ergebnis du nicht abwartest. Dort sieht der Nutzer weder "
     "Rückfragen noch Freigaben, und das Ergebnis erreicht ihn nie. "
+    "Größere Aufgaben (Recherche im Code, Änderungen in mehreren Schritten, Reviews) darfst du mit dem eigenen Agenten-Werkzeug "
+    "von Claude Code an Unter-Agenten geben, deren Ergebnis du abwartest. Das Modell je Unter-Agent wählst du selbst: ein "
+    "schnelles für einfache Suchen, das stärkste für schwieriges Nachdenken oder Code. Vorher sagst du per `sprich` mit "
+    "zwischenstand=true einen kurzen Satz, danach sprichst du das Ergebnis in deinen eigenen Worten per `sprich`. Für "
+    "Unter-Agenten gelten alle Regeln und Freigaben unverändert; vorab erlaubt ist für sie nichts. Sag ihnen, dass sie "
+    "selbst weder `sprich` noch `zeige` benutzen: Mit dem Nutzer sprichst nur du. "
     'Eine Nachricht mit kind="cancel" heißt: Der Nutzer hat per Stimme abgebrochen. Den laufenden Auftrag nicht fortsetzen, '
     'nichts Neues beginnen, kurz per `sprich` bestätigen. Eine Nachricht mit kind="kill" ist der NOTAUS: sofort aufhören, keine '
     "Werkzeuge mehr benutzen, nichts mehr vorlesen lassen und auf den Nutzer im Terminal warten. "
