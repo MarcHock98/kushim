@@ -39,6 +39,29 @@ def test_rust_part_has_no_network_or_process_code():
     assert not re.search(r"reqwest|hyper|tauri-plugin", toml)
 
 
+RUST_COMMANDS = ["api_info", "set_compact", "set_always_on_top", "grow_for_approval", "attention"]
+
+
+def test_rust_commands_are_a_fixed_list_and_never_take_focus():
+    """E2 (docs/ui-e2e3-plan.md, Abschnitt 3): genau diese Befehle, nur das eigene Fenster, nie Fokus holen, nichts Neues öffnen."""
+    rs = (UI / "src-tauri" / "src" / "main.rs").read_text(encoding="utf-8")
+    handler = re.findall(r"generate_handler!\[([^\]]*)\]", rs)
+    assert len(handler) == 1 and [c.strip() for c in handler[0].split(",") if c.strip()] == RUST_COMMANDS, handler
+    assert sorted(re.findall(r"#\[tauri::command\]\s*fn (\w+)", rs)) == sorted(RUST_COMMANDS)
+    assert not re.search(r"set_focus|WebviewWindowBuilder|WindowBuilder|\.show\(\)|set_fullscreen|set_ignore_cursor_events|eval\(", rs)
+
+
+def test_ui_calls_only_the_known_rust_commands_and_never_focuses_the_window():
+    calls = {m for p in SRC for m in re.findall(r"\binvoke(?:<[^>]*>)?\(\s*[\"'](\w+)[\"']", p.read_text(encoding="utf-8"))}
+    calls |= {m for p in SRC for m in re.findall(r"\bwindowCommand\(\s*[\"'](\w+)[\"']", p.read_text(encoding="utf-8"))}
+    assert calls and calls <= set(RUST_COMMANDS), calls
+    wrapper = (UI / "src" / "lib" / "windowCmd.ts").read_text(encoding="utf-8")
+    union = re.search(r"export type WindowCommand = ([^;]+);", wrapper)
+    assert union and sorted(re.findall(r'"(\w+)"', union.group(1))) == sorted(RUST_COMMANDS[1:]), union
+    hits = [p.name for p in SRC if re.search(r"\bwindow\.focus\(|getCurrentWindow|getCurrentWebviewWindow|setFocus", p.read_text(encoding="utf-8"))]
+    assert not hits, hits
+
+
 # --- Responsives Verhalten: Regeln im Stylesheet (Vitest liefert CSS leer, deshalb hier) -----------------------------
 
 CSS = (UI / "src" / "styles" / "app.css").read_text(encoding="utf-8")

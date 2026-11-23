@@ -37,7 +37,16 @@ export class MockSocket implements Socket {
   ratings: { entry: number; rating: number }[] = [];
   sent: unknown[] = [];
 
+  /** E2b: Verbrauch wie `usage.get` (alle Felder, wie das Backend sie liefert); null = Dienst kennt usage.get nicht.
+   *  Im Browser wählt `?mock&usage=alt` den veralteten Stand und `?mock&usage=keine` „nicht verfügbar“. */
+  usage: Record<string, unknown> | null = usageDemo("frisch");
+
   constructor(public url: string, private token = "t".repeat(43), private fail = false) {
+    const query = new URLSearchParams(typeof location !== "undefined" ? location.search : "");
+    const pick = query.get("usage");
+    if (pick === "alt" || pick === "keine") this.usage = usageDemo(pick);
+    if (query.has("freigabe")) this.pending = [{ request_id: "demo1", tool_name: "Bash", description: "Tests ausführen (Beispiel)",
+      input_preview: "cd ui && npx vitest run", digest: "d".repeat(64), summary: "Claude möchte die Tests ausführen.", truncated: false }];
     queueMicrotask(() => (this.fail ? this.onerror?.() : this.onopen?.()));
   }
 
@@ -118,6 +127,7 @@ export class MockSocket implements Socket {
       else { this.deleted.push(m.id ?? -1); reply = { ok: true, deleted: m.id }; }
     }
     else if (msg.type === "system.stats" && this.system) reply = { ok: true, ...this.system };
+    else if (msg.type === "usage.get" && this.usage) reply = { ok: true, ...this.usage };
     else if (msg.type === "stage.get") {
       const since = (msg as { since?: number }).since ?? 0;
       reply = { ok: true, items: this.kill ? [] : this.stage.filter((v) => (v.seq as number) > since), last: this.stageSeq };
@@ -163,6 +173,20 @@ export class MockSocket implements Socket {
   }
 
   close(): void { queueMicrotask(() => this.onclose?.()); }
+}
+
+/** E2b: Beispiel für `usage.get` (erfundene Werte, nur im Mock), vollständig wie vom Backend: frisch (vor 2 min), veraltet
+ *  (vor 3 h, stale) oder nicht verfügbar (keine Statuszeile). Die Fensterbefehle (set_compact usw.) gibt es im Browser nicht:
+ *  `windowCommand` tut ohne Tauri nichts, dort schaltet nur die CSS-Klasse. */
+export function usageDemo(kind: "frisch" | "alt" | "keine"): Record<string, unknown> {
+  const now = Math.floor(Date.now() / 1000);
+  if (kind === "keine") {
+    return { available: false, model: "", context_pct: null, five_h_pct: null, seven_d_pct: null, cost_usd: null, stand: 0, stale: false };
+  }
+  if (kind === "alt") {
+    return { available: true, model: "Opus", context_pct: 87, five_h_pct: 64, seven_d_pct: null, cost_usd: null, stand: now - 3 * 3600, stale: true };
+  }
+  return { available: true, model: "Opus", context_pct: 42, five_h_pct: 30, seven_d_pct: 12, cost_usd: null, stand: now - 120, stale: false };
 }
 
 /** Beispiel-Ansichten für die Vorführung (erfundene Beispielwerte, nur im Mock). */

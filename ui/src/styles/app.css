@@ -539,3 +539,43 @@ h2, h3 { font-family: var(--font-display); font-weight: 600; letter-spacing: .04
 .s-slider .num { font-family: var(--font-mono); font-size: var(--fs-sm); }
 .s-regler button[aria-disabled="true"] { opacity: .5; cursor: default; }
 .s-regler button[aria-disabled="true"]:hover { border-color: var(--line-strong); }
+
+/* ===== E2: kleines Fenster (etwa 400 x 200, bei offener Freigabe 420 x 640) und Verbrauch =====
+   links Kern und Zustandswort, rechts oben „Groß“ und NOTAUS in voller Größe, Mitte letzter Befehl (gekürzt, ganzer Text im title),
+   unten Verbrauch und „Immer im Vordergrund“. Bei einer Freigabe bekommt die Leiste die ganze Breite und scrollt in sich. */
+.head-small { flex-shrink: 0; }
+.app.is-compact { display: block; height: 100%; }
+.compact { height: 100%; display: grid; grid-template-columns: 96px minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto;
+           grid-template-areas: "core actions" "core text" "foot foot"; gap: var(--s-2) var(--s-3); padding: var(--s-2) var(--s-3); overflow: hidden; background: var(--bg-1); }
+.is-halted .compact { box-shadow: inset 0 3px 0 var(--alarm); }
+.compact-core { grid-area: core; display: grid; justify-items: center; align-content: start; gap: var(--s-1); min-width: 0; }
+.compact-word { margin: 0; font-family: var(--font-display); font-weight: 600; font-size: var(--fs-xs); line-height: 1.25; text-align: center; overflow-wrap: anywhere; color: var(--text); }
+.compact[data-state="listening"] .compact-word, .compact[data-state="asking"] .compact-word { color: var(--amber); }
+.compact[data-state="thinking"] .compact-word, .compact[data-state="speaking"] .compact-word { color: var(--arc); }
+.compact[data-state="alarm"] .compact-word, .compact[data-state="halted"] .compact-word { color: var(--alarm); }
+.compact[data-state="offline"] .compact-word { color: var(--text-muted); }
+.compact-actions { grid-area: actions; display: flex; justify-content: flex-end; align-items: center; gap: var(--s-2); }
+.compact-text { grid-area: text; min-width: 0; min-height: 0; display: grid; align-content: start; gap: var(--s-1); overflow: hidden; }
+.compact-text p { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-sm); }
+.compact-you { color: var(--amber); }
+.compact-reply { color: var(--arc); }
+.compact-reply.alarm { color: var(--alarm); }
+.compact-muted, .compact-text .compact-toast { color: var(--text-muted); }
+.compact-text .compact-note { color: var(--text); white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.compact-text .compact-toast:empty { display: none; }
+.compact .banner { margin: 0; padding: var(--s-2) var(--s-3); }
+.compact .banner .ghost { margin-left: 0; }
+.compact .banner span { display: none; }                               /* klein: nur „NOTAUS aktiv.“ und „Notaus aufheben“, sonst fehlt der Platz */
+.compact-foot { grid-area: foot; display: flex; align-items: center; gap: var(--s-2); min-width: 0; }
+.compact-foot .usage { flex: 1 1 auto; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; line-height: 1.3; }
+.compact-foot button { flex-shrink: 0; margin-left: auto; padding: 0 var(--s-2); font-size: var(--fs-xs); }
+.compact-foot button[aria-pressed="true"] { border-color: var(--arc); color: var(--arc); }
+.compact[data-mode="freigabe"] { grid-template-rows: auto auto minmax(0, 1fr) auto; grid-template-areas: "core actions" "text text" "approval approval" "foot foot"; }
+.compact[data-mode="freigabe"] .compact-core { justify-items: start; align-content: center; }
+.compact[data-mode="freigabe"] .compact-word { text-align: left; }
+.compact-approval { grid-area: approval; min-height: 0; display: grid; }
+.compact-approval .approval { max-height: 100%; margin: 0; }
+.usage { margin: 0; min-width: 0; overflow: hidden; font-family: var(--font-mono); font-size: var(--fs-xs); line-height: 1.4; color: var(--text); }
+.usage-when { color: var(--text-muted); white-space: nowrap; }
+.usage.is-stale { color: var(--text-muted); }
+.overview-usage { grid-column: 1 / -1; }
