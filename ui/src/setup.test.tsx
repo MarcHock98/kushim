@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
+import { SetupHost } from "./components/SetupWizard";
 import { ApiClient } from "./lib/api";
 import { MockSocket } from "./lib/mock";
 
@@ -24,6 +25,21 @@ async function start(prep?: (m: MockSocket) => void, first = true): Promise<Sock
   });
   render(<App load={loader} />);
   if (first) await screen.findByRole("heading", { name: "1. Systemcheck" }, { timeout: 3000 });
+  return sock;
+}
+
+/** Nur der Assistent (ohne die übrigen Abfragen des Fensters): jede voice.state-Abfrage stammt dann von ihm. */
+async function host(prep?: (m: MockSocket) => void): Promise<Sock> {
+  const sock: Sock = {};
+  const client = new ApiClient({ port: 5000, token: TOKEN }, (u) => {
+    sock.current = new MockSocket(u, TOKEN);
+    sock.current.firstStart();
+    prep?.(sock.current);
+    return sock.current;
+  });
+  await client.connect();
+  render(<div className="app"><main className="view"><SetupHost client={{ current: client }} connected kill={false} view="home" /></main></div>);
+  await screen.findByRole("heading", { name: "1. Systemcheck" }, { timeout: 3000 });
   return sock;
 }
 
@@ -75,7 +91,7 @@ describe("Setup-Assistent: Erststart und Rahmen", () => {
     expect(items).toHaveLength(6);
     for (const it of items) expect(it).toHaveTextContent("offen");
     expect(stepBtn("Systemcheck")).toHaveAttribute("aria-current", "step");
-    expect(screen.getByRole("heading", { name: "1. Systemcheck" })).toHaveFocus();
+    await waitFor(() => expect(screen.getByRole("heading", { name: "1. Systemcheck" })).toHaveFocus());
     expect(wiz().getByText("Schritt 1 von 6")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "NOTAUS" })).toBeInTheDocument();     // Notaus bleibt sichtbar
   });
@@ -138,15 +154,253 @@ describe("Setup-Assistent: Erststart und Rahmen", () => {
     expect(screen.getByText("Nachholen unter Sicherheit, Einrichtung.")).toBeInTheDocument();
   });
 
-  it("wartet im kleinen Fenster (Klasse an .app) und kommt im großen mit demselben Schritt zurück", async () => {
+  it("kleines Fenster (.app.is-compact): bleibt mit Schritt und Entwurf stehen, die Abfragen ruhen und laufen danach weiter", async () => {
+    const h = await host(voiceOn);
+    await goto("Wake Words", 4);
+    await screen.findByText("hey kushim");
+    fireEvent.change(screen.getByLabelText("Neues Wake Word"), { target: { value: "computer" } });
+    await click(wiz().getByRole("button", { name: "Hinzufügen" }));
+    await waitFor(() => expect(sent(h, "voice.state").length).toBeGreaterThan(1));
+    await act(async () => { document.querySelector(".app")!.classList.add("is-compact"); });
+    await new Promise((r) => setTimeout(r, 300));
+    const n = sent(h, "voice.state").length;
+    await new Promise((r) => setTimeout(r, 700));
+    expect(sent(h, "voice.state").length).toBe(n);                                   // ruht
+    expect(screen.getByRole("heading", { name: "4. Wake Words" })).toBeInTheDocument();
+    expect(screen.getByText("computer")).toBeInTheDocument();                       // Entwurf bleibt
+    await act(async () => { document.querySelector(".app")!.classList.remove("is-compact"); });
+    await waitFor(() => expect(sent(h, "voice.state").length).toBeGreaterThan(n));
+  });
+
+  it("ArrowUp und die Grenzen der Schrittliste", async () => {
     await start();
+    await act(async () => { fireEvent.keyDown(stepBtn("Systemcheck"), { key: "ArrowUp" }); });
+    expect(stepBtn("Systemcheck")).toHaveAttribute("aria-current", "step");         // oben bleibt oben
+    await act(async () => { fireEvent.keyDown(stepBtn("Systemcheck"), { key: "End" }); });
+    await screen.findByRole("heading", { name: "6. Sicherheit" });
+    await act(async () => { fireEvent.keyDown(stepBtn("Sicherheit"), { key: "ArrowDown" }); });
+    expect(stepBtn("Sicherheit")).toHaveAttribute("aria-current", "step");          // unten bleibt unten
+    await act(async () => { fireEvent.keyDown(stepBtn("Sicherheit"), { key: "ArrowUp" }); });
+    await screen.findByRole("heading", { name: "5. Arbeitsordner" });
+    expect(stepBtn("Arbeitsordner")).toHaveFocus();
+  });
+
+  it("Esc schließt nicht, ein anderer Bereich schon", async () => {
+    await start();
+    await act(async () => { fireEvent.keyDown(screen.getByRole("heading", { name: "1. Systemcheck" }), { key: "Escape" }); });
+    expect(screen.getByRole("region", { name: "Einrichtung" })).toBeInTheDocument();
+    await click(screen.getByRole("button", { name: "Gedächtnis" }));
+    expect(screen.queryByRole("region", { name: "Einrichtung" })).toBeNull();
+  });
+
+  it("Fokus nach Schließen: in der Sicherheitsansicht auf „Einrichtung öffnen“, sonst auf den aktiven Bereich, nie BODY", async () => {
+    await start();
+    await click(wiz().getByRole("button", { name: "Schließen" }));
+    expect(document.activeElement).not.toBe(document.body);
+    expect(screen.getByRole("button", { name: "Start" })).toHaveFocus();
+    await click(screen.getByRole("button", { name: "Sicherheit" }));
+    await click(await screen.findByRole("button", { name: "Einrichtung öffnen" }));
+    await act(async () => { fireEvent.keyDown(stepBtn("Systemcheck"), { key: "End" }); });
+    await click(wiz().getByRole("button", { name: "Fertig" }));
+    expect(screen.getByRole("button", { name: "Einrichtung öffnen" })).toHaveFocus();
+  });
+
+  it("eine offene Freigabe-Leiste behält den Fokus beim Öffnen und beim Blättern", async () => {
+    const pend = { request_id: "r1", tool_name: "Bash", description: "Tests laufen lassen", input_preview: "npm test", digest: "d1", summary: "Tests" };
+    await start((m) => { m.pending = [pend]; }, false);
+    const deny = await screen.findByRole("button", { name: "Ablehnen" });
+    await waitFor(() => expect(deny).toHaveFocus(), { timeout: 2000 });
+    await click(screen.getByRole("button", { name: "Sicherheit" }));
+    deny.focus();
+    await click(await screen.findByRole("button", { name: "Einrichtung öffnen" }));
+    await screen.findByRole("heading", { name: "1. Systemcheck" });
+    expect(deny).toHaveFocus();
     await click(wiz().getByRole("button", { name: "Weiter" }));
     await screen.findByRole("heading", { name: "2. Claude" });
-    const app = document.querySelector(".app")!;
-    await act(async () => { app.classList.add("is-compact"); });
-    await waitFor(() => expect(screen.queryByRole("region", { name: "Einrichtung" })).toBeNull());
-    await act(async () => { app.classList.remove("is-compact"); });
-    expect(await screen.findByRole("heading", { name: "2. Claude" })).toBeInTheDocument();
+    expect(deny).toHaveFocus();
+    await click(stepBtn("Sicherheit"));
+    await screen.findByRole("heading", { name: "6. Sicherheit" });
+    expect(deny).toHaveFocus();
+  });
+});
+
+describe("Setup-Assistent: Grenzfälle", () => {
+  it("setup.checks: unknown_type, Fehler und kaputte Einträge", async () => {
+    await host((m) => { m.checksReply = { ok: false, error: "unknown_type" }; });
+    expect(await screen.findByText(/kennt den Systemcheck noch nicht/)).toBeInTheDocument();
+    cleanup();
+    const h = await host((m) => { m.checksReply = { ok: false, error: "boom" }; });
+    expect(await screen.findByText("Der Systemcheck hat nicht geantwortet. Versuch es noch einmal.")).toBeInTheDocument();
+    h.current!.checksReply = { ok: true, checks: [
+      null, "x", { id: 5, label: "Zahl als id", ok: true }, { label: "ohne id", ok: true }, { id: "pkg_a", label: "Text als ok", ok: "ja" },
+      { id: "pkg_b", label: 7, ok: true }, { id: "check", label: "Erster", ok: true, hint: 3 }, { id: "check", label: "Zweiter", ok: false, hint: "kushim doctor" },
+    ] };
+    const err = vi.spyOn(console, "error");
+    await click(wiz().getByRole("button", { name: "Erneut prüfen" }));
+    expect(await screen.findByText("Erster")).toBeInTheDocument();
+    expect(screen.getByText("Zweiter").closest("li")).toHaveTextContent("Hinweis: kushim doctor");
+    for (const t of ["Zahl als id", "ohne id", "Text als ok"]) expect(screen.queryByText(t)).toBeNull();
+    expect(screen.getAllByRole("listitem").filter((li) => li.classList.contains("sec-row"))).toHaveLength(2);
+    expect(err.mock.calls.flat().join(" ")).not.toMatch(/same key/);
+  });
+
+  it("erste Claude-Prüfung läuft: „wird geprüft“ (weder rot noch grün), alle paar Sekunden neu, Ende mit Status; Schrittwechsel und kleines Fenster beenden es", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const h = await host((m) => { m.claudeChecking = true; });
+    await waitFor(() => expect(stepBtn("Claude")).toHaveAccessibleName("Claude, wird geprüft"));
+    expect(stepBtn("Claude")).toHaveTextContent("wird geprüft");
+    await goto("Claude", 2);
+    const row = (await screen.findByText("Claude Code wird geprüft")).closest("li")!;
+    expect(row).toHaveTextContent("wird geprüft");
+    expect(row).not.toHaveTextContent(/in Ordnung/);
+    expect(row).not.toHaveClass("tone-warn");
+    expect(row).not.toHaveClass("tone-ok");
+    const checks = () => sent(h, "setup.checks").length;
+    const n0 = checks();
+    await act(async () => { await vi.advanceTimersByTimeAsync(3_100); });
+    expect(checks()).toBe(n0 + 1);                                                   // neu gelesen
+    // kleines Fenster: ruht
+    await act(async () => { document.querySelector(".app")!.classList.add("is-compact"); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(6_500); });
+    expect(checks()).toBe(n0 + 1);
+    await act(async () => { document.querySelector(".app")!.classList.remove("is-compact"); });
+    // Schrittwechsel: endet
+    await goto("Mikrofon", 3);
+    const n1 = checks();
+    await act(async () => { await vi.advanceTimersByTimeAsync(6_500); });
+    expect(checks()).toBe(n1);
+    // zurück, Prüfung fertig: drei Claude-Prüfungen, Status neu, danach keine Abfragen mehr
+    await goto("Claude", 2);
+    h.current!.claudeChecking = false;
+    await act(async () => { await vi.advanceTimersByTimeAsync(3_100); });
+    expect(await screen.findByText("In Claude Code angemeldet")).toBeInTheDocument();
+    expect(screen.queryByText("Claude Code wird geprüft")).toBeNull();
+    await waitFor(() => expect(stepBtn("Claude")).toHaveAccessibleName("Claude, offen"));
+    const n2 = checks();
+    await act(async () => { await vi.advanceTimersByTimeAsync(6_500); });
+    expect(checks()).toBe(n2);
+  });
+
+  it("Mock wie Backend: setup.skip, setup.reopen und setup.done ohne confirm werden abgelehnt", async () => {
+    const m = new MockSocket("ws://127.0.0.1:5000", TOKEN);
+    const c = new ApiClient({ port: 5000, token: TOKEN }, () => m);
+    await c.connect();
+    for (const t of ["setup.skip", "setup.reopen", "setup.done"]) {
+      expect(await c.call(t, { step: "safety" })).toEqual({ ok: false, error: "confirm_required" });
+      expect((await c.call(t, { step: "safety", confirm: true })).ok).toBe(true);
+    }
+  });
+
+  it("Pegeltest: idle gleich nach dem Start wartet, done ohne Vorschlag meldet es", async () => {
+    const h = await host((m) => { voiceOn(m); m.levelOverride = { ok: true, state: "idle", seconds_left: 0, suggestion: null }; });
+    await goto("Mikrofon", 3);
+    await waitFor(() => expect(wiz().getByRole("button", { name: "Pegeltest starten" })).toBeEnabled());
+    await click(wiz().getByRole("button", { name: "Pegeltest starten" }));
+    expect(await screen.findByText("Test startet …")).toBeInTheDocument();
+    await waitFor(() => expect(sent(h, "voice.level_result").length).toBeGreaterThan(1), { timeout: 2000 });
+    expect(screen.getByText("Test startet …")).toBeInTheDocument();                 // idle vor dem ersten Schritt: weiter warten
+    h.current!.levelOverride = { ok: true, state: "done", seconds_left: 0, suggestion: null };
+    expect(await screen.findByText("Kein Vorschlag: zu wenig Sprache erkannt. Versuch es noch einmal.", {}, { timeout: 2000 })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Übernehmen" })).toBeNull();
+    expect(wiz().getByRole("button", { name: "Pegeltest starten" })).toBeEnabled();
+  });
+
+  it("Pegeltest: unavailable mitten im Test zeigt den Satz", async () => {
+    const h = await host((m) => { voiceOn(m); m.levelOverride = { ok: true, state: "speak", seconds_left: 4, suggestion: null }; });
+    await goto("Mikrofon", 3);
+    await waitFor(() => expect(wiz().getByRole("button", { name: "Pegeltest starten" })).toBeEnabled());
+    await click(wiz().getByRole("button", { name: "Pegeltest starten" }));
+    expect(await screen.findByText("Jetzt sprechen … 4", {}, { timeout: 2000 })).toBeInTheDocument();
+    h.current!.levelOverride = { ok: true, state: "unavailable", seconds_left: 0, suggestion: null };
+    expect(await screen.findByText("Starte kushim mit Sprache, dann geht der Test.", {}, { timeout: 2000 })).toBeInTheDocument();
+    expect(screen.queryByText(/Jetzt sprechen/)).toBeNull();
+  });
+
+  it("Pegeltest: nach 60 s ohne Ende abgebrochen", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const h = await host((m) => { voiceOn(m); m.levelOverride = { ok: true, state: "idle", seconds_left: 0, suggestion: null }; });
+    await goto("Mikrofon", 3);
+    await waitFor(() => expect(wiz().getByRole("button", { name: "Pegeltest starten" })).toBeEnabled());
+    await click(wiz().getByRole("button", { name: "Pegeltest starten" }));
+    await screen.findByText("Test startet …");
+    await act(async () => { await vi.advanceTimersByTimeAsync(61_000); });
+    expect(await screen.findByText("Der Test hat nicht geantwortet. Versuch es noch einmal.")).toBeInTheDocument();
+    const n = sent(h, "voice.level_result").length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
+    expect(sent(h, "voice.level_result").length).toBe(n);                            // keine Abfragen mehr
+  });
+
+  it("Wake Words: genau 40 Zeichen geht, 2 sind zu kurz, Umlaute gehen, ein ausgeschaltetes Wort lässt sich entfernen", async () => {
+    await host();
+    await goto("Wake Words", 4);
+    await screen.findByText("hey kushim");
+    const add = async (v: string) => {
+      fireEvent.change(screen.getByLabelText("Neues Wake Word"), { target: { value: v } });
+      await click(wiz().getByRole("button", { name: "Hinzufügen" }));
+    };
+    await add("ab");
+    expect(screen.getByText("Zu kurz: mindestens 3 Zeichen.")).toBeInTheDocument();
+    await add("b".repeat(40));
+    expect(screen.getByText("b".repeat(40))).toBeInTheDocument();
+    await add("Grüß Dich Öhrchen");
+    expect(screen.getByText("grüß dich öhrchen")).toBeInTheDocument();
+    const sw = (p: string) => within(screen.getByText(p).closest("li")!).getByRole("switch");
+    await click(sw("kushi"));
+    expect(sw("kushi")).not.toBeChecked();
+    expect(within(screen.getByText("kushi").closest("li")!).getByText("aus")).toBeInTheDocument();
+    await click(screen.getByRole("button", { name: "Entfernen: kushi" }));
+    expect(screen.queryByText("kushi")).toBeNull();
+    expect(screen.queryByText("Mindestens ein Wake Word muss aktiv bleiben.")).toBeNull();
+  });
+
+  it("Wake-Word-Test ohne wake_count: Satz, Test aus", async () => {
+    await host((m) => { voiceOn(m); m.noWakeCount = true; });
+    await goto("Wake Words", 4);
+    expect(await screen.findByText("Der Sprachdienst meldet keine erkannten Wörter. Starte kushim neu, dann geht der Test.")).toBeInTheDocument();
+    expect(wiz().getByRole("button", { name: "Wake Word testen" })).toBeDisabled();
+  });
+
+  it("Wake-Word-Test: ein Zähler, der schon vor dem Start gestiegen ist, zählt nicht", async () => {
+    const h = await host(voiceOn);
+    await goto("Wake Words", 4);
+    await waitFor(() => expect(wiz().getByRole("button", { name: "Wake Word testen" })).toBeEnabled());
+    h.current!.wake("kushim");                                                       // direkt vor dem Klick, vor der nächsten Abfrage
+    await click(wiz().getByRole("button", { name: "Wake Word testen" }));
+    expect(await screen.findByText(/^Sag jetzt ein Wake Word/)).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 600));
+    expect(screen.queryByText(/^erkannt:/)).toBeNull();
+    h.current!.wake("hey kushim");
+    expect(await screen.findByText("erkannt: hey kushim")).toBeInTheDocument();
+  });
+
+  it("langer Gerätename ohne Leerzeichen bleibt unverändert: angezeigt, gefunden und so gespeichert", async () => {
+    const long = "USB-Audio-Device-0123456789ABCDEFGHIJKLMNOP";
+    const h = await host((m) => { m.devices = { inputs: ["Mikrofon (USB Audio Device)", long], outputs: ["Lautsprecher (Realtek Audio)"] }; m.audio = { mic: long, out: "" }; });
+    await goto("Mikrofon", 3);
+    await waitFor(() => expect(screen.getByLabelText("Mikrofon")).toHaveValue(long));
+    expect(screen.getByRole("option", { name: long })).toBeInTheDocument();
+    expect(screen.queryByText(/verborgen|nicht gefunden/)).toBeNull();
+    fireEvent.change(screen.getByLabelText("Lautsprecher"), { target: { value: "Lautsprecher (Realtek Audio)" } });
+    await click(wiz().getByRole("button", { name: "Auswahl speichern" }));
+    expect(sent(h, "audio.set")[0]).toMatchObject({ mic: long, out: "Lautsprecher (Realtek Audio)", confirm: true });
+  });
+
+  it("Abfragen enden beim Schrittwechsel und beim Schließen", async () => {
+    const h = await host(voiceOn);
+    await goto("Mikrofon", 3);
+    await waitFor(() => expect(sent(h, "voice.state").length).toBeGreaterThan(1));
+    await goto("Arbeitsordner", 5);
+    await new Promise((r) => setTimeout(r, 300));
+    const n = sent(h, "voice.state").length;
+    await new Promise((r) => setTimeout(r, 600));
+    expect(sent(h, "voice.state").length).toBe(n);
+    await goto("Wake Words", 4);
+    await waitFor(() => expect(sent(h, "voice.state").length).toBeGreaterThan(n));
+    await click(wiz().getByRole("button", { name: "Schließen" }));
+    await new Promise((r) => setTimeout(r, 300));
+    const m = sent(h, "voice.state").length;
+    await new Promise((r) => setTimeout(r, 600));
+    expect(sent(h, "voice.state").length).toBe(m);
   });
 });
 

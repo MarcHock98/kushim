@@ -25,6 +25,12 @@ const de = (n: number, digits = 0) => n.toLocaleString("de-DE", { maximumFractio
 /** Lange Zeichenketten ohne Leerzeichen (wie Token oder Schlüssel) erscheinen nie im Fenster, auch wenn das Backend sie liefert. */
 export const redact = (s: string) => s.replace(/[A-Za-z0-9_\-+/=]{32,}/g, "[verborgen]");
 const text = (x: unknown, max = 200) => (typeof x === "string" ? redact(x.slice(0, max)) : "");
+/** Gerätenamen nie schwärzen: Sie gehen unverändert in audio.set zurück. Nur Länge begrenzen, angezeigt als Text. */
+const deviceName = (x: unknown) => (typeof x === "string" ? x.slice(0, 200) : "");
+
+/** Abfragen ruhen, solange niemand hinsieht: Fenster verdeckt oder kleines Fenster (E2 lässt die große Ansicht dann versteckt
+ *  stehen, der Assistent behält Schritt und Entwürfe). */
+export const paused = () => document.hidden || document.querySelector(".app.is-compact") !== null;
 
 /* ----- Systemcheck und Claude: eine Liste aus setup.checks ----- */
 
@@ -39,6 +45,8 @@ export function parseChecks(r: ApiReply): Check[] | null {
 }
 
 export const isClaudeCheck = (c: Check) => c.id.startsWith("claude");
+/** Platzhalter, solange die erste Claude-Prüfung läuft: weder rot noch grün, Wort „wird geprüft“. */
+export const isChecking = (c: Check) => c.id === "claude_checking";
 const isVault = (c: Check) => c.id === "vault";
 
 /** Was im eigenen Terminal zu tun ist. Die Oberfläche startet nichts davon selbst. */
@@ -55,8 +63,13 @@ function terminalHint(c: Check): ReactNode {
 function CheckList({ checks }: { checks: Check[] }) {
   return (
     <ul className="sec-list setup-checks">
-      {checks.map((c) => (
-        <li key={c.id} className={`sec-row tone-${c.ok ? "ok" : "warn"}`}>
+      {checks.map((c, i) => isChecking(c) ? (
+        <li key={`${i}-${c.id}`} className="sec-row tone-open">
+          <span className="setup-check-label">{c.label}</span>
+          <span className="sec-val">wird geprüft</span>
+        </li>
+      ) : (
+        <li key={`${i}-${c.id}`} className={`sec-row tone-${c.ok ? "ok" : "warn"}`}>
           <span className="setup-check-label">
             {c.label}
             {!c.ok && terminalHint(c) && <small className="setup-check-hint">Hinweis: {terminalHint(c)}</small>}
@@ -110,7 +123,7 @@ export function useVoice(read: Call): VoiceInfo {
   useEffect(() => {
     let stop = false, busy = false;
     const pull = async () => {
-      if (busy || document.hidden) return;
+      if (busy || paused()) return;
       busy = true;
       const r = await read("voice.state");
       busy = false;
@@ -130,7 +143,7 @@ export function useVoice(read: Call): VoiceInfo {
 
 /* ----- Mikrofon: Geräte merken, Pegel live, Pegeltest mit Vorschlag ----- */
 
-const names = (x: unknown) => (Array.isArray(x) ? x.filter((n): n is string => typeof n === "string").slice(0, 64).map((n) => n.slice(0, 200)) : []);
+const names = (x: unknown) => (Array.isArray(x) ? x.filter((n): n is string => typeof n === "string").slice(0, 64).map(deviceName) : []);
 
 type Suggestion = { speech_level: number; barge_in_level: number };
 type Level = { phase: "idle" | "starting" | "quiet" | "speak" | "done" | "unavailable"; left: number; sug: Suggestion | null };
@@ -172,7 +185,7 @@ export function MicStep({ ctx }: { ctx: StepCtx }) {
       if (stop) return;
       if (d.ok) { setInputs(names(d.inputs)); setOutputs(names(d.outputs)); } else setDevNo(true);
       const g = await read("audio.get");
-      if (!stop && g.ok) { const s = { mic: text(g.mic), out: text(g.out) }; setSaved(s); setPick(s); }
+      if (!stop && g.ok) { const s = { mic: deviceName(g.mic), out: deviceName(g.out) }; setSaved(s); setPick(s); }
     })();
     return () => { stop = true; };
   }, [read]);
@@ -190,6 +203,7 @@ export function MicStep({ ctx }: { ctx: StepCtx }) {
     const pull = async () => {
       if (busy) return;
       if (Date.now() > until) { setLv({ phase: "idle", left: 0, sug: null }); say("Der Test hat nicht geantwortet. Versuch es noch einmal."); return; }
+      if (paused()) return;
       busy = true;
       const r = await read("voice.level_result");
       busy = false;
@@ -363,7 +377,12 @@ export function WakeStep({ ctx }: { ctx: StepCtx }) {
 
   const noVoice = voice.known && !voice.active;
   const noCounter = voice.known && voice.active && voice.wakeCount === null;
-  const startTest = () => setTest({ phase: "run", left: WAKE_TEST_S, base: voice.wakeCount ?? 0, word: "" });
+  const startTest = async () => {                     // Ausgangswert frisch lesen: was vor dem Start erkannt wurde, zählt nicht
+    const r = await read("voice.state");
+    const base = r.ok && typeof r.wake_count === "number" && Number.isFinite(r.wake_count) ? r.wake_count : null;
+    if (base === null) return say(r.ok && r.active === true ? "Der Sprachdienst meldet keine erkannten Wörter. Starte kushim neu, dann geht der Test." : NO_VOICE);
+    setTest({ phase: "run", left: WAKE_TEST_S, base, word: "" });
+  };
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
 
   return (
@@ -405,7 +424,7 @@ export function WakeStep({ ctx }: { ctx: StepCtx }) {
             : test.phase === "miss" ? `nichts erkannt in ${WAKE_TEST_S} s` : ""}
         </p>
         <div className="setup-row">
-          <button type="button" disabled={running || noVoice || noCounter || !voice.known} onClick={startTest}>Wake Word testen</button>
+          <button type="button" disabled={running || noVoice || noCounter || !voice.known} onClick={() => void startTest()}>Wake Word testen</button>
         </div>
       </div>
       <div className="setup-row">
