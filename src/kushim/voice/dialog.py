@@ -55,6 +55,24 @@ class Dialog:
     def speech_done(self) -> bool:
         return self._move(State.SPEAKING, State.IDLE)
 
+    def reply_done(self) -> bool:
+        """Antwort fertig: aus Denken oder Sprechen zurück in den Leerlauf (Unterbrochen/Notaus bleiben, wie sie sind)."""
+        return self._move(State.THINKING, State.IDLE) or self._move(State.SPEAKING, State.IDLE)
+
+    def playing(self) -> State | None:
+        """Ton läuft jetzt wirklich (je Satz direkt vor der Wiedergabe): SPEAKING. Gibt den vorigen Zustand zurück, damit
+        `played` danach dorthin zurückkehrt (z. B. Denken, während auf den nächsten Satz gewartet wird). Beim Notaus: None."""
+        if self.state is State.HALTED:
+            return None
+        prev = self.state
+        self.state = State.SPEAKING
+        return prev
+
+    def played(self, prev: State | None) -> None:
+        """Wiedergabe eines Satzes ist zu Ende: zurück zum vorigen Zustand, falls nichts anderes (Unterbrechen, Notaus) dazwischenkam."""
+        if prev is not None and self.state is State.SPEAKING:
+            self.state = prev if prev is not State.SPEAKING else State.IDLE
+
     def halt(self) -> None:
         if self.state is State.SPEAKING:
             self._stop_speaking()

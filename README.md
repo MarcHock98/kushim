@@ -115,7 +115,7 @@ Diese Schritte machst nur du (sie betreffen deinen Schlüssel und deine Stimme).
 | Aktion | So |
 |---|---|
 | **Starten** | Desktop-Verknüpfung **kushim** oder im Terminal einfach `kushim`. Das öffnet Claude Code mit dem kushim-Channel im eigenen Fenster „kushim-Claude“ (im freigegebenen Arbeitsordner, `kushim claude add <name> <pfad>`), startet das Zuhören und die Oberfläche. Im Claude-Fenster einmal den Hinweis zum Entwicklungs-Channel bestätigen. **Schließt du das Claude-Fenster, endet alles.** Ohne Oberfläche: `kushim start --no-ui`. Mehrere Ordner: `kushim start <name>`. |
-| Sprechen | Wake Word und Befehl in einem Zug sagen („hey kushim, wie spät ist es?“), kushim sagt „Ich geb's an Claude.“ und liest Claudes Antwort vor (Claude Code muss mit dem kushim-Channel laufen; braucht Claude länger, kommt die Antwort später von selbst). Sagst du nur das Wake Word, kommt nach `command_wait_seconds` (Standard 1,5) ein „Ja?“ und kushim wartet `listen_seconds` (Standard 4) auf den Befehl; bleibt es still, hört kushim wieder nur aufs Wake Word. |
+| Sprechen | Wake Word und Befehl in einem Zug sagen („hey kushim, wie spät ist es?“), und kushim antwortet. Das Gehirn dahinter ist Claude Code (Modell `sonnet`, Aufwand `high`, einstellbar unter `[claude]`); für dich spricht nur kushim, in der ersten Person. Dauert es, sagt kushim nach etwa 2,5 Sekunden kurz „Moment.“; längere Ergebnisse kommen später von selbst. Sagst du nur das Wake Word, kommt nach `command_wait_seconds` (Standard 1,5) ein „Ja?“ und kushim wartet `listen_seconds` (Standard 4) auf den Befehl; bleibt es still, hört kushim wieder nur aufs Wake Word. |
 | Beenden | `Strg+C` im Fenster |
 | **Notaus** | Verknüpfung **kushim NOTAUS** anklicken oder „Notaus“ / „stopp alles“ sagen. Danach startet kushim erst wieder, wenn du bewusst aufhebst: `python -m kushim.cli resume`. |
 | Wake Words ändern | In der zentralen Datei `wakewords.toml` (siehe unten); gilt ab dem nächsten Start. |
@@ -130,6 +130,8 @@ Kopiere `config.example.toml` nach `config.toml` (oder `%APPDATA%\kushim\config.
 **Arbeitsordner für Claude:** `kushim claude add <name> <pfad>` gibt einen Git-Ordner frei (Home, Laufwerk, System, AppData und der Vault gehen nie), `kushim claude folders` zeigt sie, `kushim claude remove <name>` entzieht die Freigabe. `kushim claude check` prüft, ob die Claude CLI da und angemeldet ist. Die Brücke, über die kushim Befehle an Claude Code gibt, folgt (Roadmap Phase B).
 
 **Abbrechen:** Sag "abbrechen" (auch "brich das ab", "vergiss es"), und kushim beendet die laufende Sprachausgabe, wartet nicht mehr auf Claude und schickt Claude eine Abbruch-Nachricht (Auftrag nicht fortsetzen). Claude liest sie bei nächster Gelegenheit; sofort unterbrechen kann nur **Esc im Claude-Fenster**. Beim **Notaus** gibt kushim nichts mehr weiter und meldet Claude einmal "NOTAUS: sofort aufhören". Das geht ohne Sprecher-Prüfung (Abbrechen ist sicher). Im Terminal bricht Strg+C ab. Das ist **nicht der Notaus**: Abbrechen sperrt nichts, der Notaus hält alles an und sperrt bis `kushim resume`.
+
+**Modell der kushim-Sitzung:** unter `[claude]` in `config.toml`: `model = "sonnet"` (erlaubt: sonnet, opus, haiku, fable) und `effort = "high"` (low, medium, high, xhigh, max). Leer (`""`) heißt: Standard von Claude Code. Ohne Angabe gilt sonnet mit high. Für größere Aufgaben darf kushim Unter-Agenten von Claude Code einsetzen und wählt deren Modell selbst; für sie gelten dieselben Freigaben.
 
 **Grafikkarten:** `kushim gpu` zeigt die erkannten NVIDIA-Karten und welche Whisper nutzt (bei mehreren: die größte). Anpassen unter `[gpu]` in `config.toml` (`whisper = "auto" | "cpu" | "1"`).
 
@@ -156,6 +158,12 @@ barge_in_level = 250.0      # Mikrofonpegel, ab dem es als Unterbrechen zählt (
 speech_level = 200.0        # Mikrofonpegel, ab dem es als Sprechen zählt; passt es nicht zu deinem Mikrofon: `kushim voice level --apply`
 preroll_seconds = 1.0       # so viel Audio VOR dem Wake Word (nur im Speicher) kommt zum Befehl dazu, damit der Anfang nicht fehlt
 barge_in_ms = 240           # so lange muss der Pegel anhalten
+echo_schutz = false         # nur mit Lautsprechern: true, damit kushim sich nicht selbst unterbricht (Kopfhörer: false lassen)
+echo_factor = 2.0           # mit Echo-Schutz: so viel lauter als barge_in_level muss es sein, während kushim spricht
+echo_ignore_ms = 400        # mit Echo-Schutz: so lange zählt am Anfang der ersten Wiedergabe einer Runde nichts
+# Achtung, Echo-Schutz: Solange kushim spricht, wird ein gesprochener "Notaus" leiser als echo_factor x barge_in_level
+# während der GANZEN Wiedergabe überhört (nicht nur am Anfang), in den ersten echo_ignore_ms einer Antwort jeder.
+# Die Notaus-Verknüpfung wirkt immer. Mit Kopfhörern echo_schutz = false lassen.
 
 [[wakeword]]
 name = "hey kushim"         # beliebiges Wort/Wendung: nur Buchstaben und Leerzeichen
@@ -182,8 +190,22 @@ Vault verschieben (z. B. auf ein anderes Laufwerk): `python -m kushim.cli memory
 
 - **Installation:** Netzwerk nur zu `pypi.org` (Pakete), `github.com` (Wake-Word-Modelle) und `huggingface.co` (Whisper, Stimme). Alles in festen Versionen, Modelle per Größe und SHA-256 geprüft.
 - **Betrieb:** kushim selbst geht nie ins Internet. Sein Netzwerkcode spricht ausschließlich 127.0.0.1: `src/kushim/net/server.py` (API für die eigene Oberfläche) und `src/kushim/net/loopback.py` (für die kommende Brücke zu Claude Code). Ein Test (`tests/test_no_egress.py`) verhindert anderen Netzwerkcode. Nach außen spricht nur Claude Code selbst (zu Anthropic).
+- **Signalton:** Eigene Ansagen von kushim zu Freigaben und zum Notaus beginnen mit einem kurzen Zweiklang. Claude spricht mit derselben Stimme, kann diesen Ton aber nie auslösen; Sätze von Claude, die wie solche Ansagen klingen („Bitte im Terminal bestätigen“, „Freigabe erteilt“, „Notaus …“), ersetzt kushim durch „Das sage ich so nicht; schau bitte ins Terminal.“ Ohne Zweiklang ist es keine echte Freigabe- oder Notaus-Ansage.
 - **Mikrofon:** Audio bleibt im Arbeitsspeicher und wird nicht gespeichert. Vor dem Wake Word sieht nur das kleine Wake-Word-Modell das Signal.
 - **Schlüssel:** im Windows-Credential-Manager, nie im Vault, nie im Projekt.
+
+### Sprachkanal in Claude Code
+
+kushim schickt deine Befehle über einen Channel in die Claude-Code-Sitzung. Claude Code schaltet Channels über einen Funktionsschalter frei, den es normalerweise vom Server lädt. Weil kushim die Sitzung ohne Telemetrie startet (`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`), lädt Claude Code diese Schalter nicht, und der Channel bleibt aus: Im Protokoll steht dann „channels feature is not currently available“, und alles, was du sagst, kommt nicht an (so bei allen Sitzungen bis 2026-11-23). Nach `kushim start` prüft kushim das etwa 20 Sekunden lang im MCP-Protokoll dieser Sitzung (`%LOCALAPPDATA%\claude-cli-nodejs\Cache\<Ordner>\mcp-logs-kushim\`, gelesen werden nur zwei feste Merkmale) und sagt es dir im Terminal und einmal per Stimme, wenn der Kanal aus ist.
+
+Zwei Wege, ihn einzuschalten:
+
+| | Was kushim setzt | Datenschutz |
+|---|---|---|
+| **b (eingestellt)** | `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` bleibt, dazu `CLAUDE_CODE_GB_DISK_CACHE_WHEN_TELEMETRY_OFF=1`: Claude Code liest die Schalter aus seinem lokalen Zwischenspeicher (aus deinen normalen Claude-Code-Sitzungen). | Keine Telemetrie, keine zusätzlichen Anfragen. Nicht offiziell dokumentiert; es kann sein, dass Claude Code den Channel trotzdem sperrt (eine zweite Prüfung, die Organisationsrichtlinie `allow_channels`, ist ohne Netz nicht sicher erkennbar). |
+| a | `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` weglassen (eine Zeile in `src/kushim/channel/launch.py`, `claude_env`). | Wie jede normale Claude-Code-Sitzung: Telemetrie und Abruf der Funktionsschalter gehen an Anthropic. Sollte sicher funktionieren. |
+
+Meldet kushim nach dem Start „Der Sprachkanal ist in Claude Code noch aus“, wirkt Weg b bei dir nicht; dann bleibt nur Weg a (bewusste Entscheidung, nicht automatisch).
 
 ## Fehlerbehebung
 
@@ -195,6 +217,7 @@ Vault verschieben (z. B. auf ein anderes Laufwerk): `python -m kushim.cli memory
 | `cublas64_12.dll not found` | `install.ps1` erneut (installiert die NVIDIA-Bibliotheken) |
 | Nichts passiert beim Wake Word | Mikrofon prüfen (`--mic`), deutlicher sprechen, in `wakewords.toml` `threshold` senken (z. B. 0.10) oder mehr Wörter aktivieren |
 | Wake Word löst zu oft aus | `threshold` erhöhen (z. B. 0.25) oder kurze Wörter wie „kush“ ausschalten (`enabled = false`) |
+| kushim unterbricht sich selbst (Lautsprecher) | In `wakewords.toml` unter `[settings]` `echo_schutz = true` setzen (optional `echo_factor`, `echo_ignore_ms`). Dann muss dein Einwurf während kushims Ansage lauter sein als `echo_factor × barge_in_level`. **Achtung:** Ein gesprochener „Notaus“ unter dieser Schwelle wird während der ganzen Wiedergabe überhört, nicht nur am Anfang; in den ersten `echo_ignore_ms` einer Antwort greift er gar nicht. Die Notaus-Verknüpfung wirkt immer. Mit Kopfhörern aus lassen. |
 | Das erste Antworten dauert lange | Beim ersten Mal lädt Whisper sein Modell auf die Grafikkarte, danach geht es schneller |
 | PowerShell blockt `install.ps1` | Genau mit `-ExecutionPolicy Bypass` aufrufen (siehe oben) |
 

@@ -17,6 +17,7 @@ from typing import Any, Callable, Iterable, Sequence
 from ..safety.killswitch import KillSwitch, is_kill_phrase
 from ..tasks import TaskRegistry, is_cancel_phrase
 from .dialog import Dialog, State
+from .earcon import MARK
 from .stt import SpeechToText
 from .tts import Speaker, chunk_stream, prefetch, split_sentences
 
@@ -104,6 +105,10 @@ class Pipeline:
         self._interrupted = threading.Event()     # gesetzt, wenn der Nutzer dazwischenspricht
         previous_stop = speaker.should_stop
         speaker.should_stop = lambda: previous_stop() or self._interrupted.is_set()
+        # "Ich spreche" nur, solange wirklich Ton läuft; während auf Claude gewartet wird, bleibt es "Ich denke"
+        # (Live-Test 2026-11-23: Anzeige "spricht" ohne Ton, weil SPEAKING schon vor dem Warten gesetzt wurde).
+        speaker.on_play_start = dialog.playing
+        speaker.on_play_end = dialog.played
         self.stt, self.chat, self.speaker, self.dialog, self.kill = stt, chat, speaker, dialog, kill
         self.commands = commands          # Sprachbefehle ohne LLM (`handle(text, verified, strong)`), optional
         self.history: list[dict[str, str]] = []
@@ -188,12 +193,12 @@ class Pipeline:
 
         def sentence_source():
             for s in chunker(self.chat(messages)):
-                sentences.append(s)
+                sentences.append(s.replace(MARK, ""))       # Signalton-Zeichen nur für die Stimme, nie im Verlauf
                 yield s
 
-        self.dialog.reply_ready()
+        # Kein reply_ready() hier: Der Zustand bleibt THINKING, bis der erste Satz wirklich abgespielt wird (Speaker-Haken).
         self.speaker.say(prefetch(sentence_source(), stop=lambda: self.kill.fired or self._interrupted.is_set()))
         reply = " ".join(sentences)
         self.history.append({"role": "assistant", "content": reply})
-        self.dialog.speech_done()
+        self.dialog.reply_done()
         return Result(text, reply, "interrupted" if self._interrupted.is_set() else "spoken")

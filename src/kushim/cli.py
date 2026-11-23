@@ -105,6 +105,31 @@ def _claude_dev(args, cfg: Config, root) -> int:
         return 0
 
 
+def _notice() -> str | None:
+    """Ein abgelegter Hinweis für die Stimme (z. B. Sprachkanal aus), jeder genau einmal; sonst None."""
+    from .channel import launch
+    try:
+        return launch.NOTICES.popleft()
+    except IndexError:
+        return None
+
+
+def _watch_channel(folder, started: float, done, check=None) -> str:
+    """Nach dem Start: Ist der Channel in Claude Code an? Wenn sicher aus, einmal im Terminal und einmal per Stimme sagen.
+    Liest nur die zwei Marker im MCP-Protokoll dieser Sitzung (channel/claude_log.py)."""
+    from .channel import claude_log, launch
+    check = check or claude_log.check
+    try:
+        state = check(claude_log.log_dir(folder), started)
+    except Exception:                                  # noqa: BLE001 (nur ein Hinweis: darf den Start nie stören)
+        return "unknown"
+    if state == "off" and not done.is_set():
+        from .voice import earcon
+        print("\n" + claude_log.TERMINAL_HINT)
+        launch.NOTICES.append(earcon.mark(claude_log.SPOKEN_HINT))     # Systemansage: mit Signalton
+    return state
+
+
 def _start(args, cfg: Config, root) -> int:
     """`kushim start [ordner]`: Claude Code mit dem kushim-Channel im freigegebenen Ordner (eigenes Fenster), dann `kushim talk`."""
     from .channel import launch
@@ -153,14 +178,23 @@ def _start(args, cfg: Config, root) -> int:
     if _token_dir_inside(root, folder):
         print("Achtung: kushims Ordner run/ (Token für Channel und Oberfläche) liegt im Arbeitsordner von Claude. Claude "
               "könnte die Token lesen. Freigaben in der Oberfläche und per Stimme dann nur mit Vorsicht benutzen.")
+    try:
+        model, effort = launch.check_options(cfg.claude_model, cfg.claude_effort)
+    except ValueError as e:
+        print(f"[claude] in config.toml: {e}")
+        return 2
     import _thread
     import threading
+    import time as _time
     from .procflags import kill_tree
-    window = launch.launch(exe, folder, root)
-    print(f"Claude Code startet im Fenster \"kushim-Claude\" im Ordner «{chosen.name}».")
+    started = _time.time() - 2.0
+    window = launch.launch(exe, folder, root, model=model, effort=effort)
+    print(f"Claude Code startet im Fenster \"kushim-Claude\" im Ordner «{chosen.name}»"
+          + (f" (Modell {model}" + (f", Aufwand {effort}" if effort else "") + ")" if model else "") + ".")
     print("Dort einmal den Hinweis zum Entwicklungs-Channel bestätigen; danach hört kushim zu.")
     print("Schließt du das Claude-Fenster, beendet sich alles (Claude, Channel, Zuhören).")
     done = threading.Event()
+    threading.Thread(target=_watch_channel, args=(folder, started, done), daemon=True).start()
 
     def watch_window():                               # Fenster zu: ganzen Ablauf beenden
         window.wait()
@@ -572,7 +606,8 @@ def _main(argv: list[str] | None = None) -> int:
             out = lambda r: print(f"Du: {r.heard}\nkushim: {r.reply or '(' + r.outcome + ')'}"
                                   + (" [unterbrochen]" if r.outcome == "interrupted" else "")
                                   + (f"  [{r.detail}]" if r.detail else ""))
-            barge = BargeIn(level=st.barge_in_level, min_ms=st.barge_in_ms) if st.barge_in else None
+            barge = (BargeIn(level=st.barge_in_level, min_ms=st.barge_in_ms, echo_guard=st.echo_schutz,
+                             echo_factor=st.echo_factor, echo_ignore_ms=st.echo_ignore_ms) if st.barge_in else None)
             utter = lambda wait: UtteranceCollector(wait_ms=wait, silence_ms=end_ms, max_ms=max_ms, energy_threshold=st.speech_level)
             from .voice import statefile
             from .voice.levels import LevelTest
@@ -629,7 +664,7 @@ def _main(argv: list[str] | None = None) -> int:
                             first_collector=lambda: utter(first_ms),
                             follow_collector=(lambda: utter(follow_ms)) if follow_ms > 0 else None,
                             barge=barge, preroll_frames=round(st.preroll_seconds / 0.08),
-                            announce=pipeline.chat.announcement,          # verspätete Antworten von Claude
+                            announce=lambda: _notice() or pipeline.chat.announcement(),   # Hinweise von kushim start, verspätete Antworten
                             say=pipeline.say_text, on_note=note)
             print("Wake Words: " + ", ".join(w.name for w in wcfg.enabled())
                   + ". Notaus: 'Notaus' sagen oder die Verknüpfung. Strg+C beendet.")
@@ -638,7 +673,7 @@ def _main(argv: list[str] | None = None) -> int:
                       "\"das war's\" oder Stille beendet es.")
             if barge is not None:
                 print("Unterbrechen: einfach dazwischensprechen (Kopfhörer empfohlen; mit Lautsprechern kann kushim sich "
-                      "selbst hören: barge_in_level erhöhen oder barge_in = false in wakewords.toml).")
+                      "selbst hören: echo_schutz = true oder barge_in_level erhöhen in wakewords.toml).")
             talklog.write("ready", wake_words=", ".join(w.name for w in wcfg.enabled()),
                           channel=pipeline.chat.bridge.available())
             reason = loop.run()

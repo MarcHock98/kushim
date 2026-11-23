@@ -75,6 +75,8 @@ class Config:
                                           # (Entscheidung des Nutzers 2026-11-11); ohne Prüfung keine Freigaben per Stimme.
     audio_mic: str = ""            # gemerktes Mikrofon ([audio] mic), "" = Systemstandard; `--mic` hat Vorrang (E3b)
     audio_out: str = ""            # gemerktes Ausgabegerät ([audio] out), "" = Systemstandard; `--out` hat Vorrang
+    claude_model: str = "sonnet"   # Modell der kushim-Sitzung (--model); "" = Standard von Claude Code. Geprüft in channel/launch.py
+    claude_effort: str = "high"    # Aufwand (--effort); "" = Standard von Claude Code
     path: Path | None = field(default=None, repr=False)
 
     @classmethod
@@ -85,10 +87,12 @@ class Config:
         data = tomllib.loads(path.read_text(encoding="utf-8"))
         mem, bak = data.get("memory", {}), data.get("backup", {})
         gpu = data.get("gpu", {})
-        raw_folders = data.get("claude", {}).get("folders", [])
+        claude = data.get("claude", {}) if isinstance(data.get("claude", {}), dict) else {}
+        raw_folders = claude.get("folders", [])
         folders = tuple(f for f in raw_folders if isinstance(f, str) and "|" in f) if isinstance(raw_folders, list) else ()
         audio = data.get("audio", {})
         audio = audio if isinstance(audio, dict) else {}
+        model, effort = claude.get("model", cls.claude_model), claude.get("effort", cls.claude_effort)
         return cls(
             memory_location=mem.get("location", cls.memory_location),
             backup_target=bak.get("target", ""),
@@ -97,6 +101,8 @@ class Config:
             claude_folders=folders,
             audio_mic=device_name(audio.get("mic", "")),
             audio_out=device_name(audio.get("out", "")),
+            claude_model=model.strip().lower() if isinstance(model, str) else repr(model),      # kein Text: fällt bei der Prüfung durch
+            claude_effort=effort.strip().lower() if isinstance(effort, str) else repr(effort),
             path=path,
         )
 

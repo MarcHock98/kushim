@@ -61,15 +61,24 @@ class TaskRegistry:
 
     @contextmanager
     def running(self, name: str, cancel: Callable[[], None] = lambda: None) -> Iterator[Token]:
+        key, token = self.begin(name, cancel)
+        try:
+            yield token
+        finally:
+            self.end(key)
+
+    def begin(self, name: str, cancel: Callable[[], None] = lambda: None) -> tuple[int, Token]:
+        """Wie `running`, aber ohne Block: für Aufgaben, die länger offen bleiben als ein Aufruf (z. B. eine Anfrage an
+        Claude, deren Ergebnis erst später kommt). `end(key)` meldet sie wieder ab."""
         token = Token(name, cancel)
         with self._lock:
             key, self._next = self._next, self._next + 1
             self._tasks[key] = token
-        try:
-            yield token
-        finally:
-            with self._lock:
-                self._tasks.pop(key, None)
+        return key, token
+
+    def end(self, key: int) -> None:
+        with self._lock:
+            self._tasks.pop(key, None)
 
     def add_queue(self, queue: Any) -> None:
         """Eine `ApprovalQueue`, deren offene Freigaben beim Abbrechen abgelehnt werden."""

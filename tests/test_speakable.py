@@ -10,8 +10,10 @@ def perm(tool, preview="", description="", rid="r1"):
 def test_shell_commands_are_named_and_end_with_a_terminal_hint_until_c3():
     p = perm("Bash", '{ "command": "npm test", "description": "Run the tests" }')
     assert sp.describe(p) == "Claude möchte den Befehl npm test ausführen."
-    assert sp.announce(p) == "Claude möchte den Befehl npm test ausführen. Bitte im Terminal bestätigen."
-    assert sp.announce(p, ask=True) == "Claude möchte den Befehl npm test ausführen. Erlauben?"
+    assert sp.announce(p) == "Ich möchte den Befehl npm test ausführen. Bitte im Terminal bestätigen."     # gesprochen: kushim selbst
+    assert sp.announce(p, ask=True) == "Ich möchte den Befehl npm test ausführen. Erlauben?"
+    assert sp.announce(perm("Write", '{ "file_path": "/x/a.md" }')) == "Ich möchte die Datei a.md schreiben. Bitte im Terminal bestätigen."
+    assert sp.announce(perm("", "{ }")) == "Ich möchte etwas tun, das eine Freigabe braucht. Bitte im Terminal bestätigen."
     assert sp.describe(perm("PowerShell", '{ "command": "Get-ChildItem" }')) == \
         "Claude möchte in PowerShell den Befehl Get-ChildItem ausführen."
     assert sp.describe(perm("Bash", "{ }")) == "Claude möchte einen Befehl ausführen."

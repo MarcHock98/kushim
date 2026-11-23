@@ -77,6 +77,12 @@ class TalkLoop:
             return "listening"
         return "idle"
 
+    def _speaking(self) -> bool:
+        """Spielt kushim gerade selbst Ton ab? (Zustand SPEAKING gilt nur während echter Wiedergabe.)"""
+        from .dialog import State
+        dialog = getattr(self.pipeline, "dialog", None)
+        return dialog is not None and dialog.state is State.SPEAKING
+
     def _ask_again(self) -> UtteranceCollector:
         self.ack()
         self.flush()                                 # eigene Quittung nicht als Befehl hören
@@ -134,7 +140,7 @@ class TalkLoop:
                 else:
                     self._queued = audio
             return None
-        if self.barge.feed(frame):
+        if self.barge.feed(frame, speaking=self._speaking()):    # eigene Wiedergabe: strengere Schwelle (Echo)
             self.pipeline.interrupt()                # Ausgabe sofort stoppen
             self._collecting, self._mode = self.new_collector(), "barge"
             for f in self.barge.recent():            # Anfang des Satzes nicht verlieren
@@ -243,6 +249,8 @@ def build_live(root: Path, out_device: int | None, in_device: int | None = None,
     dialog = Dialog(audio.stop_playback)
     kill = KillSwitch(root, [audio.stop_playback])
     speaker = Speaker(engine, lambda wav: audio.play_wav(wav, out_device), lambda: kill.fired)
+    from .earcon import chime_wav
+    speaker.chime = chime_wav()                 # Signalton vor kushims eigenen Ansagen (Freigabe, Notaus), nie vor `sprich`
     ack_wav = engine.synthesize(ACK_TEXT)
     mic = audio.Mic(in_device)
     tasks = tasks if tasks is not None else TaskRegistry()

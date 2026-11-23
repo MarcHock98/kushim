@@ -26,3 +26,7 @@ out = ""
 [claude]
 # Für Claude freigegebene Arbeitsordner als "name|pfad". Verwalten: `kushim claude add|remove|folders`.
 folders = []
+# Modell und Aufwand der kushim-Sitzung von Claude Code (leer = Standard von Claude Code).
+# model:  sonnet, opus, haiku, fable          effort: low, medium, high, xhigh, max
+model = "sonnet"
+effort = "high"

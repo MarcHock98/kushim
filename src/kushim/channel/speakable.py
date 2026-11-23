@@ -67,42 +67,43 @@ def _words(name: str) -> str:
     return _short(name.replace("__", " ").replace("_", " ").replace("-", " ").translate(_DROP), MAX_NAME)
 
 
-def describe(perm: Permission) -> str:
-    """Ein Satz, was Claude tun möchte. Unbekannte Werkzeuge werden nur beim Namen genannt."""
+def describe(perm: Permission, who: str = "Claude") -> str:
+    """Ein Satz, was Claude tun möchte. Unbekannte Werkzeuge werden nur beim Namen genannt. `who` ist das Subjekt: in der
+    Oberfläche und im Protokoll „Claude“, gesprochen „Ich“ (für den Nutzer ist Claude kushim, siehe `announce`)."""
     tool, preview = perm.tool_name.strip(), perm.input_preview
     key = tool.lower()
     if key in _SHELLS:
         cmd = field(preview, "command")
         where = _SHELLS[key]
-        sentence = (f"Claude möchte{where} den Befehl {_speak_command(cmd)} ausführen." if cmd
-                    else f"Claude möchte{where} einen Befehl ausführen.")
+        sentence = (f"{who} möchte{where} den Befehl {_speak_command(cmd)} ausführen." if cmd
+                    else f"{who} möchte{where} einen Befehl ausführen.")
     elif key in _FILE_ACTIONS:
         path = field(preview, "notebook_path" if key == "notebookedit" else "file_path")
         what = "das Notebook" if key == "notebookedit" else "die Datei"
-        sentence = (f"Claude möchte {what} {_file_name(path)} {_FILE_ACTIONS[key]}." if path
-                    else f"Claude möchte eine Datei {_FILE_ACTIONS[key]}.")
+        sentence = (f"{who} möchte {what} {_file_name(path)} {_FILE_ACTIONS[key]}." if path
+                    else f"{who} möchte eine Datei {_FILE_ACTIONS[key]}.")
     elif key == "webfetch":
         try:
             host = urlsplit(field(preview, "url") or "").hostname
         except ValueError:                          # z. B. „http://[kaputt“: fremder Text darf die Ansage nie abbrechen
             host = None
-        sentence = (f"Claude möchte die Webseite {_short(host, MAX_NAME)} abrufen." if host
-                    else "Claude möchte eine Webseite abrufen.")
+        sentence = (f"{who} möchte die Webseite {_short(host, MAX_NAME)} abrufen." if host
+                    else f"{who} möchte eine Webseite abrufen.")
     elif key == "websearch":
         query = field(preview, "query")
-        sentence = (f"Claude möchte im Netz nach {_short(query.translate(_DROP), MAX_NAME)} suchen." if query
-                    else "Claude möchte im Netz suchen.")
+        sentence = (f"{who} möchte im Netz nach {_short(query.translate(_DROP), MAX_NAME)} suchen." if query
+                    else f"{who} möchte im Netz suchen.")
     elif key in ("glob", "grep"):
-        sentence = "Claude möchte Dateien durchsuchen."
+        sentence = f"{who} möchte Dateien durchsuchen."
     elif key in ("task", "agent"):
-        sentence = "Claude möchte einen Unter-Agenten starten."
+        sentence = f"{who} möchte einen Unter-Agenten starten."
     elif key.startswith("mcp__") and key.count("__") >= 2:
         _, server, name = tool.split("__", 2)
-        sentence = f"Claude möchte das Werkzeug {_words(name)} vom Dienst {_words(server)} benutzen."
+        sentence = f"{who} möchte das Werkzeug {_words(name)} vom Dienst {_words(server)} benutzen."
     elif tool:
-        sentence = f"Claude möchte das Werkzeug {_words(tool)} benutzen."
+        sentence = f"{who} möchte das Werkzeug {_words(tool)} benutzen."
     else:
-        sentence = "Claude möchte etwas tun, das eine Freigabe braucht."
+        sentence = f"{who} möchte etwas tun, das eine Freigabe braucht."
     return clean_text(sentence)[:MAX_SENTENCE]
 
 
@@ -130,6 +131,10 @@ def complete(perm: Permission) -> bool:
     return False
 
 
+SPOKEN_WHO = "Ich"                              # gesprochen redet kushim selbst (nie „Claude möchte …“)
+
+
 def announce(perm: Permission, ask: bool = False) -> str:
-    """Ansage für die Stimme: mit „Erlauben?“ nur, wenn kushim die Antwort auch annehmen kann (C3), sonst Hinweis aufs Terminal."""
-    return f"{describe(perm)} {QUESTION if ask else TERMINAL}"
+    """Ansage für die Stimme: mit „Erlauben?“ nur, wenn kushim die Antwort auch annehmen kann (C3), sonst Hinweis aufs Terminal.
+    In der ersten Person („Ich möchte den Befehl npm test ausführen.“), weil der Nutzer nur mit kushim spricht."""
+    return f"{describe(perm, SPOKEN_WHO)} {QUESTION if ask else TERMINAL}"
