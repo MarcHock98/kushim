@@ -29,6 +29,32 @@ def test_restart_starts_in_a_new_clean_environment(monkeypatch):
     assert launch.restart(["kushim", "start"], popen=fake) == "fenster"
     assert seen["argv"] == ["kushim", "start"]
     assert "CLAUDECODE" not in seen["env"] and "CLAUDE_CODE_CHILD_SESSION" not in seen["env"]
+    assert "shell" not in seen and isinstance(seen["argv"], list)                 # keine Shell, Argumente als Liste
+
+
+def test_restart_keeps_kushims_own_environment_but_not_the_claude_markers(monkeypatch):
+    """Audit M1: KUSHIM_CONFIG und KUSHIM_VAULT_KEY überleben den Neustart (clean_env ist nur für Claude gedacht)."""
+    monkeypatch.setenv("KUSHIM_CONFIG", r"D:\kushim\config.toml")
+    monkeypatch.setenv("KUSHIM_VAULT_KEY", "geheim")
+    monkeypatch.setenv("CLAUDECODE", "1")
+    monkeypatch.setenv("CLAUDE_CODE_CHILD_SESSION", "1")
+    seen = {}
+    launch.restart(["kushim", "start"], popen=lambda argv, **kw: seen.update(kw))
+    env = seen["env"]
+    assert env["KUSHIM_CONFIG"] == r"D:\kushim\config.toml" and env["KUSHIM_VAULT_KEY"] == "geheim"
+    assert "CLAUDECODE" not in env and "CLAUDE_CODE_CHILD_SESSION" not in env
+    assert env[launch.RESTARTED_ENV] == "1"                                         # Kennzeichen für den neuen Prozess (N1)
+    import os
+    assert os.environ["CLAUDECODE"] == "1" and launch.RESTARTED_ENV not in os.environ   # die eigene Umgebung bleibt unberührt
+
+
+def test_claude_environment_stays_filtered(monkeypatch):
+    """Die Umgebung für Claude (claude_env, von `_start` über launch.launch benutzt) filtert weiter KUSHIM_* und Schlüssel."""
+    monkeypatch.setenv("KUSHIM_CONFIG", "x")
+    monkeypatch.setenv("KUSHIM_VAULT_KEY", "geheim")
+    monkeypatch.setenv(launch.RESTARTED_ENV, "1")
+    env = launch.claude_env()
+    assert "KUSHIM_CONFIG" not in env and "KUSHIM_VAULT_KEY" not in env and launch.RESTARTED_ENV not in env
 
 
 def test_restart_command_only_writes_the_flag(tmp_path, monkeypatch, capsys):

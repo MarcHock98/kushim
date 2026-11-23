@@ -131,7 +131,44 @@ def _watch_channel(folder, started: float, done, check=None) -> str:
     return state
 
 
+def _pause() -> None:
+    """Wartet auf einen Tastendruck (Windows: eine beliebige Taste; sonst Enter). Nie über eine Shell."""
+    try:
+        import msvcrt
+    except ImportError:
+        msvcrt = None
+    try:
+        if msvcrt is not None:
+            print("Eine Taste drücken, um das Fenster zu schließen.", flush=True)
+            msvcrt.getch()
+        else:
+            input("Enter drücken, um das Fenster zu schließen.")
+    except (EOFError, OSError):
+        pass
+
+
 def _start(args, cfg: Config, root) -> int:
+    """`kushim start`; im durch Neustart erzeugten Prozess (launch.RESTARTED_ENV) bleibt das Fenster bei einem Abbruch
+    (Rückgabe ungleich 0, z. B. Notaus, nicht angemeldet, Ordner unzulässig) offen, bis eine Taste gedrückt wird. Sonst
+    schlösse sich die neue Konsole sofort, und die Meldung wäre weg. Das Kennzeichen gilt nur für diesen Prozess."""
+    import os
+    from .channel import launch
+    after_restart = os.environ.pop(launch.RESTARTED_ENV, None) == "1"
+    try:
+        rc = _start_run(args, cfg, root)
+    except Exception:                                 # noqa: BLE001 (nur nach Neustart: Fehler sichtbar lassen, dann Ende)
+        if not after_restart:
+            raise
+        import traceback
+        traceback.print_exc()
+        _pause()
+        return 1
+    if rc and after_restart:
+        _pause()
+    return rc
+
+
+def _start_run(args, cfg: Config, root) -> int:
     """`kushim start [ordner]`: Claude Code mit dem kushim-Channel im freigegebenen Ordner (eigenes Fenster), dann `kushim talk`."""
     from .channel import launch
     from .claude_cli import base as claude_base

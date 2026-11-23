@@ -326,3 +326,154 @@ def test_closing_by_kushim_itself_does_not_trigger_the_shutdown_again(tmp_path):
     cli._open_ui_window(tmp_path, done, [], popen=lambda a, **k: Window(), wait=lambda root, since, alive: True,
                         on_close=lambda: closed.append(1))
     assert closed == []
+
+
+# --- Neustart-Pfad in `_start` (Audit M2, N1). Alles gemockt: Fenster, Claude, Talk und Popen starten nichts echt. ---
+
+@pytest.fixture
+def restart_env(env):
+    """`_start` mit gemocktem Neustart: `launch.restart` und `_thread.interrupt_main` zeichnen nur auf."""
+    import _thread
+    import threading
+    import kushim.procflags as pf
+    env.mp.setattr(pf, "kill_tree", lambda pid: env.window.close())
+    interrupted = threading.Event()
+    env.mp.setattr(_thread, "interrupt_main", interrupted.set)
+    restarts = []
+    env.mp.setattr(launch, "restart", lambda argv, popen=None: restarts.append(argv) or "neues Fenster")
+    env.mp.setattr(cli, "_watch_channel", lambda *a, **k: "unknown")
+    env.mp.setattr(cli, "_pause", lambda: env.paused.append(1))
+    env.mp.delenv(launch.RESTARTED_ENV, raising=False)
+    env.interrupted, env.restarts, env.paused = interrupted, restarts, []
+    yield env
+    env.window.close()                                                                 # Hilfs-Threads sicher beenden
+
+
+def _talk_that_asks_for_restart(env):
+    """Zuhören läuft; währenddessen sagt der Nutzer `kushim restart`. Ende wie echt: KeyboardInterrupt aus watch_restart."""
+    def talk(argv):
+        launch.request_restart(env.proj.parent)
+        if not env.interrupted.wait(5.0):
+            return 99
+        raise KeyboardInterrupt
+    return talk
+
+
+def test_start_deletes_an_old_restart_flag_and_does_not_restart_for_it(restart_env, capsys):
+    env = restart_env
+    flag = env.proj.parent / launch.RESTART_FILE
+    flag.parent.mkdir(parents=True, exist_ok=True)
+    flag.write_text("restart", encoding="utf-8")                                       # Marke aus einem früheren Lauf
+    seen = []
+    env.mp.setattr(cli, "_main", lambda argv: seen.append(flag.exists()) or 0)
+    assert start(env, no_ui=True) == 0
+    assert seen == [False]                                                             # schon vor dem Zuhören gelöscht
+    assert env.restarts == [] and not env.interrupted.is_set()
+    out = capsys.readouterr().out
+    assert "Neustart angefordert" not in out and "neuen Fenster neu" not in out
+
+
+def test_start_without_a_restart_request_ends_without_restart(restart_env):
+    env = restart_env
+    assert start(env, no_ui=True) == 0 and env.talked == [["talk"]]
+    assert env.restarts == []
+
+
+def test_restart_flag_set_during_the_run_restarts_after_cleanup(restart_env, capsys):
+    env = restart_env
+    env.mp.setattr(cli, "_main", _talk_that_asks_for_restart(env))
+    with pytest.raises(KeyboardInterrupt):
+        start(env, "proj", no_ui=True)
+    assert env.stopped == [EXE] and env.window.closed.is_set()                         # erst aufgeräumt
+    assert len(env.restarts) == 1
+    argv = env.restarts[0]
+    assert isinstance(argv, list) and argv[-3:] == ["start", "proj", "--no-ui"]
+    assert not (env.proj.parent / launch.RESTART_FILE).exists()                        # Marke verbraucht
+    out = capsys.readouterr().out
+    assert "Neustart angefordert" in out and "startet in einem neuen Fenster neu" in out
+    assert out.index("Claude-Sitzung beendet") < out.index("startet in einem neuen Fenster neu")
+
+
+def test_no_restart_while_the_kill_switch_is_active(restart_env, capsys):
+    env = restart_env
+    state = {"on": False}
+    env.mp.setattr(killswitch, "is_triggered", lambda root: state["on"])
+
+    def talk(argv):                                                                    # Neustart gewünscht, dann Notaus
+        launch.request_restart(env.proj.parent)
+        assert env.interrupted.wait(5.0)
+        state["on"] = True
+        raise KeyboardInterrupt
+    env.mp.setattr(cli, "_main", talk)
+    with pytest.raises(KeyboardInterrupt):
+        start(env, no_ui=True)
+    assert env.restarts == []
+    assert "neuen Fenster neu" not in capsys.readouterr().out
+
+
+def test_an_oserror_during_restart_is_reported(restart_env, capsys):
+    env = restart_env
+
+    def broken(argv, popen=None):
+        raise OSError("python.exe nicht gefunden")
+    env.mp.setattr(launch, "restart", broken)
+    env.mp.setattr(cli, "_main", _talk_that_asks_for_restart(env))
+    with pytest.raises(KeyboardInterrupt):
+        start(env, no_ui=True)
+    out = capsys.readouterr().out
+    assert "Neustart nicht möglich: python.exe nicht gefunden" in out
+    assert "startet in einem neuen Fenster neu" not in out
+
+
+def test_restarted_start_keeps_the_window_open_after_an_early_abort(restart_env, capsys):
+    """Audit N1: scheitert ein durch Neustart erzeugtes `kushim start` früh, wartet es auf eine Taste."""
+    env = restart_env
+    env.mp.setenv(launch.RESTARTED_ENV, "1")
+    env.mp.setattr(killswitch, "is_triggered", lambda root: True)
+    assert start(env) == 1 and env.paused == [1]
+    assert "Notaus ist aktiv" in capsys.readouterr().out
+    import os
+    assert launch.RESTARTED_ENV not in os.environ                                      # gilt nur für diesen Prozess
+    env.mp.setenv(launch.RESTARTED_ENV, "1")
+    env.mp.setattr(killswitch, "is_triggered", lambda root: False)
+    env.mp.setattr(base, "auth_status", lambda exe: Auth(False))
+    assert start(env) == 1 and env.paused == [1, 1]                                    # nicht angemeldet
+
+
+def test_restarted_start_shows_an_unexpected_error_before_closing(restart_env, capsys):
+    env = restart_env
+    env.mp.setenv(launch.RESTARTED_ENV, "1")
+
+    def boom():
+        raise RuntimeError("kaputt")
+    env.mp.setattr(base, "find_claude", boom)
+    assert start(env) == 1 and env.paused == [1]
+    assert "RuntimeError: kaputt" in capsys.readouterr().err
+
+
+def test_normal_start_does_not_wait_for_a_key(restart_env):
+    env = restart_env
+    env.mp.setattr(killswitch, "is_triggered", lambda root: True)
+    assert start(env) == 1 and env.paused == []                                        # ohne Neustart: wie bisher
+    env.mp.setattr(killswitch, "is_triggered", lambda root: False)
+    env.mp.setenv(launch.RESTARTED_ENV, "1")
+    assert start(env, no_ui=True) == 0 and env.paused == []                            # erfolgreicher Lauf: keine Pause
+    env.mp.setattr(base, "find_claude", lambda: (_ for _ in ()).throw(RuntimeError("x")))
+    with pytest.raises(RuntimeError):
+        start(env)                                                                     # ohne Kennzeichen: Fehler wie bisher
+
+
+def test_pause_never_uses_a_shell(monkeypatch):
+    import subprocess as sp
+    import os as _os
+    def no(*a, **k):
+        raise AssertionError("keine Shell")
+    monkeypatch.setattr(_os, "system", no)
+    monkeypatch.setattr(sp, "run", no)
+    monkeypatch.setattr(sp, "Popen", no)
+    try:
+        import msvcrt
+        monkeypatch.setattr(msvcrt, "getch", lambda: b"x")
+    except ImportError:
+        monkeypatch.setattr("builtins.input", lambda prompt="": "")
+    cli._pause()

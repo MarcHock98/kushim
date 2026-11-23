@@ -32,6 +32,7 @@ WINDOW_TITLE = "kushim-Claude"
 CONFIG = Path("run") / "kushim-mcp.json"
 SESSION_FILE = Path("run") / "claude-session.txt"
 RESTART_FILE = Path("run") / "restart.flag"       # Neustart-Marke: `kushim restart` legt sie ab, `kushim start` löscht sie
+RESTARTED_ENV = "KUSHIM_NACH_NEUSTART"          # gesetzt nur im durch Neustart erzeugten `kushim start` (Wert "1")
 USAGE_FILE = Path("run") / "usage.json"      # schreibt scripts/statusline.py nur für diese Sitzung (session_id = SESSION_FILE)
 CREATE_NEW_CONSOLE = 0x00000010               # Windows: Claude bekommt ein eigenes, sichtbares Terminalfenster
 # Vorab erlaubt (Claude Code 2.1.329: `--allowedTools`, Namen `mcp__<server>__<werkzeug>`): nur Vorlesen und Anzeigen über
@@ -174,11 +175,21 @@ def restart_argv(folder_name: str, mic: str | None = None, out: str | None = Non
             *(["--mic", mic] if mic else []), *(["--out", out] if out else []), *(["--no-ui"] if no_ui else [])]
 
 
-def restart(argv: list[str], popen: Callable[..., Any] = subprocess.Popen) -> Any:
-    """Startet `kushim start` neu in einem eigenen Fenster. Erst aufrufen, wenn das alte vollständig beendet ist (Mikrofon, Port)."""
-    env = claude_env()
-    for name in ("CLAUDECODE", "CLAUDE_CODE_CHILD_SESSION"):     # sonst lehnt `kushim start` den Start ab
+def restart_env(base: dict[str, str] | None = None) -> dict[str, str]:
+    """Umgebung für das neue `kushim start`: die eigene, vollständig (kushim braucht z. B. KUSHIM_CONFIG und KUSHIM_VAULT_KEY;
+    `clean_env` ist nur für Claude gedacht und filtert sie heraus). Ohne die Claude-Kennzeichen, sonst lehnt `kushim start`
+    den Start ab. Die Umgebung für Claude baut `kushim start` später selbst, gefiltert über `claude_env()`.
+    RESTARTED_ENV markiert den Prozess als Neustart: bricht er früh ab, bleibt sein Fenster bis zu einem Tastendruck offen."""
+    env = dict(os.environ if base is None else base)
+    for name in ("CLAUDECODE", "CLAUDE_CODE_CHILD_SESSION"):
         env.pop(name, None)
+    env[RESTARTED_ENV] = "1"
+    return env
+
+
+def restart(argv: list[str], popen: Callable[..., Any] = subprocess.Popen) -> Any:
+    """Startet `kushim start` neu in einem eigenen Fenster. Erst aufrufen, wenn das alte vollständig beendet ist (Mikrofon, Port).
+    `argv` ist eine Liste (keine Shell, kein Befehls-String)."""
     flags = CREATE_NEW_CONSOLE if os.name == "nt" else 0
-    return popen(argv, env=env, creationflags=flags)
+    return popen(list(argv), env=restart_env(), creationflags=flags)
 
