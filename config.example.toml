@@ -17,6 +17,12 @@ keep = 10
 # Grafikkarten (NVIDIA). Anzeigen: `kushim gpu`. Bei mehreren Karten nimmt Whisper die größte.
 whisper = "auto"   # "auto", "cpu" oder Nummer der Karte (z. B. "1")
 
+[audio]
+# Gemerkte Geräte (genauer Name wie in der Geräteliste der Oberfläche), "" = Systemstandard.
+# `kushim start` und `kushim talk` nehmen sie, wenn kein --mic/--out angegeben ist. Gilt ab dem nächsten Start.
+mic = ""
+out = ""
+
 [claude]
 # Für Claude freigegebene Arbeitsordner als "name|pfad". Verwalten: `kushim claude add|remove|folders`.
 folders = []

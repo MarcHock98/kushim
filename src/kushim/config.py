@@ -36,6 +36,16 @@ class LiveConfig:
         return getattr(self.get(), name)
 
 
+MAX_DEVICE_NAME = 200
+
+
+def device_name(value: object) -> str:
+    """Gerätename aus der Konfiguration: nur Text ohne Steuerzeichen, höchstens 200 Zeichen, sonst "" (Systemstandard)."""
+    if not isinstance(value, str) or len(value) > MAX_DEVICE_NAME or not all(c.isprintable() for c in value):
+        return ""
+    return value
+
+
 def config_path() -> Path:
     env = os.environ.get("KUSHIM_CONFIG")
     if env:
@@ -54,6 +64,8 @@ class Config:
     gpu_whisper: str = "auto"      # "auto", "cpu" oder Kartennummer (kushim gpu)
     claude_folders: tuple[str, ...] = ()  # freigegebene Ordner für Claude als "name|pfad"; ändert nur der Nutzer (UI/CLI)
                                           # (Entscheidung des Nutzers 2026-11-11); ohne Prüfung keine Freigaben per Stimme.
+    audio_mic: str = ""            # gemerktes Mikrofon ([audio] mic), "" = Systemstandard; `--mic` hat Vorrang (E3b)
+    audio_out: str = ""            # gemerktes Ausgabegerät ([audio] out), "" = Systemstandard; `--out` hat Vorrang
     path: Path | None = field(default=None, repr=False)
 
     @classmethod
@@ -66,14 +78,56 @@ class Config:
         gpu = data.get("gpu", {})
         raw_folders = data.get("claude", {}).get("folders", [])
         folders = tuple(f for f in raw_folders if isinstance(f, str) and "|" in f) if isinstance(raw_folders, list) else ()
+        audio = data.get("audio", {})
+        audio = audio if isinstance(audio, dict) else {}
         return cls(
             memory_location=mem.get("location", cls.memory_location),
             backup_target=bak.get("target", ""),
             backup_keep=int(bak.get("keep", 10)),
             gpu_whisper=str(gpu.get("whisper", "auto")),
             claude_folders=folders,
+            audio_mic=device_name(audio.get("mic", "")),
+            audio_out=device_name(audio.get("out", "")),
             path=path,
         )
+
+    def set_audio(self, mic: str, out: str) -> None:
+        """Schreibt nur `mic` und `out` im Abschnitt [audio] ("" = Systemstandard); übrige Datei bleibt erhalten. Atomar."""
+        import json
+        for name in (mic, out):
+            if not isinstance(name, str) or device_name(name) != name:
+                raise ValueError("Ungültiger Gerätename")
+        self._set_keys("audio", {"mic": "mic = " + json.dumps(mic, ensure_ascii=False),
+                                 "out": "out = " + json.dumps(out, ensure_ascii=False)})
+        self.audio_mic, self.audio_out = mic, out
+
+    def _set_keys(self, section: str, entries: dict[str, str]) -> None:
+        """Ersetzt bzw. ergänzt Zeilen `schlüssel = ...` in genau einem Abschnitt; atomar (Temp-Datei, dann ersetzen)."""
+        path = self.path or config_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+        head = f"[{section}]"
+        in_sec, done = False, set()
+        for i, l in enumerate(lines):
+            s = l.strip()
+            if s.startswith("["):
+                in_sec = s == head
+                continue
+            key = s.split("=", 1)[0].strip() if "=" in s else ""
+            if in_sec and key in entries and key not in done:
+                lines[i] = entries[key]
+                done.add(key)
+        missing = [entries[k] for k in entries if k not in done]
+        if missing:
+            heads = [l.strip() for l in lines]
+            if head in heads:
+                at = heads.index(head) + 1
+                lines[at:at] = missing
+            else:
+                lines += ([""] if lines else []) + [head] + missing
+        tmp = path.with_suffix(".toml.tmp")
+        tmp.write_text(chr(10).join(lines) + chr(10), encoding="utf-8")
+        os.replace(tmp, path)
 
     def set_claude_folders(self, entries: list[str]) -> None:
         """Schreibt nur `folders` im Abschnitt [claude] (Einträge "name|pfad"); übrige Datei bleibt erhalten. Atomar."""

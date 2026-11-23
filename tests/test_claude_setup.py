@@ -110,10 +110,113 @@ def test_statusline_writes_utf8_bytes_even_where_the_console_is_not_utf8():
     assert r.returncode == 0 and r.stdout.decode("utf-8").strip() == "Opus 5.5 · Kontext 42% · 5h 30% · 7d 12%"
 
 
-def test_statusline_script_has_no_network_or_file_writes():
+def test_statusline_script_has_no_network_and_writes_only_usage_json():
+    # E2b (Ja des Nutzers 2026-11-23): einzige Schreibstelle ist run/usage.json (über eine Temp-Datei daneben), sonst unverändert
     src = (ROOT / "scripts" / "statusline.py").read_text(encoding="utf-8")
-    for bad in ("socket", "urllib", "http", "requests", "open(", "write_text", "subprocess"):
+    for bad in ("socket", "urllib", "http", "requests", "write_text", "write_bytes", "subprocess", "shutil", "mkdir",
+                "environ", "getenv"):
         assert bad not in src, bad
+    assert src.count("open(") == 2 and src.count('"wb"') == 1 and src.count('"rb"') == 1
+    assert src.count("os.replace(") == 1 and 'USAGE_FILE = Path("run") / "usage.json"' in src
+
+
+# --- Statuszeile schreibt run/usage.json nur für die kushim-Sitzung (E2b) ------------------------------------------
+
+SID = "0b9f1c2e-3d4a-4b5c-8d6e-7f8091a2b3c4"
+OTHER = "11111111-2222-4333-8444-555555555555"
+
+
+def kushim_root(tmp_path, sid=SID):
+    (tmp_path / "run").mkdir()
+    (tmp_path / "run" / "claude-session.txt").write_text(sid, encoding="utf-8")
+    return tmp_path
+
+
+def usage_file(root):
+    return root / "run" / "usage.json"
+
+
+def test_usage_is_written_only_for_the_kushim_session(tmp_path):
+    root = kushim_root(tmp_path)
+    assert sl.write_usage({**FULL, "session_id": OTHER}, root) is False and not usage_file(root).exists()
+    for bad in (None, 5, "", SID.upper(), SID + " ", "../" + SID, [SID]):
+        assert sl.write_usage({**FULL, "session_id": bad}, root) is False, bad
+    assert sl.write_usage(FULL, root) is False and not usage_file(root).exists()           # ohne session_id nichts
+    assert sl.write_usage({**FULL, "session_id": SID, "cost": {"total_cost_usd": 0.354}}, root, now=1_700_000_000.9) is True
+    data = json.loads(usage_file(root).read_text(encoding="utf-8"))
+    assert data == {"model": "Opus 5.5", "context_pct": 41.6, "five_h_pct": 30.0, "seven_d_pct": 12.2, "cost_usd": 0.354,
+                    "stand": 1_700_000_000}
+    assert sorted(p.name for p in (root / "run").iterdir()) == ["claude-session.txt", "usage.json"]   # keine Temp-Reste
+
+
+def test_usage_needs_a_valid_session_file_and_never_creates_folders(tmp_path):
+    assert sl.write_usage({**FULL, "session_id": SID}, tmp_path) is False and not (tmp_path / "run").exists()
+    root = kushim_root(tmp_path, sid="kein-uuid; rm -rf /")
+    assert sl.write_usage({**FULL, "session_id": SID}, root) is False and not usage_file(root).exists()
+    (root / "run" / "claude-session.txt").write_text(SID + "\n", encoding="utf-8")       # Zeilenende wie von Editoren: zählt
+    assert sl.write_usage({**FULL, "session_id": SID}, root) is True
+
+
+def test_usage_has_only_fixed_fields_and_no_tokens_paths_or_odd_numbers(tmp_path):
+    root = kushim_root(tmp_path)
+    nasty = {"session_id": SID, "transcript_path": "C:\\Users\\x\\.claude\\projects\\a.jsonl", "cwd": "C:\\geheim",
+             "workspace": {"current_dir": "C:\\geheim"}, "token": "sk-ant-api03-SECRET",
+             "model": {"display_name": "M\x1b[2J" + "x" * 80},
+             "context_window": {"used_percentage": float("nan")},
+             "rate_limits": {"five_hour": {"used_percentage": 140}, "seven_day": {"used_percentage": True}},
+             "cost": {"total_cost_usd": -3}}
+    assert sl.write_usage(nasty, root, now=5) is True
+    raw = usage_file(root).read_text(encoding="utf-8")
+    data = json.loads(raw)
+    assert set(data) == {"model", "context_pct", "five_h_pct", "seven_d_pct", "cost_usd", "stand"}
+    assert data["model"] == ("M[2J" + "x" * 80)[:40] and len(data["model"]) <= 40
+    assert data["context_pct"] is None and data["five_h_pct"] is None and data["seven_d_pct"] is None
+    assert data["cost_usd"] is None and data["stand"] == 5
+    for leak in ("geheim", "sk-ant", "jsonl", "Users", "NaN"):
+        assert leak not in raw
+    assert len(raw.encode("utf-8")) <= 1024
+
+
+def test_statusline_prints_the_same_line_and_swallows_write_errors(tmp_path, monkeypatch, capsys):
+    import io
+    import sys
+    root = kushim_root(tmp_path)
+    monkeypatch.setattr(sl, "ROOT", root)
+    for raw in (json.dumps({**FULL, "session_id": SID}).encode(), json.dumps({**FULL, "session_id": OTHER}).encode()):
+        monkeypatch.setattr(sys, "stdin", io.TextIOWrapper(io.BytesIO(raw)))
+        assert sl.main() == 0
+    assert capsys.readouterr().out.splitlines() == ["Opus 5.5 · Kontext 42% · 5h 30% · 7d 12%"] * 2
+    assert usage_file(root).exists()
+
+    def boom(*a, **k):
+        raise OSError("Datenträger voll")
+    monkeypatch.setattr(sl.os, "replace", boom)
+    monkeypatch.setattr(sys, "stdin", io.TextIOWrapper(io.BytesIO(json.dumps({**FULL, "session_id": SID}).encode())))
+    assert sl.main() == 0
+    assert capsys.readouterr().out == "Opus 5.5 · Kontext 42% · 5h 30% · 7d 12%\n"
+    assert sorted(p.name for p in (root / "run").iterdir()) == ["claude-session.txt", "usage.json"]   # Temp-Datei aufgeräumt
+    monkeypatch.setattr(sl, "write_usage", lambda data: 1 / 0)
+    monkeypatch.setattr(sys, "stdin", io.TextIOWrapper(io.BytesIO(b"{}")))
+    assert sl.main() == 0 and capsys.readouterr().out == "Claude Code\n"
+
+
+def test_statusline_subprocess_output_is_byte_identical_with_and_without_usage(tmp_path):
+    import shutil
+    import subprocess
+    import sys
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    shutil.copy(ROOT / "scripts" / "statusline.py", scripts / "statusline.py")
+    kushim_root(tmp_path)
+    env = {"PYTHONIOENCODING": "cp1252", "SYSTEMROOT": __import__("os").environ.get("SYSTEMROOT", "")}
+    outs = []
+    for sid in (SID, OTHER):
+        r = subprocess.run([sys.executable, "-I", str(scripts / "statusline.py")],
+                           input=json.dumps({**FULL, "session_id": sid}).encode(), capture_output=True, env=env)
+        assert r.returncode == 0 and r.stderr == b""
+        outs.append(r.stdout)
+    assert outs[0] == outs[1] == "Opus 5.5 · Kontext 42% · 5h 30% · 7d 12%\n".encode("utf-8")
+    assert json.loads((tmp_path / "run" / "usage.json").read_text(encoding="utf-8"))["model"] == "Opus 5.5"
 
 
 def test_merge_statusline_adds_own_and_replaces_only_its_own():

@@ -9,6 +9,7 @@ import json
 import re
 import shutil
 import subprocess
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -82,6 +83,49 @@ class AuthCache:
         if self._value is None or now - self._at > self.ttl:
             self._value, self._at = auth_status(self.exe, self._run), now
         return self._value
+
+
+@dataclass(frozen=True)
+class ClaudeState:
+    installed: bool
+    version: tuple[int, int, int] | None = None
+    logged_in: bool = False
+
+    @property
+    def ready(self) -> bool:
+        return self.installed and self.version is not None and self.version >= MIN_VERSION and self.logged_in
+
+
+class ClaudeProbe:
+    """Zustand der Claude CLI für die Oberfläche (Setup-Assistent): installiert, Version, angemeldet.
+
+    Abfragen der UI dürfen die CLI nicht bei jedem Aufruf starten: die Anmeldung kommt aus einem `AuthCache` (höchstens ein
+    `claude auth status` je `ttl` Sekunden), die Version wird je Programmdatei (Pfad, Größe, Änderungszeit) nur einmal
+    gelesen, also neu nach einem Update. Eine Sperre verhindert parallele Aufrufe aus mehreren API-Threads."""
+
+    def __init__(self, find: Callable[[], Path | None] = find_claude, run: Callable[..., subprocess.CompletedProcess] = subprocess.run,
+                 ttl: float = 30.0, clock: Callable[[], float] = time.monotonic):
+        self._find, self._run, self._ttl, self._clock = find, run, ttl, clock
+        self._lock = threading.Lock()
+        self._version_key: tuple | None = None
+        self._version: tuple[int, int, int] | None = None
+        self._auth: AuthCache | None = None
+
+    def get(self) -> ClaudeState:
+        with self._lock:
+            exe = self._find()
+            if exe is None:
+                return ClaudeState(False)
+            try:
+                st = Path(exe).stat()
+                key = (str(exe), st.st_size, st.st_mtime_ns)
+            except OSError:
+                return ClaudeState(False)
+            auth = self._auth
+            if key != self._version_key or auth is None:
+                self._version, self._version_key = version(exe, self._run), key
+                auth = self._auth = AuthCache(exe, self._ttl, self._run, self._clock)
+            return ClaudeState(True, self._version, auth.get().logged_in)
 
 
 # Variablen, die Claude nie bekommen darf: fremde Schlüssel/Umleiter (es zählt nur die Anmeldung des Nutzers) und alles von kushim.

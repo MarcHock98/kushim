@@ -16,6 +16,7 @@ from typing import Any, Callable, Protocol
 class TriggerEvent:
     source: str          # "wake" | "hotkey"
     score: float = 1.0
+    name: str = ""       # erkanntes Wake Word (nur der Name, für den Wake-Word-Test der Oberfläche), "" = unbekannt
 
 
 class _Model(Protocol):
@@ -60,7 +61,8 @@ class WakeWordDetector:
         if self._streak >= self.hits:
             self._streak = 0
             self._quiet_until = now + self.cooldown
-            return TriggerEvent("wake", float(best))
+            name = max(scores, key=lambda k: scores[k]) if scores else ""
+            return TriggerEvent("wake", float(best), str(name))
         return None
 
 
@@ -115,7 +117,7 @@ class KwsDetector:
         now = self._clock()
         if hit and now >= self._quiet_until:
             self._quiet_until = now + self.cooldown
-            return TriggerEvent("wake", 1.0)
+            return TriggerEvent("wake", 1.0, str(hit).replace("_", " ").strip())     # Ergebnis ist der @Name der Zeile
         return None
 
 

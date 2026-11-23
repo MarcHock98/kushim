@@ -11,7 +11,7 @@ import os
 from datetime import date
 from pathlib import Path
 
-STEPS = ("system", "audio_voice", "wake_words", "safety")
+STEPS = ("system", "claude", "audio_voice", "wake_words", "folder", "safety")    # Reihenfolge des Assistenten (E3)
 VALUES = ("open", "done", "skipped")
 FILE = Path("run") / "setup-state.json"
 

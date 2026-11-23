@@ -51,7 +51,8 @@ def test_unknown_steps_in_file_are_ignored(tmp_path):
 
 def test_fresh_install_is_a_first_start(tmp_path):
     s = steps(tmp_path)
-    assert [x.status for x in s.values()] == ["open"] * 4
+    assert [x.status for x in s.values()] == ["open"] * len(state.STEPS)
+    assert list(s) == ["system", "claude", "audio_voice", "wake_words", "folder", "safety"]
     assert status.first_start(list(s.values()))
     assert "Kein Vault" in s["system"].detail
 
@@ -85,7 +86,7 @@ def test_skipping_everything_ends_first_start_and_explains_limits(tmp_path):
     s = list(steps(tmp_path).values())
     assert not status.first_start(s)
     notes = status.restricted_notes(s)
-    assert len(notes) == 4 and any("Standardgeräte" in n for n in notes)
+    assert len(notes) == len(state.STEPS) and any("Standardgeräte" in n for n in notes)
     assert all("Sicherheitsregel" not in n or "bleiben" in n or "gelten" in n for n in notes)
 
 
@@ -127,7 +128,7 @@ def test_api_validates_steps_and_forbids_faking_fact_steps(api):
     for bad in ("", "../x", None, 3, ["system"]):
         assert api("setup.skip", step=bad) == {"ok": False, "error": "bad_step"}
     assert api("setup.skip") == {"ok": False, "error": "bad_step"}
-    for fact_step in ("system",):                                      # nicht per API "erledigt" behaupten
+    for fact_step in ("system", "claude", "folder"):                   # nicht per API "erledigt" behaupten
         assert api("setup.done", step=fact_step) == {"ok": False, "error": "not_allowed"}
 
 
