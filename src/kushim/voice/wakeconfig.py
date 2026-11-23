@@ -25,7 +25,9 @@ MAX_WORDS = 12
 _KWS_NAME = re.compile(r"^[a-zäöüß]+( [a-zäöüß]+){0,3}$")
 
 DEFAULT_THRESHOLD = {"kws": 0.15, "openwakeword": 0.6}
-_SAVE_LOCK = threading.Lock()
+# Wiederbetretbar: die API hält sie über Lesen, Sicherungskopie und Speichern hinweg (voice_api), `save` nimmt sie erneut.
+SAVE_LOCK = threading.RLock()
+_SAVE_LOCK = SAVE_LOCK
 
 
 @dataclass(frozen=True)
@@ -164,7 +166,8 @@ HEADER = """# Zentrale Wake-Word-Konfiguration (wird auch von Sprachbefehlen ge�
 # engine = "kws":          beliebiges Wort ohne Training (Buchstaben/Leerzeichen). threshold: kleiner = empfindlicher.
 # engine = "openwakeword": vortrainiert (alexa, hey_mycroft, hey_jarvis, hey_rhasspy, timer, weather)
 #                          oder eigene .onnx-Datei aus models/wakewords/. threshold: Score 0..1, höher = strenger.
-# Änderungen gelten ab dem nächsten Start von `kushim talk`.
+# Änderungen gelten ab dem nächsten Start von `kushim talk`. Ausnahme: die Mikrofon-Schwellen (speech_level, barge_in_level,
+# barge_in_ms, end_silence_seconds) gelten sofort, wenn sie über die Oberfläche gesetzt werden, solange kushim talk läuft.
 """
 
 

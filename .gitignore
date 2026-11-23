@@ -11,6 +11,11 @@ models/
 run/
 voice-data/
 wakewords.toml
+# Sicherungskopien und Temp-Dateien beim Speichern (voice.tuning.save, wakeconfig.save)
+wakewords.toml.bak*
+wakewords.toml.orig.bak*
+wakewords.toml.*.tmp
+wakewords.tmp
 .claude/worktrees/
 graphify-out/
 

@@ -305,6 +305,28 @@ def test_kill_fixture_at_the_strictest_bounds_still_triggers():
     assert len(c.audio()) >= 7 * FRAME
 
 
+def test_kill_fixture_with_echo_guard_while_speaking_at_the_strictest_bounds():
+    """Prüfer-Fund M: mit Echo-Schutz, während kushim spricht, an der strengsten Grenze (1500 über 400 ms) muss ein normal laut
+    gesprochener Notaus (RMS 2000) auslösen. Die erhöhte Schwelle ist auf ECHO_CAP (1500) gedeckelt."""
+    from kushim.voice import bargein
+    assert bargein.ECHO_CAP == BOUNDS["barge_in_level"][1] == 1500.0
+    t = LiveTuning(FILE)
+    t.set(barge_in_level=1500, barge_in_ms=400)
+    for ignore_ms in (0, 400):
+        b = BargeIn(echo_guard=True, echo_factor=2.0, echo_ignore_ms=ignore_ms, tuning=t)
+        b.reset()
+        pre = round(ignore_ms / 80)                               # Sperrzeit am Anfang der ersten Wiedergabe der Runde
+        frames = [SILENCE] * pre + tone(2000, 7)
+        fired = [b.feed(f, speaking=True) for f in frames]
+        assert any(fired), ignore_ms
+        assert b.threshold(speaking=True) == 1500.0
+    for factor in (2.0, 10.0):                                    # auch ein großer Echo-Faktor bleibt gedeckelt
+        b = BargeIn(level=250, echo_guard=True, echo_factor=factor, echo_ignore_ms=0)
+        assert b.threshold(speaking=True) == min(250 * factor, 1500.0)
+    high = BargeIn(level=5000, echo_guard=True, echo_factor=2.0)  # Dateiwert über der Deckelung: nie UNTER die normale Schwelle
+    assert high.threshold(speaking=True) == 5000.0 == high.threshold(speaking=False)
+
+
 def test_kill_fixture_survives_the_strictest_voice_step():
     """Auch „weniger empfindlich“ bis Stufe -2 (aus den Standardwerten) lässt den gesprochenen Notaus durch."""
     t = LiveTuning(FILE)
@@ -333,9 +355,11 @@ PCM = np.zeros(16000, dtype=np.int16)
 
 MORE = ["Mikrofon empfindlicher", "Mach das Mikrofon empfindlicher", "Mikrofon empfindlicher bitte", "Pegel empfindlicher",
         "Mikro etwas empfindlicher.", "Empfindlicher bitte", "empfindlicher", "Stell das Mikrofon empfindlicher",
-        "Mikrofon sensibler"]
+        "Mikrofon sensibler", "Das Mikrofon ist zu unempfindlich", "Mikrofon zu unempfindlich"]
 LESS = ["Mikrofon weniger empfindlich", "Mikrofon unempfindlicher", "Mikrofon nicht so empfindlich", "Pegel weniger empfindlich",
-        "Weniger empfindlich bitte", "Mach das Mikrofon unempfindlicher", "Empfindlichkeit weniger"]
+        "Weniger empfindlich bitte", "Mach das Mikrofon unempfindlicher", "Empfindlichkeit weniger",
+        "Das Mikrofon ist zu empfindlich", "Mikrofon nicht mehr so empfindlich", "Mikrofon zu empfindlich", "Zu empfindlich",
+        "Der Pegel ist zu empfindlich", "Das Mikrofon nicht mehr so empfindlich"]
 NORMAL = ["Mikrofon normal", "Mikrofon zurücksetzen", "Pegel zurücksetzen", "Empfindlichkeit normal", "Mikrofon zurück auf normal",
           "Mikrofon auf Standard"]
 NEVER = ["mach lauter", "Mach leiser", "Mikrofon lauter", "Mikrofon leiser", "Pegel von Claude", "Claude, Mikrofon empfindlicher",
@@ -343,7 +367,13 @@ NEVER = ["mach lauter", "Mach leiser", "Mikrofon lauter", "Mikrofon leiser", "Pe
          "Das Mikrofon ist kaputt", "Mikrofon nicht zurücksetzen", "Mikrofon nicht empfindlicher", "zurücksetzen", "normal",
          "Kannst du bitte das Mikrofon etwas empfindlicher machen", "Mikrofon empfindlicher oder weniger empfindlich",
          "Mikrofon empfindlicher und normal", "Ist das Mikrofon normal?", "Pegel", "Erklär mir den Pegel des Rheins",
-         "Wie funktioniert ein Mikrofon", ""]
+         "Wie funktioniert ein Mikrofon", "",
+         # Feststellungen und Fragen ohne Fragezeichen (Prüfer-Fund): kein Befehl
+         "Das Mikrofon ist normal", "Der Pegel ist normal", "Mikrofon funktioniert normal",
+         "Ist das Mikrofon jetzt empfindlicher", "Das Mikrofon war früher empfindlicher", "Mikrofon ist empfindlicher geworden",
+         "Ist das Mikrofon zu empfindlich", "Das Mikrofon war zu empfindlich", "Wird das Mikrofon empfindlicher",
+         "Das Mikrofon wird empfindlicher", "Die Mikrofone sind normal", "Mikrofon weniger unempfindlich",
+         "Du bist zu empfindlich"]
 
 
 @pytest.mark.parametrize("text", MORE)
@@ -432,7 +462,7 @@ def test_pipeline_kill_phrase_wins_over_tuning(tmp_path):
 
 def test_pipeline_non_tuning_sentences_go_on_normally(tmp_path):
     t = LiveTuning(FILE)
-    for text in ("mach lauter", "Pegel von Claude"):
+    for text in ("mach lauter", "Pegel von Claude", "Das Mikrofon ist normal", "Ist das Mikrofon jetzt empfindlicher"):
         p, played, called, _, _ = build(tmp_path, text, t)
         r = p.handle(PCM)
         assert r.outcome == "spoken" and called and t.version == 0, text
@@ -589,8 +619,11 @@ def test_tuning_save_writes_with_backup_and_audit_without_values(tmp_path):
     t.step_by(+1)
     api("voice.tuning.set", values={"end_silence_seconds": 2.5, "barge_in_ms": 320}, confirm=True)
     r = api("voice.tuning.save", confirm=True)
-    assert r["ok"] and r["backup"] is True and set(r) == KEYS_GET | {"backup"}
+    assert r["ok"] and r["backup"] is True and r["live_changed"] is False
+    assert set(r) == KEYS_GET | {"backup", "saved_values", "live_changed"}
+    assert r["saved_values"] == {"speech_level": 142.9, "barge_in_level": 178.6, "barge_in_ms": 320, "end_silence_seconds": 2.5}
     assert (tmp_path / "wakewords.toml.bak").read_text(encoding="utf-8") == original      # Kopie VOR dem Schreiben
+    assert (tmp_path / "wakewords.toml.orig.bak").read_text(encoding="utf-8") == original
     s = wakeconfig.load(tmp_path).settings
     assert (s.speech_level, s.barge_in_level, s.barge_in_ms, s.end_silence_seconds) == (142.9, 178.6, 320, 2.5)
     assert s.cooldown_seconds == 3.0                              # alles andere bleibt
@@ -602,12 +635,30 @@ def test_tuning_save_writes_with_backup_and_audit_without_values(tmp_path):
     assert t.values.speech_level == 142.9                         # reset geht jetzt auf die gespeicherten Werte
 
 
+def test_original_backup_is_written_once_and_never_overwritten(tmp_path):
+    original = wakeconfig.dumps(wakeconfig.WakeConfig(wakeconfig.Settings(speech_level=210.0)))
+    (tmp_path / "wakewords.toml").write_text(original, encoding="utf-8")
+    t = LiveTuning.from_settings(wakeconfig.load(tmp_path).settings)
+    api = make_api(tmp_path, t)
+    t.set(speech_level=300)
+    assert api("voice.tuning.save", confirm=True)["ok"]
+    first = (tmp_path / "wakewords.toml").read_text(encoding="utf-8")
+    t.set(speech_level=400)
+    assert api("voice.tuning.save", confirm=True)["ok"]
+    assert (tmp_path / "wakewords.toml.orig.bak").read_text(encoding="utf-8") == original      # bleibt die erste Fassung
+    assert (tmp_path / "wakewords.toml.bak").read_text(encoding="utf-8") == first              # jeweils die letzte
+    assert api("voice.level_apply", speech_level=250, barge_in_level=300, confirm=True)["ok"]  # auch level_apply sichert
+    assert wakeconfig.load(tmp_path).settings.speech_level == 250.0
+    assert "speech_level = 400.0" in (tmp_path / "wakewords.toml.bak").read_text(encoding="utf-8")
+    assert (tmp_path / "wakewords.toml.orig.bak").read_text(encoding="utf-8") == original
+
+
 def test_tuning_save_without_own_file_needs_no_backup_and_broken_file_is_refused(tmp_path):
     t = LiveTuning(FILE)
     api = make_api(tmp_path, t)
     r = api("voice.tuning.save", confirm=True)
     assert r["ok"] and r["backup"] is False and (tmp_path / "wakewords.toml").is_file()
-    assert not (tmp_path / "wakewords.toml.bak").exists()
+    assert not (tmp_path / "wakewords.toml.bak").exists() and not (tmp_path / "wakewords.toml.orig.bak").exists()
     (tmp_path / "wakewords.toml").write_text("[settings\n", encoding="utf-8")
     assert api("voice.tuning.save", confirm=True) == {"ok": False, "error": "broken_file"}
     assert (tmp_path / "wakewords.toml").read_text(encoding="utf-8") == "[settings\n"
@@ -624,19 +675,114 @@ def test_tuning_save_audit_error_does_not_undo(tmp_path):
     assert wakeconfig.load(tmp_path).settings.speech_level == 333.0
 
 
+def test_tuning_save_keeps_a_newer_live_change(tmp_path, monkeypatch):
+    """Rennen: ändert sich live etwas, während gespeichert wird, gilt der neuere Live-Stand; die Antwort meldet es."""
+    t = LiveTuning(FILE)
+    api = make_api(tmp_path, t)
+    t.set(speech_level=300)
+    real_save = wakeconfig.save
+
+    def save_and_change(root, cfg):
+        real_save(root, cfg)
+        t.step_by(+1, source="voice")                             # z. B. Sprachbefehl genau jetzt
+    monkeypatch.setattr(wakeconfig, "save", save_and_change)
+    r = api("voice.tuning.save", confirm=True)
+    assert r["ok"] and r["live_changed"] is True and r["saved_values"]["speech_level"] == 300.0
+    assert wakeconfig.load(tmp_path).settings.speech_level == 300.0      # Datei hat den gelesenen Stand
+    assert r["step"] == 1 and r["values"]["speech_level"] == pytest.approx(142.9)   # live gilt der neuere Stand
+    assert r["file_values"] == FILE.as_dict()                     # nicht übernommen
+
+
+def test_tuning_save_reads_values_under_the_save_lock(tmp_path):
+    t = LiveTuning(FILE)
+    api = make_api(tmp_path, t)
+    out = {}
+    with wakeconfig.SAVE_LOCK:                                    # ein anderes Speichern läuft gerade
+        th = threading.Thread(target=lambda: out.setdefault("r", api("voice.tuning.save", confirm=True)))
+        th.start()
+        th.join(0.3)
+        assert th.is_alive() and "r" not in out                   # wartet auf die Sperre
+        t.set(speech_level=444)                                   # Änderung vor dem Lesen: wird gespeichert
+    th.join(5)
+    assert out["r"]["ok"] and out["r"]["saved_values"]["speech_level"] == 444.0 and out["r"]["live_changed"] is False
+    assert wakeconfig.load(tmp_path).settings.speech_level == 444.0
+
+
 def test_level_apply_sets_live_when_talk_runs(tmp_path):
     t = LiveTuning(FILE)
     api = make_api(tmp_path, t)
     t.step_by(+1)
     r = api("voice.level_apply", speech_level=320, barge_in_level=450, confirm=True)
-    assert r == {"ok": True, "speech_level": 320.0, "barge_in_level": 450.0, "restart_needed": False}
+    assert r == {"ok": True, "speech_level": 320.0, "barge_in_level": 450.0, "restart_needed": False,
+                 "live_clamped": False, "live_changed": False}
     assert (t.values.speech_level, t.values.barge_in_level) == (320.0, 450.0)
     assert t.snapshot()["file_values"]["speech_level"] == 320.0 and t.snapshot()["step"] == 0
-    wide = api("voice.level_apply", speech_level=2000, barge_in_level=5000, confirm=True)     # Dateigrenzen, nicht Live
-    assert wide["restart_needed"] is False and t.values.barge_in_level == 5000.0
     (tmp_path / "x").mkdir()
     off = make_api(tmp_path / "x", None)
-    assert off("voice.level_apply", speech_level=300, barge_in_level=400, confirm=True)["restart_needed"] is True
+    assert off("voice.level_apply", speech_level=300, barge_in_level=400, confirm=True) == {
+        "ok": True, "speech_level": 300.0, "barge_in_level": 400.0, "restart_needed": True, "live_clamped": False,
+        "live_changed": False}
+
+
+def test_level_apply_live_is_clamped_so_the_kill_word_stays_reachable(tmp_path):
+    t = LiveTuning(FILE)
+    api = make_api(tmp_path, t)
+    r = api("voice.level_apply", speech_level=2000, barge_in_level=5000, confirm=True)      # erlaubt in der Datei
+    assert r["ok"] and r["restart_needed"] is False and r["live_clamped"] is True and r["live_changed"] is False
+    s = wakeconfig.load(tmp_path).settings
+    assert (s.speech_level, s.barge_in_level) == (2000.0, 5000.0)                           # Datei: unverändert
+    assert (t.values.speech_level, t.values.barge_in_level) == (600.0, 1500.0)              # live: begrenzt
+    t.step_by(-1)
+    t.reset()
+    assert (t.values.speech_level, t.values.barge_in_level) == (600.0, 1500.0)              # auch nach reset
+    t.set(barge_in_ms=400)
+    b = BargeIn(tuning=t)
+    assert any(b.feed(f) for f in tone(2000, 7))                                            # Notaus kommt durch
+    low = api("voice.level_apply", speech_level=60, barge_in_level=120, confirm=True)
+    assert low["live_clamped"] is True and (t.values.speech_level, t.values.barge_in_level) == (80.0, 150.0)
+
+
+def test_level_apply_keeps_a_newer_live_change(tmp_path, monkeypatch):
+    t = LiveTuning(FILE)
+    api = make_api(tmp_path, t)
+    real_save = wakeconfig.save
+
+    def save_and_change(root, cfg):
+        real_save(root, cfg)
+        t.set(source="ui", end_silence_seconds=2.0)
+    monkeypatch.setattr(wakeconfig, "save", save_and_change)
+    r = api("voice.level_apply", speech_level=320, barge_in_level=450, confirm=True)
+    assert r["ok"] and r["live_changed"] is True and r["restart_needed"] is True and r["live_clamped"] is False
+    assert (t.values.speech_level, t.values.end_silence_seconds) == (200.0, 2.0)
+    assert wakeconfig.load(tmp_path).settings.speech_level == 320.0
+
+
+def test_huge_integers_are_bad_requests(tmp_path):
+    t = LiveTuning(FILE)
+    api = make_api(tmp_path, t)
+    huge = 10 ** 400
+    for vals in ({"speech_level": huge}, {"barge_in_ms": huge}, {"end_silence_seconds": -huge}):
+        assert api("voice.tuning.set", values=vals, confirm=True) == {"ok": False, "error": "bad_request"}, vals
+    assert api("voice.level_apply", speech_level=huge, barge_in_level=400, confirm=True) == {"ok": False, "error": "bad_request"}
+    assert api("voice.level_apply", speech_level=300, barge_in_level=huge, confirm=True) == {"ok": False, "error": "bad_request"}
+    with pytest.raises(ValueError):
+        t.set(speech_level=huge)
+    with pytest.raises(ValueError):
+        t.adopt_file(speech_level=huge)
+    t.observe(huge)
+    assert t.values == FILE and t.version == 0 and t.levels() == (0.0, 0.0)
+    assert not (tmp_path / "wakewords.toml").exists()
+
+
+def test_gitignore_covers_backups_and_temp_files():
+    from pathlib import Path
+    lines = (Path(__file__).resolve().parents[1] / ".gitignore").read_text(encoding="utf-8").splitlines()
+    for pattern in ("wakewords.toml", "wakewords.toml.bak*", "wakewords.toml.orig.bak*", "wakewords.toml.*.tmp", "wakewords.tmp"):
+        assert pattern in lines, pattern
+
+
+def test_wakewords_header_says_thresholds_apply_at_once():
+    assert "gelten sofort" in wakeconfig.HEADER and "speech_level" in wakeconfig.HEADER
 
 
 def test_tuning_types_need_the_token(tmp_path):

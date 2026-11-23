@@ -60,17 +60,24 @@ _TUNING_TOPIC = ("mikro", "pegel", "empfindlich", "unempfindlich")       # Worta
 _TUNING_NOUN = ("mikro", "pegel", "empfindlichkeit")                    # ohne eines davon nur die kurzen Formen unten
 _TUNING_MORE = {"empfindlicher", "sensibler"}
 _TUNING_LESS = {"unempfindlicher", "unempfindlich", "unsensibler"}
-_TUNING_SENS = ("empfindlich", "sensib")
+_TUNING_SENS = ("empfindlich", "sensib", "unempfindlich", "unsensib")
 _TUNING_RESET = {"normal", "zurück", "zurücksetzen", "zurückstellen", "standard", "reset"}
 _TUNING_VOLUME = {"laut", "lauter", "leise", "leiser", "lautstärke"}    # Lautstärke der Stimme ist etwas anderes
-_TUNING_FILLER = {"bitte", "etwas", "noch", "ein", "bisschen", "wenig", "mach", "stell", "weniger", "nicht", "so"}
+# Feststellungen und Fragen ("Das Mikrofon ist normal", "Ist das Mikrofon empfindlicher") sind kein Befehl. Einzige Ausnahme:
+# "(Das Mikrofon ist) zu empfindlich" ist ein klarer Wunsch.
+_TUNING_STATE = {"ist", "war", "sind", "waren", "wird", "werden", "wurde", "wurden", "geworden", "funktioniert",
+                 "funktionieren", "bin", "bist", "seid"}
+_TUNING_COPULA = {"ist", "sind"}
+_TUNING_FILLER = {"bitte", "etwas", "noch", "ein", "bisschen", "wenig", "mach", "stell", "weniger", "nicht", "so", "mehr", "zu"}
 _STEP_WORDS = {-2: "minus zwei", -1: "minus eins", 0: "null", 1: "plus eins", 2: "plus zwei"}
 
 
 def is_tuning_phrase(text: str) -> int | None:
     """"Mikrofon empfindlicher" (+1), "Mikrofon weniger empfindlich" (-1), "Mikrofon normal" (0), sonst None. Wie
-    `is_shutdown_phrase`: höchstens 6 Wörter, nie wenn es um Claude geht, keine Frage. Nötig ist "Mikrofon", "Pegel" oder
-    "empfindlich" zusammen mit genau EINER Richtung; "lauter"/"leiser" zählen nicht (das wäre die Lautstärke der Stimme).
+    `is_shutdown_phrase`: höchstens 6 Wörter, nie wenn es um Claude geht. Nötig ist "Mikrofon", "Pegel" oder "empfindlich"
+    zusammen mit genau EINER Richtung; "lauter"/"leiser" zählen nicht (das wäre die Lautstärke der Stimme).
+    Keine Fragen und keine Feststellungen ("Das Mikrofon ist normal", "Ist das Mikrofon jetzt empfindlicher", "Mikrofon ist
+    empfindlicher geworden"); nur "(Das Mikrofon ist) zu empfindlich" (-1) bzw. "zu unempfindlich" (+1) gilt als Wunsch.
     Ohne "Mikrofon"/"Pegel"/"Empfindlichkeit" nur kurze Zurufe ("empfindlicher bitte"), damit ein Satz im Gespräch
     ("du bist empfindlicher als ich") nicht auslöst. Im Zweifel None."""
     if text.strip().endswith("?"):
@@ -80,23 +87,42 @@ def is_tuning_phrase(text: str) -> int | None:
         return None
     if set(toks) & _TUNING_VOLUME or not any(t.startswith(_TUNING_TOPIC) for t in toks):
         return None
-    near = lambda i, w: (i > 0 and toks[i - 1] == w) or (i + 1 < len(toks) and toks[i + 1] == w)
-    less_at = set()
+    if toks[0] in _TUNING_STATE:                                # Frage-Inversion: "Ist das Mikrofon ...", "Wird der Pegel ..."
+        return None
+
+    def before(i: int, *words: str) -> bool:
+        return i >= len(words) and toks[i - len(words):i] == list(words)
+
+    less_at: set[int] = set()
+    more_at: set[int] = set()
+    zu = nicht_ok = False
     for i, t in enumerate(toks):
-        if t in _TUNING_LESS:
+        if not t.startswith(_TUNING_SENS):
+            continue
+        un = t.startswith("un")
+        nicht_so = before(i, "nicht", "so") or before(i, "nicht", "mehr", "so")
+        if before(i, "zu"):                                     # "zu empfindlich" -> weniger, "zu unempfindlich" -> mehr
+            (more_at if un else less_at).add(i)
+            zu = True
+        elif nicht_so or before(i, "weniger") or (i + 1 < len(toks) and toks[i + 1] == "weniger"):
+            if un:                                              # "weniger unempfindlich": unklar
+                return None
             less_at.add(i)
-        elif t.startswith(_TUNING_SENS) and (near(i, "weniger") or toks[max(0, i - 2):i] == ["nicht", "so"]):
-            less_at.add(i)                                     # "weniger empfindlich", "Empfindlichkeit weniger", "nicht so empfindlich"
-    if "nicht" in toks and not any(toks[max(0, i - 2):i] == ["nicht", "so"] for i in less_at):
-        return None                                            # "Mikrofon nicht zurücksetzen", "nicht empfindlicher": unklar
-    less = bool(less_at)
-    more = any(t in _TUNING_MORE and i not in less_at for i, t in enumerate(toks))
+            nicht_ok = nicht_ok or nicht_so
+        elif t in _TUNING_LESS:
+            less_at.add(i)
+        elif t in _TUNING_MORE:
+            more_at.add(i)
+    if "nicht" in toks and not nicht_ok:                        # "Mikrofon nicht zurücksetzen", "nicht empfindlicher": unklar
+        return None
+    state = set(toks) & _TUNING_STATE
+    if state and (not zu or state - _TUNING_COPULA):            # Feststellung: nur "ist/sind zu empfindlich" zählt
+        return None
     reset = bool(set(toks) & _TUNING_RESET)
-    found = [d for d, on in ((1, more), (-1, less), (0, reset)) if on]
+    found = [d for d, on in ((1, bool(more_at)), (-1, bool(less_at)), (0, reset)) if on]
     if len(found) != 1:
         return None
-    noun = any(t.startswith(_TUNING_NOUN) for t in toks)
-    if noun:
+    if any(t.startswith(_TUNING_NOUN) for t in toks):
         return found[0]
     if found[0] == 0:                                           # "zurücksetzen" allein ist kein Mikrofon-Befehl
         return None
