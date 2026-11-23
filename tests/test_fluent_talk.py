@@ -180,48 +180,91 @@ def frames_until_fire(b, frames, speaking):
     return None
 
 
-def test_own_playback_start_is_ignored_and_echo_needs_twice_the_level():
+NOTAUS_FRAMES = 7                                             # ein klar gesprochenes „Notaus“: 560 ms
+
+
+def defaults_barge():
+    from kushim.voice import wakeconfig as wc
+    s = wc.Settings()
+    return BargeIn(level=s.barge_in_level, min_ms=s.barge_in_ms, echo_guard=s.echo_schutz, echo_factor=s.echo_factor,
+                   echo_ignore_ms=s.echo_ignore_ms)
+
+
+def test_defaults_a_spoken_notaus_during_playback_always_interrupts():
+    """Safety-Audit 2026-11-23: Mit den Standardwerten darf kein gesprochener Notaus verschluckt werden."""
+    from kushim.voice import wakeconfig as wc
+    s = wc.Settings()
+    assert s.barge_in_ms == 240 and s.echo_schutz is False                     # empfindlich, ohne Echo-Schutz
+    for lvl in (s.barge_in_level * 1.6, 400, 1500, 4000):
+        for before in range(0, 12):                                            # mitten im Satz, am Satzanfang, gleich zu Beginn
+            b = defaults_barge()
+            b.reset()
+            frames = [QUIET] * before + [level(lvl)] * NOTAUS_FRAMES
+            speaking = [True] * len(frames)
+            assert frames_until_fire(b, frames, speaking) is not None, (lvl, before)
+    # am Anfang eines neuen Satzes (kurze Pause davor) und während des Füllworts „Moment.“ (etwa 640 ms)
+    b = defaults_barge()
+    speaking = [True] * 4 + [False] * 2 + [True] * NOTAUS_FRAMES
+    assert frames_until_fire(b, [QUIET] * 6 + [level(1500)] * NOTAUS_FRAMES, speaking) is not None
+    b = defaults_barge()
+    assert frames_until_fire(b, [level(400)] * 8, [True] * 8) is not None
+
+
+def test_echo_guard_is_opt_in_and_still_lets_a_loud_notaus_through():
     from kushim.voice import bargein
-    # Pegel wie das eigene Echo über Lautsprecher (knapp über barge_in_level 250): ohne Wiedergabe reicht das
+    on = lambda: BargeIn(level=250, min_ms=240, echo_guard=True, echo_factor=2.0, echo_ignore_ms=400)
+    ignore = round(400 / 80)
+    # Echo über Lautsprecher knapp über barge_in_level: mit Echo-Schutz still, ohne würde es unterbrechen
     echo = [level(400)] * 20
-    assert frames_until_fire(BargeIn(level=250, min_ms=400), echo, False) == 4               # 5 Frames = 400 ms
-    # während kushim spricht: die ersten 400 ms zählen nie, danach braucht es das Doppelte (500) -> 400 bleibt still
-    assert frames_until_fire(BargeIn(level=250, min_ms=400), echo, True) is None
-    # der Nutzer spricht deutlich lauter als das Echo: Unterbrechen klappt trotzdem, nur nach der Sperrzeit
-    user = [level(1500)] * 20
-    b = BargeIn(level=250, min_ms=400)
-    ignore = round(bargein.ECHO_IGNORE_MS / 80)
-    assert frames_until_fire(b, user, True) == ignore + 4
+    assert frames_until_fire(on(), echo, True) is None
+    assert frames_until_fire(BargeIn(level=250, min_ms=240), echo, True) == 2
+    # ein Notaus über echo_factor × barge_in_level greift überall nach der einen Sperrzeit am Anfang der Runde
+    for before in range(ignore, ignore + 12):
+        b = on()
+        frames = [QUIET] * before + [level(600)] * NOTAUS_FRAMES
+        assert frames_until_fire(b, frames, [True] * len(frames)) is not None, before
     assert bargein.ECHO_FACTOR == 2.0 and bargein.ECHO_IGNORE_MS == 400
 
 
-def test_echo_tail_after_playback_still_needs_the_higher_level():
-    from kushim.voice import bargein
-    tail = round(bargein.ECHO_TAIL_MS / 80)
-    b = BargeIn(level=250, min_ms=400)
+def test_echo_guard_ignore_window_does_not_restart_at_every_sentence():
+    b = BargeIn(level=250, min_ms=240, echo_guard=True, echo_factor=2.0, echo_ignore_ms=400, echo_tail_ms=0)
+    # Satz 1 (8 Frames), Pause (Synthese), Satz 2 beginnt mit einem Notaus: keine neue Sperrzeit, er greift sofort
+    speaking = [True] * 8 + [False] * 2 + [True] * NOTAUS_FRAMES
+    frames = [QUIET] * 10 + [level(600)] * NOTAUS_FRAMES
+    assert frames_until_fire(b, frames, speaking) == 10 + 2
+    b.reset()                                                                  # neue Runde: die Sperrzeit gilt wieder einmal
+    assert frames_until_fire(b, [level(600)] * 8, [True] * 8) == 5 + 2
+
+
+def test_echo_guard_tail_after_playback_still_needs_the_higher_level():
+    b = BargeIn(level=250, min_ms=240, echo_guard=True, echo_tail_ms=320)
     speaking = [True] * 8 + [False] * 20
     frames = [QUIET] * 8 + [level(400)] * 20                 # Nachhall nach dem letzten Satz, etwas über der Schwelle
-    i = frames_until_fire(b, frames, speaking)
-    assert i is not None and i >= 8 + tail + 4                # erst nach dem Nachhall zählt wieder die normale Schwelle
-    b2 = BargeIn(level=250, min_ms=400, echo_tail_ms=0)
-    assert frames_until_fire(b2, frames, speaking) == 8 + 4
+    assert frames_until_fire(b, frames, speaking) == 8 + 4 + 2
+    b2 = BargeIn(level=250, min_ms=240, echo_guard=True, echo_tail_ms=0)
+    assert frames_until_fire(b2, frames, speaking) == 8 + 2
+    assert frames_until_fire(BargeIn(level=250, min_ms=240), frames, speaking) == 8 + 2      # ohne Echo-Schutz: kein Nachlauf
 
 
 def test_short_noise_while_waiting_does_not_interrupt_but_speech_does():
-    b = BargeIn(level=250, min_ms=400)
-    noise = [level(800), level(800), QUIET, QUIET, QUIET, level(800), QUIET, QUIET, QUIET, QUIET] * 3
-    assert frames_until_fire(b, noise, False) is None         # Klopfen, Stuhl, Tastatur: kurze Stöße
+    b = BargeIn(level=250, min_ms=240)
+    noise = [level(800), QUIET, QUIET, level(800), QUIET, QUIET, QUIET] * 3
+    assert frames_until_fire(b, noise, False) is None         # Klopfen, Stuhl, Tastatur: einzelne Stöße
     b.reset()
-    assert frames_until_fire(b, [level(800)] * 6, False) == 4
+    assert frames_until_fire(b, [level(800)] * 6, False) == 2
 
 
-def test_every_new_sentence_restarts_the_onset_block_but_keeps_counting():
-    b = BargeIn(level=250, min_ms=400, echo_ignore_ms=160, echo_tail_ms=0)
-    loud = level(2000)
-    # Satz 1 (spricht), kurze Pause zwischen den Sätzen (Synthese), Satz 2: die Anfänge zählen nicht
-    speaking = [True, True, True, False, True, True, True, True, True, True]
-    fired = frames_until_fire(b, [loud] * len(speaking), speaking)
-    assert fired == 8                                         # 2 gesperrt, 1 zählt, 1 Pause zählt, 2 gesperrt, dann 3 weitere
+def test_echo_settings_roundtrip_and_bounds(tmp_path):
+    from dataclasses import replace
+    import pytest
+    from kushim.voice import wakeconfig as wc
+    cfg = wc.WakeConfig(settings=replace(wc.Settings(), echo_schutz=True, echo_factor=3.0, echo_ignore_ms=200))
+    wc.save(tmp_path, cfg)
+    s = wc.load(tmp_path).settings
+    assert (s.echo_schutz, s.echo_factor, s.echo_ignore_ms) == (True, 3.0, 200)
+    for bad in (replace(wc.Settings(), echo_factor=0.5), replace(wc.Settings(), echo_ignore_ms=5000)):
+        with pytest.raises(ValueError):
+            wc.save(tmp_path, wc.WakeConfig(settings=bad))
 
 
 # --- Pipeline: Unterbrechen und Gesprächsende ----------------------------------------------------
@@ -357,7 +400,7 @@ def test_settings_new_fields_roundtrip_and_bounds(tmp_path):
     wc.save(tmp_path, cfg)
     s = wc.load(tmp_path).settings
     assert (s.speech_level, s.barge_in_level, s.preroll_seconds) == (180.0, 350.0, 1.5)
-    assert wc.Settings().barge_in_level == 250.0 and wc.Settings().speech_level == 200.0 and wc.Settings().barge_in_ms == 400
+    assert wc.Settings().barge_in_level == 250.0 and wc.Settings().speech_level == 200.0 and wc.Settings().barge_in_ms == 240
     for bad in (replace(wc.Settings(), speech_level=10.0), replace(wc.Settings(), preroll_seconds=9.0)):
         with pytest.raises(ValueError):
             wc.save(tmp_path, wc.WakeConfig(settings=bad))

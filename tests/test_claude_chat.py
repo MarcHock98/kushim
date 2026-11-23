@@ -8,6 +8,9 @@ from kushim.channel import bridge as br
 from kushim.channel import server as ch
 from kushim.tasks import TaskRegistry
 from kushim.voice import claude_chat as cc
+from kushim.voice import earcon
+
+M = earcon.MARK                      # Signalton vor kushims eigenen Ansagen
 
 MSGS = [{"role": "system", "content": "egal"}, {"role": "user", "content": "alt"},
         {"role": "assistant", "content": "x"}, {"role": "user", "content": "Mach die Tests grün"}]
@@ -54,10 +57,10 @@ def test_sends_only_the_last_user_text_acknowledges_and_speaks_the_reply():
 
 
 def test_honest_messages_when_claude_is_missing_killed_or_broken():
-    for status, msg in (("not_running", cc.NOT_RUNNING), ("kill", cc.KILLED), ("error", cc.FAILED)):
+    for status, msg in (("not_running", cc.NOT_RUNNING), ("kill", earcon.mark(cc.KILLED)), ("error", cc.FAILED)):
         b = FakeBridge(send=status)
         assert list(cc.ClaudeChat(b, TaskRegistry())(MSGS)) == [msg] and b.fetches == []
-    assert list(cc.ClaudeChat(FakeBridge(replies=[("kill", [])]), TaskRegistry())(MSGS)) == [cc.KILLED]
+    assert list(cc.ClaudeChat(FakeBridge(replies=[("kill", [])]), TaskRegistry())(MSGS)) == [earcon.mark(cc.KILLED)]   # Systemansage: mit Signalton
     assert list(cc.ClaudeChat(FakeBridge(replies=[("not_running", [])]), TaskRegistry())(MSGS)) == [cc.LOST]
 
 
@@ -125,7 +128,7 @@ def test_a_permission_request_ends_the_turn_so_the_loop_can_listen_and_the_reply
         return replies.pop(0)
     b.fetch = fetch
     chat = cc.ClaudeChat(b, TaskRegistry(), clock=clock)
-    assert list(chat(MSGS)) == ["Ich möchte den Befehl npm test ausführen. Bitte im Terminal bestätigen."]
+    assert list(chat(MSGS)) == [M + "Ich möchte den Befehl npm test ausführen. Bitte im Terminal bestätigen."]
     b.fetch = lambda wait=0.0: ("ok", ["Tests laufen durch."])
     assert chat.announcement() == "Tests laufen durch."                             # die Anfrage wird nicht wiederholt
 
@@ -135,14 +138,14 @@ def test_idle_announcement_reads_new_permission_requests_once():
     b = FakeBridge()
     chat = cc.ClaudeChat(b, TaskRegistry(), clock=clock)
     b.permissions.extend([perm("r1", "ls"), perm("r2", "git status")])
-    assert chat.announcement() == ("Ich möchte den Befehl ls ausführen. Bitte im Terminal bestätigen. "
-                                   "Ich möchte den Befehl git status ausführen. Bitte im Terminal bestätigen.")
+    assert chat.announcement() == (M + "Ich möchte den Befehl ls ausführen. Bitte im Terminal bestätigen. "
+                                   + M + "Ich möchte den Befehl git status ausführen. Bitte im Terminal bestätigen.")
     clock.t += cc.ANNOUNCE_EVERY
     assert chat.announcement() is None                                              # schon angesagt
     clock.t += cc.ANNOUNCE_EVERY
     b.replies = [("ok", ["Fertig."])]
     b.permissions.append(perm("r3", "pwd"))
-    assert chat.announcement() == "Ich möchte den Befehl pwd ausführen. Bitte im Terminal bestätigen. Fertig."
+    assert chat.announcement() == M + "Ich möchte den Befehl pwd ausführen. Bitte im Terminal bestätigen. Fertig."
 
 
 def test_through_the_real_channel_a_permission_request_is_spoken(tmp_path):
@@ -156,7 +159,7 @@ def test_through_the_real_channel_a_permission_request_is_spoken(tmp_path):
         c.permission_request({"request_id": "abcde", "tool_name": "Bash", "description": "Run tests",
                               "input_preview": '{ "command": "npm test", "description": "Run tests" }'})
         chat = cc.ClaudeChat(br.Bridge(tmp_path), TaskRegistry())
-        assert chat.announcement() == "Ich möchte den Befehl npm test ausführen. Bitte im Terminal bestätigen."
+        assert chat.announcement() == M + "Ich möchte den Befehl npm test ausführen. Bitte im Terminal bestätigen."
     finally:
         httpd.shutdown()
 
@@ -208,6 +211,82 @@ def test_a_turn_without_any_sprich_ends_with_a_short_first_person_line_and_a_lat
     clock.t += cc.ANNOUNCE_EVERY
     b.fetch = lambda wait=0.0: ("ok", ["Doch noch: morgen wird es sonnig."])
     assert chat.announcement() == "Doch noch: morgen wird es sonnig."
+
+
+def test_cancel_still_reaches_claude_after_silent_and_late_until_a_result_arrives():
+    """Safety-Audit 2026-11-23: Nach SILENT oder LATE arbeitet Claude vielleicht weiter; "abbrechen" muss es weiter erreichen."""
+    for patience, ending in ((cc.PATIENCE, cc.SILENT), (10, cc.LATE)):
+        clock = Clock()
+        b = FakeBridge()
+        silent_then(clock, b, 10_000)
+        tasks = TaskRegistry()
+        chat = cc.ClaudeChat(b, tasks, patience=patience, clock=clock)
+        assert list(chat(MSGS))[-1] == ending
+        assert tasks.active() == [cc.TASK_NAME] and chat.request_open()            # Runde vorbei, Anfrage noch offen
+        assert tasks.cancel_all() == [cc.TASK_NAME] and b.cancels == 1              # kind="cancel" geht an Claude
+        assert tasks.active() == [] and not chat.request_open()                     # danach ehrlich: nichts läuft mehr
+    assert "abbrechen" in cc.SILENT and "noch einmal" not in cc.SILENT
+
+
+def test_the_open_request_closes_with_the_result_the_late_result_or_the_kill_switch():
+    clock = Clock()
+    b = FakeBridge(replies=[("ok", ["Fertig."])])
+    tasks = TaskRegistry()
+    chat = cc.ClaudeChat(b, tasks, clock=clock)
+    assert list(chat(MSGS)) == ["Fertig."] and tasks.active() == []                 # Ergebnis in der Runde
+    silent_then(clock, b, 10_000)
+    list(chat(MSGS))
+    assert chat.request_open()
+    clock.t += cc.ANNOUNCE_EVERY
+    b.last_final = False
+    b.fetch = lambda wait=0.0: ("ok", ["Ich bin halb durch."])
+    assert chat.announcement() == "Ich bin halb durch." and chat.request_open()      # nur Zwischenstand: bleibt offen
+    clock.t += cc.ANNOUNCE_EVERY
+    b.last_final = True
+    b.fetch = lambda wait=0.0: ("ok", ["Jetzt fertig."])
+    assert chat.announcement() == "Jetzt fertig." and not chat.request_open() and tasks.active() == []
+    silent_then(clock, b, 10_000)
+    list(chat(MSGS))
+    clock.t += cc.ANNOUNCE_EVERY
+    b.fetch = lambda wait=0.0: ("kill", [])
+    chat.announcement()
+    assert not chat.request_open()                                                  # Notaus: nichts mehr offen
+
+
+def test_a_new_request_replaces_the_old_open_one():
+    clock = Clock()
+    b = FakeBridge()
+    tasks = TaskRegistry()
+    chat = cc.ClaudeChat(b, tasks, clock=clock)
+    for _ in range(3):
+        silent_then(clock, b, 10_000)
+        list(chat(MSGS))
+    assert tasks.active() == [cc.TASK_NAME]
+
+
+def test_pipeline_cancel_after_silent_confirms_and_tells_claude(tmp_path):
+    from types import SimpleNamespace
+    import numpy as np
+    from kushim.safety.killswitch import KillSwitch
+    from kushim.voice import pipeline as pl
+    from kushim.voice.dialog import Dialog
+    from kushim.voice.tts import Speaker
+    clock = Clock()
+    b = FakeBridge()
+    silent_then(clock, b, 10_000)
+    tasks = TaskRegistry()
+    heard = {"text": "Recherchiere das bitte gründlich."}
+    played = []
+    kill = KillSwitch(tmp_path, [])
+    stt = SimpleNamespace(transcribe=lambda pcm: SimpleNamespace(text=heard["text"]))
+    p = pl.Pipeline(stt, cc.ClaudeChat(b, tasks, clock=clock), Speaker(SimpleNamespace(synthesize=lambda t: t), played.append),
+                    Dialog(), kill, tasks=tasks)
+    pcm = np.zeros(16000, dtype=np.int16)
+    assert p.handle(pcm).reply.endswith(cc.SILENT)
+    heard["text"] = "Abbrechen."
+    r = p.handle(pcm)
+    assert r.outcome == "cancelled" and r.reply == pl.CANCEL_REPLY and b.cancels == 1      # nicht „Es läuft nichts …“
+    assert p.handle(pcm).reply == pl.NOTHING_REPLY                                          # jetzt stimmt es
 
 
 def test_after_a_zwischenstand_long_work_is_not_cut_off_by_the_silence_guard():

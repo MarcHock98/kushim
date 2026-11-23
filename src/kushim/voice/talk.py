@@ -249,6 +249,8 @@ def build_live(root: Path, out_device: int | None, in_device: int | None = None,
     dialog = Dialog(audio.stop_playback)
     kill = KillSwitch(root, [audio.stop_playback])
     speaker = Speaker(engine, lambda wav: audio.play_wav(wav, out_device), lambda: kill.fired)
+    from .earcon import chime_wav
+    speaker.chime = chime_wav()                 # Signalton vor kushims eigenen Ansagen (Freigabe, Notaus), nie vor `sprich`
     ack_wav = engine.synthesize(ACK_TEXT)
     mic = audio.Mic(in_device)
     tasks = tasks if tasks is not None else TaskRegistry()

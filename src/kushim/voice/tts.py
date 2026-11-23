@@ -8,6 +8,8 @@ from __future__ import annotations
 import re
 from typing import Any, Callable, Iterable, Iterator, Protocol
 
+from .earcon import MARK
+
 
 _SPLIT = re.compile(r"(?<=[.!?…])\s+")
 
@@ -80,13 +82,19 @@ class Speaker:
         # Nur Anzeige und Barge-in: direkt vor und nach jeder echten Wiedergabe (nicht während auf den Satz gewartet wird)
         self.on_play_start: Callable[[], Any] = lambda: None
         self.on_play_end: Callable[[Any], None] = lambda token: None
+        self.chime: Any = None              # Signalton (WAV) vor Sätzen mit earcon.MARK; nur kushims feste Systemansagen
 
     def say(self, sentences: Iterable[str]) -> int:
-        """Spielt Sätze nacheinander; bricht vor jedem Satz ab, wenn `should_stop` (Barge-in/Notaus)."""
+        """Spielt Sätze nacheinander; bricht vor jedem Satz ab, wenn `should_stop` (Barge-in/Notaus). Beginnt ein Satz mit
+        `earcon.MARK`, kommt vorher der Signalton (das Zeichen selbst wird nie gesprochen)."""
         n = 0
         for s in sentences:
             if self.should_stop():
                 break
+            chime = s.startswith(MARK)
+            s = s.replace(MARK, "").strip()
+            if not s:
+                continue
             wav = self.engine.synthesize(s)
             if self.should_stop():          # während der Synthese unterbrochen
                 break
@@ -94,6 +102,10 @@ class Speaker:
             try:
                 if self.should_stop():      # zwischen Synthese und Zustandswechsel unterbrochen: nichts mehr abspielen
                     break
+                if chime and self.chime is not None:
+                    self.play(self.chime)
+                    if self.should_stop():
+                        break
                 self.play(wav)
             finally:
                 self.on_play_end(token)

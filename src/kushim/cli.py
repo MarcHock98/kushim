@@ -112,8 +112,9 @@ def _watch_channel(folder, started: float, done, check=None) -> str:
     except Exception:                                  # noqa: BLE001 (nur ein Hinweis: darf den Start nie stören)
         return "unknown"
     if state == "off" and not done.is_set():
+        from .voice import earcon
         print("\n" + claude_log.TERMINAL_HINT)
-        launch.NOTICES.append(claude_log.SPOKEN_HINT)
+        launch.NOTICES.append(earcon.mark(claude_log.SPOKEN_HINT))     # Systemansage: mit Signalton
     return state
 
 
@@ -564,7 +565,8 @@ def _main(argv: list[str] | None = None) -> int:
             out = lambda r: print(f"Du: {r.heard}\nkushim: {r.reply or '(' + r.outcome + ')'}"
                                   + (" [unterbrochen]" if r.outcome == "interrupted" else "")
                                   + (f"  [{r.detail}]" if r.detail else ""))
-            barge = BargeIn(level=st.barge_in_level, min_ms=st.barge_in_ms) if st.barge_in else None
+            barge = (BargeIn(level=st.barge_in_level, min_ms=st.barge_in_ms, echo_guard=st.echo_schutz,
+                             echo_factor=st.echo_factor, echo_ignore_ms=st.echo_ignore_ms) if st.barge_in else None)
             utter = lambda wait: UtteranceCollector(wait_ms=wait, silence_ms=end_ms, max_ms=max_ms, energy_threshold=st.speech_level)
             from .voice import statefile
             from .voice.transcript import Transcript
@@ -617,7 +619,7 @@ def _main(argv: list[str] | None = None) -> int:
                       "\"das war's\" oder Stille beendet es.")
             if barge is not None:
                 print("Unterbrechen: einfach dazwischensprechen (Kopfhörer empfohlen; mit Lautsprechern kann kushim sich "
-                      "selbst hören: barge_in_level erhöhen oder barge_in = false in wakewords.toml).")
+                      "selbst hören: echo_schutz = true oder barge_in_level erhöhen in wakewords.toml).")
             talklog.write("ready", wake_words=", ".join(w.name for w in wcfg.enabled()),
                           channel=pipeline.chat.bridge.available())
             reason = loop.run()

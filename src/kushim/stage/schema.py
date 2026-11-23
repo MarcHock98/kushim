@@ -824,6 +824,26 @@ BLOCKS: dict[str, Callable[[dict[str, Any], str], dict[str, Any]]] = {
 }
 
 
+# Eine Ansicht darf nie behaupten, eine Freigabe sei erteilt oder der Notaus aufgehoben (Safety-Audit 2026-11-23): Das Fenster
+# zeigt Freigaben nur aus echten Daten (Freigabe-Leiste), nie aus Text von Claude. Gegenstück für `sprich`: safety/imitation.py.
+_SYSTEM_CLAIMS = [re.compile(p, re.I) for p in (
+    r"\bfreigabe\w*\b.{0,40}\b(erteilt|gegeben|erhalten|bestätigt|genehmigt|erfolgt|erlaubt)",
+    r"\b(erteilt|gegeben|erhalten|bestätigt|genehmigt)\b.{0,20}\bfreigabe",
+    r"\bnot[\s-]?aus\b.{0,40}\b(aufgehoben|aus|inaktiv|beendet|zurückgesetzt|aktiv)\b",
+)]
+
+
+def _claims_system(value: Any) -> bool:
+    """Steckt in irgendeinem Text der Ansicht eine angebliche Freigabe- oder Notaus-Meldung?"""
+    if isinstance(value, str):
+        return any(p.search(value) for p in _SYSTEM_CLAIMS)
+    if isinstance(value, dict):
+        return any(_claims_system(v) for v in value.values())
+    if isinstance(value, list):
+        return any(_claims_system(v) for v in value)
+    return False
+
+
 def validate(raw: Any) -> dict[str, Any]:
     """Gibt die geprüfte Ansicht zurück oder wirft ViewError. Eine Ansicht mit `schliessen: true` braucht nur die `id`.
     Letzte Sicherung: Jeder andere Fehler wird zu ViewError("bad_view"), damit keine Eingabe den Channel oder die Bridge beendet."""
@@ -868,6 +888,8 @@ def _validate(raw: Any) -> dict[str, Any]:
         if not isinstance(b, dict) or not isinstance(b.get("typ"), str) or b["typ"] not in BLOCKS:
             raise ViewError(code)
         block = {"typ": b["typ"], **BLOCKS[b["typ"]](b, code)}
+        if _claims_system(block):                      # „Freigabe erteilt“, „Notaus aufgehoben“: nur kushim selbst sagt so etwas
+            raise ViewError(code)
         sims += block["typ"] == "simulation"
         webgl += block["typ"] == "szene3d" or (block["typ"] == "teilchen" and block["form"] in WEBGL_FORMEN)
         if sims > MAX_SIM_PRO_ANSICHT or webgl > MAX_WEBGL_PRO_ANSICHT:                 # Last: der erste Baustein über der Grenze
@@ -877,7 +899,10 @@ def _validate(raw: Any) -> dict[str, Any]:
     for i, b in enumerate(blocks):                         # Quellennummern müssen auf eine genannte Quelle zeigen
         if b["typ"] in ("aussagen", "widerspruch") and any(n not in nrs for a in b["aussagen"] for n in a["quellen"]):
             raise ViewError(f"bad_source_{i + 1}")
-    view = {"id": vid, "art": art, "titel": _text(raw.get("titel"), 120, "bad_title"), "stand": stand,
+    title = _text(raw.get("titel"), 120, "bad_title")
+    if _claims_system(title):
+        raise ViewError("bad_title")
+    view = {"id": vid, "art": art, "titel": title, "stand": stand,
             "bausteine": blocks, "schliessen": False}
     if len(json.dumps(view, ensure_ascii=False).encode("utf-8")) > MAX_JSON:            # ergänzte Standardwerte: die zweite Prüfung muss sie tragen
         raise ViewError("too_large")

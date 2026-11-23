@@ -17,6 +17,7 @@ from typing import Any, Callable, Iterable, Sequence
 from ..safety.killswitch import KillSwitch, is_kill_phrase
 from ..tasks import TaskRegistry, is_cancel_phrase
 from .dialog import Dialog, State
+from .earcon import MARK
 from .stt import SpeechToText
 from .tts import Speaker, chunk_stream, prefetch, split_sentences
 
@@ -192,7 +193,7 @@ class Pipeline:
 
         def sentence_source():
             for s in chunker(self.chat(messages)):
-                sentences.append(s)
+                sentences.append(s.replace(MARK, ""))       # Signalton-Zeichen nur für die Stimme, nie im Verlauf
                 yield s
 
         # Kein reply_ready() hier: Der Zustand bleibt THINKING, bis der erste Satz wirklich abgespielt wird (Speaker-Haken).

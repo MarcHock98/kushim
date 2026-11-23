@@ -228,7 +228,8 @@ def test_channel_watch_warns_once_in_terminal_and_by_voice_only_when_off(tmp_pat
     assert capsys.readouterr().out == "" and cli._notice() is None
     assert cli._watch_channel(tmp_path, 0.0, done, check=lambda d, since: "off") == "off"
     assert claude_log.TERMINAL_HINT in capsys.readouterr().out
-    assert cli._notice() == claude_log.SPOKEN_HINT and cli._notice() is None           # genau einmal per Stimme
+    from kushim.voice import earcon
+    assert cli._notice() == earcon.mark(claude_log.SPOKEN_HINT) and cli._notice() is None   # genau einmal, mit Signalton
     assert "claude" not in claude_log.SPOKEN_HINT.lower() and claude_log.SPOKEN_HINT.startswith("Mein ")
     done.set()                                                                          # kushim endet schon: nichts mehr sagen
     assert cli._watch_channel(tmp_path, 0.0, done, check=lambda d, since: "off") == "off" and cli._notice() is None

@@ -49,9 +49,12 @@ class Settings:
     follow_up_seconds: float = 8.0       # Gespräch: nach einer Antwort so lange ohne Wake Word zuhören (0 = aus)
     barge_in: bool = True                # Unterbrechen: Sprechen stoppt kushim sofort (Kopfhörer empfohlen)
     barge_in_level: float = 250.0        # Mikrofonpegel (0 bis 32767), ab dem es als Unterbrechen zählt; höher = unempfindlicher
-    barge_in_ms: int = 400               # so lange muss der Pegel anhalten (2026-11-23: 240 ließ Geräusche und Echo unterbrechen)
+    barge_in_ms: int = 240               # so lange muss der Pegel anhalten (empfindlich: auch ein gesprochener Notaus kommt so durch)
     speech_level: float = 200.0          # Mikrofonpegel, ab dem es als Sprechen zählt (Beginn und Ende einer Äußerung)
     preroll_seconds: float = 1.0         # so viel Audio VOR dem Wake Word (nur im Speicher) kommt zum Befehl dazu
+    echo_schutz: bool = False            # nur für Lautsprecher: kushim unterbricht sich nicht selbst (siehe voice/bargein.py)
+    echo_factor: float = 2.0             # mit Echo-Schutz: so viel lauter als barge_in_level muss es sein, während kushim spricht
+    echo_ignore_ms: int = 400            # mit Echo-Schutz: so lange zählt am Anfang der ersten Wiedergabe einer Runde nichts
 
 
 @dataclass(frozen=True)
@@ -83,6 +86,8 @@ def validate(cfg: WakeConfig, root: Path) -> None:
         raise ValueError("speech_level muss 50 bis 5000 und preroll_seconds 0 bis 3 sein")
     if not 100 <= s.barge_in_level <= 20000 or not 100 <= s.barge_in_ms <= 2000:
         raise ValueError("barge_in_level muss 100 bis 20000 und barge_in_ms 100 bis 2000 sein")
+    if not 1.0 <= s.echo_factor <= 10.0 or not 0 <= s.echo_ignore_ms <= 2000:
+        raise ValueError("echo_factor muss 1 bis 10 und echo_ignore_ms 0 bis 2000 sein")
     if not cfg.words or len(cfg.words) > MAX_WORDS:
         raise ValueError(f"1 bis {MAX_WORDS} Wake Words erlaubt")
     seen = set()
@@ -122,7 +127,10 @@ def _parse(text: str) -> WakeConfig:
                         float(st.get("barge_in_level", d.barge_in_level)),
                         int(st.get("barge_in_ms", d.barge_in_ms)),
                         float(st.get("speech_level", d.speech_level)),
-                        float(st.get("preroll_seconds", d.preroll_seconds)))
+                        float(st.get("preroll_seconds", d.preroll_seconds)),
+                        bool(st.get("echo_schutz", d.echo_schutz)),
+                        float(st.get("echo_factor", d.echo_factor)),
+                        int(st.get("echo_ignore_ms", d.echo_ignore_ms)))
     words = []
     for e in data.get("wakeword", []):
         engine = str(e.get("engine", "kws"))
@@ -170,7 +178,10 @@ def dumps(cfg: WakeConfig) -> str:
            f"barge_in_level = {cfg.settings.barge_in_level}",
            f"barge_in_ms = {cfg.settings.barge_in_ms}",
            f"speech_level = {cfg.settings.speech_level}",
-           f"preroll_seconds = {cfg.settings.preroll_seconds}", ""]
+           f"preroll_seconds = {cfg.settings.preroll_seconds}",
+           f"echo_schutz = {'true' if cfg.settings.echo_schutz else 'false'}",
+           f"echo_factor = {cfg.settings.echo_factor}",
+           f"echo_ignore_ms = {cfg.settings.echo_ignore_ms}", ""]
     for w in cfg.words:
         out += ["[[wakeword]]", f"name = {json.dumps(w.name, ensure_ascii=False)}",
                 f"engine = {json.dumps(w.engine)}", f"enabled = {'true' if w.enabled else 'false'}"]

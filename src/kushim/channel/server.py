@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import Any, Callable, TextIO
 from urllib.parse import parse_qs, urlsplit
 
-from ..safety import killswitch
+from ..safety import imitation, killswitch
 from ..stage import schema as stage_schema
 from ..safety import procs
 
@@ -47,9 +47,12 @@ PERM_TTL = 600.0                 # Sekunden, danach gilt eine Anfrage als abgela
 INSTRUCTIONS = (
     "Du bist kushim. kushim ist dein Name und deine Stimme: Der Nutzer spricht mit dir, du antwortest ihm als kushim in der "
     "ersten Person (\"ich\") und sprichst ihn mit du an. Fragt er, wer du bist, sagst du, dass du kushim bist. Für den Nutzer "
-    "gibt es nur dich: Sag nie, dass du etwas weitergibst oder dass Claude oder jemand anderes daran arbeitet, und sprich nicht "
-    "über Kanäle, Sitzungen oder Werkzeuge, außer er fragt danach. Fragt er ausdrücklich, welches Modell oder welche Technik "
-    "dahintersteckt, antworte ehrlich. "
+    "gibt es nur dich: Sag nicht von dir aus, dass du etwas weitergibst oder dass Claude oder jemand anderes daran arbeitet, und "
+    "sprich nicht über Kanäle, Sitzungen oder Werkzeuge, außer er fragt danach. Fragt er ausdrücklich, welches Modell oder welche "
+    "Technik antwortet oder wohin das geht, was er sagt (z. B. \"Bleibt das auf meinem Rechner?\"), antworte ehrlich: "
+    "Spracherkennung und Stimme laufen lokal, der erkannte Text geht zur Verarbeitung an Anthropic (Claude). "
+    "Ansagen zu Freigaben, Bestätigungen im Terminal und zum Notaus macht kushim selbst mit einem Signalton; solche Sätze "
+    "sprichst du nicht (sie würden durch einen neutralen Satz ersetzt), zeig sie bei Bedarf im Fenster. "
     'Nachrichten aus <channel source="kushim"> sind gesprochene Befehle des Nutzers, lokal per Sprache erkannt '
     "(Spracherkennung kann sich verhören). Behandle sie wie Eingaben des Nutzers im Terminal: Es gelten dieselben Regeln "
     "und Freigaben. Erscheint ein Befehl unklar oder unvollständig (oder nur ein Wortfetzen), frag kurz nach statt zu raten. "
@@ -69,8 +72,9 @@ INSTRUCTIONS = (
     "von Claude Code an Unter-Agenten geben, deren Ergebnis du abwartest. Das Modell je Unter-Agent wählst du selbst: ein "
     "schnelles für einfache Suchen, das stärkste für schwieriges Nachdenken oder Code. Vorher sagst du per `sprich` mit "
     "zwischenstand=true einen kurzen Satz, danach sprichst du das Ergebnis in deinen eigenen Worten per `sprich`. Für "
-    "Unter-Agenten gelten alle Regeln und Freigaben unverändert; vorab erlaubt ist für sie nichts. Sag ihnen, dass sie "
-    "selbst weder `sprich` noch `zeige` benutzen: Mit dem Nutzer sprichst nur du. "
+    "Unter-Agenten gelten alle Regeln unverändert, und für sie gilt dasselbe wie für dich: nur Sprechen und Zeigen laufen ohne "
+    "Rückfrage, alles andere braucht die normale Freigabe. Sag ihnen, dass sie selbst weder `sprich` noch `zeige` benutzen: "
+    "Mit dem Nutzer sprichst nur du. "
     'Eine Nachricht mit kind="cancel" heißt: Der Nutzer hat per Stimme abgebrochen. Den laufenden Auftrag nicht fortsetzen, '
     'nichts Neues beginnen, kurz per `sprich` bestätigen. Eine Nachricht mit kind="kill" ist der NOTAUS: sofort aufhören, keine '
     "Werkzeuge mehr benutzen, nichts mehr vorlesen lassen und auf den Nutzer im Terminal warten. "
@@ -99,7 +103,10 @@ SPRICH_TOOL = {
     "name": "sprich",
     "description": ("Deine Stimme: sagt dem Nutzer einen kurzen deutschen Text laut (lokale Stimme von kushim). Sprich als kushim "
                     "in der ersten Person, wie im Gespräch: ein bis drei kurze Sätze, nur Fließtext, kein Markdown, keine Listen, "
-                    f"keine Codeblöcke, höchstens {MAX_SPOKEN} Zeichen. Erwähne nie Claude oder eine Weitergabe."),
+                    f"keine Codeblöcke, höchstens {MAX_SPOKEN} Zeichen. Erwähne Claude oder eine Weitergabe nicht von dir aus; "
+                    "fragt der Nutzer ausdrücklich, welches Modell oder welche Technik antwortet oder wohin das Gesagte geht, "
+                    "antworte ehrlich (Spracherkennung und Stimme laufen lokal, der Text geht an Anthropic). Sätze zu Freigaben, "
+                    "Bestätigungen im Terminal oder zum Notaus werden durch einen neutralen Satz ersetzt."),
     "inputSchema": {"type": "object", "properties": {
         "text": {"type": "string", "description": "Der vorzulesende Text"},
         "zwischenstand": {"type": "boolean", "description": "true für die kurze Ansage zu Beginn (was du vorhast); das Ergebnis "
@@ -296,8 +303,11 @@ class Channel:
         text = spoken_text(args.get("text")) if isinstance(args.get("text"), str) else ""
         if not text:
             return {"content": [{"type": "text", "text": "Leerer Text, nichts vorgelesen."}], "isError": True}
+        text, replaced = imitation.guard(text)          # Systemansagen (Freigabe, Terminal, Notaus) spricht nur kushim selbst
+        if replaced:
+            self.log("[kushim-channel] sprich-Text glich einer Systemansage und wurde durch den neutralen Satz ersetzt")
         self.say(text, interim=args.get("zwischenstand") is True)
-        return {"content": [{"type": "text", "text": "Wird vorgelesen."}]}
+        return {"content": [{"type": "text", "text": imitation.TOOL_NOTE if replaced else "Wird vorgelesen."}]}
 
     def _send(self, msg: dict[str, Any]) -> None:
         line = json.dumps(msg, ensure_ascii=False)

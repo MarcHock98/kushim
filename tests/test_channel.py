@@ -390,8 +390,9 @@ def test_instructions_make_claude_speak_as_kushim_in_first_person():
     text = ch.INSTRUCTIONS
     assert text.startswith("Du bist kushim.")                                  # Claude IST kushim (Wunsch des Nutzers 2026-11-23)
     assert '("ich")' in text and "dass du kushim bist" in text
-    assert "Sag nie, dass du etwas weitergibst oder dass Claude oder jemand anderes daran arbeitet" in text
-    assert "antworte ehrlich" in text                                          # auf ausdrückliche Frage nach dem Modell keine Lüge
+    assert "Sag nicht von dir aus, dass du etwas weitergibst oder dass Claude oder jemand anderes daran arbeitet" in text
+    assert "antworte ehrlich" in text and "Bleibt das auf meinem Rechner?" in text      # auf ausdrückliche Frage keine Lüge
+    assert "Spracherkennung und Stimme laufen lokal, der erkannte Text geht zur Verarbeitung an Anthropic" in text
     # einfache Gesprächsbeiträge: sofort genau ein sprich, keine anderen Werkzeuge; längere Arbeit: erst ein kurzer Satz
     assert "sofort genau ein `sprich` mit der Antwort, ohne zwischenstand und ohne andere Werkzeuge" in text
     assert "zwischenstand=true und EINEM kurzen, natürlichen Satz" in text and "ein bis drei kurze Sätze" in text
@@ -400,7 +401,8 @@ def test_instructions_make_claude_speak_as_kushim_in_first_person():
     assert "Alles, was du dem Nutzer auf eine kushim-Nachricht sagst, gibst du als Text an kushims Stimme" in text
     assert "Keine Antwort auf eine kushim-Nachricht endet ohne `sprich`" in text
     desc = ch.SPRICH_TOOL["description"]
-    assert "als kushim in der ersten Person" in desc and "Erwähne nie Claude oder eine Weitergabe" in desc
+    assert "als kushim in der ersten Person" in desc and "Erwähne Claude oder eine Weitergabe nicht von dir aus" in desc
+    assert "antworte ehrlich (Spracherkennung und Stimme laufen lokal, der Text geht an Anthropic)" in desc
     assert "kein Markdown" in desc and "keine Listen" in desc and str(ch.MAX_SPOKEN) in desc
 
 
@@ -409,7 +411,8 @@ def test_instructions_allow_foreground_delegation_with_own_model_choice_and_no_n
     assert "an Unter-Agenten geben, deren Ergebnis du abwartest" in text            # Vordergrund, kein Hintergrund-Agent
     assert "Das Modell je Unter-Agent wählst du selbst" in text and "das stärkste für schwieriges Nachdenken oder Code" in text
     assert "danach sprichst du das Ergebnis in deinen eigenen Worten per `sprich`" in text
-    assert "Für Unter-Agenten gelten alle Regeln und Freigaben unverändert; vorab erlaubt ist für sie nichts" in text
+    assert ("für sie gilt dasselbe wie für dich: nur Sprechen und Zeigen laufen ohne Rückfrage, alles andere braucht die "
+            "normale Freigabe") in text                                         # Unter-Agenten erben die Rechte der Sitzung
     assert "selbst weder `sprich` noch `zeige` benutzen" in text
     assert "keine Hintergrund-Agenten" in text                                      # bleibt verboten
 
