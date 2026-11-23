@@ -385,6 +385,18 @@ describe("Setup-Assistent: Grenzfälle", () => {
     expect(sent(h, "audio.set")[0]).toMatchObject({ mic: long, out: "Lautsprecher (Realtek Audio)", confirm: true });
   });
 
+  it("langes Wake Word ohne Leerzeichen bleibt unverändert und wird so gespeichert (Audit 2026-11-23)", async () => {
+    const long = "einszweidreivierfuenfsechssieben";                                // 32 Buchstaben, vom Backend erlaubt
+    const h = await host((m) => { m.words = [{ phrase: "hey kushim", enabled: true }, { phrase: long, enabled: true }]; });
+    await goto("Wake Words", 4);
+    await waitFor(() => expect(screen.getByText(long)).toBeInTheDocument());
+    expect(screen.queryByText(/verborgen/)).toBeNull();
+    const sw = within(screen.getByText("hey kushim").closest("li")!).getByRole("switch");
+    await click(sw);
+    await click(wiz().getByRole("button", { name: "Wake Words speichern" }));
+    expect(sent(h, "wake.set")[0]).toMatchObject({ confirm: true, words: [{ phrase: "hey kushim", enabled: false }, { phrase: long, enabled: true }] });
+  });
+
   it("Abfragen enden beim Schrittwechsel und beim Schließen", async () => {
     const h = await host(voiceOn);
     await goto("Mikrofon", 3);

@@ -48,7 +48,7 @@ def test_rust_commands_are_a_fixed_list_and_never_take_focus():
     handler = re.findall(r"generate_handler!\[([^\]]*)\]", rs)
     assert len(handler) == 1 and [c.strip() for c in handler[0].split(",") if c.strip()] == RUST_COMMANDS, handler
     assert sorted(re.findall(r"#\[tauri::command\]\s*fn (\w+)", rs)) == sorted(RUST_COMMANDS)
-    assert not re.search(r"set_focus|unminimize|WebviewWindowBuilder|WindowBuilder|\.show\(\)|set_fullscreen|set_ignore_cursor_events|eval\(", rs)
+    assert not re.search(r"set_focus|unminimize|UserAttentionType::Critical|WebviewWindowBuilder|WindowBuilder|\.show\(\)|set_fullscreen|set_ignore_cursor_events|eval\(", rs)
 
 
 def test_ui_calls_only_the_known_rust_commands_and_never_focuses_the_window():

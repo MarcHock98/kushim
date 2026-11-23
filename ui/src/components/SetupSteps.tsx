@@ -300,7 +300,8 @@ export function checkPhrase(raw: string, words: Word[], max: number): { ok: true
 function parseWords(x: unknown): Word[] {
   return Array.isArray(x) ? x.filter((w): w is Record<string, unknown> => !!w && typeof w === "object")
     .filter((w) => typeof w.phrase === "string" && typeof w.enabled === "boolean")
-    .slice(0, 40).map((w) => ({ phrase: text(w.phrase, 60), enabled: w.enabled === true })) : [];
+    // Wake Words nie schwärzen (wie Gerätenamen): Sie gehen unverändert in wake.set zurück (Audit 2026-11-23).
+    .slice(0, 40).map((w) => ({ phrase: deviceName(w.phrase).slice(0, 60), enabled: w.enabled === true })) : [];
 }
 
 const LAST_ON = "Mindestens ein Wake Word muss aktiv bleiben.";
