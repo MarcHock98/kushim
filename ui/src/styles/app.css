@@ -441,6 +441,18 @@ h2, h3 { font-family: var(--font-display); font-weight: 600; letter-spacing: .04
 .s-name { color: var(--text); }
 .s-text { display: grid; gap: var(--s-1); }
 .s-text p { margin: 0; max-width: 70ch; overflow-wrap: anywhere; line-height: 1.55; }
+/* ----- Eigene Simulation (P7, sim_eigen): festes Abzeichen „ungeprüft“, Gleichungen als TeX, bis zu zwei Bilder untereinander ----- */
+.e-badge { margin: 0; padding: 2px var(--s-2); border: 1px solid var(--warn); border-radius: var(--r-sm); font-family: var(--font-mono); font-size: var(--fs-xs);
+           letter-spacing: .08em; text-transform: uppercase; color: var(--warn); }
+.e-name { overflow-wrap: anywhere; }
+.e-hinweis { color: var(--warn); }
+.e-warn { color: var(--warn); }
+.e-aenderung { margin: 0; padding: var(--s-2) var(--s-3); border: 1px solid var(--arc); border-radius: var(--r-md); font-size: var(--fs-sm); color: var(--text); overflow-wrap: anywhere; }
+.e-plots { display: grid; gap: var(--s-3); min-width: 0; }
+.e-gl { display: grid; gap: var(--s-2); min-width: 0; }
+.e-gl-list { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--s-2); min-width: 0; }
+.e-gl-list li { min-width: 0; overflow-x: auto; overflow-wrap: anywhere; }
+.e-gl-name { color: var(--text-muted); font-size: var(--fs-sm); }
 /* ----- Teilchen (P5b): Molekül und Orbital mit three.js (nur Zeichnen bei Änderung), Schalenmodell als statisches SVG. Symbole,
    Beschriftungen und Achsennamen stehen als DOM-Text über dem Bild, nie im Bild ----- */
 .v-teilchen { display: grid; gap: var(--s-3); min-width: 0; }

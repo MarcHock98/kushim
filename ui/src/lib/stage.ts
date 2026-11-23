@@ -3,6 +3,7 @@
 // Alles bleibt Text: kein HTML, keine Links, keine Bilder.
 
 import type { TeilchenInput } from "./chem";
+import type { EigenInput } from "./eigenSim";
 import type { SimInput } from "./physics";
 
 export type Art = "antwort" | "rechnung" | "markt" | "recherche" | "auftrag" | "mail" | "dokument" | "modell" | "plan" | "lernen" | "netz" | "simulation"
@@ -48,10 +49,14 @@ export type Block =
   | ({ typ: "simulation" } & (SimInput | import("./physics").SimInputAlle))
   // P5b: Molekül, Schalenmodell oder Orbital-Wolke. Das Backend füllt alle Vorgaben (name "", bindungen [] = aus Abständen,
   // beschriftungen [], darstellung; neutronen -1 = nicht angegeben, ladung 0, schalen; punkte 2500, startwert 1); lib/chem.ts begrenzt noch einmal.
-  | ({ typ: "teilchen" } & TeilchenInput);
+  | ({ typ: "teilchen" } & TeilchenInput)
+  // P7 Stufe 1 (docs/ui-p7-plan.md): eigene Simulation als Daten. Formeln nur als geprüftes RPN mit TeX (`{rpn, tex}`), nie als Text;
+  // das Backend füllt alle Vorgaben und schreibt `env`, `integrator` und `kosten`. lib/eigenSim.ts prüft und begrenzt noch einmal.
+  | ({ typ: "sim_eigen"; integrator?: string; kosten?: number } & EigenInput);
 export type NetBlock = Extract<Block, { typ: "netz" }>;
 export type SimBlock = Extract<Block, { typ: "simulation" }>;
 export type TeilchenBlock = Extract<Block, { typ: "teilchen" }>;
+export type EigenBlock = Extract<Block, { typ: "sim_eigen" }>;
 
 export interface View { seq: number; id: string; art: Art; titel: string; stand: string; bausteine: Block[] }
 export type StageItem = View | { seq: number; id: string; schliessen: true };
@@ -59,7 +64,7 @@ export type StageItem = View | { seq: number; id: string; schliessen: true };
 const ARTEN = ["antwort", "rechnung", "markt", "recherche", "auftrag", "mail", "dokument", "modell", "plan", "lernen", "netz", "simulation", "teilchen"];
 const TYPEN = ["text", "liste", "formel", "schritte", "ergebnis", "kennzahlen", "tabelle", "diagramm", "aussagen", "widerspruch",
   "quellen", "hinweis", "systemzustand", "fortschritt", "aufgaben", "zeitplan", "mail", "mail-entwurf", "countdown", "dokument", "aenderung", "szene3d", "plan2d",
-  "vergleich", "zeitstrahl", "gegenueber", "lernkarten", "quiz", "anleitung", "netz", "simulation", "teilchen"];
+  "vergleich", "zeitstrahl", "gegenueber", "lernkarten", "quiz", "anleitung", "netz", "simulation", "teilchen", "sim_eigen"];
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 
 /** Ein Eintrag aus `stage.get`; `null`, wenn er nicht passt (dann wird er übergangen). */

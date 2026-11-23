@@ -1,4 +1,4 @@
-import { Component, type ReactNode } from "react";
+import { Component, useState, type ReactNode } from "react";
 import { ART_LABEL, type Block, type View } from "../../lib/stage";
 import { IconCross } from "../Icons";
 import { SystemPanel, type SysData } from "../SystemPanel";
@@ -10,6 +10,7 @@ import { Model3D } from "./Model3D";
 import { Net } from "./Net";
 import { Plan2D } from "./Plan2D";
 import { Simulation } from "./Simulation";
+import { EigenSimulation } from "./EigenSimulation";
 import { Countdown, Mail, MailDraft, Progress, Schedule, Tasks } from "./Live";
 import { AtomShells } from "./AtomShells";
 import { Molecule3D } from "./Molecule3D";
@@ -19,8 +20,10 @@ import { Tex } from "./Tex";
 // Eine Ansicht von Claude auf der Bühne. Layout je Art (antwort, rechnung, markt, recherche, auftrag, mail, lernen), Bausteine nur als Text.
 // Quellen-Adressen sind Text, kein Link: nichts öffnet sich, nichts wird nachgeladen. Knöpfe in Lernkarten, Quiz und Anleitung
 // ändern nur die Anzeige im Fenster, sie senden nichts. Ebenso Zoom und Verschieben im Diagramm (netz) und Pause, Weiter und
-// Neu starten der Simulation. Last: höchstens 2 Simulationen und höchstens 2 WebGL-Bausteine (szene3d, teilchen als Molekül oder
-// Orbital) je Ansicht; das Backend lehnt mehr ab, hier gilt dieselbe Grenze ein zweites Mal (darüber nur ein kurzer Hinweis).
+// Neu starten der Simulation. Last: höchstens 2 Simulationen (eingebaut oder eigene, `sim_eigen`) und höchstens 2 WebGL-Bausteine
+// (szene3d, teilchen als Molekül oder Orbital) je Ansicht; das Backend lehnt mehr ab, hier gilt dieselbe Grenze ein zweites Mal
+// (darüber nur ein kurzer Hinweis). Kommt dieselbe Ansicht (gleiche id) neu, bekommt eine eigene Simulation ihre vorige Fassung an
+// derselben Stelle mit, um die geänderten Parameter kurz zu nennen.
 
 /** Fängt einen Fehler in einem einzelnen Baustein ab: Er zeigt dann einen Hinweis, der Rest der Oberfläche läuft weiter.
  *  (Das Backend prüft jede Ansicht, aber ein Darstellungsfehler darf nie das ganze Fenster leeren.) */
@@ -39,7 +42,7 @@ function Sup({ nrs }: { nrs: number[] }) {
   return nrs.length ? <sup className="cite" aria-label={`Quellen ${nrs.join(", ")}`}>[{nrs.join("] [")}]</sup> : null;
 }
 
-function BlockView({ b, sys, sysNo }: { b: Block; sys: SysData | null; sysNo: boolean }): ReactNode {
+function BlockView({ b, sys, sysNo, vorher }: { b: Block; sys: SysData | null; sysNo: boolean; vorher?: Block }): ReactNode {
   switch (b.typ) {
     case "text": return <div className="v-text">{b.absaetze.map((a, i) => <p key={i}>{a}</p>)}</div>;
     case "liste": {
@@ -108,6 +111,7 @@ function BlockView({ b, sys, sysNo }: { b: Block; sys: SysData | null; sysNo: bo
     case "anleitung": return <Guide b={b} />;
     case "netz": return <Net b={b} />;
     case "simulation": return <Simulation b={b} />;
+    case "sim_eigen": return <EigenSimulation b={b} vorher={vorher?.typ === "sim_eigen" ? vorher : null} />;
     case "teilchen": {
       const form = (b as { form?: unknown }).form;                     // unbekannte Form: das Schalenmodell sagt „kann nicht gezeigt werden“
       return form === "molekuel" ? <Molecule3D b={b} /> : form === "orbital" ? <Orbital3D b={b} /> : <AtomShells b={b} />;
@@ -134,7 +138,7 @@ function usesWebGL(b: Block): boolean {
 export function overLimit(blocks: Block[]): ("" | "sim" | "webgl")[] {
   let sims = 0, gl = 0;
   return blocks.map((b) => {
-    if (b.typ === "simulation") return ++sims > SIM_MAX ? "sim" : "";
+    if (b.typ === "simulation" || b.typ === "sim_eigen") return ++sims > SIM_MAX ? "sim" : "";
     if (usesWebGL(b)) return ++gl > WEBGL_MAX ? "webgl" : "";
     return "";
   });
@@ -148,6 +152,11 @@ export function ViewCard({ view, sys, sysNo, onClose }: { view: View; sys: SysDa
   const sources = view.bausteine.filter((b) => b.typ === "quellen");
   const main = view.art === "recherche" ? view.bausteine.filter((b) => b.typ !== "quellen") : view.bausteine;
   const over = overLimit(main);
+  // Vorige Fassung derselben Ansicht (die Karte bleibt je id bestehen; eine neue Fassung hat ein neues seq).
+  const [hist, setHist] = useState<{ seq: number; vorher: Block[] | null; jetzt: Block[] }>({ seq: view.seq, vorher: null, jetzt: main });
+  const neu = hist.seq !== view.seq;
+  if (neu) setHist({ seq: view.seq, vorher: hist.jetzt, jetzt: main });
+  const vorher = neu ? hist.jetzt : hist.vorher;
   return (
     <article className={`view-card view-${view.art}`} aria-labelledby={`v-${view.id}`}>
       <div className="panel-head">
@@ -159,7 +168,7 @@ export function ViewCard({ view, sys, sysNo, onClose }: { view: View; sys: SysDa
       <div className="view-body">
         <div className="view-main">{main.map((b, i) => {
           const o = over[i];
-          return <BlockGuard key={`${i}-${view.seq}`}>{o ? <p className="v-note" role="note">{LIMIT_NOTE[o]}</p> : <BlockView b={b} sys={sys} sysNo={sysNo} />}</BlockGuard>;
+          return <BlockGuard key={`${i}-${view.seq}`}>{o ? <p className="v-note" role="note">{LIMIT_NOTE[o]}</p> : <BlockView b={b} sys={sys} sysNo={sysNo} vorher={vorher?.[i]} />}</BlockGuard>;
         })}</div>
         {view.art === "recherche" && sources.length > 0 && (
           <aside className="view-aside" aria-label="Quellen">{sources.map((b, i) => <BlockGuard key={`${i}-${view.seq}`}><BlockView b={b} sys={sys} sysNo={sysNo} /></BlockGuard>)}</aside>
