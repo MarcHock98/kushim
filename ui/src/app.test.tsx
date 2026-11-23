@@ -196,7 +196,8 @@ describe("Freigabe-Leiste (Claude Code)", () => {
     expect(dlg.textContent).toContain("Beschreibung: Tests laufen lassen");
     expect(dlg.textContent).toContain('Eingabe: { "command": "npm test" }');
     expect(screen.getByText("Claude möchte den Befehl npm test ausführen.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Ablehnen" })).toHaveFocus();
+    // Fokus setzt ein Effekt nach dem Freischalten: auf den Zustand warten, nicht auf den Takt.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Ablehnen" })).toHaveFocus());
     expect(screen.queryByText(/immer/i)).toBeNull();
   });
 

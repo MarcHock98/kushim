@@ -387,13 +387,21 @@ describe("Grenzen von Zoom und Verschieben", () => {
     const [fw, fh] = inner(), [w, h] = size();
     expect(w).toBeGreaterThan(fw);
     expect(h).toBeGreaterThan(fh);
-    for (let i = 0; i < 200; i++) click("Nach rechts");
+    // Drücken bis der Knopf sperrt (höchstens 200 Mal), dann zweimal mehr: am Rand ändert sich nichts.
+    // Spart hunderte Neuzeichnungen der großen Fläche gegenüber festen 200 Drücken je Richtung.
+    const toEdge = (name: string) => {
+      for (let i = 0; i < 200 && btn(name).getAttribute("aria-disabled") !== "true"; i++) click(name);
+      const at = pos();
+      click(name); click(name);
+      expect(pos()).toEqual(at);
+    };
+    toEdge("Nach rechts");
     expect(pos()[0]).toBeCloseTo(fw - w, 0);
     expect(btn("Nach rechts")).toHaveAttribute("aria-disabled", "true");
-    for (let i = 0; i < 200; i++) click("Nach oben");
+    toEdge("Nach oben");
     expect(pos()[1]).toBe(0);
     expect(btn("Nach oben")).toHaveAttribute("aria-disabled", "true");
-    for (let i = 0; i < 200; i++) click("Nach unten");
+    toEdge("Nach unten");
     expect(pos()[1]).toBeCloseTo(fh - h, 0);
     expect(btn("Nach unten")).toHaveAttribute("aria-disabled", "true");
     expect(btn("Nach oben")).not.toHaveAttribute("aria-disabled");
