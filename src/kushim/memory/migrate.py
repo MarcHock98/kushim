@@ -5,9 +5,17 @@ import hashlib
 import time
 from pathlib import Path
 
-from ..config import Config
+from ..config import Config, NotSaved
 from .local import LocalStore
 from .vault import Manifest, parse_location, resolve_local
+
+
+class ConfigNotSwitched(NotSaved):
+    """Die Vault-Kopie liegt geprüft in `dst`, aber config.toml wurde nicht umgestellt (zeigt weiter auf den alten Ort)."""
+
+    def __init__(self, dst: Path):
+        super().__init__("config.toml nicht umgestellt")
+        self.dst = dst
 
 
 def _tree_hash(root: Path) -> dict[str, str]:
@@ -45,7 +53,10 @@ def migrate(config: Config, target_location: str) -> Path:
         store.audit("migrate", f"{src} -> {dst}")
         store.snapshot(dst)
     verify_copy(src, dst)
-    config.set_memory_location(target_location)
+    try:
+        config.set_memory_location(target_location)
+    except NotSaved as e:                       # config.toml ungewöhnlich geformt: Kopie ist da, Config zeigt weiter auf die Quelle
+        raise ConfigNotSwitched(dst) from e
     return dst  # Quelle bleibt unangetastet (Rollback)
 
 

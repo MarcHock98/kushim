@@ -33,7 +33,8 @@ def test_publisher_writes_state_and_clamped_level(tmp_path):
     pub = statefile.StatePublisher(tmp_path, clock=clock)
     pub.phase("listening", 7.0)
     assert data(tmp_path)["state"] == "listening" and data(tmp_path)["level"] == 1.0
-    assert statefile.read(tmp_path, now=clock()) == {"active": True, "state": "listening", "level": 1.0}
+    assert statefile.read(tmp_path, now=clock()) == {"active": True, "state": "listening", "level": 1.0,
+                                                     "wake_count": 0, "wake_last": ""}
 
 
 def test_publisher_throttles_but_writes_state_changes_at_once(tmp_path):
@@ -66,7 +67,8 @@ def test_alarm_then_asking_priority_and_halted_wins(tmp_path):
 def test_alarm_is_never_shown_as_message_text(tmp_path):
     pub = statefile.StatePublisher(tmp_path, clock=Clock())
     pub.alarm()
-    assert set(data(tmp_path)) == {"state", "level", "ts"}     # kein Text, kein Audio
+    assert set(data(tmp_path)) == {"state", "level", "ts", "wake_count", "wake_last"}     # kein Text, kein Audio
+    assert data(tmp_path)["wake_count"] == 0 and data(tmp_path)["wake_last"] == ""
 
 
 def test_stale_file_means_no_voice_service(tmp_path):
@@ -85,12 +87,12 @@ def test_reader_does_not_trust_the_file(tmp_path):
                 json.dumps({"state": "idle", "level": 0, "ts": "now"})):
         p.write_text(bad, encoding="utf-8")
         assert statefile.read(tmp_path)["active"] is False, bad
-    p.write_text(json.dumps({"state": "idle", "level": 5, "ts": now}), encoding="utf-8")
-    assert statefile.read(tmp_path) == {"active": True, "state": "idle", "level": 1.0}
+    p.write_text(json.dumps({"state": "idle", "level": 5, "ts": now}), encoding="utf-8")     # alte Datei ohne Wake-Felder
+    assert statefile.read(tmp_path) == {"active": True, "state": "idle", "level": 1.0, "wake_count": 0, "wake_last": ""}
 
 
 def test_no_file_is_inactive(tmp_path):
-    assert statefile.read(tmp_path) == {"active": False, "state": "idle", "level": 0.0}
+    assert statefile.read(tmp_path) == {"active": False, "state": "idle", "level": 0.0, "wake_count": 0, "wake_last": ""}
 
 
 def test_frame_level_is_a_number_between_zero_and_one():
@@ -106,7 +108,7 @@ def test_api_voice_state_needs_token_and_returns_only_numbers_and_names(tmp_path
     assert json.loads(core.handle(json.dumps({"type": "voice.state"})))["error"] == "unauthorized"
     statefile.StatePublisher(tmp_path).phase("listening", 0.4)
     reply = json.loads(core.handle(json.dumps({"token": token, "type": "voice.state"})))
-    assert reply == {"ok": True, "active": True, "state": "listening", "level": 0.4}
+    assert reply == {"ok": True, "active": True, "state": "listening", "level": 0.4, "wake_count": 0, "wake_last": ""}
 
 
 def test_dialog_reports_changes_and_a_failing_listener_never_breaks_it():

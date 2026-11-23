@@ -51,7 +51,8 @@ def test_unknown_steps_in_file_are_ignored(tmp_path):
 
 def test_fresh_install_is_a_first_start(tmp_path):
     s = steps(tmp_path)
-    assert [x.status for x in s.values()] == ["open"] * 4
+    assert [x.status for x in s.values()] == ["open"] * len(state.STEPS)
+    assert list(s) == ["system", "claude", "audio_voice", "wake_words", "folder", "safety"]
     assert status.first_start(list(s.values()))
     assert "Kein Vault" in s["system"].detail
 
@@ -85,7 +86,7 @@ def test_skipping_everything_ends_first_start_and_explains_limits(tmp_path):
     s = list(steps(tmp_path).values())
     assert not status.first_start(s)
     notes = status.restricted_notes(s)
-    assert len(notes) == 4 and any("Standardgeräte" in n for n in notes)
+    assert len(notes) == len(state.STEPS) and any("Standardgeräte" in n for n in notes)
     assert all("Sicherheitsregel" not in n or "bleiben" in n or "gelten" in n for n in notes)
 
 
@@ -115,20 +116,20 @@ def test_api_requires_token_and_is_default_deny(api, tmp_path):
 def test_status_skip_reopen_done(api, tmp_path):
     r = api("setup.status")
     assert r["ok"] and r["first_start"] and [s["step"] for s in r["steps"]] == list(state.STEPS)
-    r = api("setup.skip", step="wake_words")
+    r = api("setup.skip", step="wake_words", confirm=True)
     assert next(s for s in r["steps"] if s["step"] == "wake_words")["status"] == "skipped" and r["restricted"]
-    r = api("setup.reopen", step="wake_words")
+    r = api("setup.reopen", step="wake_words", confirm=True)
     assert next(s for s in r["steps"] if s["step"] == "wake_words")["status"] == "open"
-    r = api("setup.done", step="safety")
+    r = api("setup.done", step="safety", confirm=True)
     assert next(s for s in r["steps"] if s["step"] == "safety")["status"] == "done"
 
 
 def test_api_validates_steps_and_forbids_faking_fact_steps(api):
     for bad in ("", "../x", None, 3, ["system"]):
-        assert api("setup.skip", step=bad) == {"ok": False, "error": "bad_step"}
+        assert api("setup.skip", step=bad, confirm=True) == {"ok": False, "error": "bad_step"}
     assert api("setup.skip") == {"ok": False, "error": "bad_step"}
-    for fact_step in ("system",):                                      # nicht per API "erledigt" behaupten
-        assert api("setup.done", step=fact_step) == {"ok": False, "error": "not_allowed"}
+    for fact_step in ("system", "claude", "folder"):                   # nicht per API "erledigt" behaupten
+        assert api("setup.done", step=fact_step, confirm=True) == {"ok": False, "error": "not_allowed"}
 
 
 def test_devices_names_only_and_unavailable_is_neutral(api, tmp_path):
@@ -143,6 +144,26 @@ def test_devices_names_only_and_unavailable_is_neutral(api, tmp_path):
     assert json.loads(out) == {"ok": False, "error": "unavailable"} and "geheim" not in out
 
 
+def test_skip_reopen_done_need_confirmation(api, tmp_path):
+    for t, s in (("setup.skip", "wake_words"), ("setup.reopen", "wake_words"), ("setup.done", "safety")):
+        for unsure in ({}, {"confirm": "true"}, {"confirm": 1}, {"confirm": False}):
+            assert api(t, step=s, **unsure) == {"ok": False, "error": "confirm_required"}, (t, unsure)
+    assert not state.path(tmp_path).exists()                                   # nichts geschrieben
+
+
+def test_skip_reopen_done_are_blocked_by_the_kill_switch(api, tmp_path):
+    state.mark(tmp_path, "audio_voice", "skipped", today="2026-11-01")
+    before = state.path(tmp_path).read_text(encoding="utf-8")
+    killswitch.trigger(tmp_path)
+    for t, s in (("setup.skip", "wake_words"), ("setup.reopen", "audio_voice"), ("setup.done", "safety"),
+                 ("setup.done", "system")):
+        assert api(t, step=s, confirm=True) == {"ok": False, "error": "kill"}, t
+    assert state.path(tmp_path).read_text(encoding="utf-8") == before          # Zustandsdatei unverändert
+    assert api("setup.status")["kill"] is True                                 # lesen geht weiter
+    assert api("safety.resume", confirm=True)["ok"]
+    assert api("setup.skip", step="wake_words", confirm=True)["ok"]
+
+
 def test_kill_always_works_resume_needs_confirmation(api, tmp_path):
     assert api("safety.status")["kill"] is False
     assert api("safety.kill") == {"ok": True, "kill": True} and killswitch.is_triggered(tmp_path)
@@ -155,7 +176,7 @@ def test_kill_always_works_resume_needs_confirmation(api, tmp_path):
 
 def test_responses_never_contain_paths_or_secrets(api, tmp_path):
     token = api.token
-    blob = json.dumps([api("setup.status"), api("audio.devices"), api("safety.status"), api("setup.skip", step="system")])
+    blob = json.dumps([api("setup.status"), api("audio.devices"), api("safety.status"), api("setup.skip", step="system", confirm=True)])
     assert str(tmp_path) not in blob and token not in blob
     for word in ("key", "schlüssel", "vault_id", "hexkey", "password"):
         assert word not in blob.lower().replace("keine", "")

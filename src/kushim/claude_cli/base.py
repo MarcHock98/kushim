@@ -9,6 +9,7 @@ import json
 import re
 import shutil
 import subprocess
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -82,6 +83,92 @@ class AuthCache:
         if self._value is None or now - self._at > self.ttl:
             self._value, self._at = auth_status(self.exe, self._run), now
         return self._value
+
+
+@dataclass(frozen=True)
+class ClaudeState:
+    installed: bool
+    version: tuple[int, int, int] | None = None
+    logged_in: bool = False
+    checking: bool = False                    # noch kein Ergebnis: die erste Prüfung läuft im Hintergrund
+
+    @property
+    def ready(self) -> bool:
+        return (not self.checking and self.installed and self.version is not None and self.version >= MIN_VERSION
+                and self.logged_in)
+
+
+CHECKING = ClaudeState(False, checking=True)
+
+
+def _in_background(fn: Callable[[], None]) -> None:
+    threading.Thread(target=fn, name="kushim-claude-probe", daemon=True).start()
+
+
+class ClaudeProbe:
+    """Zustand der Claude CLI für die Oberfläche (Setup-Assistent): installiert, Version, angemeldet.
+
+    `get()` blockiert nie (Safety-Audit E3, N5): Es liefert den zuletzt bekannten Stand (anfangs `CHECKING`) und stößt bei Bedarf
+    EINE Prüfung im Hintergrund an (höchstens eine gleichzeitig). Fällig ist sie, wenn noch nichts bekannt ist, `ttl` Sekunden
+    vergangen sind oder sich die Programmdatei geändert hat (Pfad, Größe, Änderungszeit; Suchen und `stat` starten keinen Prozess).
+    Die Anmeldung kommt aus einem `AuthCache` (höchstens ein `claude auth status` je `ttl`), die Version nur einmal je
+    Programmdatei. Jeder CLI-Aufruf ist versteckt und hat ein Zeitlimit (`version`, `auth_status`).
+    `spawn` startet die Prüfung (Standard: Hintergrund-Thread); das CLI übergibt `lambda fn: fn()` und wartet so auf das Ergebnis."""
+
+    def __init__(self, find: Callable[[], Path | None] | None = None,
+                 run: Callable[..., subprocess.CompletedProcess] = subprocess.run,
+                 ttl: float = 30.0, clock: Callable[[], float] = time.monotonic,
+                 spawn: Callable[[Callable[[], None]], None] = _in_background):
+        self._find = find if find is not None else (lambda: find_claude())
+        self._run, self._ttl, self._clock, self._spawn = run, ttl, clock, spawn
+        self._lock = threading.Lock()
+        self._state = CHECKING
+        self._key: tuple | None = None            # Programmdatei der letzten Prüfung
+        self._checked_at: float | None = None
+        self._running = False
+        self._version_key: tuple | None = None    # nur vom (einzigen) laufenden Prüf-Thread benutzt
+        self._version: tuple[int, int, int] | None = None
+        self._auth: AuthCache | None = None
+
+    def _locate(self) -> tuple[Path | None, tuple | None]:
+        try:
+            exe = self._find()
+            if exe is None:
+                return None, None
+            st = Path(exe).stat()
+            return Path(exe), (str(exe), st.st_size, st.st_mtime_ns)
+        except OSError:
+            return None, None
+
+    def get(self) -> ClaudeState:
+        exe, key = self._locate()
+        with self._lock:
+            due = self._checked_at is None or key != self._key or self._clock() - self._checked_at > self._ttl
+            start = due and not self._running
+            if start:
+                self._running = True
+        if start:
+            try:
+                self._spawn(lambda: self._refresh(exe, key))
+            except Exception:                     # noqa: BLE001 (kein Thread: beim nächsten Aufruf erneut versuchen)
+                with self._lock:
+                    self._running = False
+        with self._lock:
+            return self._state
+
+    def _refresh(self, exe: Path | None, key: tuple | None) -> None:
+        state = ClaudeState(False)
+        try:
+            if exe is not None:
+                if key != self._version_key or self._auth is None:
+                    self._version, self._version_key = version(exe, self._run), key
+                    self._auth = AuthCache(exe, self._ttl, self._run, self._clock)
+                state = ClaudeState(True, self._version, self._auth.get().logged_in)
+        except Exception:                         # noqa: BLE001 (nie abstürzen; gilt als "nicht bereit")
+            state = ClaudeState(exe is not None)
+        finally:
+            with self._lock:
+                self._state, self._key, self._checked_at, self._running = state, key, self._clock(), False
 
 
 # Variablen, die Claude nie bekommen darf: fremde Schlüssel/Umleiter (es zählt nur die Anmeldung des Nutzers) und alles von kushim.

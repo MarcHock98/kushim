@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 import tomllib
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -24,6 +25,7 @@ MAX_WORDS = 12
 _KWS_NAME = re.compile(r"^[a-zäöüß]+( [a-zäöüß]+){0,3}$")
 
 DEFAULT_THRESHOLD = {"kws": 0.15, "openwakeword": 0.6}
+_SAVE_LOCK = threading.Lock()
 
 
 @dataclass(frozen=True)
@@ -189,8 +191,9 @@ def save(root: Path, cfg: WakeConfig) -> None:
     _parse(text)                              # Gegenprobe: was wir schreiben, lässt sich wieder lesen
     target = path(root)
     tmp = target.with_suffix(".tmp")
-    tmp.write_text(text, encoding="utf-8")
-    tmp.replace(target)
+    with _SAVE_LOCK:                          # API-Threads (Setup) und Sprachbefehle teilen sich die Temp-Datei
+        tmp.write_text(text, encoding="utf-8")
+        tmp.replace(target)
 
 
 def from_names(names: list[str], root: Path) -> WakeConfig:

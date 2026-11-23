@@ -28,6 +28,7 @@ SESSION_NAME = "kushim"
 WINDOW_TITLE = "kushim-Claude"
 CONFIG = Path("run") / "kushim-mcp.json"
 SESSION_FILE = Path("run") / "claude-session.txt"
+USAGE_FILE = Path("run") / "usage.json"      # schreibt scripts/statusline.py nur für diese Sitzung (session_id = SESSION_FILE)
 CREATE_NEW_CONSOLE = 0x00000010               # Windows: Claude bekommt ein eigenes, sichtbares Terminalfenster
 _UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
@@ -83,6 +84,7 @@ def launch(exe: Path, folder: Path, root: Path, popen: Callable[..., Any] = subp
     Gibt den Fensterprozess zurück; seine Sitzungs-ID steht danach in `run/claude-session.txt`."""
     config = write_mcp_config(root)
     (root / "run" / "channel.json").unlink(missing_ok=True)   # alte Angabe weg: der Channel dieser Sitzung trägt sich als erster ein
+    (root / USAGE_FILE).unlink(missing_ok=True)               # Verbrauch der vorigen Sitzung nicht als diesen zeigen (E2b)
     sid = str(uuid.uuid4())
     (root / SESSION_FILE).write_text(sid, encoding="utf-8")
     flags = CREATE_NEW_CONSOLE if os.name == "nt" else 0

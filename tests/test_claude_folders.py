@@ -139,3 +139,22 @@ def test_claude_folders_roundtrip_keeps_the_rest_and_ignores_junk(tmp_path):
     g = tmp_path / "neu.toml"
     Config(path=g).set_claude_folders(["a|C:/a"])
     assert Config.load(g).claude_folders == ("a|C:/a",)
+
+
+def test_cli_add_and_remove_explain_an_unusual_config_instead_of_a_traceback(tmp_path, monkeypatch, capsys):
+    from types import SimpleNamespace
+    from kushim import cli
+    f = tmp_path / "config.toml"
+    text = 'claude = {folders = ["alt|C:/alt"]}\n'                                # gültig, aber Inline-Tabelle
+    f.write_text(text, encoding="utf-8")
+    proj = repo(tmp_path)
+    monkeypatch.setattr(folders, "validate_path", lambda raw, vault: proj)
+    monkeypatch.setattr("builtins.input", lambda prompt="": "j")
+    add = SimpleNamespace(sub="add", name="neu", path=str(proj))
+    assert cli._claude_dev(add, Config.load(f), tmp_path) == 3
+    remove = SimpleNamespace(sub="remove", name="alt")
+    assert cli._claude_dev(remove, Config.load(f), tmp_path) == 3
+    out = capsys.readouterr().out
+    assert out.count(cli.CLAUDE_SECTION_NOT_SAVED) == 2 and "Traceback" not in out
+    assert "freigegeben." not in out.replace("nicht freigegeben", "") and "entzogen" not in out
+    assert f.read_text(encoding="utf-8") == text                                   # nichts geändert

@@ -17,12 +17,17 @@ FRAME = 1280            # 80 ms, passend zu openWakeWord
 
 
 def find_device(name_part: str | None, kind: str) -> int | None:
-    """kind: "input" | "output". Gibt den ersten passenden Index (WASAPI/MME egal) oder None."""
+    """kind: "input" | "output". Gibt den Index eines Geräts mit genau diesem Namen (gemerkte Wahl aus der Geräteliste),
+    sonst den ersten passenden Namensteil (WASAPI/MME egal), oder None. Öffnet kein Gerät."""
     if not name_part:
         return None
     import sounddevice as sd
     key = f"max_{kind}_channels"
-    for i, d in enumerate(sd.query_devices()):
+    devices = list(sd.query_devices())
+    for i, d in enumerate(devices):
+        if d["name"] == name_part and d[key] > 0:
+            return i
+    for i, d in enumerate(devices):
         if name_part.lower() in d["name"].lower() and d[key] > 0:
             return i
     raise LookupError(f"Kein {kind}-Gerät mit '{name_part}'")

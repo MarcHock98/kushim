@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import argparse
 
-from .config import Config
+from .config import Config, NotSaved
 from .memory import open_store
 from .memory.keys import get_or_create_key, store_key
 from .memory.migrate import backup, migrate
@@ -44,8 +44,12 @@ Prüfen und Hilfe
   kushim help                  Diese Übersicht
   kushim <befehl> --help       Optionen eines Befehls
 
-Einstellungen: config.toml (Vault, Grafikkarte, Claude-Ordner), wakewords.toml (Wake Words, Zeiten). Anleitung: README.md
+Einstellungen: config.toml (Vault, Grafikkarte, Claude-Ordner, gemerkte Geräte [audio]), wakewords.toml (Wake Words, Zeiten). Anleitung: README.md
 """
+
+
+CLAUDE_SECTION_NOT_SAVED = ("config.toml hat eine ungewöhnliche Form und wurde nicht geändert. "
+                            "Bitte den Abschnitt [claude] als normale Tabelle schreiben.")
 
 
 def _gpu_plan(cfg: Config):
@@ -81,14 +85,22 @@ def _claude_dev(args, cfg: Config, root) -> int:
         if input("Freigeben? (j/N): ").strip().lower() not in ("j", "ja", "y", "yes"):
             print("Nicht freigegeben.")
             return 1
-        cfg.set_claude_folders([f.entry() for f in known] + [cfolders.Folder(args.name, path).entry()])
+        try:
+            cfg.set_claude_folders([f.entry() for f in known] + [cfolders.Folder(args.name, path).entry()])
+        except NotSaved:
+            print(CLAUDE_SECTION_NOT_SAVED)
+            return 3
         print(f"Ordner «{args.name}» ist freigegeben.")
         return 0
     if action == "remove":
         if not any(f.name == args.name for f in known):
             print("Diesen Ordner gibt es nicht.")
             return 2
-        cfg.set_claude_folders([f.entry() for f in known if f.name != args.name])
+        try:
+            cfg.set_claude_folders([f.entry() for f in known if f.name != args.name])
+        except NotSaved:
+            print(CLAUDE_SECTION_NOT_SAVED)
+            return 3
         print(f"Freigabe für «{args.name}» entzogen.")
         return 0
 
@@ -204,6 +216,21 @@ def _open_ui_window(root, done, procs: list, popen=None, wait=None, on_close=Non
         on_close()
 
 
+def _device(flag: str | None, saved: str, kind: str, note=print):
+    """Gerät für `talk`/`start`: `--mic`/`--out` hat Vorrang (fehlt es, ist das ein Fehler wie bisher); sonst die gemerkte Wahl
+    aus `config.toml [audio]`. Ist das gemerkte Gerät nicht (mehr) da, gilt mit einem Hinweis der Systemstandard."""
+    from .voice import audio
+    if flag:
+        return audio.find_device(flag, kind)
+    if not saved:
+        return None
+    try:
+        return audio.find_device(saved, kind)
+    except LookupError:
+        note(f"Gemerktes Gerät ({'Mikrofon' if kind == 'input' else 'Ausgabe'}) nicht gefunden, es gilt der Systemstandard.")
+        return None
+
+
 def _inside_claude_session(env=None) -> bool:
     """Wurde kushim aus einer laufenden Claude-Code-Sitzung gestartet? Dann gilt das neue Claude als Unter-Sitzung und
     Claude Code lädt keine Channels (2026-11-11 so beobachtet mit 2.1.321). Wir umgehen das nicht, sondern sagen es."""
@@ -237,15 +264,25 @@ def _vault_state(cfg: Config) -> str:
         return "kein-vault"
 
 
-def _api_start(cfg: Config, root, extra=None):
-    """Baut den API-Kern (setup, safety, voice; `extra(core, store)` hängt mehr an) und startet den Server auf 127.0.0.1.
-    Port und Token kommen nach run/api.json (nur für die eigene Oberfläche). Gibt (server, store, info) zurück."""
+def _folders_ok() -> bool:
+    """Ist mindestens ein Arbeitsordner für Claude freigegeben? (Setup-Schritt `folder`, frisch aus config.toml)"""
+    from .claude_cli import folders as cfolders
+    return bool(cfolders.parse(Config.load().claude_folders))
+
+
+def _api_start(cfg: Config, root, extra=None, level_test=None):
+    """Baut den API-Kern (setup, safety, voice, usage; `extra(core, store)` hängt mehr an) und startet den Server auf 127.0.0.1.
+    Port und Token kommen nach run/api.json (nur für die eigene Oberfläche). Gibt (server, store, info) zurück.
+    `level_test`: der Pegeltest des Sprachprozesses (nur `kushim talk --ui`, wo die API im selben Prozess läuft)."""
     import json
     from .api.protocol import ApiCore, new_token
     from .api.setup_api import register_setup
+    from .api.usage_api import register_usage
     from .api.voice_api import register_voice
     from .api.system_api import register_system
+    from .claude_cli.base import ClaudeProbe
     from .net.server import LocalServer
+    from .voice.audio import list_devices
     store = None
     try:
         store = open_store(cfg, shared=True)           # die API-Threads dürfen den Vault nur über die Sperre benutzen
@@ -253,10 +290,12 @@ def _api_start(cfg: Config, root, extra=None):
         print("Hinweis: Vault nicht offen, Notaus-Aktionen werden nicht im Audit protokolliert.")
     token = new_token()
     core = ApiCore(token)
-    register_voice(core, root)
+    register_voice(core, root, level_test=level_test, audit=store.audit if store else None)
     register_system(core, root)                        # Systemzustand (nur lesen, nur lokale Messwerte)
-    register_setup(core, root, lambda: _vault_state(cfg),
-                   audit=store.audit if store else None)
+    register_setup(core, root, lambda: _vault_state(cfg), list_devices=list_devices,
+                   audit=store.audit if store else None, claude=ClaudeProbe().get, folders_ok=_folders_ok,
+                   load_config=Config.load)
+    register_usage(core, root)                         # Verbrauch der kushim-Sitzung (run/usage.json, von der Statuszeile)
     from .api.safety_view import register_safety_view
     from .config import LiveConfig
     from .api.folders_api import register_folders
@@ -425,8 +464,10 @@ def _main(argv: list[str] | None = None) -> int:
             print("Angemeldet: " + (f"ja ({'Abo' if auth.subscription else 'Konto: ' + auth.method})" if auth.logged_in else "nein (claude auth login)"))
         return 0
     if args.cmd == "setup":
+        from .claude_cli.base import ClaudeProbe
         from .setup import status as setup_status
-        steps = setup_status.compute(root, lambda: _vault_state(cfg))
+        steps = setup_status.compute(root, lambda: _vault_state(cfg), claude=ClaudeProbe(spawn=lambda fn: fn()).get,
+                                     folders=_folders_ok)                      # im Terminal: auf das Ergebnis warten
         marks = {"done": "[ok]      ", "skipped": "[übersprungen] ", "open": "[offen]   "}
         for s in steps:
             print(f"{marks[s.status]}{s.title}: {s.detail}")
@@ -449,7 +490,7 @@ def _main(argv: list[str] | None = None) -> int:
         if args.sub == "level":
             from dataclasses import replace
             from .voice import levels, wakeconfig
-            frames = iter(audio.Mic(audio.find_device(args.mic, "input")))
+            frames = iter(audio.Mic(_device(args.mic, cfg.audio_mic, "input")))
             input("Gleich 3 Sekunden Ruhe messen. Sei still, dann Enter: ")
             noise = levels.frame_rms([next(frames) for _ in range(38)])
             input("Jetzt 6 Sekunden normal sprechen, wie bei einem Befehl (z. B. einen Satz mit kurzen Pausen). Enter zum Start: ")
@@ -508,8 +549,8 @@ def _main(argv: list[str] | None = None) -> int:
             def note(s: str) -> None:
                 print(f"[Hinweis] {s}")
                 talklog.write("note", text=s)
-            pipeline, kill, mic, ack = build_live(root, audio.find_device(args.out, "output"),
-                                                  audio.find_device(args.mic, "input"),
+            pipeline, kill, mic, ack = build_live(root, _device(args.out, cfg.audio_out, "output", note),
+                                                  _device(args.mic, cfg.audio_mic, "input", note),
                                                   tasks=tasks,
                                                   on_note=note,
                                                   wake_names=[w.name for w in wcfg.enabled()],
@@ -534,9 +575,22 @@ def _main(argv: list[str] | None = None) -> int:
             barge = BargeIn(level=st.barge_in_level, min_ms=st.barge_in_ms) if st.barge_in else None
             utter = lambda wait: UtteranceCollector(wait_ms=wait, silence_ms=end_ms, max_ms=max_ms, energy_threshold=st.speech_level)
             from .voice import statefile
+            from .voice.levels import LevelTest
             from .voice.transcript import Transcript
             publisher = statefile.StatePublisher(root, pending=tasks.pending_approvals)
             transcript = Transcript()
+            level_test = LevelTest()                      # Pegeltest der Oberfläche: nur Pegelzahlen aus den Frames dieser Schleife
+
+            def on_frame(f, p):
+                publisher.phase(p, statefile.frame_level(f))
+                level_test.feed(f, p)
+
+            def wake(f) -> bool:
+                event = det.process(f)
+                if event is None:
+                    return False
+                publisher.wake(getattr(event, "name", ""))    # Zähler und Name für den Wake-Word-Test (nie Audio)
+                return True
 
             def on_result(r):
                 out(r)
@@ -567,11 +621,11 @@ def _main(argv: list[str] | None = None) -> int:
                         register_approvals(core, bridge, root, on_decision=_approval_log(cfg))
                         from .api.stage_api import register_stage       # Ansichten von Claude (zeige) für die Bühne
                         register_stage(core, bridge.stage, root)
-                api = _api_start(cfg, root, extra)
-            loop = TalkLoop(mic, pipeline, kill, wake=lambda f: det.process(f) is not None, ack=ack,
+                api = _api_start(cfg, root, extra, level_test=level_test)
+            loop = TalkLoop(mic, pipeline, kill, wake=wake, ack=ack,
                             flush=mic.flush, new_collector=lambda: utter(wait_ms),
                             on_result=on_result,
-                            on_frame=lambda f, p: publisher.phase(p, statefile.frame_level(f)),
+                            on_frame=on_frame,
                             first_collector=lambda: utter(first_ms),
                             follow_collector=(lambda: utter(follow_ms)) if follow_ms > 0 else None,
                             barge=barge, preroll_frames=round(st.preroll_seconds / 0.08),
@@ -610,7 +664,14 @@ def _main(argv: list[str] | None = None) -> int:
         elif args.sub == "backup":
             print("Backup:", backup(cfg))
         elif args.sub == "migrate":
-            dst = migrate(cfg, args.to)
+            from .memory.migrate import ConfigNotSwitched
+            try:
+                dst = migrate(cfg, args.to)
+            except ConfigNotSwitched as e:
+                print(f"Die Vault-Kopie liegt geprüft in {e.dst}, aber config.toml hat eine ungewöhnliche Form und wurde nicht "
+                      "geändert: kushim benutzt weiter den alten Vault (er bleibt unverändert). Bitte den Abschnitt [memory] als "
+                      "normale Tabelle schreiben und die Migration wiederholen oder location von Hand setzen.")
+                return 3
             print(f"Migriert nach {dst}. Alter Vault bleibt als Rollback erhalten.")
     elif args.cmd == "key":
         if args.sub == "export":
