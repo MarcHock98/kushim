@@ -1,6 +1,6 @@
 """Gesprächsprotokoll für die Fehlersuche (Wunsch des Nutzers 2026-11-11): `run/talk.log`, eine JSON-Zeile je Ereignis.
 
-Steht drin: Zeit, Ereignis (start, wake, result, note, end), was erkannt wurde, was kushim geantwortet hat, Ergebnis
+Steht drin: Zeit, Ereignis (start, wake, result, note, end; tuning nur mit Quelle, Stufe und Schwellen-Zahlen), was erkannt wurde, was kushim geantwortet hat, Ergebnis
 (z. B. rejected_speaker mit Score) und wie lange die Runde gedauert hat. Nie Audio. Die Datei bleibt lokal (run/ ist nicht
 im Git) und wird bei 1 MB einmal rotiert (talk.log.1). Fehler beim Schreiben stören den Betrieb nie.
 """
@@ -37,6 +37,19 @@ class TalkLog:
     def barge(self, speaking: bool, rms: float, announcement: bool) -> None:
         """Unterbrechen ausgelöst: nur Flags und der Pegel des auslösenden Frames."""
         self.write("barge", speaking=bool(speaking), rms=float(rms), announcement=bool(announcement))
+
+    def tuning(self, snapshot: Any) -> None:
+        """Mikrofon-Schwellen geändert (`LiveTuning.on_change`): Quelle (fester Wert), Stufe und die vier Zahlen, nie Text."""
+        snap = snapshot if isinstance(snapshot, dict) else {}
+        source = snap.get("source")
+        values = snap.get("values") if isinstance(snap.get("values"), dict) else {}
+        step = snap.get("step")
+        fields: dict[str, Any] = {"source": source if source in ("ui", "voice", "file") else "other",
+                                  "step": step if isinstance(step, int) and not isinstance(step, bool) else None}
+        for k in ("speech_level", "barge_in_level", "barge_in_ms", "end_silence_seconds"):
+            v = values.get(k)
+            fields[k] = v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+        self.write("tuning", **fields)
 
     def announced(self, outcome: str, spoken: Any) -> None:
         """Meldung von sich aus zu Ende: Ergebnis-Code (fester Wert) und Zahl der gesprochenen Sätze, nie der Text."""

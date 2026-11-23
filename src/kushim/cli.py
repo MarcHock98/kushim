@@ -361,10 +361,11 @@ def _folders_ok() -> bool:
     return bool(cfolders.parse(Config.load().claude_folders))
 
 
-def _api_start(cfg: Config, root, extra=None, level_test=None):
+def _api_start(cfg: Config, root, extra=None, level_test=None, tuning=None):
     """Baut den API-Kern (setup, safety, voice, usage; `extra(core, store)` hängt mehr an) und startet den Server auf 127.0.0.1.
     Port und Token kommen nach run/api.json (nur für die eigene Oberfläche). Gibt (server, store, info) zurück.
-    `level_test`: der Pegeltest des Sprachprozesses (nur `kushim talk --ui`, wo die API im selben Prozess läuft)."""
+    `level_test`: der Pegeltest des Sprachprozesses (nur `kushim talk --ui`, wo die API im selben Prozess läuft).
+    `tuning`: die Mikrofon-Schwellen zur Laufzeit (`LiveTuning`) desselben Sprachprozesses."""
     import json
     from .api.protocol import ApiCore, new_token
     from .api.setup_api import register_setup
@@ -381,7 +382,7 @@ def _api_start(cfg: Config, root, extra=None, level_test=None):
         print("Hinweis: Vault nicht offen, Notaus-Aktionen werden nicht im Audit protokolliert.")
     token = new_token()
     core = ApiCore(token)
-    register_voice(core, root, level_test=level_test, audit=store.audit if store else None)
+    register_voice(core, root, level_test=level_test, audit=store.audit if store else None, tuning=tuning)
     register_system(core, root)                        # Systemzustand (nur lesen, nur lokale Messwerte)
     register_setup(core, root, lambda: _vault_state(cfg), list_devices=list_devices,
                    audit=store.audit if store else None, claude=ClaudeProbe().get, folders_ok=_folders_ok,
@@ -672,9 +673,17 @@ def _main(argv: list[str] | None = None) -> int:
                                   f"Du: {r.heard}\nkushim: {r.reply or '(' + r.outcome + ')'}"
                                   + (" [unterbrochen]" if r.outcome == "interrupted" else "")
                                   + (f"  [{r.detail}]" if r.detail else ""))
+            from .voice.tuning import LiveTuning
+            # Mikrofon-Schwellen zur Laufzeit (Oberfläche, Sprachbefehl): Collector, Unterbrechen und Pegelanzeige teilen
+            # dasselbe Objekt und lesen es bei jedem Frame. Start = Werte aus wakewords.toml.
+            tuning = LiveTuning.from_settings(st)
+            tuning.on_change = talklog.tuning                 # talk.log: Quelle, Stufe, Zahlen (nie Text)
+            pipeline.tuning = tuning                          # Sprachbefehl „Mikrofon empfindlicher/weniger empfindlich/normal“
             barge = (BargeIn(level=st.barge_in_level, min_ms=st.barge_in_ms, echo_guard=st.echo_schutz,
-                             echo_factor=st.echo_factor, echo_ignore_ms=st.echo_ignore_ms) if st.barge_in else None)
-            utter = lambda wait: UtteranceCollector(wait_ms=wait, silence_ms=end_ms, max_ms=max_ms, energy_threshold=st.speech_level)
+                             echo_factor=st.echo_factor, echo_ignore_ms=st.echo_ignore_ms, tuning=tuning)
+                     if st.barge_in else None)
+            utter = lambda wait: UtteranceCollector(wait_ms=wait, silence_ms=end_ms, max_ms=max_ms, energy_threshold=st.speech_level,
+                                                    tuning=tuning)
             from .voice import statefile
             from .voice.levels import LevelTest
             from .voice.transcript import Transcript
@@ -683,8 +692,12 @@ def _main(argv: list[str] | None = None) -> int:
             pipeline.notes = transcript                   # Zeile „Du“ direkt nach der Spracherkennung (nur im Speicher)
             level_test = LevelTest()                      # Pegeltest der Oberfläche: nur Pegelzahlen aus den Frames dieser Schleife
 
+            from .voice.levels import frame_rms
+
             def on_frame(f, p):
-                publisher.phase(p, statefile.frame_level(f))
+                rms = frame_rms([f])[0]
+                tuning.observe(rms)                           # letzter Pegel und Spitze der letzten Sekunde (nur Zahlen)
+                publisher.phase(p, min(1.0, rms / 4000.0))     # wie statefile.frame_level
                 level_test.feed(f, p)
 
             def wake(f) -> bool:
@@ -726,7 +739,7 @@ def _main(argv: list[str] | None = None) -> int:
                         register_approvals(core, bridge, root, on_decision=_approval_log(cfg))
                         from .api.stage_api import register_stage       # Ansichten von Claude (zeige) für die Bühne
                         register_stage(core, bridge.stage, root)
-                api = _api_start(cfg, root, extra, level_test=level_test)
+                api = _api_start(cfg, root, extra, level_test=level_test, tuning=tuning)
             loop = TalkLoop(mic, pipeline, kill, wake=wake, ack=ack,
                             flush=mic.flush, new_collector=lambda: utter(wait_ms),
                             on_result=on_result,
