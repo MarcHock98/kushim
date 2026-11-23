@@ -9,7 +9,7 @@ import { SecurityPanel, type Overview } from "./components/SecurityPanel";
 import { parseSystem, type SysData } from "./components/SystemPanel";
 import { ViewCard, ViewTabs } from "./components/stage/ViewCard";
 import { ART_LABEL, hasSystem, parseItem, type View as StageView } from "./lib/stage";
-import { Transcript, type Entry } from "./components/Transcript";
+import { mergeEntries, parseEntry, Transcript, type Entry } from "./components/Transcript";
 import { IconHome, IconMemory, IconOverview, IconShield } from "./components/Icons";
 import { HaltedBanner, KillButton } from "./components/KillButton";
 import { ApiClient, type Credentials } from "./lib/api";
@@ -84,7 +84,7 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
   const [shown, setShown] = useState<Shown>(null);           // Bühne: null = Dialog (nur Kern), sonst Zeige-Modus
   const [views, setViews] = useState<StageView[]>([]);        // von Claude gezeigt (älteste zuerst, höchstens 20)
   const stageSeq = useRef(0);
-  const lastId = useRef(0);
+  const lastRev = useRef(0);                                  // höchste Änderungsnummer (rev) aus transcript.get
   const [rated, setRated] = useState<Record<number, 1 | -1>>({});
   const client = useRef<ApiClient | null>(null);
   const viewRef = useRef<HTMLElement | null>(null);
@@ -195,19 +195,20 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
     return () => { stop = true; clearInterval(id); };
   }, [connected]);
 
-  useEffect(() => {                                     // Verlauf: nur neue Einträge, nicht bei verdecktem Fenster
+  useEffect(() => {                                     // Verlauf: nur geänderte Einträge (seit rev), nicht bei verdecktem Fenster
     if (!connected) return;
     let stop = false, busy = false;
     const pull = async () => {
       if (busy || document.hidden) return;
       busy = true;
-      const r = await client.current?.call("transcript.get", { since: lastId.current });
+      const r = await client.current?.call("transcript.get", { since: lastRev.current });
       busy = false;
       if (stop || !r?.ok || !Array.isArray(r.entries) || r.entries.length === 0) return;
-      const fresh = (r.entries as Entry[]).filter((e) => typeof e.id === "number" && e.id > lastId.current);
+      const fresh = r.entries.map(parseEntry).filter((e) => e !== null);
+      const last = typeof r.last === "number" && Number.isSafeInteger(r.last) ? r.last : 0;
+      lastRev.current = Math.max(lastRev.current, last, ...fresh.map((e) => e.rev));
       if (fresh.length === 0) return;
-      lastId.current = Math.max(...fresh.map((e) => e.id));
-      setEntries((old) => [...old, ...fresh].slice(-20));
+      setEntries((old) => mergeEntries(old, fresh));     // nach id: ein neuer Stand ersetzt die Zeile, nichts doppelt
     };
     void pull();
     const id = setInterval(pull, 1000);

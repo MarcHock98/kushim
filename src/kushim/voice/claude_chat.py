@@ -52,6 +52,9 @@ class ClaudeChat:
         self._announced: list[str] = []         # request_ids, die schon vorgelesen wurden (neueste hinten)
         self._fillers = 0                       # wie viele Füllwörter schon gesagt wurden (bestimmt das nächste)
         self._request: Any = None               # (key, Token) der offenen Anfrage an Claude, sonst None
+        # Haken für das Live-Transkript: bekommt direkt nach `bridge.send` dessen Status ("ok", "not_running", "kill", ...).
+        # Nur Anzeige; ein Fehler darin stört die Runde nie.
+        self.on_send: Callable[[str], None] | None = None
 
     def filler(self) -> str:
         """Nächstes Füllwort, reihum (deterministisch, damit Tests und Nutzer wissen, was kommt)."""
@@ -92,6 +95,11 @@ class ClaudeChat:
     def __call__(self, messages: list[dict[str, str]], **_: Any) -> Iterator[str]:
         text = next((m.get("content", "") for m in reversed(messages) if m.get("role") == "user"), "")
         status = self.bridge.send(text)
+        if self.on_send is not None:
+            try:
+                self.on_send(status)
+            except Exception:                         # noqa: BLE001 (Anzeige darf den Betrieb nie stören)
+                pass
         if status != "ok":
             yield {"not_running": NOT_RUNNING, "kill": earcon.mark(KILLED)}.get(status, FAILED)
             return

@@ -93,13 +93,18 @@ class Result:
     reply: str
     outcome: str      # "spoken" | "killed" | "empty" | "wake_only" | "halted" | "interrupted" | "end_conversation" | "cancelled"
     detail: str = ""  # nur Anzeige, z. B. Score und Dauer bei abgelehntem Sprecher (kein Audio)
+    entry: int | None = None    # id des Transkript-Eintrags dieser Runde (`notes.heard`), sonst None
 
 
 class Pipeline:
     def __init__(self, stt: SpeechToText, chat: ChatStream, speaker: Speaker, dialog: Dialog,
                  kill: KillSwitch,
                  history_limit: int = 6,
-                 commands: Any = None, wake_names: Sequence[str] = (), tasks: TaskRegistry | None = None):
+                 commands: Any = None, wake_names: Sequence[str] = (), tasks: TaskRegistry | None = None,
+                 notes: Any = None):
+        # `notes`: Live-Transkript (`Transcript`), optional. Die Zeile „Du“ entsteht direkt nach der Spracherkennung
+        # (`heard`), danach `sent` oder `drop` mit Grund. Nur Anzeige im Arbeitsspeicher; Fehler darin stören `handle` nie.
+        self.notes = notes
         self.wake_names = tuple(wake_names)       # werden am Anfang des erkannten Textes entfernt
         self.tasks = tasks if tasks is not None else TaskRegistry()      # laufende Aufgaben, die "abbrechen" beenden kann
         self._interrupted = threading.Event()     # gesetzt, wenn der Nutzer dazwischenspricht
@@ -128,7 +133,31 @@ class Pipeline:
         self.tasks.cancel_all()
         self._interrupted.set()                   # stoppt auch Denken/Sprechen
         self.dialog.triggered()
+        self._note("heard", text, strip_wake_words(text, self.wake_names) or text, "cancelled")   # eigene Zeile „Du“
         return True
+
+    # --- Live-Transkript (nur Anzeige): jeder Aufruf gekapselt, ein Fehler darf die Runde nie stören
+    def _note(self, method: str, *args: Any) -> Any:
+        notes = self.notes
+        if notes is None:
+            return None
+        try:
+            return getattr(notes, method)(*args)
+        except Exception:                         # noqa: BLE001 (Anzeige darf den Betrieb nie stören)
+            return None
+
+    def _drop(self, entry: int | None, reason: str) -> None:
+        if entry is not None:
+            self._note("drop", entry, reason)
+
+    def _send_status(self, entry: int | None, status: str) -> None:
+        """Haken `on_send` des Chats: was `bridge.send` gemeldet hat."""
+        if entry is None:
+            return
+        if status == "ok":
+            self._note("sent", entry)
+        else:
+            self._drop(entry, {"not_running": "not_running", "kill": "killed"}.get(status, "send_failed"))
 
     def say_text(self, text: str) -> None:
         """Spricht einen fertigen Text (z. B. eine Meldung von sich aus, wenn Claude fertig ist). Satzweise, unterbrechbar."""
@@ -157,27 +186,36 @@ class Pipeline:
         if is_kill_phrase(text):
             self.kill.on_transcript(text)
             self.dialog.halt()
-            return Result(text, "", "killed")
-        if is_cancel_phrase(strip_wake_words(text, self.wake_names) or text):   # Abbrechen ist immer sicher
-            return self._cancel(text)
-        text = strip_wake_words(text, self.wake_names)
+            return Result(text, "", "killed", entry=self._note("heard", "", "", "killed"))    # ohne Text, nur „Notaus erkannt“
+        raw, text = text, strip_wake_words(text, self.wake_names)
+        entry = self._note("heard", raw, text)           # Zeile „Du“ sofort, bevor irgendetwas an Claude geht
+        if is_cancel_phrase(text or raw):                # Abbrechen ist immer sicher
+            self._drop(entry, "cancelled")
+            r = self._cancel(raw)
+            r.entry = entry
+            return r
         if not text:
-            return Result("", "", "wake_only")      # nur das Wake Word: kein Befehl, nichts prüfen, nichts antworten
+            self._drop(entry, "wake_only")
+            return Result("", "", "wake_only", entry=entry)   # nur das Wake Word: kein Befehl, nichts prüfen, nichts antworten
         verified = strong = False                        # keine Sprecher-Prüfung mehr: jede Stimme zählt gleich
         score: float | None = None
         if " ".join(_TOKEN.findall(re.sub(r"['’`]", "", text.lower()))) in END_PHRASES:     # Gespräch beenden
+            self._drop(entry, "end_conversation")
             self.speaker.say([END_REPLY])
-            return Result(text, END_REPLY, "end_conversation")
+            return Result(text, END_REPLY, "end_conversation", entry=entry)
         if is_shutdown_phrase(text):                     # kushim beenden
+            self._drop(entry, "shutdown")
             self.speaker.say([SHUTDOWN_REPLY])
-            return Result(text, SHUTDOWN_REPLY, "shutdown")
+            return Result(text, SHUTDOWN_REPLY, "shutdown", entry=entry)
         if self.commands is not None:
             answer = self.commands.handle(text, verified, strong, score=score)
             if answer is not None:                       # Befehl oder Bestätigung: kein LLM
+                self._drop(entry, "command")
                 self.speaker.say(split_sentences(answer) or [answer])      # satzweise: der erste Satz kommt früher
-                return Result(text, answer, "command")
+                return Result(text, answer, "command", entry=entry)
         if not self.dialog.triggered():
-            return Result(text, "", "halted")
+            self._drop(entry, "halted")
+            return Result(text, "", "halted", entry=entry)
         self.dialog.utterance_done()
         self.history.append({"role": "user", "content": text})
         messages = [{"role": "system", "content": SYSTEM_PROMPT}, *self.history[-self.history_limit:]]
@@ -191,14 +229,33 @@ class Pipeline:
         # wartet der letzte Satz auf das nächste Stück und die Quittung kommt erst mit Claudes Antwort (Live-Test 2026-11-11).
         chunker = split_whole if getattr(self.chat, "yields_messages", False) else chunk_stream
 
-        def sentence_source():
-            for s in chunker(self.chat(messages)):
-                sentences.append(s.replace(MARK, ""))       # Signalton-Zeichen nur für die Stimme, nie im Verlauf
-                yield s
+        # Wann der Befehl wirklich an Claude ging: ein Chat mit Haken `on_send` meldet das Ergebnis von `bridge.send`,
+        # bei jedem anderen Chat gilt der Aufruf selbst als gesendet.
+        reports = hasattr(self.chat, "on_send")
+        if reports:
+            self.chat.on_send = lambda status: self._send_status(entry, status)
+        called = threading.Event()
 
-        # Kein reply_ready() hier: Der Zustand bleibt THINKING, bis der erste Satz wirklich abgespielt wird (Speaker-Haken).
-        self.speaker.say(prefetch(sentence_source(), stop=lambda: self.kill.fired or self._interrupted.is_set()))
+        def sentence_source():
+            called.set()
+            try:
+                stream = self.chat(messages)
+                if not reports and entry is not None:
+                    self._note("sent", entry)
+                for s in chunker(stream):
+                    sentences.append(s.replace(MARK, ""))       # Signalton-Zeichen nur für die Stimme, nie im Verlauf
+                    yield s
+            except Exception:
+                self._drop(entry, "send_failed")                 # nur, falls noch nicht gesendet
+                raise
+
+        try:
+            # Kein reply_ready() hier: Der Zustand bleibt THINKING, bis der erste Satz wirklich abgespielt wird (Speaker-Haken).
+            self.speaker.say(prefetch(sentence_source(), stop=lambda: self.kill.fired or self._interrupted.is_set()))
+        finally:
+            if not called.is_set():                              # Chat nie aufgerufen (Notaus, Unterbrechen, Fehler)
+                self._drop(entry, "killed" if self.kill.fired else "cancelled" if self._interrupted.is_set() else "send_failed")
         reply = " ".join(sentences)
         self.history.append({"role": "assistant", "content": reply})
         self.dialog.reply_done()
-        return Result(text, reply, "interrupted" if self._interrupted.is_set() else "spoken")
+        return Result(text, reply, "interrupted" if self._interrupted.is_set() else "spoken", entry=entry)

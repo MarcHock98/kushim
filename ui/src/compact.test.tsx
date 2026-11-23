@@ -4,7 +4,10 @@ import { App } from "./App";
 import { parseUsage, standText, USAGE_HINT, USAGE_POLL_MS, usageParts, useUsage, type Usage } from "./components/CompactBar";
 import { ApiClient } from "./lib/api";
 import { STATE_VIEW } from "./lib/avatarState";
-import { DEMO_VIEWS, MockSocket, usageDemo } from "./lib/mock";
+import { DEMO_VIEWS, MockSocket, transcriptEntry, usageDemo } from "./lib/mock";
+import { clockText } from "./components/Transcript";
+
+const TS = 1_790_000_000;                                  // feste Erkennungszeit für die Zeile „Du“
 
 // E2 (docs/ui-e2e3-plan.md, Abschnitte 3, 4 und 7): kleines Fenster, Freigabe darin, Verbrauch, Tastenkürzel.
 
@@ -235,11 +238,11 @@ describe("Letzter Befehl im kleinen Fenster", () => {
     const sock: { current?: MockSocket } = {};
     await start(sock, (m) => {
       m.voice = { active: true, state: "idle", level: 0 };
-      m.entries = [{ id: 1, heard: "<script>alert(1)</script>", reply: "Erste Zeile\nZweite Zeile", outcome: "spoken" }];
+      m.entries = [transcriptEntry({ id: 1, heard: "<script>alert(1)</script>", reply: "Erste Zeile\nZweite Zeile", ts: TS })];
     });
     await toSmall();
-    const you = await within(compactBox()).findByText("Du: <script>alert(1)</script>");
-    expect(you).toHaveAttribute("title", "Du: <script>alert(1)</script>");
+    const you = await within(compactBox()).findByText("Du: <script>alert(1)</script> · gesendet");
+    expect(you).toHaveAttribute("title", `Erkannt ${clockText(TS)}, gesendet`);
     expect(document.querySelector("script")).toBeNull();
     const reply = within(compactBox()).getByText("kushim: Erste Zeile");
     expect(reply).toHaveAttribute("title", "Erste Zeile\nZweite Zeile");

@@ -4,7 +4,7 @@ import { App } from "./App";
 import { hasWebGL } from "./components/Core3D";
 import { ApiClient } from "./lib/api";
 import { STATE_VIEW } from "./lib/avatarState";
-import { MockSocket } from "./lib/mock";
+import { MockSocket, transcriptEntry } from "./lib/mock";
 import { AVATAR_MIN, avatarSize, coreSmall } from "./lib/useBoxSize";
 
 const TOKEN = "t".repeat(43);
@@ -41,7 +41,7 @@ describe("Bühne", () => {
 
   it("eine normale Antwort ändert nichts, der Kern bleibt groß in der Mitte", async () => {
     const sock = await open();
-    sock.current!.entries.push({ id: 1, heard: "Wie spät ist es?", reply: "Zehn Uhr.", outcome: "spoken" });
+    sock.current!.entries.push(transcriptEntry({ id: 1, heard: "Wie spät ist es?", reply: "Zehn Uhr." }));
     await new Promise((r) => setTimeout(r, 1300));
     expect(stage()).toHaveAttribute("data-mode", "dialog");
   });
