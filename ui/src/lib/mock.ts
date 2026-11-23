@@ -1,5 +1,5 @@
 // Gefälschtes Backend für Entwicklung und Tests (kein Netz). Antwortet wie `ApiCore`: Token zuerst, neutrale Fehler.
-import type { Socket } from "./api";
+import type { Socket, TuningBounds, TuningValues } from "./api";
 
 /** Ein Eintrag wie `transcript.get` ihn liefert (src/kushim/voice/transcript.py), mit allen Feldern. */
 export interface MockEntry {
@@ -76,6 +76,7 @@ export class MockSocket implements Socket {
     if (query.has("freigabe")) this.pending = [{ request_id: "demo1", tool_name: "Bash", description: "Tests ausführen (Beispiel)",
       input_preview: "cd ui && npx vitest run", digest: "d".repeat(64), summary: "Claude möchte die Tests ausführen.", truncated: false }];
     this.setupFromUrl();                                // E3: ?mock&setup (Erststart), ?mock&setup&novoice (ohne Sprachdienst)
+    this.tuningFromUrl();                               // Mikrofon: ?mock&mic=aus (Sprachdienst aus), ?mock&mic=stimme (per Stimme verstellt)
     queueMicrotask(() => (this.fail ? this.onerror?.() : this.onopen?.()));
   }
 
@@ -211,6 +212,72 @@ export class MockSocket implements Socket {
   }
   // ===== Ende E3 =====
 
+  // ===== Mikrofon-Schwellen zur Laufzeit (voice.tuning.*), vollständig wie der Vertrag: alle Felder, Grenzen, Fehlerfälle =====
+  /** Läuft der Sprachdienst für die Schwellen? Im Browser zeigt `?mock&mic=aus` den deaktivierten Kasten. */
+  tuningActive = true;
+  tuningFile: TuningValues = { speech_level: 200, barge_in_level: 250, barge_in_ms: 240, end_silence_seconds: 2.5 };
+  tuningValues: TuningValues = { ...this.tuningFile };
+  tuningBounds: TuningBounds = { speech_level: [80, 600], barge_in_level: [150, 1500], barge_in_ms: [160, 400], end_silence_seconds: [0.6, 3.0] };
+  tuningStep = 0;
+  tuningSource: "ui" | "voice" | "file" = "file";
+  /** Tests: das nächste set/reset/save genau so ablehnen (danach wieder normal). */
+  tuningFail: "invalid" | "kill" | "unavailable" | null = null;
+  tuningSaves = 0;                                      // wie oft „Merken“ die Datei geschrieben hätte (mit Sicherung)
+  /** Wie die Sprachsteuerung („empfindlicher“): Stufe -2 bis 2, Sprechschwelle je Stufe etwa 15 % tiefer. */
+  voiceTune(step: number): void {
+    this.tuningStep = Math.max(-2, Math.min(2, Math.round(step)));
+    const [lo, hi] = this.tuningBounds.speech_level;
+    this.tuningValues = { ...this.tuningValues,
+      speech_level: Math.max(lo, Math.min(hi, Math.round(this.tuningFile.speech_level * 0.85 ** this.tuningStep))) };
+    this.tuningSource = "voice";
+  }
+  /** Simulierter Pegel: ruhiger Raum mit Sprechpausen (RMS etwa 40 bis 700, Spitze gut doppelt so hoch), abhängig von `now`. */
+  private tuningLevel(): { rms: number; peak: number } {
+    if (!this.tuningActive) return { rms: 0, peak: 0 };
+    const t = this.now() / 1000;
+    const speech = Math.max(0, Math.sin(t * 0.9)) ** 2;
+    const rms = Math.round(40 + 660 * speech * (0.7 + 0.3 * Math.abs(Math.sin(t * 7.3))));
+    return { rms, peak: Math.round(rms * (2.1 + 0.4 * Math.abs(Math.sin(t * 3.1)))) };
+  }
+  private tuningReply(msg: Record<string, unknown>): unknown {
+    const type = String(msg.type);
+    if (type === "voice.tuning.get") {
+      return { ok: true, active: this.tuningActive, values: { ...this.tuningValues }, file_values: { ...this.tuningFile },
+        bounds: Object.fromEntries(Object.entries(this.tuningBounds).map(([k, b]) => [k, [...b]])), step: this.tuningStep,
+        ...this.tuningLevel(), last_source: this.tuningSource };
+    }
+    if (!["voice.tuning.set", "voice.tuning.reset", "voice.tuning.save"].includes(type)) return { ok: false, error: "unknown_type" };
+    if (msg.confirm !== true) return { ok: false, error: "confirm_required" };
+    if (this.tuningFail) { const error = this.tuningFail; this.tuningFail = null; return { ok: false, error }; }
+    if (this.kill) return { ok: false, error: "kill" };
+    if (!this.tuningActive) return { ok: false, error: "unavailable" };
+    if (type === "voice.tuning.reset") {
+      this.tuningValues = { ...this.tuningFile }; this.tuningStep = 0; this.tuningSource = "file";
+      return { ok: true };
+    }
+    if (type === "voice.tuning.save") { this.tuningFile = { ...this.tuningValues }; this.tuningSaves += 1; return { ok: true }; }
+    const v = msg.values as Record<string, unknown> | null;
+    if (!v || typeof v !== "object" || Array.isArray(v)) return { ok: false, error: "invalid" };
+    const keys = Object.keys(v);
+    const ok = keys.length > 0 && keys.every((k) => {
+      const b = (this.tuningBounds as Record<string, [number, number]>)[k];
+      const x = v[k];
+      return !!b && typeof x === "number" && Number.isFinite(x) && x >= b[0] && x <= b[1];
+    });
+    if (!ok) return { ok: false, error: "invalid" };
+    this.tuningValues = { ...this.tuningValues, ...(v as Partial<TuningValues>) };
+    this.tuningSource = "ui";
+    return { ok: true };
+  }
+  private tuningFromUrl(): void {
+    if (typeof location === "undefined") return;
+    const q = new URLSearchParams(location.search);
+    if (!q.has("mock")) return;
+    if (q.get("mic") === "aus") this.tuningActive = false;
+    if (q.get("mic") === "stimme") this.voiceTune(1);
+  }
+  // ===== Ende Mikrofon-Schwellen =====
+
   /** Vorführung im Browser (`?mock&demo`): erst ein reines Gespräch (Kern bleibt groß), dann zeigt „Claude“ der Reihe nach
    *  Rechnung, Markt, Recherche und Systemzustand. Nur Mock, Beispieldaten. */
   demo(): void {
@@ -271,6 +338,7 @@ export class MockSocket implements Socket {
     else if (msg.type === "safety.status") reply = { ok: true, kill: this.kill };
     else if (msg.type === "voice.state") reply = this.voiceReply();                                         // E3: mit wake_count/wake_last
     else if (msg.type && SETUP_TYPES.has(msg.type)) reply = this.setupReply(msg as Record<string, unknown>);   // E3
+    else if (msg.type?.startsWith("voice.tuning.")) reply = this.tuningReply(msg as Record<string, unknown>);  // Mikrofon-Schwellen
     else if (msg.type === "transcript.get") {
       const since = (msg as { since?: number }).since ?? 0;
       const entries = this.entries.filter((e) => e.rev > since);                 // since ist eine rev, keine id

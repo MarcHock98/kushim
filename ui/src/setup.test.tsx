@@ -58,6 +58,7 @@ const WRITES = ["setup.skip", "setup.reopen", "setup.done", "audio.set", "voice.
 const ALLOWED = new Set([
   // was das Fenster ohnehin abfragt
   "safety.status", "voice.state", "approvals.get", "transcript.get", "safety.overview", "stage.get",
+  "voice.tuning.get",                                 // Kasten „Mikrofon“ in der Ansicht Sicherheit (nur lesen)
   // Setup-Vertrag
   "setup.status", "setup.checks", "audio.devices", "audio.get", "voice.level_result", "wake.get", ...WRITES,
   "claude.folder_list", "claude.folder_propose", "claude.folder_confirm", "claude.folder_deny", "claude.folder_remove",

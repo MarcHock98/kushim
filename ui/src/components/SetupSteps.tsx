@@ -272,6 +272,7 @@ export function MicStep({ ctx }: { ctx: StepCtx }) {
         <div className="setup-row">
           <button type="button" disabled={locked || running || noVoice} onClick={() => void startTest()}>Pegeltest starten</button>
         </div>
+        <p className="setup-calm">Feinjustieren im laufenden Betrieb: Bereich Sicherheit, Kasten „Mikrofon“.</p>
       </div>
       <div className="setup-row">
         <button type="button" disabled={locked} onClick={() => void ctx.done("audio_voice")}>Mikrofon passt</button>

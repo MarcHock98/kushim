@@ -6,6 +6,7 @@ import { FolderPanel } from "./components/FolderPanel";
 import { Dashboard, type DashData } from "./components/Dashboard";
 import { MemoryPanel } from "./components/MemoryPanel";
 import { SecurityPanel, type Overview } from "./components/SecurityPanel";
+import { MicTuning } from "./components/MicTuning";
 import { parseSystem, type SysData } from "./components/SystemPanel";
 import { ViewCard, ViewTabs } from "./components/stage/ViewCard";
 import { ART_LABEL, hasSystem, parseItem, type View as StageView } from "./lib/stage";
@@ -419,6 +420,8 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
             </div>
           )}
           {view === "security" && <SecurityPanel overview={overview} />}
+          {/* Mikrofon-Schwellen im laufenden Betrieb: eigener Kasten neben dem (nur lesenden) Sicherheitsstatus */}
+          {view === "security" && <MicTuning client={client} connected={connected} kill={kill === true} visible={!compact} />}
           {view === "home" && (
             <section className="stage" aria-label="Gespräch" data-state={state} data-mode={shownView ? "zeige" : "dialog"}>
               <div className="stage-core">

@@ -16,6 +16,34 @@ export type SocketFactory = (url: string) => Socket;
 
 const TIMEOUT_MS = 10_000;
 
+// ----- Mikrofon-Schwellen zur Laufzeit (voice.tuning.*). Das Backend prüft Grenzen, Notaus und ob der Sprachdienst läuft. -----
+
+/** Die vier Werte, die sich im laufenden Betrieb verstellen lassen (Einheiten: Pegel als RMS-Zahl, Millisekunden, Sekunden). */
+export type TuningKey = "speech_level" | "barge_in_level" | "barge_in_ms" | "end_silence_seconds";
+export type TuningValues = Record<TuningKey, number>;
+export type TuningBounds = Record<TuningKey, [number, number]>;
+export const TUNING_KEYS: readonly TuningKey[] = ["speech_level", "barge_in_level", "barge_in_ms", "end_silence_seconds"];
+/** Grenzen laut Vertrag; gelten nur, wenn das Backend für einen Wert keine brauchbaren Grenzen liefert. */
+export const TUNING_BOUNDS: TuningBounds = {
+  speech_level: [80, 600], barge_in_level: [150, 1500], barge_in_ms: [160, 400], end_silence_seconds: [0.6, 3.0],
+};
+
+/** Antwort auf `voice.tuning.get`: aktive Werte, Werte aus wakewords.toml, Grenzen, Stufe der Sprachsteuerung (-2 bis 2),
+ *  Live-Pegel (RMS und Spitze) und wer zuletzt verstellt hat. */
+export interface TuningState {
+  active: boolean;
+  values: TuningValues;
+  file_values: TuningValues;
+  bounds: TuningBounds;
+  step: number;
+  rms: number;
+  peak: number;
+  last_source: "ui" | "voice" | "file";
+}
+/** `voice.tuning.set {values: teilweise, confirm: true}`; `reset` und `save` nur mit `confirm: true`. */
+export type TuningSetRequest = { values: Partial<TuningValues>; confirm: true };
+export type TuningError = "invalid" | "kill" | "unavailable";
+
 export class ApiClient {
   private sock: Socket | null = null;
   private waiting: Array<(r: ApiReply) => void> = [];
