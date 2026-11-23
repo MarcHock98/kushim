@@ -97,7 +97,9 @@ INSTRUCTIONS = (
     "Für Bewegung zeige eine `simulation` (art simulation) mit einem eingebauten Modell (pendel, feder, wurf, umlauf, gas, "
     "doppelpendel, welle): schick nur den Modellnamen und Zahlen in den festen Einheiten, nie Formeln oder Code, und sag dazu, dass "
     "es eine Simulation ist, keine Messung. Für Moleküle, Atome und Orbitale zeige einen Baustein `teilchen` (art teilchen, form "
-    "molekuel, atom oder orbital) nur mit Elementsymbolen, Lagen in Ångström, Indizes und Zahlen."
+    "molekuel, atom oder orbital) nur mit Elementsymbolen, Lagen in Ångström, Indizes und Zahlen. "
+    "Beim Atom sag dazu, dass das Schalenmodell vereinfacht und nicht maßstabsgetreu ist. Bei Wasserstoff zeige zuerst das "
+    "Orbital (die Wahrscheinlichkeitswolke, das realistischere Bild) und, falls nützlich, danach das Schalenmodell."
 )
 MAX_VIEWS = 10                   # nicht abgeholte Ansichten (zeige); ältere fallen weg
 CANCEL_TEXT = "Abbruch per Stimme: den laufenden Auftrag nicht fortsetzen und nichts Neues beginnen."
