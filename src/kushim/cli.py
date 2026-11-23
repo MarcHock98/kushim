@@ -654,7 +654,7 @@ def _main(argv: list[str] | None = None) -> int:
                                                   wake_names=[w.name for w in wcfg.enabled()],
                                                   whisper_device=plan.whisper_device,
                                                   whisper_index=plan.whisper_index)
-            pipeline.handle = talklog.timed(pipeline.handle)    # jedes Ergebnis mit Dauer ins Protokoll
+            pipeline.handle = talklog.timed(pipeline.handle, metrics=lambda: pipeline.metrics)   # Ergebnis, Dauer, Kennzahlen
             raw_ack = ack
 
             def ack():
@@ -667,7 +667,9 @@ def _main(argv: list[str] | None = None) -> int:
             max_ms = int(wcfg.settings.max_seconds * 1000)
             st = wcfg.settings
             follow_ms = int(st.follow_up_seconds * 1000)
-            out = lambda r: print(f"Du: {r.heard}\nkushim: {r.reply or '(' + r.outcome + ')'}"
+            out = lambda r: print(f"kushim (Meldung): {r.reply}" + (" [unterbrochen]" if r.outcome == "announce_interrupted" else "")
+                                  if r.outcome in ("announced", "announce_interrupted") else
+                                  f"Du: {r.heard}\nkushim: {r.reply or '(' + r.outcome + ')'}"
                                   + (" [unterbrochen]" if r.outcome == "interrupted" else "")
                                   + (f"  [{r.detail}]" if r.detail else ""))
             barge = (BargeIn(level=st.barge_in_level, min_ms=st.barge_in_ms, echo_guard=st.echo_schutz,
@@ -694,6 +696,9 @@ def _main(argv: list[str] | None = None) -> int:
 
             def on_result(r):
                 out(r)
+                if r.outcome in ("announced", "announce_interrupted"):
+                    talklog.announced(r.outcome, r.spoken)       # nur Ergebnis-Code und Satzzahl
+                    return                                    # Meldung ohne Nutzereingabe: keine Zeile „Du“
                 transcript.add(r)                         # ergänzt den Eintrag der Runde (r.entry) um die Antwort
                 if r.outcome == "rejected_speaker":
                     publisher.alarm()
@@ -730,7 +735,7 @@ def _main(argv: list[str] | None = None) -> int:
                             follow_collector=(lambda: utter(follow_ms)) if follow_ms > 0 else None,
                             barge=barge, preroll_frames=round(st.preroll_seconds / 0.08),
                             announce=lambda: _notice() or pipeline.chat.announcement(),   # Hinweise von kushim start, verspätete Antworten
-                            say=pipeline.say_text, on_note=note)
+                            say=pipeline.say_text, on_note=note, on_barge=talklog.barge)
             print("Wake Words: " + ", ".join(w.name for w in wcfg.enabled())
                   + ". Notaus: 'Notaus' sagen oder die Verknüpfung. Strg+C beendet.")
             if follow_ms > 0:

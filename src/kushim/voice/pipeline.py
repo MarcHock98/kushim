@@ -11,6 +11,7 @@ from __future__ import annotations
 import difflib
 import re
 import threading
+import time
 from dataclasses import dataclass
 from typing import Any, Callable, Iterable, Sequence
 
@@ -92,8 +93,10 @@ class Result:
     heard: str
     reply: str
     outcome: str      # "spoken" | "killed" | "empty" | "wake_only" | "halted" | "interrupted" | "end_conversation" | "cancelled"
+    #                   | "announced" | "announce_interrupted" (Meldung von sich aus, ohne Nutzereingabe)
     detail: str = ""  # nur Anzeige, z. B. Score und Dauer bei abgelehntem Sprecher (kein Audio)
     entry: int | None = None    # id des Transkript-Eintrags dieser Runde (`notes.heard`), sonst None
+    spoken: int | None = None   # wirklich gesprochene Sätze (nur bei Meldungen gesetzt, für talk.log)
 
 
 class Pipeline:
@@ -109,15 +112,37 @@ class Pipeline:
         self.tasks = tasks if tasks is not None else TaskRegistry()      # laufende Aufgaben, die "abbrechen" beenden kann
         self._interrupted = threading.Event()     # gesetzt, wenn der Nutzer dazwischenspricht
         previous_stop = speaker.should_stop
-        speaker.should_stop = lambda: previous_stop() or self._interrupted.is_set()
+        # Notaus über `kill.poll()`, nicht nur `kill.fired`: Verknüpfung und Oberfläche schreiben nur die Marker-Datei, die Ausgabe
+        # stoppt damit vor dem nächsten Satz statt erst am Ende (poll löst die Notaus-Aktionen höchstens einmal aus).
+        speaker.should_stop = lambda: previous_stop() or self._interrupted.is_set() or bool(kill.poll())
         # "Ich spreche" nur, solange wirklich Ton läuft; während auf Claude gewartet wird, bleibt es "Ich denke"
         # (Live-Test 2026-11-23: Anzeige "spricht" ohne Ton, weil SPEAKING schon vor dem Warten gesetzt wurde).
-        speaker.on_play_start = dialog.playing
+        speaker.on_play_start = self._play_start
         speaker.on_play_end = dialog.played
+        speaker.on_played = self._played
+        # Nur Zahlen für talk.log (C5), je Runde neu: stt_s, first_text_s, first_audio_s (Sekunden ab Rundenbeginn), spoken
+        # (wirklich gesprochene Sätze). Nie Text, nie Audio.
+        self.metrics: dict[str, float | int | None] = {}
+        self._t0 = time.monotonic()
         self.stt, self.chat, self.speaker, self.dialog, self.kill = stt, chat, speaker, dialog, kill
         self.commands = commands          # Sprachbefehle ohne LLM (`handle(text, verified, strong)`), optional
         self.history: list[dict[str, str]] = []
         self.history_limit = history_limit
+
+    def _since(self) -> float:
+        return time.monotonic() - self._t0
+
+    def _reset_metrics(self) -> None:
+        self._t0 = time.monotonic()
+        self.metrics = {"stt_s": None, "first_text_s": None, "first_audio_s": None, "spoken": 0}
+
+    def _play_start(self) -> Any:
+        if self.metrics.get("first_audio_s") is None:
+            self.metrics["first_audio_s"] = self._since()
+        return self.dialog.playing()
+
+    def _played(self) -> None:
+        self.metrics["spoken"] = int(self.metrics.get("spoken") or 0) + 1
 
     def interrupt(self) -> None:
         """Der Nutzer spricht dazwischen (aus einem anderen Thread): Ausgabe stoppt sofort, nichts wird weitergesprochen."""
@@ -128,7 +153,16 @@ class Pipeline:
         """Für die Schleife, WÄHREND eine Antwort läuft: war die Äußerung "abbrechen"? Dann alles Laufende beenden (aus einem
         anderen Thread). Nein: nichts tun (die Äußerung wird danach normal behandelt)."""
         text = self.stt.transcribe(pcm).text
-        if not text or not is_cancel_phrase(text):
+        if not text:
+            return False
+        if is_kill_phrase(text):                  # "Notaus" als Zwischenruf: zuerst, wie im normalen Notaus-Pfad
+            self.kill.on_transcript(text)
+            self._interrupted.set()
+            self.dialog.halt()
+            self.tasks.cancel_all()
+            self._note("heard", "", "", "killed")             # Zeile „Du“ ohne Text, nur „Notaus erkannt“
+            return True
+        if not is_cancel_phrase(text):
             return False
         self.tasks.cancel_all()
         self._interrupted.set()                   # stoppt auch Denken/Sprechen
@@ -159,10 +193,11 @@ class Pipeline:
         else:
             self._drop(entry, {"not_running": "not_running", "kill": "killed"}.get(status, "send_failed"))
 
-    def say_text(self, text: str) -> None:
-        """Spricht einen fertigen Text (z. B. eine Meldung von sich aus, wenn Claude fertig ist). Satzweise, unterbrechbar."""
+    def say_text(self, text: str) -> int:
+        """Spricht einen fertigen Text (z. B. eine Meldung von sich aus, wenn Claude fertig ist). Satzweise, unterbrechbar.
+        Gibt die Zahl der wirklich gesprochenen Sätze zurück."""
         self._interrupted.clear()
-        self.speaker.say(split_sentences(text) or [text])
+        return self.speaker.say(split_sentences(text) or [text])
 
     def say_cancelled(self) -> None:
         """Kurze Bestätigung nach dem Abbruch (nachdem die laufende Antwort beendet ist)."""
@@ -178,9 +213,11 @@ class Pipeline:
 
     def handle(self, pcm: Any) -> Result:
         self._interrupted.clear()
+        self._reset_metrics()
         if self.kill.poll() or self.dialog.state is State.HALTED:
             return Result("", "", "halted")
         text = self.stt.transcribe(pcm).text
+        self.metrics["stt_s"] = self._since()
         if not text:
             return Result("", "", "empty")
         if is_kill_phrase(text):
@@ -235,26 +272,58 @@ class Pipeline:
         if reports:
             self.chat.on_send = lambda status: self._send_status(entry, status)
         called = threading.Event()
+        # Stopp nur für DIESE Runde, einmal gesetzt bleibt er gesetzt: Unterbrechen oder Notaus (auch per Marker-Datei) oder das
+        # Ende der Runde. Der Erzeuger-Thread (z. B. ClaudeChat, der noch auf `/reply` wartet) hört damit auf, auch wenn die
+        # nächste Runde `_interrupted` schon wieder zurückgesetzt hat; sonst holte er die Antwort der nächsten Frage ab.
+        ended = threading.Event()
+        # Entweder der Erzeuger-Thread ruft den Chat auf (und `called` steht) oder die Runde endet vorher und der Eintrag wird
+        # verworfen: nie beides. Ohne diese Sperre konnte der Thread nach dem Verwerfen noch `bridge.send` aufrufen
+        # (Zeile „verworfen: Abbruch“, obwohl Claude den Text bekam).
+        start_lock = threading.Lock()
+
+        def turn_stop() -> bool:
+            if not ended.is_set() and (self._interrupted.is_set() or self.kill.poll()):
+                ended.set()
+            return ended.is_set()
+
+        def open_stream():
+            if getattr(self.chat, "accepts_stop", False):
+                return self.chat(messages, stop=turn_stop)
+            return self.chat(messages)
 
         def sentence_source():
-            called.set()
+            with start_lock:
+                if turn_stop():                                  # schon unterbrochen/Notaus/vorbei: gar nicht erst senden
+                    return
+                called.set()
             try:
-                stream = self.chat(messages)
-                if not reports and entry is not None:
-                    self._note("sent", entry)
+                stream = open_stream()
+                marked = reports or entry is None
                 for s in chunker(stream):
+                    if not marked:                               # "gesendet" erst, wenn der Chat wirklich etwas liefert
+                        self._note("sent", entry)
+                        marked = True
+                    if self.metrics.get("first_text_s") is None:
+                        self.metrics["first_text_s"] = self._since()
                     sentences.append(s.replace(MARK, ""))       # Signalton-Zeichen nur für die Stimme, nie im Verlauf
                     yield s
+                if not marked:                                   # Chat lief ohne Fehler, aber ohne Text
+                    self._note("sent", entry)
             except Exception:
                 self._drop(entry, "send_failed")                 # nur, falls noch nicht gesendet
                 raise
 
         try:
             # Kein reply_ready() hier: Der Zustand bleibt THINKING, bis der erste Satz wirklich abgespielt wird (Speaker-Haken).
-            self.speaker.say(prefetch(sentence_source(), stop=lambda: self.kill.fired or self._interrupted.is_set()))
+            self.speaker.say(prefetch(sentence_source(), stop=turn_stop))
         finally:
-            if not called.is_set():                              # Chat nie aufgerufen (Notaus, Unterbrechen, Fehler)
-                self._drop(entry, "killed" if self.kill.fired else "cancelled" if self._interrupted.is_set() else "send_failed")
+            with start_lock:
+                ended.set()                                      # Runde vorbei: ein noch wartender Erzeuger hört auf
+                if not called.is_set():                          # Chat nie aufgerufen (Notaus, Unterbrechen, Fehler)
+                    self._drop(entry, "killed" if self.kill.fired else "cancelled" if self._interrupted.is_set()
+                               else "send_failed")
+                elif not reports and entry is not None:          # Chat ohne `on_send` lief: nie auf `pending` stehen lassen
+                    self._note("sent", entry)
         reply = " ".join(sentences)
         self.history.append({"role": "assistant", "content": reply})
         self.dialog.reply_done()

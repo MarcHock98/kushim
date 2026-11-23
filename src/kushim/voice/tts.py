@@ -82,6 +82,7 @@ class Speaker:
         # Nur Anzeige und Barge-in: direkt vor und nach jeder echten Wiedergabe (nicht während auf den Satz gewartet wird)
         self.on_play_start: Callable[[], Any] = lambda: None
         self.on_play_end: Callable[[Any], None] = lambda token: None
+        self.on_played: Callable[[], None] = lambda: None     # nach jedem wirklich abgespielten Satz (nur Zählung, talk.log)
         self.chime: Any = None              # Signalton (WAV) vor Sätzen mit earcon.MARK; nur kushims feste Systemansagen
 
     def say(self, sentences: Iterable[str]) -> int:
@@ -110,6 +111,10 @@ class Speaker:
             finally:
                 self.on_play_end(token)
             n += 1
+            try:
+                self.on_played()
+            except Exception:               # noqa: BLE001 (Zählung darf die Ausgabe nie stören)
+                pass
         return n
 
 
