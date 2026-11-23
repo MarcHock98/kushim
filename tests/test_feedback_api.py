@@ -33,6 +33,16 @@ def rows(inner, sql):
     return inner.con.execute(sql).fetchall()
 
 
+def test_dropped_entries_without_a_reply_cannot_be_rated(tmp_path):
+    core, tr, store, inner = make(tmp_path)
+    for reason in ("cancelled", "wake_only", "killed"):
+        i = tr.heard("Hey Kushim, abbrechen" if reason != "killed" else "", "", reason)
+        assert call(core, entry=i, rating=1)["error"] == "not_found", reason
+    pending = tr.heard("kushim hallo", "hallo")                    # noch ohne Antwort: auch nicht bewertbar
+    assert call(core, entry=pending, rating=1)["error"] == "not_found"
+    assert inner.counts()["episodes"] == 0 and inner.counts()["feedback"] == 0
+
+
 def test_nothing_is_stored_without_a_click(tmp_path):
     core, tr, store, inner = make(tmp_path)
     tr.add(res())

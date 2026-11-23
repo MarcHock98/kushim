@@ -4,7 +4,7 @@ import { App } from "./App";
 import { Avatar } from "./components/Avatar";
 import { ApiClient } from "./lib/api";
 import { resolveState, STATE_VIEW } from "./lib/avatarState";
-import { MockSocket } from "./lib/mock";
+import { MockSocket, transcriptEntry } from "./lib/mock";
 
 /** Verlauf und Claude-Bereich stehen in der Übersicht (die Startseite zeigt im Gespräch nur den Kern). */
 async function toOverview() {
@@ -274,8 +274,8 @@ describe("Daumen-Feedback", () => {
     render(<App load={loaderWith(sock)} />);
     await toOverview();
     await waitFor(() => screen.getByText(/Noch nichts gesagt/));
-    sock.current!.entries = [{ id: 7, heard: "Wie spät?", reply: "Zehn Uhr.", outcome: "spoken" },
-      { id: 8, heard: "", reply: "", outcome: "rejected_speaker" }];
+    sock.current!.entries = [transcriptEntry({ id: 7, heard: "Wie spät?", reply: "Zehn Uhr." }),
+      transcriptEntry({ id: 8, status: "dropped", outcome: "rejected_speaker" })];
     await waitFor(() => within(screen.getByRole("list", { name: "Verlauf" })).getByText("Zehn Uhr."), { timeout: 3000 });
     return sock.current!;
   }
@@ -305,8 +305,8 @@ describe("Live-Transkript", () => {
     await toOverview();
     await waitFor(() => screen.getByText(/Noch nichts gesagt/));
     sock.current!.entries = [
-      { id: 1, heard: "Wie spät ist es?", reply: "Es ist <b>zehn</b> Uhr.", outcome: "spoken" },
-      { id: 2, heard: "", reply: "", outcome: "rejected_speaker" },
+      transcriptEntry({ id: 1, heard: "Wie spät ist es?", reply: "Es ist <b>zehn</b> Uhr." }),
+      transcriptEntry({ id: 2, status: "dropped", outcome: "rejected_speaker" }),
     ];
     const log = () => within(screen.getByRole("list", { name: "Verlauf" }));
     await waitFor(() => log().getByText("Wie spät ist es?"), { timeout: 3000 });

@@ -678,6 +678,7 @@ def _main(argv: list[str] | None = None) -> int:
             from .voice.transcript import Transcript
             publisher = statefile.StatePublisher(root, pending=tasks.pending_approvals)
             transcript = Transcript()
+            pipeline.notes = transcript                   # Zeile „Du“ direkt nach der Spracherkennung (nur im Speicher)
             level_test = LevelTest()                      # Pegeltest der Oberfläche: nur Pegelzahlen aus den Frames dieser Schleife
 
             def on_frame(f, p):
@@ -693,7 +694,7 @@ def _main(argv: list[str] | None = None) -> int:
 
             def on_result(r):
                 out(r)
-                transcript.add(r)
+                transcript.add(r)                         # ergänzt den Eintrag der Runde (r.entry) um die Antwort
                 if r.outcome == "rejected_speaker":
                     publisher.alarm()
             pipeline.dialog._on_change = lambda s: publisher.phase(s.value)

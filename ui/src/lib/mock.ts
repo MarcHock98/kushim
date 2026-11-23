@@ -1,6 +1,20 @@
 // Gefälschtes Backend für Entwicklung und Tests (kein Netz). Antwortet wie `ApiCore`: Token zuerst, neutrale Fehler.
 import type { Socket } from "./api";
 
+/** Ein Eintrag wie `transcript.get` ihn liefert (src/kushim/voice/transcript.py), mit allen Feldern. */
+export interface MockEntry {
+  id: number; rev: number; heard: string; raw: string; ts: number; status: "pending" | "sent" | "dropped"; reason: string;
+  sent_ts: number | null; reply: string; outcome: string;
+}
+
+/** Vollständiger Eintrag mit den Standardwerten des Backends: rev = id, raw = heard, gesendet zur Erkennungszeit, Antwort leer. */
+export function transcriptEntry(p: Partial<MockEntry> & { id: number }): MockEntry {
+  const ts = p.ts ?? Date.now() / 1000;
+  const status = p.status ?? "sent";
+  return { rev: p.id, heard: "", raw: p.heard ?? "", ts, status, reason: "", sent_ts: status === "sent" ? ts : null, reply: "",
+    outcome: "spoken", ...p };
+}
+
 export class MockSocket implements Socket {
   onmessage: Socket["onmessage"] = null;
   onclose: Socket["onclose"] = null;
@@ -10,7 +24,21 @@ export class MockSocket implements Socket {
   voice: { active: boolean; state: string; level: number } = { active: false, state: "idle", level: 0 };
   pending: { request_id: string; tool_name: string; description: string; input_preview: string; digest: string; summary: string;
     truncated?: boolean }[] = [];
-  entries: { id: number; heard: string; reply: string; outcome: string }[] = [];
+  entries: MockEntry[] = [];                            // wie transcript.get: alle Felder (id, rev, heard, raw, ts, status, ...)
+  revSeq = 0;                                           // höchste vergebene rev (hear/change)
+  /** Wie `Transcript.heard` nach der Spracherkennung: neuer Eintrag „pending“ (mit `reason` gleich „dropped“). Gibt die id zurück. */
+  hear(raw: string, heard: string, reason = ""): number {
+    const id = Math.max(0, ...this.entries.map((e) => e.id)) + 1;
+    this.revSeq = Math.max(this.revSeq, ...this.entries.map((e) => e.rev)) + 1;
+    this.entries.push(transcriptEntry({ id, rev: this.revSeq, raw, heard, ts: Date.now() / 1000,
+      status: reason ? "dropped" : "pending", reason, sent_ts: null, outcome: "" }));
+    return id;
+  }
+  /** Wie `sent`, `drop` und `add`: Felder eines Eintrags ändern, rev steigt. */
+  change(id: number, patch: Partial<Omit<MockEntry, "id" | "rev">>): void {
+    this.revSeq = Math.max(this.revSeq, ...this.entries.map((e) => e.rev)) + 1;
+    this.entries = this.entries.map((e) => (e.id === id ? { ...e, ...patch, rev: this.revSeq } : e));
+  }
   folders: string[] = [];
   overview: Record<string, unknown> = {
     kill: false, tools_active: [], vault: { where: "local", exists: true, open: true },
@@ -188,15 +216,20 @@ export class MockSocket implements Socket {
   demo(): void {
     const turn = (at: number, heard: string, reply: string, view?: Record<string, unknown>) => {
       const steps: [string, number][] = [["listening", 0.6], ["thinking", 0], ["speaking", 0.7], ["idle", 0]];
+      let id = 0;
       steps.forEach(([state, level], i) => setTimeout(() => {
         this.voice = { active: true, state, level };
+        if (state === "thinking") id = this.hear(`Hey kushim, ${heard}`, heard);                   // Zeile „Du“ sofort: wartet
+        if (state === "thinking") setTimeout(() => this.change(id, { status: "sent", sent_ts: Date.now() / 1000 }), 800);
         if (state === "speaking") {
-          this.entries.push({ id: this.entries.length + 1, heard, reply, outcome: "spoken" });
+          this.change(id, { reply, outcome: "spoken" });
           if (view) this.show(view);
         }
       }, at + i * 2500));
     };
     turn(2000, "Wie wird das Wetter morgen?", "Morgen 11 Grad, ab Nachmittag leichter Regen.");
+    setTimeout(() => this.hear("Hey kushim.", "", "wake_only"), 10500);                            // verworfen: nur Weckwort
+    setTimeout(() => this.hear("Hey kushim, abbrechen", "abbrechen", "cancelled"), 11500);         // verworfen: Abbruch
     turn(13000, "Löse x² minus 5x plus 6 gleich 0.", "Die Lösungen sind 2 und 3.", DEMO_VIEWS[0]);
     turn(24000, "Wie steht der DAX?", "Der DAX liegt bei 19.420 Punkten.", DEMO_VIEWS[1]);
     turn(35000, "Was weiß man über Koffein und Schlaf?", "Ich habe drei Quellen zusammengefasst.", DEMO_VIEWS[2]);
@@ -240,8 +273,8 @@ export class MockSocket implements Socket {
     else if (msg.type && SETUP_TYPES.has(msg.type)) reply = this.setupReply(msg as Record<string, unknown>);   // E3
     else if (msg.type === "transcript.get") {
       const since = (msg as { since?: number }).since ?? 0;
-      const entries = this.entries.filter((e) => e.id > since);
-      reply = { ok: true, entries, last: entries.length ? entries[entries.length - 1].id : since };
+      const entries = this.entries.filter((e) => e.rev > since);                 // since ist eine rev, keine id
+      reply = { ok: true, entries, last: Math.max(since, ...entries.map((e) => e.rev)) };
     }
     else if (msg.type === "safety.overview") reply = { ok: true, ...this.overview, kill: this.kill };
     else if (msg.type === "memory.search") {
@@ -287,7 +320,8 @@ export class MockSocket implements Socket {
     }
     else if (msg.type === "feedback.add") {
       const m = msg as { entry?: number; rating?: number };
-      if (this.rated.has(m.entry ?? -1)) reply = { ok: false, error: "already_rated" };
+      if (!this.entries.some((e) => e.id === m.entry && e.reply)) reply = { ok: false, error: "not_found" };   // wie das Backend: nur mit Antwort
+      else if (this.rated.has(m.entry ?? -1)) reply = { ok: false, error: "already_rated" };
       else { this.rated.add(m.entry ?? -1); this.ratings.push({ entry: m.entry ?? -1, rating: m.rating ?? 0 }); reply = { ok: true, rated: m.entry, rating: m.rating }; }
     }
     else if (msg.type === "approvals.get") reply = { ok: true, pending: this.pending };

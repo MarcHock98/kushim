@@ -21,3 +21,6 @@ export const IconArrowUp = () => <Svg size={16}><path d="M12 19V5M6 11l6-6 6 6" 
 export const IconCheck = () => <Svg size={16}><path d="M5 12.5l4.5 4.5L19 7.5" /></Svg>;
 export const IconWarn = () => <Svg size={16}><path d="M12 4l9 16H3z" /><path d="M12 10v4M12 17v.5" /></Svg>;
 export const IconCross = () => <Svg size={16}><path d="M6 6l12 12M18 6L6 18" /></Svg>;
+export const IconClock = () => <Svg size={16}><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></Svg>;
+export const IconDash = () => <Svg size={16}><path d="M6 12h12" /></Svg>;
+export const IconChevron = () => <Svg size={16}><path d="M6 9l6 6 6-6" /></Svg>;

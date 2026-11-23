@@ -5,7 +5,7 @@ import { windowCommand } from "../lib/windowCmd";
 import { Core3D } from "./Core3D";
 import { HaltedBanner, KillButton } from "./KillButton";
 import { PermissionBar, type PermissionRequest } from "./PermissionBar";
-import type { Entry } from "./Transcript";
+import { clockText, STATUS_WORD, youText, type Entry } from "./Transcript";
 
 // E2 (docs/ui-e2e3-plan.md, Abschnitte 3 und 4): kleines Fenster mit Kern, Zustandswort, letztem Befehl, NOTAUS und Verbrauch.
 // Die Leiste entscheidet nichts selbst: Freigaben laufen über dieselbe PermissionBar und denselben Aufruf wie im großen Fenster.
@@ -148,12 +148,15 @@ export function CompactBar(p: Props) {
   const startView = useRef(p.view?.id ?? null);           // nur Ansichten melden, die nach dem Umschalten kamen
   const freshView = p.view && p.view.id !== startView.current ? p.view : null;
 
-  const heard = p.last?.heard ?? "";
+  // Letzter Befehl mit Statuswort (voller Text, Auslassung per CSS), sofort auch ohne Antwort (pending). Kein Aufklappen.
+  const heard = p.last ? youText(p.last) : "";
+  const word = p.last ? STATUS_WORD[p.last.status] : "";
   const replyFull = p.last ? p.last.reply || NOTE[p.last.outcome] || "" : "";
   const reply = replyFull.split("\n")[0];
-  const you = heard ? `Du: ${heard}`
+  const you = heard ? `Du: ${heard} · ${word}`
     : !p.connected ? "Kein Dienst. „Groß“ zeigt den Grund."
     : p.voiceActive ? "Noch nichts gesagt. Sag „hey kushim“." : "";
+  const youTitle = heard && p.last ? `Erkannt ${clockText(p.last.ts)}, ${word}` : you;
 
   return (
     <section className="compact" aria-label="Kleines Fenster" data-state={p.state} data-mode={asking ? "freigabe" : "klein"}>
@@ -167,7 +170,7 @@ export function CompactBar(p: Props) {
       </div>
       <div className="compact-text">
         {p.state === "halted" ? <HaltedBanner onResume={p.onResume} /> : <>
-          {you && <p className="compact-you" title={you}>{you}</p>}
+          {you && <p className="compact-you" title={youTitle}>{you}</p>}
           {reply && <p className={p.last?.outcome === "rejected_speaker" ? "compact-reply alarm" : "compact-reply"} title={replyFull}>kushim: {reply}</p>}
           {p.connected && !p.voiceActive && <p className="compact-muted">Kein Sprachdienst</p>}
           {freshView && <p className="compact-note" title={freshView.titel}>Neue Ansicht von Claude: {freshView.titel}. Zum Ansehen „Groß“.</p>}
