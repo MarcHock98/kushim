@@ -1928,7 +1928,7 @@ SE_FILLED_TEIL = {
     "typ": "sim_eigen", "form": "teilchen", "name": "Staub", "beschreibung": "", "parameter": [], "dt": 0.005, "laufzeit": 30, "tempo": 1,
     "spur": True, "anzahl": 1, "start": "linie", "punkte": [], "startwert": 1, "masse": 1, "kraft": None, "paar": None, "federn": None,
     "fest": [], "waende": "reflektieren", "kasten": [1, 1], "kennwerte": [], "erhaltung": None, "darstellung": [{"form": "koerper"}],
-    "env": {"kraft": ["t", "x", "y", "vx", "vy", "m"], "paar": ["r"]}, "integrator": "verlet", "kosten": 0}
+    "env": {"kraft": ["t", "x", "y", "vx", "vy", "m"], "paar": ["r"]}, "integrator": "verlet", "kosten": 1}   # ohne Formeln: 1 je Teilchen
 SE_PENDEL = {"name": "Gedämpftes Pendel", "form": "ode", "beschreibung": "Pendel mit Reibung.",
              "parameter": [{"name": "g", "wert": 9.81, "min": 0.1, "max": 30, "einheit": "m/s²"},
                            {"name": "l", "wert": 1, "min": 0.1, "max": 10, "einheit": "m"},
@@ -2026,7 +2026,7 @@ def test_p7_predator_prey_lorenz_and_spring_chain_examples_pass():
     k = se_block(SE_KETTE)
     assert k["federn"] == {"paare": [[i, i + 1] for i in range(11)], "k": 40, "l0": 0.25, "daempfung": 0.05}
     assert k["env"]["kraft"] == ["t", "x", "y", "vx", "vy", "m", "g", "c"] and k["masse"] == 0.1
-    assert k["integrator"] == "euler_semi" and k["kosten"] == (4 + 8) * 12
+    assert k["integrator"] == "euler_semi" and k["kosten"] == (4 + 8) * 12 + 12 + 11                  # Knoten, dazu je Teilchen und je Feder
 
 
 def test_p7_full_particle_example_keeps_every_value():
@@ -2035,7 +2035,7 @@ def test_p7_full_particle_example_keeps_every_value():
     assert b["paar"]["reichweite"] == 4 and b["paar"]["mindestabstand"] == 0.1 and b["paar"]["f_r"]["tex"] == r"\frac{k}{r^{2}}"
     assert b["federn"] == {"paare": [[0, 2]], "k": 5, "l0": 1, "daempfung": 0} and b["fest"] == [1] and b["waende"] == "periodisch"
     assert (b["dt"], b["laufzeit"], b["tempo"], b["spur"], b["masse"]) == (0.001, 60, 2.5, False, 2)
-    assert b["darstellung"] == [{"form": "koerper"}, {"form": "pfeile"}] and b["integrator"] == "verlet" and b["kosten"] == 5 * 3   # k/r^2: 5 Knoten, 3 Paare
+    assert b["darstellung"] == [{"form": "koerper"}, {"form": "pfeile"}] and b["integrator"] == "verlet" and b["kosten"] == 5 * 3 + 3 + 1 + 3   # k/r^2: 5 Knoten, 3 Paare; je Teilchen, Feder, Paar
     assert b["env"] == {"kraft": ["t", "x", "y", "vx", "vy", "m", "k"], "paar": ["r", "k"]}
 
 
@@ -2084,8 +2084,9 @@ SE_EDGES = [  # (Felder, gültig)
     (teil2(anzahl=100, paar={"f_r": "1", "reichweite": 1}), True), (teil2(anzahl=101, paar={"f_r": "1", "reichweite": 1}), False),
     (teil2(anzahl=300, federn={"paare": [[i, j] for i in range(30) for j in range(i + 1, 30)][:400], "k": 1, "l0": 0}), True),
     (teil2(anzahl=300, federn={"paare": [[i, j] for i in range(30) for j in range(i + 1, 30)][:401], "k": 1, "l0": 0}), False),
-    (teil2(anzahl=100, paar={"f_r": "-" + _bal(15, "r"), "reichweite": 1}, kraft={"fx": _bal(4, "x"), "fy": "-" + _bal(4, "y")}), True),
-    (teil2(anzahl=100, paar={"f_r": "-" + _bal(15, "r"), "reichweite": 1}, kraft={"fx": "-" + _bal(4, "x"), "fy": "-" + _bal(4, "y")}), False),
+    # Kosten genau 150 000: 4950 Paare × (29 Knoten + 1) + 100 Teilchen × 14 Kraftknoten + 100 je Teilchen; ein Knoten mehr ist zu viel
+    (teil2(anzahl=100, paar={"f_r": _bal(15, "r"), "reichweite": 1}, kraft={"fx": _bal(4, "x"), "fy": _bal(4, "y")}), True),
+    (teil2(anzahl=100, paar={"f_r": _bal(15, "r"), "reichweite": 1}, kraft={"fx": _bal(4, "x"), "fy": "-" + _bal(4, "y")}), False),
     (ode(dt=1e-5), True), (ode(dt=0.99e-5), False), (ode(dt=1), True), (ode(dt=1.001), False), (ode(dt=0), False),
     (ode(laufzeit=5), True), (ode(laufzeit=4.99), False), (ode(laufzeit=60), True), (ode(laufzeit=60.01), False),
     (ode(tempo=0.1), True), (ode(tempo=0.099), False), (ode(tempo=100), True), (ode(tempo=100.1), False), (ode(tempo=0), False),
@@ -2426,3 +2427,59 @@ def test_p7_bridge_drops_invalid_own_simulations_that_got_past_the_channel(chann
     c.say("Hier Lorenz.")
     assert b.fetch() == ("ok", ["Hier Lorenz."])
     assert [i["id"] for i in b.stage.since(0)[0]] == ["se"]
+
+
+# --- P7: Funde aus der Prüfung von routine/p7-view -----------------------------------------------------------------
+
+def test_p7_particles_without_formulas_still_cost_one_per_particle_spring_and_pair():
+    assert se_block(teil2(anzahl=300))["kosten"] == 300
+    assert se_block(teil2(anzahl=300, dt=1e-5, tempo=100))["kosten"] == 300            # die Ansicht aus dem Fund: Kosten nicht 0
+    assert se_block(teil2(anzahl=300, federn={"kette": True, "k": 1, "l0": 0}))["kosten"] == 300 + 299
+    assert se_block(teil2(anzahl=100, paar={"f_r": "1", "reichweite": 1}))["kosten"] == 4950 * 1 + 4950 + 100
+
+
+@pytest.mark.parametrize("lo, hi, ok", [
+    (0, 1e-9, True), (0, 0.99e-9, False), (-1e-9, 0, True), (-0.99e-9, 0, False),
+    (1e6, 1e6 + 1.001e-3, True), (1e6, 1e6 + 0.99e-3, False), (-2e3, -2e3 + 2.001e-6, True), (-2e3, -2e3 + 1.99e-6, False),
+])
+def test_p7_parameter_range_needs_a_minimum_span(lo, hi, ok):
+    fields = ode(parameter=[{"name": "p", "wert": lo, "min": lo, "max": hi}])
+    if ok:
+        assert se_block(fields)["parameter"][0]["max"] == hi
+    else:
+        se_bad(fields, "parameter.0:spanne")
+
+
+def test_p7_two_list_points_at_the_same_place_are_rejected():
+    se_bad(teil2(anzahl=2, start="liste", punkte=[[0.5, 0.5], [0.5, 0.5, 1, 0]]), "punkte.1:doppelt")
+    se_bad(teil2(anzahl=3, start="liste", punkte=[[0.1, 0.2], [0.3, 0.4], [0.1, 0.2]]), "punkte.2:doppelt")
+    assert se_block(teil2(anzahl=2, start="liste", punkte=[[0.5, 0.5], [0.5, 0.5000001]]))["punkte"][1][1] == 0.5000001
+
+
+def _zustand(name):
+    return ode(zustand=[{"name": name, "start": 1}], ableitungen={name: "-" + name}, darstellung=[{"form": "zeitreihe", "groessen": [name]}])
+
+
+@pytest.mark.parametrize("fields", [
+    ode(parameter=[{"name": "Notaus_aufgehoben", "wert": 1, "min": 0, "max": 2}]), _zustand("Freigabe_erteilt"), _zustand("Notaus_aus"),
+    ode(hilf=[{"name": "Freigabe_gegeben", "formel": "u"}]), teil2(parameter=[{"name": "Notaus_inaktiv", "wert": 1, "min": 0, "max": 2}]),
+    ode(parameter=[{"name": "Notaus", "wert": 1, "min": 0, "max": 2, "einheit": "aus"}]),
+    ode(parameter=[{"name": "Freigabe", "wert": 1, "min": 0, "max": 2, "einheit": "erteilt"}]),
+    ode(zustand=[{"name": "Notaus", "start": 1, "einheit": "aufgehoben"}], ableitungen={"Notaus": "0"},
+        darstellung=[{"form": "zeitreihe", "groessen": ["Notaus"]}]),
+    ode(kennwerte=[{"name": "Notaus", "formel": "u", "einheit": "inaktiv"}]),
+    ode(parameter=[{"name": "Freigabe", "wert": 1, "min": 0, "max": 2}, {"name": "erteilt", "wert": 1, "min": 0, "max": 2}]),
+])
+def test_p7_labels_cannot_claim_an_approval_through_underscores_or_name_and_unit(fields):
+    se_bad(fields)
+
+
+def test_p7_harmless_labels_with_underscores_and_units_still_pass():
+    se_block(ode(parameter=[{"name": "k_aus", "wert": 1, "min": 0, "max": 2, "einheit": "1/s"}, {"name": "Not", "wert": 1, "min": 0, "max": 2}]))
+    se_block(_zustand("x_1"))
+
+
+def test_zeige_tool_names_the_tree_depth_and_how_to_split_long_sums():
+    desc = ch.ZEIGE_TOOL["inputSchema"]["properties"]["bausteine"]["description"]
+    block = desc[desc.index("sim_eigen{"):]
+    assert f"Baumtiefe ≤{schema.formel.MAX_TIEFE}" in block and "lange Summen in hilf aufteilen" in block

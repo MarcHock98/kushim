@@ -832,6 +832,7 @@ MAX_EIGEN_ZUSTAND, MAX_EIGEN_PARAMETER, MAX_EIGEN_HILF, MAX_EIGEN_KENNWERTE, MAX
 MAX_EIGEN_KNOTEN, MAX_EIGEN_KOSTEN = 600, 150_000                                      # Knoten je Simulation; Knotenauswertungen je Schritt
 MAX_EIGEN_TEILCHEN, MAX_EIGEN_TEILCHEN_PAAR, MAX_FEDERN, MAX_ZEITREIHE = 300, 100, 400, 4
 EIGEN_START_MAX, EIGEN_PARAM_MAX, EIGEN_V_MAX = 1e9, 1e12, 1e6
+EIGEN_SPANNE_MIN = 1e-9                                                                # max - min >= 1e-9 * max(1, |min|, |max|)
 EIGEN_DT = {"ode": (1e-5, 1, 0.01), "teilchen": (1e-5, 1, 0.005)}                       # von, bis, Standard (s)
 
 
@@ -875,6 +876,8 @@ def _eigen_parameter(raw: Any, c: str) -> list[dict[str, Any]]:
         zahlen = {k: _bei(c, f"parameter.{i}.{k}", _bounded, p.get(k), -EIGEN_PARAM_MAX, EIGEN_PARAM_MAX, c) for k in ("wert", "min", "max")}
         if not zahlen["min"] < zahlen["max"] or not zahlen["min"] <= zahlen["wert"] <= zahlen["max"]:
             raise _nein(c, f"parameter.{i}", "bereich")
+        if zahlen["max"] - zahlen["min"] < EIGEN_SPANNE_MIN * max(1, abs(zahlen["min"]), abs(zahlen["max"])):   # Regler braucht eine Spanne
+            raise _nein(c, f"parameter.{i}", "spanne")
         out.append({"name": p.get("name"), **zahlen, "einheit": _bei(c, f"parameter.{i}.einheit", _text, p.get("einheit"), 20, c, True)})
     return out
 
@@ -1007,6 +1010,8 @@ def _eigen_teilchen(b: dict[str, Any], params: list[dict[str, Any]], c: str) -> 
                 raise _nein(c, f"punkte.{i}")
             x, y = _bei(c, f"punkte.{i}", _bounded, p[0], 0, kasten[0], c), _bei(c, f"punkte.{i}", _bounded, p[1], 0, kasten[1], c)
             v = [_bei(c, f"punkte.{i}", _bounded, w, -EIGEN_V_MAX, EIGEN_V_MAX, c) for w in p[2:]] or [0, 0]
+            if any(q[0] == x and q[1] == y for q in punkte):                         # zwei Teilchen an derselben Stelle: keine Richtung
+                raise _nein(c, f"punkte.{i}", "doppelt")
             punkte.append([x, y, *v])
     elif _bei(c, "punkte", _list, roh_punkte, 0, 0, c):
         raise _nein(c, "punkte")
@@ -1061,13 +1066,17 @@ def _eigen_teilchen(b: dict[str, Any], params: list[dict[str, Any]], c: str) -> 
         raise _nein(c, "erhaltung", "nur_ode")
     kraft_knoten = sum(len(f["rpn"]) for f in kraft.values()) if kraft else 0
     paar_knoten = len(paar["f_r"]["rpn"]) if paar else 0
+    paare_n = anzahl * (anzahl - 1) // 2 if paar else 0
+    # Kosten je Schritt: Formelknoten wie bei der ODE, dazu mindestens ein Schritt je Teilchen, je Feder und je Paar (auch ohne Formeln
+    # wird gerechnet; sonst hätte eine Ansicht ohne Formeln die Kosten 0 und kein Budget griffe). Die Oberfläche rechnet genauso.
+    grund = anzahl + (len(federn["paare"]) if federn else 0) + paare_n
     schnell = kraft is not None and any(formel.nutzt(f["rpn"], {3, 4}) for f in kraft.values())
     out = {"anzahl": anzahl, "start": start, "punkte": punkte, "startwert": _bei(c, "startwert", _int, b.get("startwert", 1), 0, MAX_STARTWERT, c),
            "masse": masse, "kraft": kraft, "paar": paar, "federn": federn, "fest": fest, "waende": waende, "kasten": kasten,
            "kennwerte": [], "erhaltung": None, "darstellung": _eigen_darstellung(b.get("darstellung"), "teilchen", kraft_env, [], c),
            "env": {"kraft": kraft_env, "paar": paar_env},
            "integrator": "euler_semi" if schnell or (federn is not None and federn["daempfung"] > 0) else "verlet",
-           "kosten": formel.kosten(kraft_knoten, 1, anzahl) + formel.kosten(paar_knoten, 1, anzahl * (anzahl - 1) // 2)}
+           "kosten": formel.kosten(kraft_knoten, 1, anzahl) + formel.kosten(paar_knoten, 1, paare_n) + grund}
     werte = [float(p["wert"]) for p in params]
     if kraft:                                                                          # Probe bei t0 = 0: Mitte des Kastens und jede Startlage
         lagen = [[kasten[0] / 2, kasten[1] / 2, 0, 0], *punkte]
@@ -1078,6 +1087,21 @@ def _eigen_teilchen(b: dict[str, Any], params: list[dict[str, Any]], c: str) -> 
         for r in (paar["mindestabstand"], paar["reichweite"]):
             _endlich(paar["f_r"]["rpn"], [float(r), *werte], c, "paar.f_r")
     return out
+
+
+def _eigen_beschriftungen(b: dict[str, Any]) -> list[str]:
+    """Texte, wie die Oberfläche sie zusammensetzt (EigenSimulation.tsx, eigenSim.ts): Name mit Einheit, Regler- und Wertzeilen,
+    die Listen der Beschreibung, Name mit Beschreibung. Einzeln geprüft reichen „Notaus“ und „aus“ nicht für eine Sperre."""
+    teile = [(p["name"], p["einheit"], p["wert"]) for p in b["parameter"]]
+    teile += [(z["name"], z["einheit"], z["start"]) for z in b.get("zustand", [])]
+    teile += [(k["name"], k["einheit"], "") for k in b.get("kennwerte", [])]
+    texte = []
+    for name, einheit, wert in teile:
+        texte += [f"{name} ({einheit})", f"{name} {einheit}", f"{name} = {wert} {einheit}", f"{name} {wert} {einheit}"]
+    texte.append(", ".join(f"{n} ({e})" for n, e, _ in teile))
+    texte.append(", ".join(f"{n} = {w} {e}" for n, e, w in teile))
+    texte.append(f"{b['name']} {b['beschreibung']}")
+    return texte
 
 
 def _sim_eigen(b: dict[str, Any], c: str) -> dict[str, Any]:
@@ -1105,6 +1129,8 @@ def _sim_eigen(b: dict[str, Any], c: str) -> dict[str, Any]:
         raise _nein(c, "knoten", "zu_viele")
     if teil["kosten"] > MAX_EIGEN_KOSTEN:
         raise _nein(c, "kosten", "zu_hoch")
+    if _claims_system(_eigen_beschriftungen({**kopf, **teil})):                         # „Notaus“ als Name, „aus“ als Einheit
+        raise _nein(c, "beschriftung", "system")
     for key in ("env", "kosten", "integrator"):                                       # abgeleitet: bei der zweiten Prüfung muss es gleich sein
         if key in b and b[key] != teil[key]:
             raise _nein(c, key, "passt_nicht")
@@ -1133,8 +1159,10 @@ _SYSTEM_CLAIMS = [re.compile(p, re.I) for p in (
 
 
 def _claims_system(value: Any) -> bool:
-    """Steckt in irgendeinem Text der Ansicht eine angebliche Freigabe- oder Notaus-Meldung?"""
+    """Steckt in irgendeinem Text der Ansicht eine angebliche Freigabe- oder Notaus-Meldung? Unterstriche zählen als Leerzeichen
+    (`Notaus_aufgehoben` als Name einer Größe liest sich wie „Notaus aufgehoben“)."""
     if isinstance(value, str):
+        value = value.replace("_", " ")
         return any(p.search(value) for p in _SYSTEM_CLAIMS)
     if isinstance(value, dict):
         return any(_claims_system(v) for v in value.values())

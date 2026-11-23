@@ -10,8 +10,8 @@
 // env = [t, x, y, vx, vy, m, Parameter…] (Beschleunigung = Kraft / m), Paarkraft mit env = [r, Parameter…] (positiv stößt ab,
 // r nie kleiner als der Mindestabstand, ab der Reichweite 0), Federn als Kette oder feste Paare (k, l0, Dämpfung entlang der Feder),
 // feste Teilchen bewegen sich nie, Wände keine, reflektieren oder periodisch (Paare dann über den kürzesten Weg).
-// Grenzen: höchstens KNOTEN_BUDGET Knotenauswertungen je Bild (sonst läuft die Zeit langsamer: „Zeitlupe“, mindestens ein Schritt
-// je Bild); eine nicht endliche Zahl oder |Zustand| > 1e9 hält an („instabil, angehalten“); weicht die Erhaltungsgröße um mehr als
+// Grenzen: höchstens KNOTEN_BUDGET Knotenauswertungen und MAX_KOERPER_SCHRITTE Körper × Schritte je Bild (sonst läuft die Zeit
+// langsamer: „Zeitlupe“, mindestens ein Schritt je Bild); Kosten je Schritt mindestens 1 je Teilchen, Feder und Paar; eine nicht endliche Zahl oder |Zustand| > 1e9 hält an („instabil, angehalten“); weicht die Erhaltungsgröße um mehr als
 // 1 % vom Start ab, gibt das Bild einen Hinweis.
 
 import { pruefeRpn, kompiliere, liestIndex, type Auswerter } from "./formel";
@@ -19,7 +19,7 @@ import {
   addToTrail, createTrail, formatFest, formatWert, formatZahl, mulberry32, SPUR_MAX,
   type AdvanceResult, type Ausschnitt, type GrenzFeld, type Kennwert, type Pt, type SimKoerper, type SimSnapshot, type SimState, type Trail,
 } from "./physics";
-import type { SimEngine } from "./simLoop";
+import { MAX_KOERPER_SCHRITTE, type SimEngine } from "./simLoop";
 
 /** Knotenauswertungen je Bild, darüber „Zeitlupe“. */
 export const KNOTEN_BUDGET = 150_000;
@@ -428,8 +428,10 @@ function lese(input: unknown): Gelesen {
   if (own(src, "kennwerte") !== undefined && Array.isArray(own(src, "kennwerte")) && (own(src, "kennwerte") as unknown[]).length) l.fix.push("kennwerte");
   if (own(src, "erhaltung") !== undefined && own(src, "erhaltung") !== null) l.fix.push("erhaltung");
   const nutztV = !!(kraftX?.liestV || kraftY?.liestV) || (federn.length > 0 && fd > 0);
-  const frei = anzahl - festListe.length, paare = paar ? (anzahl * (anzahl - 1)) / 2 : 0;
-  const kostenKraft = frei * ((kraftX?.knoten ?? 0) + (kraftY?.knoten ?? 0)) + paare * (paar?.knoten ?? 0) + federn.length;
+  const paare = paar ? (anzahl * (anzahl - 1)) / 2 : 0;
+  // Wie im Backend (schema.py): Formelknoten je Teilchen und je Paar, dazu mindestens 1 je Teilchen, je Feder und je Paar. Ohne
+  // Formeln wären die Kosten sonst 0, und kein Budget griffe.
+  const kostenKraft = anzahl * ((kraftX?.knoten ?? 0) + (kraftY?.knoten ?? 0)) + paare * (paar?.knoten ?? 0) + anzahl + federn.length + paare;
   const satz = `Eigene Simulation${name ? ` „${name}“` : ""}, nicht geprüft: ${anzahl} Teilchen in einem Kasten von ${formatZahl(b)} mal ${formatZahl(h)}`
     + `, Wände ${waende}${federn.length ? `, ${federn.length} Federn` : ""}${festListe.length ? `, ${festListe.length} feste Teilchen` : ""}`
     + `${paar ? ", mit Kraft zwischen den Teilchen" : ""}${parameter.length ? `; Parameter ${parameter.map((p) => `${p.name} = ${formatZahl(p.wert)}${p.einheit ? " " + p.einheit : ""}`).join(", ")}` : ""}.`;
@@ -492,6 +494,10 @@ function odeSchritt(k: OdeKern, t: number, dt: number): void {
 
 // --- Rechnen: Teilchen ----------------------------------------------------------------------------------------------------
 
+/** Winkel der festen Richtung von j nach i für zwei Teilchen an genau derselben Stelle: hängt nur von den Indizes ab (gleiche
+ *  Eingabe, gleiche Simulation), nie vom Zufall. Acht Richtungen im Abstand von 45 Grad. */
+const richtung = (i: number, j: number): number => (((i * 7 + j * 13) % 8) * Math.PI) / 4;
+
 /** Kürzester Abstand in einer Richtung (periodische Wände: über den Rand). */
 const kurz = (d: number, L: number, periodisch: boolean): number => (periodisch ? d - L * Math.round(d / L) : d);
 
@@ -511,17 +517,21 @@ function beschl(k: TeilchenKern, t: number): void {
     const R = k.reichweite;
     for (let i = 0; i < N; i++) for (let j = i + 1; j < N; j++) {
       const dx = kurz(x[i] - x[j], k.b, per), dy = kurz(y[i] - y[j], k.h, per), d = Math.hypot(dx, dy);
-      if (!(d > 0) || d > R) continue;
-      envP[0] = Math.max(d, k.rmin);
-      const f = k.paar(envP), ux = (f * dx) / d, uy = (f * dy) / d;
+      if (!(d <= R)) continue;                                        // weiter als die Reichweite (oder keine Zahl): keine Kraft
+      envP[0] = Math.max(d, k.rmin);                                  // näher als der Mindestabstand: mit dem Mindestabstand rechnen
+      let ex: number, ey: number;
+      if (d > 0) { ex = dx / d; ey = dy / d; } else { const w = richtung(i, j); ex = Math.cos(w); ey = Math.sin(w); }   // dieselbe Stelle
+      const f = k.paar(envP), ux = f * ex, uy = f * ey;
       fx[i] += ux; fy[i] += uy; fx[j] -= ux; fy[j] -= uy;
     }
   }
   for (let s = 0; s < k.fa.length; s++) {
     const a = k.fa[s], c = k.fb[s];
     const dx = kurz(x[a] - x[c], k.b, per), dy = kurz(y[a] - y[c], k.h, per), d = Math.hypot(dx, dy);
-    if (!(d > 0)) continue;
-    const ux = dx / d, uy = dy / d, rel = (vx[a] - vx[c]) * ux + (vy[a] - vy[c]) * uy;
+    if (!(d >= 0)) continue;
+    let ux: number, uy: number;
+    if (d > 0) { ux = dx / d; uy = dy / d; } else { const w = richtung(a, c); ux = Math.cos(w); uy = Math.sin(w); }
+    const rel = (vx[a] - vx[c]) * ux + (vy[a] - vy[c]) * uy;
     const F = -k.k * (d - k.l0) - k.daempfung * rel;
     fx[a] += F * ux; fy[a] += F * uy; fx[c] -= F * ux; fy[c] -= F * uy;
   }
@@ -666,19 +676,21 @@ export function createEigen(input: unknown): EigenState {
 
 // --- Weiterrechnen ------------------------------------------------------------------------------------------------------------
 
-/** Rechnet um `simSeconds` Modellzeit weiter, in festen Schritten auf dem Raster t = n·dt. Höchstens KNOTEN_BUDGET Knoten je Aufruf
- *  (mindestens ein Schritt); reicht das nicht, bleibt die Zeit zurück (`begrenzt`, kein Nachholen). Die Grenze `maxBodySteps` der
- *  Taktschleife gilt hier nicht, das Budget zählt Knoten. Wirft nie; eine nicht endliche oder zu große Zahl setzt „instabil“. */
-export function advanceEigen(s: EigenState, simSeconds: number, _maxBodySteps?: number): EigenAdvanceResult {
+/** Rechnet um `simSeconds` Modellzeit weiter, in festen Schritten auf dem Raster t = n·dt. Je Aufruf höchstens KNOTEN_BUDGET Knoten
+ *  und höchstens `maxBodySteps` Körper × Schritte (wie bei den eingebauten Modellen, Standard MAX_KOERPER_SCHRITTE), mindestens ein
+ *  Schritt; reicht das nicht, bleibt die Zeit zurück (`begrenzt`, kein Nachholen, „Zeitlupe“). Wirft nie; eine nicht endliche oder
+ *  zu große Zahl setzt „instabil“. */
+export function advanceEigen(s: EigenState, simSeconds: number, maxBodySteps: number = MAX_KOERPER_SCHRITTE): EigenAdvanceResult {
   const nichts: EigenAdvanceResult = { schritte: 0, koerperSchritte: 0, begrenzt: false, knoten: 0 };
   if (s.phase !== "laeuft") return nichts;
   try {
     s.soll += fin(simSeconds) && simSeconds > 0 ? Math.min(simSeconds, 1e12) : 0;
     const ziel = Math.floor(s.soll / s.dt + 1e-9), n = ziel - s.schritt;
     if (n <= 0) return nichts;
-    const je = s.kostenJeSchritt;
+    const je = s.kostenJeSchritt, koerper = Math.max(1, s.koerper);
+    const maxK = fin(maxBodySteps) && maxBodySteps > 0 ? Math.min(maxBodySteps, MAX_KOERPER_SCHRITTE) : MAX_KOERPER_SCHRITTE;
     let done = 0, knoten = 0;
-    while (done < n && (done === 0 || knoten + je <= KNOTEN_BUDGET)) {
+    while (done < n && (done === 0 || (knoten + je <= KNOTEN_BUDGET && (done + 1) * koerper <= maxK))) {
       einSchritt(s);
       knoten += je;
       done++;
@@ -807,10 +819,13 @@ export function addEigenSpuren(sp: EigenSpuren, b: EigenSnapshot): void {
 export function eigenRegler(input: unknown): GrenzFeld[] {
   try {
     const g = lese(input);
-    return g.cfg.parameter.filter((p) => p.max > p.min).map((p) => {
+    // Nur Parameter mit einer echten Spanne und einem Schritt über 0 bekommen einen Regler (eine winzige Spanne wie 1e-323 ergäbe
+    // Schritt 0 und unendlich viele Stufen); die übrigen zeigt die Ansicht als feste Zahl.
+    return g.cfg.parameter.filter((p) => p.max > p.min).flatMap((p) => {
       const sp = p.max - p.min, schritt = Math.pow(10, Math.floor(Math.log10(sp / 100)));
-      return Object.freeze({ feld: p.name, name: p.name, einheit: p.einheit, min: p.min, max: p.max, schritt,
-        skala: p.min > 0 && p.max >= 1000 * p.min ? "log" : "linear" }) as GrenzFeld;
+      if (!(schritt > 0) || !fin(schritt) || !fin(sp / schritt) || sp / schritt > 1e6) return [];
+      return [Object.freeze({ feld: p.name, name: p.name, einheit: p.einheit, min: p.min, max: p.max, schritt,
+        skala: p.min > 0 && p.max >= 1000 * p.min ? "log" : "linear" }) as GrenzFeld];
     });
   } catch {
     return [];

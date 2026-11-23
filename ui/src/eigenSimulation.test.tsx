@@ -5,9 +5,13 @@ import { App } from "./App";
 import { ViewCard } from "./components/stage/ViewCard";
 import { ApiClient } from "./lib/api";
 import { STATE_VIEW } from "./lib/avatarState";
-import { createEigen, EIGEN_HINWEIS } from "./lib/eigenSim";
+import {
+  reglerBedienbar, VORAUS_KNOTEN_MAX, VORAUS_KOERPER_MAX, vorausBild, wertAusPos, wertFuerTaste, zahlText,
+} from "./components/stage/EigenSimulation";
+import { advanceEigen, createEigen, EIGEN_HINWEIS, eigenRegler, KNOTEN_BUDGET } from "./lib/eigenSim";
 import { EIGEN_DEMOS, EIGEN_GEAENDERT, MockSocket } from "./lib/mock";
-import { createSimLoop } from "./lib/simLoop";
+import type { GrenzFeld } from "./lib/physics";
+import { createSimLoop, MAX_KOERPER_SCHRITTE } from "./lib/simLoop";
 import { parseItem, type Block, type EigenBlock, type View } from "./lib/stage";
 
 // P7 Stufe 1 (docs/ui-p7-plan.md, 2.6): Baustein `sim_eigen` mit falschem requestAnimationFrame und falscher Uhr. Kernregeln: Abzeichen
@@ -22,13 +26,17 @@ vi.mock("./lib/simLoop", async (orig) => {
   const m = await orig<typeof import("./lib/simLoop")>();
   return { ...m, createSimLoop: vi.fn(m.createSimLoop) };
 });
+vi.mock("./lib/eigenSim", async (orig) => {                          // nur die Vorausrechnung des Standbilds ruft advanceEigen direkt
+  const m = await orig<typeof import("./lib/eigenSim")>();
+  return { ...m, advanceEigen: vi.fn(m.advanceEigen) };
+});
 
 const TOKEN = "t".repeat(43);
 const REDUCE = "(prefers-reduced-motion: reduce)";
 const BADGE = "Eigene Simulation · ungeprüft";
 afterEach(() => {
   cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals();
-  vi.mocked(katex.render).mockClear(); vi.mocked(createSimLoop).mockClear();
+  vi.mocked(katex.render).mockClear(); vi.mocked(createSimLoop).mockClear(); vi.mocked(advanceEigen).mockClear();
 });
 
 type Call = { name: string; args: unknown[] };
@@ -525,5 +533,122 @@ describe("Bühne", () => {
     expect(r.count("fillText")).toBe(0);
     expect(r.count("strokeText")).toBe(0);
     expect(r.count("drawImage")).toBe(0);
+  });
+});
+
+describe("Funde der Prüfung: Budget, Prototyp, kleine Bereiche, Endlosschleife", () => {
+  /** 300 Teilchen ohne Formeln, dt 1e-5, Tempo 100: vorher etwa 45 Mio. Teilchenschritte je Bild. */
+  const VIELE = {
+    typ: "sim_eigen", form: "teilchen", name: "Staub", beschreibung: "", parameter: [], dt: 1e-5, laufzeit: 30, tempo: 100, spur: true,
+    anzahl: 300, start: "gitter", punkte: [], startwert: 1, masse: 1, kraft: null, paar: null, federn: null, fest: [], waende: "reflektieren",
+    kasten: [10, 10], kennwerte: [], erhaltung: null, darstellung: [{ form: "koerper" }], env: { kraft: ["t", "x", "y", "vx", "vy", "m"], paar: ["r"] },
+    integrator: "verlet", kosten: 300,
+  } as unknown as EigenBlock;
+  const ode1 = (p: { name: string; wert: number; min: number; max: number; einheit?: string }[]) =>
+    zerfall({ parameter: p.map((q) => ({ einheit: "", ...q })), env: { ode: ["t", "u", ...p.map((q) => q.name)] } });
+  const grenze = (p: { name: string; wert: number; min: number; max: number }) => eigenRegler(ode1([p]))[0];
+
+  it("die Ansicht aus dem Fund bleibt je Bild unter einem festen Rechenaufwand und sagt „Zeitlupe“", () => {
+    recordingCtx(); const f = fakeFrames();
+    expect(createEigen(VIELE).kostenJeSchritt).toBe(300);
+    card(VIELE);
+    const loop = vi.mocked(createSimLoop).mock.results.at(-1)!.value as ReturnType<typeof createSimLoop>;
+    let maxK = 0;
+    for (let i = 0; i < 30; i++) { f.frame(1000 / 30); maxK = Math.max(maxK, loop.getState().koerperSchritte); }
+    expect(maxK).toBeGreaterThan(0);
+    expect(maxK).toBeLessThanOrEqual(MAX_KOERPER_SCHRITTE);
+    expect(word()).toBe("Zeitlupe, Rechengrenze erreicht");
+  });
+
+  it("das Standbild rechnet hart begrenzt voraus", () => {
+    const t0 = Date.now();
+    const v = vorausBild(VIELE);
+    expect(v.koerperSchritte).toBeLessThanOrEqual(VORAUS_KOERPER_MAX);
+    expect(v.knoten).toBeLessThanOrEqual(VORAUS_KNOTEN_MAX);
+    expect(Date.now() - t0).toBeLessThan(2000);
+    const schwer = vorausBild({ ...demoBlock(2), laufzeit: 60, tempo: 100 });
+    expect(schwer.knoten).toBeLessThanOrEqual(VORAUS_KNOTEN_MAX);
+    expect(schwer.knoten).toBeGreaterThan(VORAUS_KNOTEN_MAX - KNOTEN_BUDGET);
+  });
+
+  it("weniger Bewegung: das Standbild wird nach einer Reglerbewegung entprellt neu gerechnet", () => {
+    recordingCtx(); fakeFrames(); reducedMotion();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    card(demoBlock(0));
+    expect(vi.mocked(advanceEigen).mock.calls.length).toBeGreaterThan(0);              // erstes Standbild sofort
+    vi.mocked(advanceEigen).mockClear();
+    const d = screen.getByLabelText("d (1/s)");
+    for (const v of ["30", "40", "50"]) { fireEvent.change(d, { target: { value: v } }); act(() => { vi.advanceTimersByTime(100); }); }
+    expect(vi.mocked(advanceEigen)).not.toHaveBeenCalled();                            // während des Ziehens nichts
+    act(() => { vi.advanceTimersByTime(1000); });
+    const n = vi.mocked(advanceEigen).mock.calls.length;
+    expect(n).toBeGreaterThan(0);
+    expect(n).toBeLessThanOrEqual(600);                                                 // genau ein Standbild, nicht eines je Bewegung
+    expect(d).toHaveAttribute("aria-valuetext", "0,5 1/s");
+  });
+
+  it("Parameter „constructor“ und „toString“ lesen nie Object.prototype", () => {
+    recordingCtx(); const f = fakeFrames();
+    card(ode1([{ name: "constructor", wert: 1, min: 0, max: 2 }, { name: "toString", wert: 0.5, min: 0, max: 1 }]));
+    const c = screen.getByLabelText("constructor"), t = screen.getByLabelText("toString");
+    expect(c).toHaveAttribute("aria-valuetext", "1");
+    expect(t).toHaveAttribute("aria-valuetext", "0,5");
+    fireEvent.change(c, { target: { value: "150" } });                                  // nur constructor gezogen: toString bleibt
+    expect(t).toHaveAttribute("aria-valuetext", "0,5");
+    expect(c).toHaveAttribute("aria-valuetext", "1,5");
+    f.run(0.3);
+    expect(document.querySelector(".v-eigen")!.textContent).not.toMatch(/function|native code|\[object/);
+    const neu = vi.mocked(createSimLoop).mock.calls.at(-1)![0].input as EigenBlock;
+    expect(neu.parameter.map((p) => p.wert)).toEqual([1.5, 0.5]);
+  });
+
+  it("kleine Bereiche: Stellen aus dem Logarithmus, Pfeiltaste und Mitte ergeben sinnvolle Werte", () => {
+    const G = grenze({ name: "G", wert: 6.674e-11, min: 0, max: 1e-10 });
+    expect(G.schritt).toBe(1e-12);
+    expect(wertAusPos(G, 50)).toBe(5e-11);
+    expect(wertFuerTaste(G, 6.674e-11, "ArrowRight")).toBe(6.8e-11);
+    expect(wertFuerTaste(G, 6.674e-11, "ArrowLeft")).toBe(6.6e-11);
+    const L = grenze({ name: "k", wert: 1e-11, min: 1e-12, max: 1e-9 });
+    expect(L.skala).toBe("log");
+    expect(wertAusPos(L, 500)).toBe(3.16e-11);
+    expect(wertAusPos(L, 0)).toBe(1e-12);
+    expect(wertAusPos(L, 1000)).toBe(1e-9);
+    const r = wertFuerTaste(L, 1e-11, "ArrowRight")!;
+    expect(r).toBeGreaterThan(1e-11);
+    expect(r).toBeLessThan(1.1e-11);
+    const M = grenze({ name: "m", wert: 0, min: 0, max: 2e-6 });
+    expect(wertAusPos(M, 100)).toBe(1e-6);
+    expect(wertFuerTaste(M, 0, "ArrowRight")).toBe(1e-8);
+    expect(wertFuerTaste(M, 1e-6, "PageUp")).toBe(1.1e-6);
+    expect(zahlText(6.674e-11)).toBe("6,674 · 10^-11");
+    expect(zahlText(0.5)).toBe("0,5");
+  });
+
+  it("kleiner Bereich in der Ansicht: Mitte ziehen und Taste, Wert mit Zehnerpotenz", async () => {
+    recordingCtx(); const f = fakeFrames();
+    card(ode1([{ name: "G", wert: 6.674e-11, min: 0, max: 1e-10, einheit: "m³/(kg s²)" }]));
+    const g = screen.getByLabelText("G (m³/(kg s²))");
+    expect(g).toHaveAttribute("aria-valuetext", "6,674 · 10^-11 m³/(kg s²)");
+    fireEvent.change(g, { target: { value: "50" } });
+    expect(g).toHaveAttribute("aria-valuetext", "5 · 10^-11 m³/(kg s²)");
+    f.run(0.3);
+    fireEvent.keyDown(g, { key: "ArrowRight" }); f.run(0.3);
+    expect(g).toHaveAttribute("aria-valuetext", "5,1 · 10^-11 m³/(kg s²)");
+    await act(() => new Promise((res) => setTimeout(res, 450)));                      // der Regler-Takt (200 ms) übernimmt den letzten Wert
+    expect((vi.mocked(createSimLoop).mock.calls.at(-1)![0].input as EigenBlock).parameter[0].wert).toBe(5.1e-11);
+  });
+
+  it("verschwindender Bereich: keine Endlosschleife, kein Regler, nur eine feste Zahl", () => {
+    const g: GrenzFeld = { feld: "p", name: "p", einheit: "", min: 0, max: 1e-323, schritt: 0, skala: "linear" };
+    expect(reglerBedienbar(g)).toBe(false);
+    for (const key of ["ArrowRight", "ArrowLeft", "PageUp", "PageDown"]) expect(wertFuerTaste(g, 0, key)).toBe(0);
+    expect(wertFuerTaste({ ...g, schritt: NaN }, NaN, "ArrowRight")).toBe(0);
+    expect(wertFuerTaste({ ...g, max: 1, schritt: 1e-300 }, 0.5, "ArrowRight")).toBe(0.5);   // zu viele Stufen: keine Suche
+    recordingCtx(); fakeFrames();
+    card(ode1([{ name: "p", wert: 0, min: 0, max: 1e-323 }, { name: "q", wert: 1, min: 0, max: 2 }]));
+    expect(screen.getAllByRole("slider")).toHaveLength(1);
+    expect(screen.getByText("Ohne Regler (der Bereich ist zu klein): p 0.")).toBeInTheDocument();
+    const q = screen.getByLabelText("q");
+    expect(fireEvent.keyDown(q, { key: "ArrowRight" })).toBe(false);
   });
 });

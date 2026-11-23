@@ -4,13 +4,17 @@ import {
   type EigenSnapshot, type EigenState,
 } from "./lib/eigenSim";
 import { isFiniteSnapshot, trailPoints, type SimSnapshot } from "./lib/physics";
-import { createSimLoop, type LoopState, type SimEngine } from "./lib/simLoop";
+import { createSimLoop, MAX_KOERPER_SCHRITTE, type LoopState, type SimEngine } from "./lib/simLoop";
 
-// Rechenkern `sim_eigen` (Plan P7 Stufe 1). Die vier Beispiele des Plans liegen von Hand übersetzt in src/fixtures/eigen_beispiele.json.
+// Rechenkern `sim_eigen` (Plan P7 Stufe 1). Die vier Beispiele des Plans kommen genau in der Form des Backends aus
+// src/fixtures/eigen_ansichten.json (erzeugt mit schema.validate, siehe tests/test_ui_eigen_fixture.py).
 
 const nodeFs = "node:fs";
 const { readFileSync } = (await import(/* @vite-ignore */ nodeFs)) as { readFileSync(p: string, enc: string): string };
-const B = JSON.parse(readFileSync("src/fixtures/eigen_beispiele.json", "utf-8")) as Record<"pendel" | "raeuber_beute" | "lorenz" | "federkette", Record<string, unknown>>;
+const ANSICHTEN = (JSON.parse(readFileSync("src/fixtures/eigen_ansichten.json", "utf-8")) as { ansichten: { bausteine: Record<string, unknown>[] }[] }).ansichten;
+const B = {
+  pendel: ANSICHTEN[0].bausteine[0], raeuber_beute: ANSICHTEN[1].bausteine[0], lorenz: ANSICHTEN[2].bausteine[0], federkette: ANSICHTEN[3].bausteine[0],
+} as Record<"pendel" | "raeuber_beute" | "lorenz" | "federkette", Record<string, unknown>>;
 const kopie = <T>(x: T): T => JSON.parse(JSON.stringify(x)) as T;
 
 type R = [string, number | string][];
@@ -198,7 +202,7 @@ describe("eigenSim: Teilchen", () => {
   });
 
   it("free fall with Verlet bounces off the floor and keeps its energy", () => {
-    const s = createEigen(teilchen({ anzahl: 1, start: "liste", punkte: [[5, 8]], kraft: { fx: F([["c", 0]]), fy: F([["c", -10]]) }, dt: 0.001 }));
+    const s = createEigen(teilchen({ anzahl: 1, start: "liste", punkte: [[5, 8]], kraft: { fx: F([["c", 0]]), fy: F([["c", 10], ["o", "neg"]]) }, dt: 0.001 }));
     expect(s.integrator).toBe("verlet");
     let minY = Infinity;
     lauf(s, 4, (b) => { minY = Math.min(minY, b.koerper[0].y); });
@@ -262,7 +266,7 @@ describe("eigenSim: Grenzen und Taktschleife", () => {
 
   it("100 particles with a pair force: „Zeitlupe“ instead of freezing", () => {
     const s = createEigen(gas100());
-    expect(s.kostenJeSchritt).toBe(4950 * 5);
+    expect(s.kostenJeSchritt).toBe(4950 * 5 + 4950 + 100);             // Knoten je Paar, dazu 1 je Paar und 1 je Teilchen
     const r = advanceEigen(s, 1 / 30);
     expect(r.begrenzt).toBe(true);
     expect(r.knoten).toBeLessThanOrEqual(KNOTEN_BUDGET);
@@ -329,7 +333,8 @@ describe("eigenSim: Eingabe", () => {
     expect(createEigen(kaputt).config.fehler).toEqual(["ableitungen.0:index@0"]);
     const env = { ...kopie(B.pendel), env: { ode: ["t", "w", "phi", "g", "l", "d"] } };
     expect(createEigen(env).config.fehler).toEqual(["env.ode:reihenfolge"]);
-    const lang: R = [["c", 1], ...Array.from({ length: 31 }, (): R => [["c", 1], ["o", "+"]]).flat()];
+    const summe = (n: number): R => (n === 1 ? [["c", 1]] : [...summe(Math.floor(n / 2)), ...summe(n - Math.floor(n / 2)), ["o", "+"]]);
+    const lang = summe(32);                                            // 63 Knoten, ausgeglichen (Tiefe 6)
     const viele = ode(Array.from({ length: 10 }, (_, i): [string, number] => [`x${i}`, 0]), [], Array.from({ length: 10 }, () => lang));
     expect(createEigen(viele).config.fehler).toEqual(["knoten:zu_viele"]);
     expect(createEigen(null).phase).toBe("instabil");
@@ -385,5 +390,71 @@ describe("eigenSim: Regler und Spuren", () => {
     lauf(l, 1, (b) => addEigenSpuren(sl, b));
     expect(sl.zeitreihe.xs.length).toBe(2);
     expect(trailPoints(sl.phasen, 0)).toHaveLength(30);
+  });
+});
+
+describe("eigenSim: Funde der Prüfung (Budget, gleiche Stelle, Regler)", () => {
+  it("costs per step are the same as in the backend for all four examples", () => {
+    for (const b of Object.values(B)) expect(createEigen(b).kostenJeSchritt).toBe(b.kosten);
+  });
+
+  it("300 particles without formulas, dt 1e-5, tempo 100: per frame at most 4000 body steps and the node budget", () => {
+    const eingabe = teilchen({ anzahl: 300, dt: 1e-5, tempo: 100, start: "gitter" });
+    const s = createEigen(eingabe);
+    expect(s.kostenJeSchritt).toBe(300);                                // nicht 0: 1 je Teilchen
+    const r = advanceEigen(s, (1 / 30) * 100);
+    expect(r.begrenzt).toBe(true);
+    expect(r.koerperSchritte).toBeLessThanOrEqual(MAX_KOERPER_SCHRITTE);
+    expect(r.knoten).toBeLessThanOrEqual(KNOTEN_BUDGET);
+    let maxK = 0, maxKnoten = 0, n = 0;
+    const zaehler: SimEngine = {
+      ...EIGEN,
+      advance: (st, sec, m) => { const q = advanceEigen(st as unknown as EigenState, sec, m); maxK = Math.max(maxK, q.koerperSchritte); maxKnoten = Math.max(maxKnoten, q.knoten); n++; return q; },
+    };
+    const a = aufbau(eingabe, zaehler);
+    const t0 = performance.now();
+    a.sekunden(1);
+    const ms = performance.now() - t0;
+    expect(n).toBeGreaterThan(20);
+    expect(maxK).toBeLessThanOrEqual(MAX_KOERPER_SCHRITTE);
+    expect(maxKnoten).toBeLessThanOrEqual(KNOTEN_BUDGET);
+    expect(a.states.map((q) => q.wort)).toContain(ZEITLUPE);
+    expect(ms / n).toBeLessThan(50);                                    // gemessen weit darunter; vorher etwa 45 Mio. Teilchenschritte je Bild
+  });
+
+  it("an ODE with a tiny step is also limited to 4000 steps per frame", () => {
+    const s = createEigen(oszillator({ dt: 1e-5, tempo: 100 }));
+    const r = advanceEigen(s, (1 / 30) * 100);
+    expect(r.schritte).toBe(MAX_KOERPER_SCHRITTE);
+    expect(r.begrenzt).toBe(true);
+    expect(advanceEigen(createEigen(oszillator({ dt: 1e-5 })), 1 / 30, 1e9).schritte).toBeLessThanOrEqual(MAX_KOERPER_SCHRITTE);
+  });
+
+  it("two particles at exactly the same place push apart in a fixed direction; closer than the minimum counts as the minimum", () => {
+    const paar = (punkte: number[][]) => teilchen({
+      anzahl: 2, start: "liste", punkte, waende: "keine", dt: 0.001,
+      paar: { f_r: F([["c", 1], ["v", 0], ["o", "/"]]), reichweite: 5, mindestabstand: 0.1 },
+    });
+    const s = createEigen(paar([[5, 5], [5, 5]]));
+    const k = s.kern as unknown as { ax: Float64Array; ay: Float64Array; x: Float64Array; y: Float64Array };
+    expect(Math.hypot(k.ax[0], k.ay[0])).toBeCloseTo(10, 9);             // f(r = 0,1) = 10, Masse 1
+    expect(k.ax[0]).toBeCloseTo(-k.ax[1], 12);
+    lauf(s, 0.5);
+    const d1 = Math.hypot(k.x[0] - k.x[1], k.y[0] - k.y[1]);
+    expect(d1).toBeGreaterThan(0.1);
+    const s2 = createEigen(paar([[5, 5], [5, 5]]));
+    lauf(s2, 0.5);
+    const k2 = s2.kern as unknown as { x: Float64Array; y: Float64Array };
+    expect([k2.x[0], k2.y[0]]).toEqual([k.x[0], k.y[0]]);              // gleiche Eingabe, gleiche Bahn
+    const nah = createEigen(paar([[5, 5], [5.01, 5]]));
+    const kn = nah.kern as unknown as { ax: Float64Array };
+    expect(Math.abs(kn.ax[0])).toBeCloseTo(10, 9);                      // r = 0,01 zählt als 0,1: Kraft 10, nicht 100
+  });
+
+  it("a parameter with a vanishing range gets no slider (no endless key loop)", () => {
+    const e = ode([["x", 1]], [], [[["v", 1], ["o", "neg"]]], { parameter: [{ name: "p", wert: 0, min: 0, max: 1e-323, einheit: "" }] });
+    expect(eigenRegler(e)).toEqual([]);
+    const g = ode([["x", 1]], [], [[["v", 1], ["o", "neg"]]], { parameter: [{ name: "G", wert: 6.674e-11, min: 0, max: 1e-10, einheit: "" }] });
+    expect(eigenRegler(g)).toEqual([expect.objectContaining({ feld: "G", schritt: 1e-12, skala: "linear" })]);
   });
 });

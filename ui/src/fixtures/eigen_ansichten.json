@@ -875,7 +875,7 @@
       ]
      },
      "integrator": "euler_semi",
-     "kosten": 144
+     "kosten": 167
     }
    ],
    "schliessen": false

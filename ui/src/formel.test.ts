@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { FUNKTIONEN, istGeprueft, kompiliere, liestIndex, MAX_KNOTEN, OPS_EINS, OPS_ZWEI, pruefeRpn, uebersetze, type GeprueftesRpn } from "./lib/formel";
+import {
+  FUNKTIONEN, istGeprueft, kompiliere, liestIndex, MAX_KNOTEN, MAX_TIEFE, MAX_ZAHL, OPS_EINS, OPS_ZWEI, pruefeRpn, uebersetze, type GeprueftesRpn,
+} from "./lib/formel";
 
 // Stapelmaschine (Plan P7 Stufe 1): Testvektoren aus tests/fixtures/formel_vektoren.json (Python-Seite), solange es sie nicht gibt
 // aus ui/src/fixtures/formel_vektoren_ui.json; dazu die Strukturprüfung.
@@ -94,7 +96,8 @@ describe("formel: Strukturprüfung", () => {
   });
 
   it("allows exactly 64 nodes and rejects 65", () => {
-    const n64 = [["c", 1], ...Array.from({ length: 31 }, () => [["c", 1], ["o", "+"]]).flat(), ["o", "neg"]];
+    const summe = (n: number): unknown[] => (n === 1 ? [["c", 1]] : [...summe(Math.floor(n / 2)), ...summe(n - Math.floor(n / 2)), ["o", "+"]]);
+    const n64 = [...summe(32), ["o", "neg"]];                          // ausgeglichen: 63 Knoten, Tiefe 6, dazu neg
     expect(n64).toHaveLength(MAX_KNOTEN);
     const p = pruefeRpn(n64, 1);
     expect(p.ok).toBe(true);
@@ -104,6 +107,21 @@ describe("formel: Strukturprüfung", () => {
 
   it("rejects non-finite or non-number constants", () => {
     for (const c of [Infinity, -Infinity, NaN, "2", null, true, [1], { x: 1 }]) expect(pruefeRpn([["c", c]], 1)).toEqual({ ok: false, fehler: "zahl@0" });
+  });
+
+  it("is as strict as aus_rpn in the backend: constants 0 to 1e12, never negative, tree depth at most 16", () => {
+    for (const c of [0, 1e-300, 3.5, MAX_ZAHL]) expect(pruefeRpn([["c", c]], 1).ok).toBe(true);
+    for (const c of [-1, -1e-300, -0, MAX_ZAHL * (1 + 1e-15), 1e13]) expect(pruefeRpn([["c", c]], 1)).toEqual({ ok: false, fehler: "zahl@0" });
+    expect(pruefeRpn([["c", 1], ["c", 2], ["o", "+"], ["c", 3], ["o", "-"]], 1).ok).toBe(true);
+    const kette = (negs: number) => [["c", 1], ...Array.from({ length: negs }, () => ["o", "neg"])];
+    expect(MAX_TIEFE).toBe(16);
+    expect(pruefeRpn(kette(15), 1).ok).toBe(true);                     // Tiefe 16
+    expect(pruefeRpn(kette(16), 1)).toEqual({ ok: false, fehler: "zu_tief" });
+    const links = (n: number) => [["c", 1], ...Array.from({ length: n }, () => [["v", 0], ["o", "*"]]).flat()];
+    expect(pruefeRpn(links(15), 1).ok).toBe(true);                     // linke Kette aus 15 Produkten: Tiefe 16
+    expect(pruefeRpn(links(16), 1)).toEqual({ ok: false, fehler: "zu_tief" });
+    expect(pruefeRpn([["c", 1], ["c", 2], ["c", 3], ["f", "clamp"], ...Array.from({ length: 14 }, () => ["o", "neg"])], 1).ok).toBe(true);
+    expect(pruefeRpn([["c", 1], ["c", 2], ["c", 3], ["f", "clamp"], ...Array.from({ length: 15 }, () => ["o", "neg"])], 1)).toEqual({ ok: false, fehler: "zu_tief" });
   });
 
   it("rejects malformed nodes and non-lists", () => {

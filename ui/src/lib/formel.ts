@@ -5,12 +5,16 @@
 // die 1 oder 0 liefern) oder einstellig (neg), ["f", name] ruft eine Funktion mit fester Stelligkeit. `^` ist Math.pow,
 // mod(a, b) = a − b·floor(a/b), wenn(b, a, c) = a, falls b ≠ 0, sonst c. Teilen durch 0 gibt ±Unendlich oder NaN, das ist kein
 // Fehler (die Simulation erkennt nicht endliche Zahlen selbst).
-// Ablauf: `pruefeRpn` prüft die Struktur (bekannte Knoten, Indizes im Bereich, kein Unterlauf, am Ende genau ein Wert, höchstens
-// 64 Knoten, Zahlen endlich) und gibt ein geprüftes Stück zurück; nur das nimmt `kompiliere` an. `kompiliere` baut daraus eine
+// Ablauf: `pruefeRpn` prüft die Struktur so streng wie `aus_rpn` im Backend (bekannte Knoten, Indizes im Bereich, kein Unterlauf,
+// am Ende genau ein Wert, höchstens 64 Knoten, Baumtiefe höchstens 16, Konstanten endlich, 0 bis 1e12 und nie negativ) und gibt ein geprüftes Stück zurück; nur das nimmt `kompiliere` an. `kompiliere` baut daraus eine
 // Liste kleiner Funktionen über einen einmal angelegten Float64Array-Stapel (kein Text, kein Code aus Daten). Nichts wirft.
 
 /** Höchstens so viele Knoten je Formel (wie im Backend). */
 export const MAX_KNOTEN = 64;
+/** Größte Baumtiefe einer Formel (wie MAX_TIEFE im Backend; ein Blatt hat Tiefe 1). */
+export const MAX_TIEFE = 16;
+/** Größte Konstante (wie MAX_ZAHL im Backend). */
+export const MAX_ZAHL = 1e12;
 /** Größte erlaubte Länge eines env-Felds (Zeit, 12 Zustände, 12 Parameter, 12 Hilfsgrößen passen weit hinein). */
 export const MAX_ENV = 256;
 /** Die vier Knotenarten. */
@@ -60,6 +64,7 @@ export function pruefeRpn(rpn: unknown, envLen: number): PruefErgebnis {
     if (rpn.length === 0) return { ok: false, fehler: "leer" };
     if (rpn.length > MAX_KNOTEN) return { ok: false, fehler: "zu_lang" };
     const knoten: Knoten[] = [], liest = new Set<number>();
+    const baum: number[] = [];                                        // Baumtiefe je Stapelplatz (Blatt 1, Befehl 1 + tiefstes Argument)
     let tiefe = 0, max = 0;
     for (let i = 0; i < rpn.length; i++) {
       const k: unknown = rpn[i];
@@ -67,7 +72,8 @@ export function pruefeRpn(rpn: unknown, envLen: number): PruefErgebnis {
       const art: unknown = k[0], arg: unknown = k[1];
       let braucht = 0, gibt = 1;
       if (art === "c") {
-        if (typeof arg !== "number" || !Number.isFinite(arg)) return { ok: false, fehler: `zahl@${i}` };
+        // wie aus_rpn im Backend: endlich, 0 bis 1e12, nie negativ (auch nicht −0); ein Minus ist immer der Befehl neg
+        if (typeof arg !== "number" || !Number.isFinite(arg) || arg < 0 || arg > MAX_ZAHL || Object.is(arg, -0)) return { ok: false, fehler: `zahl@${i}` };
       } else if (art === "v") {
         if (typeof arg !== "number" || !Number.isInteger(arg) || arg < 0 || arg >= envLen) return { ok: false, fehler: `index@${i}` };
         liest.add(arg);
@@ -84,6 +90,10 @@ export function pruefeRpn(rpn: unknown, envLen: number): PruefErgebnis {
         return { ok: false, fehler: `unbekannter_opcode@${i}` };
       }
       if (tiefe < braucht) return { ok: false, fehler: `unterlauf@${i}` };
+      let t = 1;
+      for (let a = 0; a < braucht; a++) t = Math.max(t, 1 + (baum.pop() ?? 0));
+      if (t > MAX_TIEFE) return { ok: false, fehler: "zu_tief" };
+      baum.push(t);
       tiefe += gibt - braucht;
       if (tiefe > max) max = tiefe;
       knoten.push(Object.freeze([art, arg]) as Knoten);

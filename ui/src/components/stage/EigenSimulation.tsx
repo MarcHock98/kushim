@@ -6,7 +6,7 @@ import {
 import { FARBEN, formatWert, formatZahl, SPUR_MAX, type Ausschnitt, type Farbe, type GrenzFeld, type Kennwert, type Trail } from "../../lib/physics";
 import { PALETTE_VAR } from "../../lib/scene";
 import {
-  createSimLoop, MAX_FPS, TEMPO_FAKTOREN, type FrameScheduler, type LoopState, type LoopStatus, type SimEngine, type SimLoop, type TempoFaktor,
+  createSimLoop, MAX_FPS, MAX_KOERPER_SCHRITTE, TEMPO_FAKTOREN, type FrameScheduler, type LoopState, type LoopStatus, type SimEngine, type SimLoop, type TempoFaktor,
 } from "../../lib/simLoop";
 import type { EigenBlock } from "../../lib/stage";
 import { useBoxSize } from "../../lib/useBoxSize";
@@ -29,7 +29,10 @@ const AENDERUNG_MS = 12_000;     // so lange steht „Geändert: d: 0,2 → 0,5�
 const LOG_N = 1000;
 const DPR_MAX = 1.5;
 const DEFAULT_W = 640, H_MIN = 180, H_MAX = 420, PAD = 10, PFEIL_MAX = 28;
-const VORAUS_BILDER = 600, VORAUS_KNOTEN_MAX = 400_000;
+const VORAUS_BILDER = 600;
+/** Standbild: höchstens so viele Knoten und Körper × Schritte insgesamt (einmal, nicht je Bild). */
+export const VORAUS_KNOTEN_MAX = 400_000, VORAUS_KOERPER_MAX = 200_000;
+const STANDBILD_ENTPRELLEN_MS = 300;   // Standbild nach einer Reglerbewegung erst neu rechnen, wenn der Regler so lange ruht
 const REDUCE = "(prefers-reduced-motion: reduce)";
 const STILL_WORT = "Standbild, weniger Bewegung ist eingestellt";
 const TEMPO_WORT: Record<TempoFaktor, string> = { 0.5: "halb", 1: "normal", 2: "doppelt" };
@@ -165,21 +168,35 @@ export function aenderungen(vorher: unknown, jetzt: unknown): { parameter: strin
   const parameter = paramListe(jetzt).flatMap((p) => {
     const q = alt.find((a) => a.name === p.name);
     if (!q || !p.name || !Number.isFinite(q.wert) || !Number.isFinite(p.wert) || q.wert === p.wert) return [];
-    return [`${p.name}: ${formatZahl(q.wert)} → ${formatZahl(p.wert)}${p.einheit ? ` ${p.einheit}` : ""}`];
+    return [`${p.name}: ${zahlText(q.wert)} → ${zahlText(p.wert)}${p.einheit ? ` ${p.einheit}` : ""}`];
   });
   const namenAlt = alt.map((a) => a.name).join(","), namenNeu = paramListe(jetzt).map((a) => a.name).join(",");
   return { parameter, sonst: namenAlt !== namenNeu || ohneParameter(vorher) !== ohneParameter(jetzt) };
 }
 
-// --- Regler (wie Simulation.tsx) -------------------------------------------------------------------------------------------
+// --- Regler (wie Simulation.tsx, dazu sicher bei winzigen Bereichen) --------------------------------------------------------
 
-const stellen = (s: number): number => { const t = String(s), i = t.indexOf("."); return i < 0 ? 0 : t.length - i - 1; };
+/** Höchstens so viele Stufen hat ein linearer Regler; mehr (oder ein Schritt 0) heißt: keine Bedienung, nur eine feste Zahl. */
+const STUFEN_MAX = 1_000_000;
+/** Höchstens so viele Stellungen sucht eine Taste ab (gegen jede Endlosschleife, auch bei NaN). */
+const TASTE_SUCHE_MAX = 10_000;
+/** Nachkommastellen für einen Schritt, aus dem Logarithmus (String(1e-7) wäre „1e-7“ und hätte scheinbar keine Stellen); zwei
+ *  Stellen Reserve für Schritte wie 0,25. */
+const stellen = (s: number): number => (s > 0 && Number.isFinite(s) ? clamp(Math.ceil(-Math.log10(s) - 1e-9) + 2, 0, 100) : 0);
 const aufSchritt = (v: number, g: GrenzFeld): number =>
-  clamp(Number((Math.round(v / g.schritt) * g.schritt).toFixed(Math.min(12, stellen(g.schritt)))), g.min, g.max);
+  clamp(Number((Math.round(v / g.schritt) * g.schritt).toFixed(stellen(g.schritt))), g.min, g.max);
 const stufen = (g: GrenzFeld): number => (g.skala === "log" ? LOG_N : Math.max(1, Math.round((g.max - g.min) / g.schritt)));
-function wertAusPos(g: GrenzFeld, pos: number): number {
+/** Lässt sich der Regler sinnvoll bedienen? (Spanne über 0, Schritt über 0, endlich viele Stufen; log nur bei min > 0.) */
+export function reglerBedienbar(g: GrenzFeld): boolean {
+  if (![g.min, g.max, g.schritt].every(Number.isFinite) || !(g.max > g.min) || !(g.schritt > 0)) return false;
+  if (g.skala === "log") return g.min > 0;
+  const n = stufen(g);
+  return Number.isFinite(n) && n <= STUFEN_MAX;
+}
+/** Wert zu einer Reglerstellung; logarithmisch auf drei gültige Ziffern (kein Runden auf den linearen Schritt, der unten zu grob ist). */
+export function wertAusPos(g: GrenzFeld, pos: number): number {
   const n = stufen(g), p = clamp(Number.isFinite(pos) ? Math.round(pos) : 0, 0, n);
-  if (g.skala === "log") return aufSchritt(Number((g.min * Math.pow(g.max / g.min, p / n)).toPrecision(3)), g);
+  if (g.skala === "log") return clamp(Number((g.min * Math.pow(g.max / g.min, p / n)).toPrecision(3)), g.min, g.max);
   return aufSchritt(g.min + p * g.schritt, g);
 }
 function posAusWert(g: GrenzFeld, v: number): number {
@@ -188,23 +205,38 @@ function posAusWert(g: GrenzFeld, v: number): number {
   if (g.skala === "log") return clamp(Math.round((n * Math.log(Math.max(v, g.min) / g.min)) / Math.log(g.max / g.min)), 0, n);
   return clamp(Math.round((v - g.min) / g.schritt), 0, n);
 }
-const SCHRITT_TASTE: Record<string, number> = { ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1, PageUp: 10, PageDown: -10 };
-function wertFuerTaste(g: GrenzFeld, wert: number, key: string): number | null {
+const SCHRITT_TASTE = new Map<string, number>([["ArrowRight", 1], ["ArrowUp", 1], ["ArrowLeft", -1], ["ArrowDown", -1], ["PageUp", 10], ["PageDown", -10]]);
+/** Nächster Wert für eine Taste; `null`: die Taste gehört nicht dem Regler. Kehrt immer zurück (feste Höchstzahl an Versuchen). */
+export function wertFuerTaste(g: GrenzFeld, wert: number, key: string): number | null {
   if (key === "Home") return g.min;
   if (key === "End") return g.max;
-  const d = SCHRITT_TASTE[key];
+  const d = SCHRITT_TASTE.get(key);
   if (d === undefined) return null;
+  if (!reglerBedienbar(g) || !Number.isFinite(wert)) return Number.isFinite(wert) ? wert : g.min;
   const n = stufen(g);
   let p = posAusWert(g, wert);
-  for (let i = 0; i <= n; i++) {
+  for (let i = 0; i <= n && i < TASTE_SUCHE_MAX; i++) {
     p = clamp(p + d, 0, n);
     const next = wertAusPos(g, p);
     if (Math.sign(next - wert) === Math.sign(d)) return next;
-    if (p === 0 || p === n) break;
+    if (p === 0 || p === n || !Number.isFinite(next)) break;
   }
   return wert;
 }
-const reglerText = (g: GrenzFeld, v: number) => (g.einheit ? `${formatZahl(v)} ${g.einheit}` : formatZahl(v));
+
+/** Zahl für Regler und Parameter: sehr kleine oder sehr große Beträge als „6,674 · 10^-11“, sonst wie überall. */
+export function zahlText(v: number): string {
+  if (!Number.isFinite(v)) return "–";
+  const a = Math.abs(v);
+  if (a !== 0 && (a < 1e-3 || a >= 1e7)) {
+    const t = v.toExponential(3), i = t.indexOf("e");
+    return `${formatZahl(Number(t.slice(0, i)))} · 10^${Number(t.slice(i + 1))}`;
+  }
+  return formatZahl(v);
+}
+const reglerText = (g: GrenzFeld, v: number) => (g.einheit ? `${zahlText(v)} ${g.einheit}` : zahlText(v));
+const hatWert = (werte: Record<string, number>, name: string): number | undefined =>
+  Object.hasOwn(werte, name) ? werte[name] : undefined;
 
 // --- Darstellungen ---------------------------------------------------------------------------------------------------------
 
@@ -457,21 +489,25 @@ function plotLabel(art: PlotArt, s: EigenState): string {
   }
 }
 
-/** Standbild für „weniger Bewegung“: eine frische Simulation, vorausgerechnet über die Laufzeit (höchstens VORAUS_KNOTEN_MAX). */
-function vorausBild(input: unknown): { sim: EigenState; snap: EigenSnapshot; sp: EigenSpuren } {
+/** Standbild für „weniger Bewegung“: eine frische Simulation, vorausgerechnet über die Laufzeit, hart begrenzt auf
+ *  VORAUS_KNOTEN_MAX Knoten und VORAUS_KOERPER_MAX Körper × Schritte insgesamt (jeder Aufruf bekommt nur, was noch übrig ist). */
+export function vorausBild(input: unknown): { sim: EigenState; snap: EigenSnapshot; sp: EigenSpuren; knoten: number; koerperSchritte: number } {
   const s = createEigen(input), sp = createEigenSpuren(s);
   let snap = s.startBild;
   if (eigenEndlich(snap)) addEigenSpuren(sp, snap);
-  const je = (s.config.laufzeit * s.tempo) / VORAUS_BILDER;
-  let knoten = 0;
-  for (let i = 0; i < VORAUS_BILDER && s.phase === "laeuft" && knoten < VORAUS_KNOTEN_MAX; i++) {
-    knoten += advanceEigen(s, je).knoten;
+  const je = (s.config.laufzeit * s.tempo) / VORAUS_BILDER, koerper = Math.max(1, s.koerper), kosten = Math.max(1, s.kostenJeSchritt);
+  let knoten = 0, koerperSchritte = 0;
+  for (let i = 0; i < VORAUS_BILDER && s.phase === "laeuft"; i++) {
+    const schritte = Math.min(Math.floor((VORAUS_KNOTEN_MAX - knoten) / kosten), Math.floor((VORAUS_KOERPER_MAX - koerperSchritte) / koerper));
+    if (schritte < 1) break;                                          // Budget aufgebraucht: das Standbild zeigt den Verlauf bis hier
+    const r = advanceEigen(s, je, Math.min(MAX_KOERPER_SCHRITTE, schritte * koerper));
+    knoten += r.knoten; koerperSchritte += r.koerperSchritte;
     const neu = snapshotEigen(s);
     if (!eigenEndlich(neu)) break;
     snap = neu;
     addEigenSpuren(sp, snap);
   }
-  return { sim: s, snap, sp };
+  return { sim: s, snap, sp, knoten, koerperSchritte };
 }
 
 // --- Baustein ---------------------------------------------------------------------------------------------------------------
@@ -489,7 +525,7 @@ export function EigenSimulation({ b, vorher = null }: { b: EigenBlock; vorher?: 
   const sim0 = useMemo(() => createEigen(eff), [eff]);              // Prüfung, Text, Bildausschnitt; die Schleife rechnet selbst
   const ungueltig = sim0.config.ungueltig;
   const plots = useMemo(() => plotsOf(sim0, eff), [sim0, eff]);
-  const regler = useMemo(() => eigenRegler(b), [b]);
+  const regler = useMemo(() => eigenRegler(b).filter(reglerBedienbar), [b]);
   const gl = useMemo(() => gleichungen(b), [b]);
   const aend = useMemo(() => aenderungen(vorher, b), [vorher, b]);
   const [aendSichtbar, setAendSichtbar] = useState(true);
@@ -572,13 +608,20 @@ export function EigenSimulation({ b, vorher = null }: { b: EigenBlock; vorher?: 
     clocks.current = { fig: -Infinity, desc: -Infinity };
     setNoCtx(!hatCtx);
     if (still || !hatCtx) {                                            // keine Schleife: Standbild (vorausgerechnet) oder nur Text
-      const v = still && hatCtx ? vorausBild(eff) : { sim: sim0, snap: sim0.startBild, sp: null };
-      gfx.sim = v.sim; gfx.snap = v.snap; gfx.sp = v.sp; gfx.dauer = v.snap.zeit;
-      const f = figOf(v.snap);
-      setFig(f); setDesc(descOf(f)); setStillDauer(v.snap.zeit);
-      setStatus({ status: "", wort: still ? STILL_WORT : "", grund: v.sim.phase === "instabil" ? v.sim.grund : null });
-      setCanTempo(false);
-      if (!paintAll(gfx)) setBrokenFor(b);
+      const zeige = () => {
+        const v = still && hatCtx ? vorausBild(eff) : { sim: sim0, snap: sim0.startBild, sp: null };
+        gfx.sim = v.sim; gfx.snap = v.snap; gfx.sp = v.sp; gfx.dauer = v.snap.zeit;
+        const f = figOf(v.snap);
+        setFig(f); setDesc(descOf(f)); setStillDauer(v.snap.zeit);
+        setStatus({ status: "", wort: still ? STILL_WORT : "", grund: v.sim.phase === "instabil" ? v.sim.grund : null });
+        setCanTempo(false);
+        if (!paintAll(gfx)) setBrokenFor(b);
+      };
+      if (still && hatCtx && eff !== b) {                              // Regler bewegt: erst rechnen, wenn er kurz ruht (entprellt)
+        const t = window.setTimeout(zeige, STANDBILD_ENTPRELLEN_MS);
+        return () => window.clearTimeout(t);
+      }
+      zeige();
       return;
     }
     let inView = true, io: IntersectionObserver | null = null;
@@ -736,6 +779,7 @@ export function EigenSimulation({ b, vorher = null }: { b: EigenBlock; vorher?: 
   const playing = !still && !noCtx;
   const wertVon = (name: string) => cfg.parameter.find((p) => p.name === name)?.wert ?? null;
   const origWerte = paramListe(b);
+  const fest = cfg.parameter.filter((p) => !regler.some((r) => r.feld === p.name));   // feste Anzeige statt Regler
   const reglerSatz = (werte: (n: string) => number | null) =>
     regler.map((g) => { const v = werte(g.feld); return `${g.name} ${v === null ? "unbekannt" : reglerText(g, v)}`; }).join(", ");
   const reihe = namen.reihe;
@@ -807,7 +851,7 @@ export function EigenSimulation({ b, vorher = null }: { b: EigenBlock; vorher?: 
         <div className="m-row s-regler" role="group" aria-label="Parameter">
           {regler.map((r, i) => {
             const id = `${uid}-param-${i}`;
-            const gezogen = shown && shown.for === b ? shown.werte[r.feld] : undefined;
+            const gezogen = shown && shown.for === b ? hatWert(shown.werte, r.feld) : undefined;   // nie Object.prototype (constructor)
             const w = gezogen ?? wertVon(r.feld) ?? r.min;
             const txt = reglerText(r, w);
             return (
@@ -823,6 +867,11 @@ export function EigenSimulation({ b, vorher = null }: { b: EigenBlock; vorher?: 
           <button type="button" aria-disabled={edited ? undefined : "true"} onClick={zurueck}>Zurück auf die gelieferten Werte</button>
           <p className="v-note">Die Regler ändern nur diese Anzeige.</p>
         </div>
+      )}
+      {fest.length > 0 && (
+        <p className="v-note e-fest">
+          {`Ohne Regler (der Bereich ist zu klein): ${fest.map((p) => `${p.name} ${p.einheit ? `${zahlText(p.wert)} ${p.einheit}` : zahlText(p.wert)}`).join(", ")}.`}
+        </p>
       )}
       {fig && (
         <div className="v-table-wrap">

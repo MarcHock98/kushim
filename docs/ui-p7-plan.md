@@ -107,9 +107,13 @@ Zeilenumbruch, Steuer- und Richtungszeichen) wird **abgelehnt, nicht gesäubert*
 
 Gesamt je Simulation ≤ 600 Knoten. **Abgeleitete Felder**, die das Schema schreibt (bei der zweiten Prüfung müssen sie gleich sein):
 `env`, `kosten` (Knotenauswertungen je Schritt) und `integrator` (`rk4` für ODE; bei Teilchen `verlet`, wenn keine Kraft `vx`/`vy`
-liest und die Federn ungedämpft sind, sonst `euler_semi`). Kosten = Knoten × Stufen (RK4: 4) × Körper bzw. Paare; über 150 000 je
-Schritt wird abgelehnt (die UI rechnet bei mehr als 150 000 je Bild in „Zeitlupe“). Zählt gegen `MAX_SIM_PRO_ANSICHT = 2`.
-`_claims_system` prüft wie bei jedem Baustein alle Texte, also auch `name` und `beschreibung`.
+liest und die Federn ungedämpft sind, sonst `euler_semi`). Kosten = Knoten × Stufen (RK4: 4) × Körper bzw. Paare, bei Teilchen dazu
+1 je Teilchen, je Feder und je Paar (auch ohne Formeln nie 0); über 150 000 je Schritt wird abgelehnt (die UI rechnet bei mehr als
+150 000 Knoten oder 4000 Körper × Schritten je Bild in „Zeitlupe“). Zählt gegen `MAX_SIM_PRO_ANSICHT = 2`.
+`_claims_system` prüft wie bei jedem Baustein alle Texte, also auch `name` und `beschreibung`; Unterstriche zählen als Leerzeichen, und
+die zusammengesetzten Beschriftungen der Oberfläche („name (einheit)“, Regler, Listen der Beschreibung) werden zusätzlich geprüft.
+Nachtrag nach der Prüfung (2026-11-23): Parameter brauchen eine Spanne `max − min ≥ 1e-9 · max(1, |min|, |max|)`; zwei `liste`-Punkte
+an derselben Stelle werden abgelehnt.
 
 Namen: Form wie in 2.2, nicht `pi` und keine Funktion, eindeutig über Zustand, Parameter und Hilfsgrößen. Im ODE-Platz ist `t` belegt,
 im Teilchen-Platz `t x y vx vy m r` (darum heißt ein Parameter dort nie `m`).

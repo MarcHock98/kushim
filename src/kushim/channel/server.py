@@ -186,7 +186,7 @@ ZEIGE_TOOL = {
             "anzahl,kasten:[b,h],start?:linie|gitter|zufall|liste{punkte},masse?,kraft?:{fx,fy},paar?:{f_r,reichweite},federn?:{kette:true|"
             "paare,k,l0,daempfung?},fest?,waende?, darstellung koerper|pfeile} (art simulation; einzige Formeln). Formel ASCII ≤200: + - * / "
             "^ < <= > >= == != pi sin cos tan asin acos atan sinh cosh tanh exp log log10 sqrt abs sign floor ceil atan2 min max hypot mod "
-            "clamp wenn(b,a,c); Namen ode: t, Zustand, Parameter, frühere hilf; kraft: t x y vx vy m; paar: r. Bsp: "
+            "clamp wenn(b,a,c); Baumtiefe ≤16 (lange Summen in hilf aufteilen); Namen ode: t, Zustand, Parameter, frühere hilf; kraft: t x y vx vy m; paar: r. Bsp: "
             "ableitungen:{phi:\"w\",w:\"-g/l*sin(phi)\"}"),
             "items": {"type": "object", "required": ["typ"], "properties": {"typ": {"type": "string", "enum": list(stage_schema.BLOCKS)}}}},
     }},
