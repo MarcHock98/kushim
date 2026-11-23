@@ -24,7 +24,8 @@ from typing import Any, Callable
 
 MAX_ENTRIES = 50
 MAX_CHARS = 2000
-SKIP = {"empty", "wake_only", "halted"}       # ohne Eintrag (`id`) nicht aufnehmen
+SKIP = {"empty", "wake_only", "halted", "announced", "announce_interrupted"}   # ohne Eintrag (`id`) nicht aufnehmen; Meldungen
+#                                                                              ohne Nutzereingabe erzeugen keine Zeile „Du“
 REASONS = {"killed", "cancelled", "wake_only", "command", "end_conversation", "shutdown", "halted", "not_running",
            "send_failed"}
 _SENT = {"spoken", "interrupted"}               # nur für Ergebnisse ohne Eintrag: diese gingen an das Sprachmodell

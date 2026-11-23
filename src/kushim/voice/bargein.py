@@ -28,7 +28,8 @@ ECHO_TAIL_MS = 320              # Echo-Schutz: nach dem Ende eigener Wiedergabe 
 
 
 class BargeIn:
-    def __init__(self, level: float = 1200.0, min_ms: int = 320, frame_ms: int = 80, preroll_ms: int = 480,
+    # Standardwerte wie in wakeconfig (barge_in_level 250, barge_in_ms 240): empfindlich, ein überhörter Notaus wiegt schwerer.
+    def __init__(self, level: float = 250.0, min_ms: int = 240, frame_ms: int = 80, preroll_ms: int = 480,
                  echo_guard: bool = False, echo_factor: float = ECHO_FACTOR, echo_ignore_ms: int = ECHO_IGNORE_MS,
                  echo_tail_ms: int = ECHO_TAIL_MS):
         self.level = level
@@ -43,6 +44,7 @@ class BargeIn:
         self._ignore = 0
         self._tail = 0
         self._ignored_this_turn = False
+        self.last_rms = 0.0             # Pegel des zuletzt gesehenen Frames (für talk.log beim Auslösen, nur eine Zahl)
 
     def reset(self) -> None:
         """Neue Runde (kushim beginnt zu antworten)."""
@@ -74,7 +76,8 @@ class BargeIn:
         level = self.threshold(speaking)
         if self.echo_guard and not speaking and self._tail > 0:
             self._tail -= 1
-        loud = float(np.sqrt(np.mean(f.astype(np.float64) ** 2))) >= level
+        self.last_rms = float(np.sqrt(np.mean(f.astype(np.float64) ** 2))) if f.size else 0.0
+        loud = self.last_rms >= level
         self._run = self._run + 1 if loud else max(0, self._run - 1)     # eine kurze Pause wirft nicht alles zurück
         if self._run >= self.need:
             self._run = 0

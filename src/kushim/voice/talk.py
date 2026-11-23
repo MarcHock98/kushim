@@ -7,6 +7,7 @@ Komponenten zusammen.
 """
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
@@ -24,7 +25,8 @@ class TalkLoop:
     Hintergrund-Thread, während das Mikrofon weiter gelesen wird: Spricht der Nutzer dazwischen, wird die Ausgabe
     gestoppt und seine Äußerung ist die nächste Frage (Unterbrechen)."""
 
-    CONTINUES = ("spoken", "command", "interrupted", "cancelled")      # Ergebnisse, nach denen das Gespräch weitergeht
+    CONTINUES = ("spoken", "command", "interrupted", "cancelled", "announce_interrupted")   # danach geht das Gespräch weiter
+    ANNOUNCED, ANNOUNCE_INTERRUPTED = "announced", "announce_interrupted"     # Meldung von sich aus: fertig bzw. unterbrochen
 
     def __init__(self, frames: Iterable[Any], pipeline: Pipeline, kill: KillSwitch,
                  wake: Callable[[Any], bool],
@@ -36,7 +38,8 @@ class TalkLoop:
                  follow_collector: Callable[[], UtteranceCollector] | None = None,
                  barge: Any = None, preroll_frames: int = 0, on_note: Callable[[str], None] = lambda s: None,
                  announce: Callable[[], str | None] | None = None, say: Callable[[str], None] | None = None,
-                 on_frame: Callable[[Any, str], None] = lambda frame, phase: None):
+                 on_frame: Callable[[Any, str], None] = lambda frame, phase: None,
+                 on_barge: Callable[[bool, float, bool], None] = lambda speaking, rms, announcement: None):
         """`first_collector`: Befehl direkt nach dem Wake Word ("hey kushim, wie spät ist es?") ohne "Ja?" davor.
         Kommt kein Befehl (nur Wake Word, nur Rauschen oder nur der Rest des Wake Words), folgt "Ja?" und
         `new_collector` wartet auf den Befehl. Ohne `first_collector` gibt es "Ja?" sofort.
@@ -45,7 +48,9 @@ class TalkLoop:
         `preroll_frames`: so viele Frames VOR dem Auslösen des Wake Words (nur im Arbeitsspeicher) kommen zum Befehl
         dazu, weil der Detektor erst kurz nach dem Wort auslöst und der Anfang des Befehls sonst fehlt.
         `on_note`: Hinweise zur Diagnose (warum "Ja?" kam).
-        `announce`/`say`: Meldungen von sich aus (z. B. Claude ist fertig); gesprochen nur, wenn gerade nichts läuft und keiner spricht."""
+        `announce`/`say`: Meldungen von sich aus (z. B. Claude ist fertig); gesprochen nur, wenn gerade nichts läuft und keiner spricht.
+        Mit `barge` laufen sie wie Antworten im Hintergrund: Das Mikrofon wird weiter gelesen (Unterbrechen, Wake Word, Notaus).
+        `on_barge`: nur für talk.log, beim Auslösen des Unterbrechens (spielt kushim gerade Ton?, Pegel des Frames, Meldung?)."""
         self.frames, self.pipeline, self.kill, self.wake = frames, pipeline, kill, wake
         self.ack, self.flush = ack, flush
         self.new_collector, self.on_result = new_collector, on_result
@@ -53,6 +58,8 @@ class TalkLoop:
         self.on_note = on_note
         self.announce, self.say = announce, say
         self.on_frame = on_frame         # nur Anzeige: (Frame, Phase) je Frame, Fehler stören nie
+        self.on_barge = on_barge
+        self._barged = False             # in der laufenden Runde wurde unterbrochen
         from collections import deque
         self._ring: Any = deque(maxlen=preroll_frames) if preroll_frames > 0 else None
         self._collecting: UtteranceCollector | None = None
@@ -103,8 +110,11 @@ class TalkLoop:
                     if self._busy is not None:
                         self.pipeline.interrupt()
                     return "killed"
-                if self.announce is not None and self._busy is None and self._collecting is None:
-                    self._speak_announcement()
+                if (self.announce is not None and self._busy is None and self._collecting is None
+                        and self._queued is None):
+                    r = self._start_announcement()
+                    if r:
+                        return r
                 r = self._tick_busy(frame) if self._busy is not None else self._tick(frame)
                 if r:
                     return r
@@ -117,15 +127,25 @@ class TalkLoop:
             if self._pool is not None:
                 self._pool.shutdown(wait=False, cancel_futures=True)
 
-    def _speak_announcement(self) -> None:
+    def _start_announcement(self) -> str | None:
+        """Meldung von sich aus. Mit `barge` über den Worker wie eine Antwort: Die Frame-Schleife liest weiter das Mikrofon,
+        damit Unterbrechen, Wake Word und Notaus auch während der Meldung greifen. Kein Leeren des Mikrofon-Puffers danach
+        (sonst ginge ein gesprochener Notaus verloren); die Meldung erzeugt keine Zeile „Du“."""
         msg = self.announce()
         if not msg or self.say is None:
-            return
+            return None
         self.on_note(f"Meldung: {msg}")
-        try:
-            self.say(msg)
-        finally:
-            self.flush()                             # eigene Ansage nicht als Befehl hören
+        self._turn_mode, self._barged = "announce", False
+        if self._pool is None:
+            return self._process(self._announce_job(msg))
+        if self.barge is not None:
+            self.barge.reset()
+        self._busy = self._pool.submit(self._announce_job, msg)
+        return None
+
+    def _announce_job(self, msg: str) -> Result:
+        n = self.say(msg)
+        return Result("", msg, self.ANNOUNCED, spoken=n if isinstance(n, int) and not isinstance(n, bool) else None)
 
     # --- Zustand: es läuft gerade eine Antwort (nur mit barge)
     def _tick_busy(self, frame: Any) -> str | None:
@@ -135,13 +155,25 @@ class TalkLoop:
             if self._collecting.feed(frame):
                 audio, self._collecting = self._collecting.audio(), None
                 check = getattr(self.pipeline, "try_cancel", None)
-                if check is not None and check(audio):          # "abbrechen": Laufendes beenden, nicht als neue Frage einreihen
+                if check is not None and check(audio):          # "abbrechen" oder "Notaus": Laufendes beenden, nicht einreihen
+                    if self.kill.poll():                         # gesprochener Notaus als Zwischenruf
+                        return "killed"
                     self._cancelled = True
                 else:
                     self._queued = audio
             return None
-        if self.barge.feed(frame, speaking=self._speaking()):    # eigene Wiedergabe: strengere Schwelle (Echo)
+        speaking = self._speaking()
+        announcing = self._turn_mode == "announce"
+        barged = self.barge.feed(frame, speaking=speaking)       # eigene Wiedergabe: strengere Schwelle (Echo)
+        if not barged and announcing:                            # während einer Meldung zählt auch das Wake Word
+            barged = bool(self.wake(frame))
+        if barged:
             self.pipeline.interrupt()                # Ausgabe sofort stoppen
+            self._barged = True
+            try:
+                self.on_barge(speaking, float(getattr(self.barge, "last_rms", 0.0)), announcing)
+            except Exception:                        # noqa: BLE001 (Protokoll darf den Betrieb nie stören)
+                pass
             self._collecting, self._mode = self.new_collector(), "barge"
             for f in self.barge.recent():            # Anfang des Satzes nicht verlieren
                 self._collecting.feed(f)
@@ -150,6 +182,8 @@ class TalkLoop:
     def _finish_busy(self) -> str | None:
         res = self._busy.result()
         self._busy = None
+        if res.outcome == self.ANNOUNCED and self._barged:
+            res = replace(res, outcome=self.ANNOUNCE_INTERRUPTED)
         if self._cancelled:                                      # nach dem Ende der abgebrochenen Antwort kurz bestätigen
             self._cancelled = False
             confirm = getattr(self.pipeline, "say_cancelled", None)
@@ -194,7 +228,7 @@ class TalkLoop:
         return None
 
     def _submit(self, audio: Any, mode: str) -> str | None:
-        self._turn_mode = mode
+        self._turn_mode, self._barged = mode, False
         if self._pool is None:
             return self._process(self.pipeline.handle(audio))
         if self.barge is not None:
@@ -214,6 +248,9 @@ class TalkLoop:
         if res.outcome == "shutdown":
             return "shutdown"
         if self._collecting is not None or self._queued is not None:     # Nutzer spricht schon weiter (Unterbrechen)
+            return None
+        if res.outcome == self.ANNOUNCED:            # Meldung zu Ende: zurück zum Wake Word, kein Gespräch ohne Wake Word
+            self._mode = "idle"
             return None
         if self.follow_collector is not None and res.outcome in self.CONTINUES:
             self.flush()                             # eigene Stimme aus dem Puffer verwerfen
@@ -248,7 +285,7 @@ def build_live(root: Path, out_device: int | None, in_device: int | None = None,
     engine = PiperEngine.from_local(str(root / "models" / "piper" / "de_DE-thorsten-high.onnx"))
     dialog = Dialog(audio.stop_playback)
     kill = KillSwitch(root, [audio.stop_playback])
-    speaker = Speaker(engine, lambda wav: audio.play_wav(wav, out_device), lambda: kill.fired)
+    speaker = Speaker(engine, lambda wav: audio.play_wav(wav, out_device), kill.poll)   # Marker-Datei stoppt sofort
     from .earcon import chime_wav
     speaker.chime = chime_wav()                 # Signalton vor kushims eigenen Ansagen (Freigabe, Notaus), nie vor `sprich`
     ack_wav = engine.synthesize(ACK_TEXT)

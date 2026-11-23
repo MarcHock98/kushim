@@ -10,16 +10,39 @@ import json
 import threading
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 MAX_BYTES = 1_000_000
 MAX_TEXT = 600
+METRICS = ("stt_s", "first_text_s", "first_audio_s", "spoken")    # nur Zahlen aus `pipeline.metrics`, nie Text
+
+
+def numbers(raw: Any) -> dict[str, Any]:
+    """Nur bekannte Kennzahlen, nur Zahlen (int/float) oder None; alles andere fällt weg (kein neuer Text im Protokoll)."""
+    out: dict[str, Any] = {}
+    if not isinstance(raw, dict):
+        return out
+    for k in METRICS:
+        v = raw.get(k)
+        if v is None or (isinstance(v, (int, float)) and not isinstance(v, bool)):
+            out[k] = v
+    return out
 
 
 class TalkLog:
     def __init__(self, path: Path, clock=time.time):
         self.path, self.clock = path, clock
         self._lock = threading.Lock()
+
+    def barge(self, speaking: bool, rms: float, announcement: bool) -> None:
+        """Unterbrechen ausgelöst: nur Flags und der Pegel des auslösenden Frames."""
+        self.write("barge", speaking=bool(speaking), rms=float(rms), announcement=bool(announcement))
+
+    def announced(self, outcome: str, spoken: Any) -> None:
+        """Meldung von sich aus zu Ende: Ergebnis-Code (fester Wert) und Zahl der gesprochenen Sätze, nie der Text."""
+        code = outcome if outcome in ("announced", "announce_interrupted") else "other"
+        n = spoken if isinstance(spoken, int) and not isinstance(spoken, bool) else None
+        self.write("announce", outcome=code, spoken=n)
 
     def write(self, event: str, **fields: Any) -> None:
         entry: dict[str, Any] = {"ts": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self.clock())), "event": event}
@@ -42,8 +65,9 @@ class TalkLog:
         except OSError:
             pass
 
-    def timed(self, handle):
-        """Umhüllt `pipeline.handle`: schreibt jedes Ergebnis mit der Dauer der Runde (Erkennen bis fertig gesprochen)."""
+    def timed(self, handle, metrics: Callable[[], Any] | None = None):
+        """Umhüllt `pipeline.handle`: schreibt jedes Ergebnis mit der Dauer der Runde (Erkennen bis fertig gesprochen).
+        `metrics`: liefert die Kennzahlen der Runde (z. B. `lambda: pipeline.metrics`); nur Zahlen kommen ins Protokoll."""
         def run(pcm):
             t0 = time.monotonic()
             try:
@@ -51,7 +75,13 @@ class TalkLog:
             except Exception as e:                    # noqa: BLE001 (protokollieren, dann wie bisher weiterwerfen)
                 self.write("error", where="pipeline", error=f"{type(e).__name__}: {e}")
                 raise
+            extra: dict[str, Any] = {}
+            if metrics is not None:
+                try:
+                    extra = numbers(metrics())
+                except Exception:                     # noqa: BLE001 (Protokoll darf den Betrieb nie stören)
+                    extra = {}
             self.write("result", heard=r.heard, reply=r.reply, outcome=r.outcome, detail=r.detail,
-                       seconds=time.monotonic() - t0)
+                       seconds=time.monotonic() - t0, **extra)
             return r
         return run
