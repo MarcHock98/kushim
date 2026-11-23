@@ -1,5 +1,6 @@
 // Gefälschtes Backend für Entwicklung und Tests (kein Netz). Antwortet wie `ApiCore`: Token zuerst, neutrale Fehler.
 import type { Socket } from "./api";
+import EIGEN_FIXTURE from "../fixtures/eigen_ansichten.json";
 
 /** Ein Eintrag wie `transcript.get` ihn liefert (src/kushim/voice/transcript.py), mit allen Feldern. */
 export interface MockEntry {
@@ -261,6 +262,13 @@ export class MockSocket implements Socket {
     turn(277000, "Zeig mir ein Doppelpendel.", "Hier ein Doppelpendel, das chaotisch schwingt.", sim("doppelpendel"));
     turn(288000, "Wie entsteht eine stehende Welle?", "Hier zwei Wellen, die gegeneinander laufen.", sim("welle"));
     turn(299000, "Was passiert, wenn sich Planeten gegenseitig anziehen?", "Hier drei Planeten, die sich gegenseitig stören.", sim("anziehung"));
+    // P7: eigene Simulationen (geprüfte Ansichten aus der Python-Prüfung), zuletzt dieselbe Ansicht mit stärkerer Dämpfung
+    const eigen = "Dafür gibt es kein eingebautes Modell. Hier eine eigene Simulation, nicht geprüft und keine Messung.";
+    turn(310000, "Simuliere ein Pendel mit Reibung.", eigen, EIGEN_DEMOS[0]);
+    turn(321000, "Wie hängen Räuber und Beute zusammen?", eigen, EIGEN_DEMOS[1]);
+    turn(332000, "Zeig mir das Lorenz-System.", eigen, EIGEN_DEMOS[2]);
+    turn(343000, "Wie hängt eine Kette aus Federn durch?", eigen, EIGEN_DEMOS[3]);
+    turn(354000, "Mach die Reibung beim Pendel stärker.", "Ich habe die Dämpfung auf 0,5 gesetzt.", EIGEN_GEAENDERT);
   }
 
   send(data: string): void {
@@ -582,3 +590,10 @@ export const TEILCHEN_DEMOS: Record<string, unknown>[] = [
   { id: "orbital-2pz", art: "teilchen", titel: "Orbital 2p_z (Beispiel)", stand: "", schliessen: false, bausteine: [
     { typ: "teilchen", form: "orbital", orbital: "2p_z", punkte: 2500, startwert: 1 } ] },
 ];
+
+/** P7: eigene Simulationen (Pendel mit Reibung, Räuber und Beute, Lorenz, Federkette), genau wie nach der Backend-Prüfung. Die Datei
+ *  `fixtures/eigen_ansichten.json` ist mit `schema.validate` erzeugt; `tests/test_ui_eigen_fixture.py` prüft, dass die zweite
+ *  Prüfung sie unverändert lässt. Eigene Liste, damit die Zählung der übrigen Beispiele gleich bleibt. */
+export const EIGEN_DEMOS: Record<string, unknown>[] = EIGEN_FIXTURE.ansichten as Record<string, unknown>[];
+/** Dieselbe Ansicht wie `eigen-pendel` (gleiche id), nur mit Dämpfung d 0,5 statt 0,2: zeigt „d: 0,2 → 0,5“. */
+export const EIGEN_GEAENDERT: Record<string, unknown> = EIGEN_FIXTURE.geaendert as Record<string, unknown>;

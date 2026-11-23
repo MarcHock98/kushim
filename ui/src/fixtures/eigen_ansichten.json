@@ -1,0 +1,1148 @@
+{
+ "hinweis": "Erzeugt mit schema.validate aus den vier Beispielen des P7-Plans (docs/ui-p7-plan.md, 2.5). Neu schreiben: PYTHONPATH=src python tests/test_ui_eigen_fixture.py",
+ "ansichten": [
+  {
+   "id": "eigen-pendel",
+   "art": "simulation",
+   "titel": "Gedämpftes Pendel (eigene Simulation, Beispiel)",
+   "stand": "",
+   "bausteine": [
+    {
+     "typ": "sim_eigen",
+     "form": "ode",
+     "name": "Gedämpftes Pendel",
+     "beschreibung": "Ein Fadenpendel mit Reibung, losgelassen bei 1,2 rad. Die Reibung wächst mit der Geschwindigkeit.",
+     "parameter": [
+      {
+       "name": "g",
+       "wert": 9.81,
+       "min": 0.1,
+       "max": 30,
+       "einheit": "m/s²"
+      },
+      {
+       "name": "l",
+       "wert": 1,
+       "min": 0.1,
+       "max": 10,
+       "einheit": "m"
+      },
+      {
+       "name": "d",
+       "wert": 0.2,
+       "min": 0,
+       "max": 5,
+       "einheit": "1/s"
+      }
+     ],
+     "dt": 0.01,
+     "laufzeit": 30,
+     "tempo": 1,
+     "spur": true,
+     "zustand": [
+      {
+       "name": "phi",
+       "start": 1.2,
+       "einheit": "rad"
+      },
+      {
+       "name": "w",
+       "start": 0,
+       "einheit": "rad/s"
+      }
+     ],
+     "hilf": [],
+     "ableitungen": {
+      "phi": {
+       "rpn": [
+        [
+         "v",
+         2
+        ]
+       ],
+       "tex": "w"
+      },
+      "w": {
+       "rpn": [
+        [
+         "v",
+         3
+        ],
+        [
+         "o",
+         "neg"
+        ],
+        [
+         "v",
+         4
+        ],
+        [
+         "o",
+         "/"
+        ],
+        [
+         "v",
+         1
+        ],
+        [
+         "f",
+         "sin"
+        ],
+        [
+         "o",
+         "*"
+        ],
+        [
+         "v",
+         5
+        ],
+        [
+         "v",
+         2
+        ],
+        [
+         "o",
+         "*"
+        ],
+        [
+         "o",
+         "-"
+        ]
+       ],
+       "tex": "\\frac{-g}{l} \\cdot \\sin\\left(\\phi\\right) - d \\cdot w"
+      }
+     },
+     "kennwerte": [
+      {
+       "name": "Energie je Masse",
+       "formel": {
+        "rpn": [
+         [
+          "c",
+          0.5
+         ],
+         [
+          "v",
+          4
+         ],
+         [
+          "v",
+          2
+         ],
+         [
+          "o",
+          "*"
+         ],
+         [
+          "c",
+          2.0
+         ],
+         [
+          "o",
+          "^"
+         ],
+         [
+          "o",
+          "*"
+         ],
+         [
+          "v",
+          3
+         ],
+         [
+          "v",
+          4
+         ],
+         [
+          "o",
+          "*"
+         ],
+         [
+          "c",
+          1.0
+         ],
+         [
+          "v",
+          1
+         ],
+         [
+          "f",
+          "cos"
+         ],
+         [
+          "o",
+          "-"
+         ],
+         [
+          "o",
+          "*"
+         ],
+         [
+          "o",
+          "+"
+         ]
+        ],
+        "tex": "0.5 \\cdot \\left(l \\cdot w\\right)^{2} + g \\cdot l \\cdot \\left(1 - \\cos\\left(\\phi\\right)\\right)"
+       },
+       "einheit": "J/kg"
+      }
+     ],
+     "erhaltung": null,
+     "darstellung": [
+      {
+       "form": "koerper",
+       "x": {
+        "rpn": [
+         [
+          "v",
+          4
+         ],
+         [
+          "v",
+          1
+         ],
+         [
+          "f",
+          "sin"
+         ],
+         [
+          "o",
+          "*"
+         ]
+        ],
+        "tex": "l \\cdot \\sin\\left(\\phi\\right)"
+       },
+       "y": {
+        "rpn": [
+         [
+          "v",
+          4
+         ],
+         [
+          "o",
+          "neg"
+         ],
+         [
+          "v",
+          1
+         ],
+         [
+          "f",
+          "cos"
+         ],
+         [
+          "o",
+          "*"
+         ]
+        ],
+        "tex": "-l \\cdot \\cos\\left(\\phi\\right)"
+       },
+       "anker": [
+        0,
+        0
+       ]
+      },
+      {
+       "form": "zeitreihe",
+       "groessen": [
+        "phi"
+       ]
+      }
+     ],
+     "env": {
+      "ode": [
+       "t",
+       "phi",
+       "w",
+       "g",
+       "l",
+       "d"
+      ]
+     },
+     "integrator": "rk4",
+     "kosten": 48
+    }
+   ],
+   "schliessen": false
+  },
+  {
+   "id": "eigen-raeuber",
+   "art": "simulation",
+   "titel": "Räuber und Beute (eigene Simulation, Beispiel)",
+   "stand": "",
+   "bausteine": [
+    {
+     "typ": "sim_eigen",
+     "form": "ode",
+     "name": "Räuber und Beute",
+     "beschreibung": "Beute B vermehrt sich, Räuber R fressen sie. Beide Bestände schwanken gegeneinander versetzt.",
+     "parameter": [
+      {
+       "name": "a",
+       "wert": 1.1,
+       "min": 0,
+       "max": 5,
+       "einheit": "1/Jahr"
+      },
+      {
+       "name": "b",
+       "wert": 0.4,
+       "min": 0,
+       "max": 5,
+       "einheit": "1/Jahr"
+      },
+      {
+       "name": "c",
+       "wert": 0.4,
+       "min": 0,
+       "max": 5,
+       "einheit": "1/Jahr"
+      },
+      {
+       "name": "dd",
+       "wert": 0.1,
+       "min": 0,
+       "max": 5,
+       "einheit": "1/Jahr"
+      }
+     ],
+     "dt": 0.01,
+     "laufzeit": 30,
+     "tempo": 1,
+     "spur": true,
+     "zustand": [
+      {
+       "name": "B",
+       "start": 10,
+       "einheit": "Tiere"
+      },
+      {
+       "name": "R",
+       "start": 5,
+       "einheit": "Tiere"
+      }
+     ],
+     "hilf": [],
+     "ableitungen": {
+      "B": {
+       "rpn": [
+        [
+         "v",
+         3
+        ],
+        [
+         "v",
+         1
+        ],
+        [
+         "o",
+         "*"
+        ],
+        [
+         "v",
+         4
+        ],
+        [
+         "v",
+         1
+        ],
+        [
+         "o",
+         "*"
+        ],
+        [
+         "v",
+         2
+        ],
+        [
+         "o",
+         "*"
+        ],
+        [
+         "o",
+         "-"
+        ]
+       ],
+       "tex": "a \\cdot B - b \\cdot B \\cdot R"
+      },
+      "R": {
+       "rpn": [
+        [
+         "v",
+         6
+        ],
+        [
+         "v",
+         1
+        ],
+        [
+         "o",
+         "*"
+        ],
+        [
+         "v",
+         2
+        ],
+        [
+         "o",
+         "*"
+        ],
+        [
+         "v",
+         5
+        ],
+        [
+         "v",
+         2
+        ],
+        [
+         "o",
+         "*"
+        ],
+        [
+         "o",
+         "-"
+        ]
+       ],
+       "tex": "\\mathrm{dd} \\cdot B \\cdot R - c \\cdot R"
+      }
+     },
+     "kennwerte": [],
+     "erhaltung": {
+      "rpn": [
+       [
+        "v",
+        6
+       ],
+       [
+        "v",
+        1
+       ],
+       [
+        "o",
+        "*"
+       ],
+       [
+        "v",
+        5
+       ],
+       [
+        "v",
+        1
+       ],
+       [
+        "f",
+        "log"
+       ],
+       [
+        "o",
+        "*"
+       ],
+       [
+        "o",
+        "-"
+       ],
+       [
+        "v",
+        4
+       ],
+       [
+        "v",
+        2
+       ],
+       [
+        "o",
+        "*"
+       ],
+       [
+        "o",
+        "+"
+       ],
+       [
+        "v",
+        3
+       ],
+       [
+        "v",
+        2
+       ],
+       [
+        "f",
+        "log"
+       ],
+       [
+        "o",
+        "*"
+       ],
+       [
+        "o",
+        "-"
+       ]
+      ],
+      "tex": "\\mathrm{dd} \\cdot B - c \\cdot \\ln\\left(B\\right) + b \\cdot R - a \\cdot \\ln\\left(R\\right)"
+     },
+     "darstellung": [
+      {
+       "form": "zeitreihe",
+       "groessen": [
+        "B",
+        "R"
+       ]
+      },
+      {
+       "form": "phasenraum",
+       "x": "B",
+       "y": "R"
+      }
+     ],
+     "env": {
+      "ode": [
+       "t",
+       "B",
+       "R",
+       "a",
+       "b",
+       "c",
+       "dd"
+      ]
+     },
+     "integrator": "rk4",
+     "kosten": 72
+    }
+   ],
+   "schliessen": false
+  },
+  {
+   "id": "eigen-lorenz",
+   "art": "simulation",
+   "titel": "Lorenz-System (eigene Simulation, Beispiel)",
+   "stand": "",
+   "bausteine": [
+    {
+     "typ": "sim_eigen",
+     "form": "ode",
+     "name": "Lorenz-System",
+     "beschreibung": "Drei gekoppelte Größen nach Lorenz. Die Bahn wechselt unregelmäßig zwischen zwei Schleifen.",
+     "parameter": [
+      {
+       "name": "s",
+       "wert": 10,
+       "min": 0,
+       "max": 50,
+       "einheit": ""
+      },
+      {
+       "name": "r",
+       "wert": 28,
+       "min": 0,
+       "max": 100,
+       "einheit": ""
+      },
+      {
+       "name": "bb",
+       "wert": 2.6667,
+       "min": 0,
+       "max": 10,
+       "einheit": ""
+      }
+     ],
+     "dt": 0.005,
+     "laufzeit": 30,
+     "tempo": 1,
+     "spur": true,
+     "zustand": [
+      {
+       "name": "x",
+       "start": 1,
+       "einheit": ""
+      },
+      {
+       "name": "y",
+       "start": 1,
+       "einheit": ""
+      },
+      {
+       "name": "z",
+       "start": 1,
+       "einheit": ""
+      }
+     ],
+     "hilf": [],
+     "ableitungen": {
+      "x": {
+       "rpn": [
+        [
+         "v",
+         4
+        ],
+        [
+         "v",
+         2
+        ],
+        [
+         "v",
+         1
+        ],
+        [
+         "o",
+         "-"
+        ],
+        [
+         "o",
+         "*"
+        ]
+       ],
+       "tex": "s \\cdot \\left(y - x\\right)"
+      },
+      "y": {
+       "rpn": [
+        [
+         "v",
+         1
+        ],
+        [
+         "v",
+         5
+        ],
+        [
+         "v",
+         3
+        ],
+        [
+         "o",
+         "-"
+        ],
+        [
+         "o",
+         "*"
+        ],
+        [
+         "v",
+         2
+        ],
+        [
+         "o",
+         "-"
+        ]
+       ],
+       "tex": "x \\cdot \\left(r - z\\right) - y"
+      },
+      "z": {
+       "rpn": [
+        [
+         "v",
+         1
+        ],
+        [
+         "v",
+         2
+        ],
+        [
+         "o",
+         "*"
+        ],
+        [
+         "v",
+         6
+        ],
+        [
+         "v",
+         3
+        ],
+        [
+         "o",
+         "*"
+        ],
+        [
+         "o",
+         "-"
+        ]
+       ],
+       "tex": "x \\cdot y - \\mathrm{bb} \\cdot z"
+      }
+     },
+     "kennwerte": [],
+     "erhaltung": null,
+     "darstellung": [
+      {
+       "form": "phasenraum",
+       "x": "x",
+       "y": "z"
+      },
+      {
+       "form": "zeitreihe",
+       "groessen": [
+        "x"
+       ]
+      }
+     ],
+     "env": {
+      "ode": [
+       "t",
+       "x",
+       "y",
+       "z",
+       "s",
+       "r",
+       "bb"
+      ]
+     },
+     "integrator": "rk4",
+     "kosten": 76
+    }
+   ],
+   "schliessen": false
+  },
+  {
+   "id": "eigen-kette",
+   "art": "simulation",
+   "titel": "Federkette (eigene Simulation, Beispiel)",
+   "stand": "",
+   "bausteine": [
+    {
+     "typ": "sim_eigen",
+     "form": "teilchen",
+     "name": "Federkette",
+     "beschreibung": "Zwölf Massen, mit Federn verbunden, die äußeren fest. Die Kette hängt unter ihrem Gewicht durch.",
+     "parameter": [
+      {
+       "name": "g",
+       "wert": 9.81,
+       "min": 0,
+       "max": 30,
+       "einheit": "m/s²"
+      },
+      {
+       "name": "c",
+       "wert": 0.3,
+       "min": 0,
+       "max": 5,
+       "einheit": "kg/s"
+      }
+     ],
+     "dt": 0.005,
+     "laufzeit": 30,
+     "tempo": 1,
+     "spur": true,
+     "anzahl": 12,
+     "start": "linie",
+     "punkte": [],
+     "startwert": 1,
+     "masse": 0.1,
+     "kraft": {
+      "fx": {
+       "rpn": [
+        [
+         "v",
+         7
+        ],
+        [
+         "o",
+         "neg"
+        ],
+        [
+         "v",
+         3
+        ],
+        [
+         "o",
+         "*"
+        ]
+       ],
+       "tex": "-c \\cdot \\mathrm{vx}"
+      },
+      "fy": {
+       "rpn": [
+        [
+         "v",
+         5
+        ],
+        [
+         "o",
+         "neg"
+        ],
+        [
+         "v",
+         6
+        ],
+        [
+         "o",
+         "*"
+        ],
+        [
+         "v",
+         7
+        ],
+        [
+         "v",
+         4
+        ],
+        [
+         "o",
+         "*"
+        ],
+        [
+         "o",
+         "-"
+        ]
+       ],
+       "tex": "-m \\cdot g - c \\cdot \\mathrm{vy}"
+      }
+     },
+     "paar": null,
+     "federn": {
+      "paare": [
+       [
+        0,
+        1
+       ],
+       [
+        1,
+        2
+       ],
+       [
+        2,
+        3
+       ],
+       [
+        3,
+        4
+       ],
+       [
+        4,
+        5
+       ],
+       [
+        5,
+        6
+       ],
+       [
+        6,
+        7
+       ],
+       [
+        7,
+        8
+       ],
+       [
+        8,
+        9
+       ],
+       [
+        9,
+        10
+       ],
+       [
+        10,
+        11
+       ]
+      ],
+      "k": 40,
+      "l0": 0.25,
+      "daempfung": 0.05
+     },
+     "fest": [
+      0,
+      11
+     ],
+     "waende": "reflektieren",
+     "kasten": [
+      4,
+      3
+     ],
+     "kennwerte": [],
+     "erhaltung": null,
+     "darstellung": [
+      {
+       "form": "koerper"
+      }
+     ],
+     "env": {
+      "kraft": [
+       "t",
+       "x",
+       "y",
+       "vx",
+       "vy",
+       "m",
+       "g",
+       "c"
+      ],
+      "paar": [
+       "r",
+       "g",
+       "c"
+      ]
+     },
+     "integrator": "euler_semi",
+     "kosten": 144
+    }
+   ],
+   "schliessen": false
+  }
+ ],
+ "geaendert": {
+  "id": "eigen-pendel",
+  "art": "simulation",
+  "titel": "Gedämpftes Pendel (eigene Simulation, Beispiel)",
+  "stand": "",
+  "bausteine": [
+   {
+    "typ": "sim_eigen",
+    "form": "ode",
+    "name": "Gedämpftes Pendel",
+    "beschreibung": "Ein Fadenpendel mit Reibung, losgelassen bei 1,2 rad. Die Reibung wächst mit der Geschwindigkeit.",
+    "parameter": [
+     {
+      "name": "g",
+      "wert": 9.81,
+      "min": 0.1,
+      "max": 30,
+      "einheit": "m/s²"
+     },
+     {
+      "name": "l",
+      "wert": 1,
+      "min": 0.1,
+      "max": 10,
+      "einheit": "m"
+     },
+     {
+      "name": "d",
+      "wert": 0.5,
+      "min": 0,
+      "max": 5,
+      "einheit": "1/s"
+     }
+    ],
+    "dt": 0.01,
+    "laufzeit": 30,
+    "tempo": 1,
+    "spur": true,
+    "zustand": [
+     {
+      "name": "phi",
+      "start": 1.2,
+      "einheit": "rad"
+     },
+     {
+      "name": "w",
+      "start": 0,
+      "einheit": "rad/s"
+     }
+    ],
+    "hilf": [],
+    "ableitungen": {
+     "phi": {
+      "rpn": [
+       [
+        "v",
+        2
+       ]
+      ],
+      "tex": "w"
+     },
+     "w": {
+      "rpn": [
+       [
+        "v",
+        3
+       ],
+       [
+        "o",
+        "neg"
+       ],
+       [
+        "v",
+        4
+       ],
+       [
+        "o",
+        "/"
+       ],
+       [
+        "v",
+        1
+       ],
+       [
+        "f",
+        "sin"
+       ],
+       [
+        "o",
+        "*"
+       ],
+       [
+        "v",
+        5
+       ],
+       [
+        "v",
+        2
+       ],
+       [
+        "o",
+        "*"
+       ],
+       [
+        "o",
+        "-"
+       ]
+      ],
+      "tex": "\\frac{-g}{l} \\cdot \\sin\\left(\\phi\\right) - d \\cdot w"
+     }
+    },
+    "kennwerte": [
+     {
+      "name": "Energie je Masse",
+      "formel": {
+       "rpn": [
+        [
+         "c",
+         0.5
+        ],
+        [
+         "v",
+         4
+        ],
+        [
+         "v",
+         2
+        ],
+        [
+         "o",
+         "*"
+        ],
+        [
+         "c",
+         2.0
+        ],
+        [
+         "o",
+         "^"
+        ],
+        [
+         "o",
+         "*"
+        ],
+        [
+         "v",
+         3
+        ],
+        [
+         "v",
+         4
+        ],
+        [
+         "o",
+         "*"
+        ],
+        [
+         "c",
+         1.0
+        ],
+        [
+         "v",
+         1
+        ],
+        [
+         "f",
+         "cos"
+        ],
+        [
+         "o",
+         "-"
+        ],
+        [
+         "o",
+         "*"
+        ],
+        [
+         "o",
+         "+"
+        ]
+       ],
+       "tex": "0.5 \\cdot \\left(l \\cdot w\\right)^{2} + g \\cdot l \\cdot \\left(1 - \\cos\\left(\\phi\\right)\\right)"
+      },
+      "einheit": "J/kg"
+     }
+    ],
+    "erhaltung": null,
+    "darstellung": [
+     {
+      "form": "koerper",
+      "x": {
+       "rpn": [
+        [
+         "v",
+         4
+        ],
+        [
+         "v",
+         1
+        ],
+        [
+         "f",
+         "sin"
+        ],
+        [
+         "o",
+         "*"
+        ]
+       ],
+       "tex": "l \\cdot \\sin\\left(\\phi\\right)"
+      },
+      "y": {
+       "rpn": [
+        [
+         "v",
+         4
+        ],
+        [
+         "o",
+         "neg"
+        ],
+        [
+         "v",
+         1
+        ],
+        [
+         "f",
+         "cos"
+        ],
+        [
+         "o",
+         "*"
+        ]
+       ],
+       "tex": "-l \\cdot \\cos\\left(\\phi\\right)"
+      },
+      "anker": [
+       0,
+       0
+      ]
+     },
+     {
+      "form": "zeitreihe",
+      "groessen": [
+       "phi"
+      ]
+     }
+    ],
+    "env": {
+     "ode": [
+      "t",
+      "phi",
+      "w",
+      "g",
+      "l",
+      "d"
+     ]
+    },
+    "integrator": "rk4",
+    "kosten": 48
+   }
+  ],
+  "schliessen": false
+ }
+}

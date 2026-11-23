@@ -224,6 +224,25 @@ def test_formel_and_eigen_sim_have_no_text_parser():
     assert re.search(r'from "\./formel"', sim)
 
 
+EIGEN_VIEW = UI / "src" / "components" / "stage" / "EigenSimulation.tsx"
+
+
+def test_eigen_simulation_view_never_parses_formula_text():
+    """Die Ansicht `EigenSimulation.tsx` zeichnet nur: keine Zerlegung von Text, keine eigene Ausführung von RPN (nur über eigenSim.ts),
+    Gleichungen nur als TeX über Tex.tsx. Abzeichen und Hinweis setzt die Oberfläche selbst."""
+    assert EIGEN_VIEW.exists()
+    src = EIGEN_VIEW.read_text(encoding="utf-8")
+    code = "\n".join(l.split("//", 1)[0] for l in src.splitlines())
+    bad = re.compile(r"\bnew\s+RegExp\b|\bRegExp\s*\(|\.(?:match|matchAll|split|exec|test|search|charAt)\s*\(|[Tt]oken|[Pp]arser|[Ll]exer"
+                     r"|\b(?:pruefeRpn|kompiliere|uebersetze)\b")
+    hits = [m.group(0) for m in bad.finditer(code)]
+    assert not hits, hits
+    assert not re.search(r"""from ["'][./]*lib/formel["']""", src)          # rechnet nur über eigenSim.ts
+    assert re.search(r"""from ["']\.\./\.\./lib/eigenSim["']""", src)
+    assert "<Tex " in src and "katex" not in src                             # TeX nur über die eine Komponente
+    assert "EIGEN_HINWEIS" in src and '"Eigene Simulation · ungeprüft"' in src
+
+
 def test_eigen_sim_has_no_unseeded_randomness_and_no_code_from_strings():
     for p in (FORMEL, EIGEN_SIM):
         src = p.read_text(encoding="utf-8")
