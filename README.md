@@ -161,6 +161,9 @@ barge_in_ms = 240           # so lange muss der Pegel anhalten
 echo_schutz = false         # nur mit Lautsprechern: true, damit kushim sich nicht selbst unterbricht (Kopfhörer: false lassen)
 echo_factor = 2.0           # mit Echo-Schutz: so viel lauter als barge_in_level muss es sein, während kushim spricht
 echo_ignore_ms = 400        # mit Echo-Schutz: so lange zählt am Anfang der ersten Wiedergabe einer Runde nichts
+# Achtung, Echo-Schutz: Solange kushim spricht, wird ein gesprochener "Notaus" leiser als echo_factor x barge_in_level
+# während der GANZEN Wiedergabe überhört (nicht nur am Anfang), in den ersten echo_ignore_ms einer Antwort jeder.
+# Die Notaus-Verknüpfung wirkt immer. Mit Kopfhörern echo_schutz = false lassen.
 
 [[wakeword]]
 name = "hey kushim"         # beliebiges Wort/Wendung: nur Buchstaben und Leerzeichen
@@ -214,7 +217,7 @@ Meldet kushim nach dem Start „Der Sprachkanal ist in Claude Code noch aus“, 
 | `cublas64_12.dll not found` | `install.ps1` erneut (installiert die NVIDIA-Bibliotheken) |
 | Nichts passiert beim Wake Word | Mikrofon prüfen (`--mic`), deutlicher sprechen, in `wakewords.toml` `threshold` senken (z. B. 0.10) oder mehr Wörter aktivieren |
 | Wake Word löst zu oft aus | `threshold` erhöhen (z. B. 0.25) oder kurze Wörter wie „kush“ ausschalten (`enabled = false`) |
-| kushim unterbricht sich selbst (Lautsprecher) | In `wakewords.toml` unter `[settings]` `echo_schutz = true` setzen (optional `echo_factor`, `echo_ignore_ms`). Dann muss dein Einwurf während kushims Ansage lauter sein als `echo_factor × barge_in_level`; in den ersten `echo_ignore_ms` einer Antwort greift ein gesprochener Notaus nicht, die Notaus-Verknüpfung immer. Mit Kopfhörern aus lassen. |
+| kushim unterbricht sich selbst (Lautsprecher) | In `wakewords.toml` unter `[settings]` `echo_schutz = true` setzen (optional `echo_factor`, `echo_ignore_ms`). Dann muss dein Einwurf während kushims Ansage lauter sein als `echo_factor × barge_in_level`. **Achtung:** Ein gesprochener „Notaus“ unter dieser Schwelle wird während der ganzen Wiedergabe überhört, nicht nur am Anfang; in den ersten `echo_ignore_ms` einer Antwort greift er gar nicht. Die Notaus-Verknüpfung wirkt immer. Mit Kopfhörern aus lassen. |
 | Das erste Antworten dauert lange | Beim ersten Mal lädt Whisper sein Modell auf die Grafikkarte, danach geht es schneller |
 | PowerShell blockt `install.ps1` | Genau mit `-ExecutionPolicy Bypass` aufrufen (siehe oben) |
 

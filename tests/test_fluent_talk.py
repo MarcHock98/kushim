@@ -254,6 +254,15 @@ def test_short_noise_while_waiting_does_not_interrupt_but_speech_does():
     assert frames_until_fire(b, [level(800)] * 6, False) == 2
 
 
+def test_docs_warn_that_the_echo_guard_misses_a_quiet_notaus_during_the_whole_playback():
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    for name in ("README.md", "wakewords.example.toml"):
+        text = (root / name).read_text(encoding="utf-8")
+        assert "GANZEN Wiedergabe überhört" in text and "Notaus-Verknüpfung wirkt immer" in text, name
+        assert "echo_schutz = false" in text, name                                   # Standard bleibt aus
+
+
 def test_echo_settings_roundtrip_and_bounds(tmp_path):
     from dataclasses import replace
     import pytest

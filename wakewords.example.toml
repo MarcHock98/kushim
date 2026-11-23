@@ -20,6 +20,9 @@ barge_in_ms = 240           # so lange muss der Pegel anhalten
 echo_schutz = false         # nur mit Lautsprechern: true, damit kushim sich nicht selbst unterbricht (Kopfhörer: false lassen)
 echo_factor = 2.0           # mit Echo-Schutz: so viel lauter als barge_in_level muss es sein, während kushim spricht
 echo_ignore_ms = 400        # mit Echo-Schutz: so lange zählt am Anfang der ersten Wiedergabe einer Runde nichts
+# Achtung, Echo-Schutz: Solange kushim spricht, wird ein gesprochener "Notaus" leiser als echo_factor x barge_in_level
+# während der GANZEN Wiedergabe überhört (nicht nur am Anfang), in den ersten echo_ignore_ms einer Antwort jeder.
+# Die Notaus-Verknüpfung wirkt immer. Mit Kopfhörern echo_schutz = false lassen.
 
 # Deine Wörter (freie Erkennung ohne Training). Hinweis: Sehr kurze Wörter ("kush", "kushi") lösen im Test
 # leichter versehentlich aus (z. B. bei "Kusch"). Das öffnet nur das Zuhören; Befehle brauchen weiter deine Stimme.

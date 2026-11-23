@@ -880,6 +880,8 @@ def _validate(raw: Any) -> dict[str, Any]:
     if art not in ARTEN:
         raise ViewError("bad_art")
     stand = _text(raw.get("stand"), 40, "bad_stand", optional=True)
+    if _claims_system(stand):                          # erscheint als „· Stand: …“: dieselbe Sperre wie für Titel und Bausteine
+        raise ViewError("bad_stand")
     if art == "markt" and not stand:
         raise ViewError("missing_stand")
     blocks, sims, webgl = [], 0, 0

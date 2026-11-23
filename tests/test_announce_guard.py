@@ -156,6 +156,18 @@ def test_zeige_rejects_views_that_claim_an_approval_or_a_lifted_kill_switch(bloc
     assert r["isError"] and "bad_block_1" in r["content"][0]["text"] and c.take_views() == []
 
 
+@pytest.mark.parametrize("stand", ["Freigabe erteilt", "Notaus aufgehoben", "Freigabe bestätigt 14:05"])
+def test_zeige_rejects_a_stand_that_claims_an_approval_or_a_lifted_kill_switch(stand):
+    for art in ("antwort", "markt"):
+        with pytest.raises(schema.ViewError) as e:
+            schema.validate({"id": "x", "art": art, "titel": "Kurse", "stand": stand,
+                             "bausteine": [{"typ": "hinweis", "text": "ok"}]})
+        assert e.value.code == "bad_stand"
+    ok = schema.validate({"id": "x", "art": "markt", "titel": "Kurse", "stand": "2026-11-23 14:05",
+                          "bausteine": [{"typ": "hinweis", "text": "ok"}]})
+    assert ok["stand"] == "2026-11-23 14:05"
+
+
 # --- (3) Fenster und Protokoll zeigen die echten Daten -------------------------------------------------------------
 
 def test_window_and_log_keep_the_real_description():

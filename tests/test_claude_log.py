@@ -32,7 +32,10 @@ def test_log_dir_is_built_from_local_appdata_and_the_working_folder_never_a_fixe
     assert cl.project_key(Path(r"C:\Users\x\.claude\spares\spare-6fQcit")) == "C--Users-x--claude-spares-spare-6fQcit"
     assert cl.log_dir(Path("C:/a"), local_appdata="") is None
     src = (Path(__file__).resolve().parents[1] / "src" / "kushim" / "channel" / "claude_log.py").read_text(encoding="utf-8")
-    assert "march" not in src.lower()
+    import re
+    assert not re.search(r"[A-Za-z]:[\\/]+Users[\\/]+\w", src, re.I)                 # kein fest eingetragener Profilpfad
+    assert not re.search(r"(^|[\\/])Users[\\/]+\w", src)
+    assert "LOCALAPPDATA" in src                                                     # der Ort kommt aus der Umgebung
 
 
 def test_skipped_without_registered_is_off_registered_is_on(tmp_path):
