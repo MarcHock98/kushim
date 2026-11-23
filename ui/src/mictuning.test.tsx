@@ -1,7 +1,10 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
-import { levelToSens, meterPct, MicTuning, NOTE_NOW, NOT_RUNNING, SAVE_NOTE, sensToLevel, TUNING_IDLE_MS, TUNING_POLL_MS } from "./components/MicTuning";
+import {
+  BROKEN_FILE, levelToSens, meterPct, MicTuning, NOTE_NOW, NOT_RUNNING, parseBound, parseTuning, SAVE_NOTE, SEND_DELAY_MS, sensToLevel, TUNING_IDLE_MS,
+  TUNING_POLL_MS, tuningError,
+} from "./components/MicTuning";
 import { ApiClient } from "./lib/api";
 import { STATE_VIEW } from "./lib/avatarState";
 import { MockSocket } from "./lib/mock";
@@ -56,14 +59,66 @@ describe("Umrechnung Regler und Schwelle", () => {
     expect(levelToSens(200, [80, 600])).toBe(55);           // ln(600/200) / ln(600/80) = 0,545
   });
 
-  it("Pegelbalken logarithmisch von 10 bis 10.000", () => {
+  it("Pegelbalken logarithmisch von 10 bis 32.767 (Rohwert)", () => {
     expect(meterPct(10)).toBe(0);
     expect(meterPct(0)).toBe(0);
     expect(meterPct(Number.NaN)).toBe(0);
-    expect(meterPct(100)).toBeCloseTo(33.33, 1);
-    expect(meterPct(1000)).toBeCloseTo(66.67, 1);
-    expect(meterPct(10_000)).toBe(100);
+    const decade = 100 / Math.log10(32_767 / 10);
+    expect(meterPct(100)).toBeCloseTo(decade, 6);
+    expect(meterPct(1000)).toBeCloseTo(2 * decade, 6);
+    expect(meterPct(10_000)).toBeCloseTo(3 * decade, 6);
+    expect(meterPct(10_000)).toBeLessThan(90);
     expect(meterPct(32_767)).toBe(100);
+    expect(meterPct(40_000)).toBe(100);
+  });
+});
+
+describe("Antwort des Backends prüfen", () => {
+  const reply = (extra: Record<string, unknown>) => ({
+    ok: true as const, active: true, values: { speech_level: 142.9, barge_in_level: 178.6, barge_in_ms: 240, end_silence_seconds: 0.9 },
+    file_values: { speech_level: 200, barge_in_level: 250, barge_in_ms: 240, end_silence_seconds: 0.9 },
+    bounds: { speech_level: { min: 80, max: 600 }, barge_in_level: { min: 150, max: 1500 }, barge_in_ms: { min: 160, max: 400 },
+      end_silence_seconds: { min: 0.6, max: 3 }, step: { min: -2, max: 2 } },
+    step: 1, rms: 512.3, peak: 1800.5, last_source: "voice", version: 7, ...extra });
+
+  it("Grenzen in beiden Formen: {min, max} (Backend) und [min, max]; Unbrauchbares fällt auf den Vertrag zurück", () => {
+    expect(parseBound({ min: 80, max: 600 })).toEqual([80, 600]);
+    expect(parseBound([80, 600])).toEqual([80, 600]);
+    for (const bad of [{ min: 600, max: 80 }, [1, 2, 3], { min: "80", max: 600 }, null, 5, { min: 0, max: 10 }, { min: 80 }]) {
+      expect(parseBound(bad)).toBeNull();
+    }
+    const s = parseTuning(reply({}))!;
+    expect(s.bounds).toEqual({ speech_level: [80, 600], barge_in_level: [150, 1500], barge_in_ms: [160, 400], end_silence_seconds: [0.6, 3] });
+    expect(s.version).toBe(7);
+    expect(s.step).toBe(1);
+    expect(parseTuning(reply({ bounds: { speech_level: [100, 500], barge_in_level: { min: 1, max: 0 } } }))!.bounds)
+      .toEqual({ speech_level: [100, 500], barge_in_level: [150, 1500], barge_in_ms: [160, 400], end_silence_seconds: [0.6, 3] });
+  });
+
+  it("Pegel sind Rohwerte von 0 bis 32767; ohne Sprachdienst immer 0", () => {
+    expect(parseTuning(reply({ rms: 40_000, peak: -5 }))).toMatchObject({ rms: 32_767, peak: 0 });
+    expect(parseTuning(reply({ active: false, rms: 300, peak: 900 }))).toMatchObject({ rms: 0, peak: 0 });
+  });
+
+  it("Werte null nur ohne Sprachdienst (Datei fehlerhaft); mit Sprachdienst ist das keine gültige Antwort", () => {
+    expect(parseTuning(reply({ active: false, values: null, file_values: null }))).toMatchObject({ active: false, values: null, file_values: null });
+    expect(parseTuning(reply({ values: null, file_values: null }))).toBeNull();
+    expect(parseTuning(reply({ active: false, values: { speech_level: "x" } }))).toBeNull();
+    expect(parseTuning(reply({ active: "ja" }))).toBeNull();
+    expect(parseTuning({ ok: false, error: "kill" })).toBeNull();
+  });
+
+  it("klare Texte für alle Fehler des Backends, ohne Fachbegriffe", () => {
+    const all = ["invalid", "kill", "unavailable", "bad_request", "confirm_required", "broken_file", "not_saved", "offline", "timeout", "unknown_type", "was"];
+    for (const e of all) {
+      const t = tuningError(e);
+      expect(t.length).toBeGreaterThan(10);
+      expect(t).not.toMatch(/bad_request|confirm_required|broken_file|not_saved|invalid|unavailable|Error|Fehlercode/);
+    }
+    expect(tuningError("bad_request")).toBe("kushim hat die Anfrage nicht verstanden. Nichts wurde geändert. Lade das Fenster neu.");
+    expect(tuningError("confirm_required")).toBe("Die Bestätigung fehlte. Nichts wurde geändert. Versuch es noch einmal.");
+    expect(tuningError("broken_file")).toMatch(/^wakewords\.toml ist fehlerhaft und wurde nicht überschrieben\./);
+    expect(tuningError("not_saved")).toMatch(/^Speichern hat nicht geklappt: wakewords\.toml ließ sich nicht schreiben\./);
   });
 });
 
@@ -165,13 +220,16 @@ describe("Kasten Mikrofon", () => {
 
   it("per Stimme verstellt: „per Stimme: Stufe +1“; „Standard“ setzt mit confirm zurück", async () => {
     const { sock, sent } = await mount((m) => m.voiceTune(1));
+    expect(sock.tuningValues.speech_level).toBe(142.9);                // 200 / 1,4, auf 0,1 gerundet (wie das Backend)
     expect(box().getByText("per Stimme: Stufe +1")).toBeInTheDocument();
-    expect(box().getByText("Sprechen ab 170")).toBeInTheDocument();
-    expect(box().getByText("Schwelle 170 (Datei 200)")).toBeInTheDocument();
+    expect(box().getByText("Sprechen ab 143")).toBeInTheDocument();
+    expect(box().getByText("Unterbrechen ab 179")).toBeInTheDocument();
+    expect(box().getByText("Schwelle 143 (Datei 200)")).toBeInTheDocument();
     await click(btn("Standard"));
     expect(sent("voice.tuning.reset")).toEqual([expect.objectContaining({ type: "voice.tuning.reset", confirm: true })]);
     expect(sock.tuningValues.speech_level).toBe(200);
     expect(box().getByText("Zurück auf die Werte aus wakewords.toml.")).toBeInTheDocument();
+    expect(box().queryByText(/per Stimme/)).toBeNull();                // sofort aus der Antwort von reset, nicht erst beim nächsten get
     await tick(TUNING_POLL_MS);
     expect(box().queryByText(/per Stimme/)).toBeNull();
     expect(box().getByText("Sprechen ab 200")).toBeInTheDocument();
@@ -208,15 +266,38 @@ describe("Kasten Mikrofon", () => {
     await click(within(box().getByRole("alertdialog")).getByRole("button", { name: "Dauerhaft merken" }));
     expect(sent("voice.tuning.save")).toEqual([expect.objectContaining({ type: "voice.tuning.save", confirm: true })]);
     expect(sock.tuningSaves).toBe(1);
-    expect(sock.tuningFile.speech_level).toBe(170);
-    expect(box().getByText("Gemerkt. Die Werte gelten jetzt auch nach dem Neustart.")).toBeInTheDocument();
+    expect(sock.tuningFile.speech_level).toBe(142.9);
+    expect(box().getByRole("status")).toHaveTextContent(
+      "Gemerkt, die alte Datei liegt als wakewords.toml.bak daneben. Die Werte gelten jetzt auch nach dem Neustart.");
     expect(btn("Merken")).toBeDisabled();             // Datei und aktive Werte sind jetzt gleich
+    expect(document.activeElement).toBe(box().getByRole("heading", { name: "Mikrofon" }));   // nicht auf BODY fallen lassen
+  });
+
+  it("„Merken“ ohne vorhandene Datei: backup false, das wird ehrlich gesagt", async () => {
+    const { sock } = await mount((m) => { m.voiceTune(1); m.tuningNoFile = true; });
+    await click(btn("Merken"));
+    await click(within(box().getByRole("alertdialog")).getByRole("button", { name: "Dauerhaft merken" }));
+    expect(sock.tuningSaves).toBe(1);
+    expect(box().getByRole("status")).toHaveTextContent("Eine Sicherung gab es nicht, weil wakewords.toml noch fehlte.");
+  });
+
+  it("set übernimmt den Stand aus der Antwort (version steigt), ohne auf das nächste get zu warten", async () => {
+    const { sock, sent } = await mount();
+    await act(async () => { fireEvent.change(slider("Empfindlichkeit Unterbrechen"), { target: { value: "100" } }); });
+    await tick(SEND_DELAY_MS + 1);
+    expect(sent("voice.tuning.set")[0]).toMatchObject({ values: { barge_in_level: 150 } });
+    expect(sock.tuningVersion).toBe(1);
+    expect(box().getByText("Unterbrechen ab 150")).toBeInTheDocument();
+    expect(box().getByText("Schwelle 150 (Datei 250)")).toBeInTheDocument();
+    expect(btn("Merken")).toBeEnabled();
   });
 
   it.each([
     ["invalid", "Dieser Wert ist nicht erlaubt. Nichts wurde geändert."],
     ["kill", "Notaus ist aktiv. Nichts wurde geändert."],
     ["unavailable", "Der Sprachdienst läuft nicht. Nichts wurde geändert. Starte ihn mit „kushim talk“."],
+    ["bad_request", "kushim hat die Anfrage nicht verstanden. Nichts wurde geändert. Lade das Fenster neu."],
+    ["confirm_required", "Die Bestätigung fehlte. Nichts wurde geändert. Versuch es noch einmal."],
   ] as const)("set mit Fehler %s: klare Meldung, Wert springt zurück", async (error, text) => {
     const { sock } = await mount();
     sock.tuningFail = error;
@@ -227,22 +308,60 @@ describe("Kasten Mikrofon", () => {
     expect(sock.tuningValues.speech_level).toBe(200);
   });
 
-  it("echte Grenzprüfung im Mock: Werte außerhalb sind invalid", async () => {
+  it("Mock prüft wie das Backend: Form zuerst (bad_request), dann Grenzen (invalid), barge_in_ms ganzzahlig", async () => {
     const { sock } = await mount();
-    const r = await new Promise<unknown>((resolve) => {
+    const ask = (msg: Record<string, unknown>) => new Promise<unknown>((resolve) => {
       sock.onmessage = (e) => resolve(JSON.parse(String(e.data)));
-      sock.send(JSON.stringify({ type: "voice.tuning.set", token: TOKEN, values: { speech_level: 5000 }, confirm: true }));
+      sock.send(JSON.stringify({ type: "voice.tuning.set", token: TOKEN, confirm: true, ...msg }));
     });
-    expect(r).toEqual({ ok: false, error: "invalid" });
+    expect(await ask({ values: { speech_level: 5000 } })).toEqual({ ok: false, error: "invalid" });
+    expect(await ask({ values: { barge_in_ms: 240.5 } })).toEqual({ ok: false, error: "invalid" });
+    expect(await ask({ values: { lautstaerke: 3 } })).toEqual({ ok: false, error: "bad_request" });
+    expect(await ask({ values: { speech_level: "200" } })).toEqual({ ok: false, error: "bad_request" });
+    expect(await ask({ values: {} })).toEqual({ ok: false, error: "bad_request" });
+    expect(await ask({ values: { speech_level: 300 }, confirm: false })).toEqual({ ok: false, error: "confirm_required" });
+    const ok = await ask({ values: { speech_level: 300 } }) as Record<string, unknown>;
+    expect(ok).toMatchObject({ ok: true, active: true, version: 1, last_source: "ui", values: { speech_level: 300 } });
+    expect((ok.bounds as Record<string, unknown>).speech_level).toEqual({ min: 80, max: 600 });
+    expect((ok.bounds as Record<string, unknown>).step).toEqual({ min: -2, max: 2 });
   });
 
-  it("„Merken“ mit Fehler: Meldung sagt, dass nichts gespeichert wurde", async () => {
+  it.each([
+    ["kill", "Notaus ist aktiv. Nichts wurde gespeichert."],
+    ["broken_file", "wakewords.toml ist fehlerhaft und wurde nicht überschrieben. Prüfe die Datei, dann noch einmal merken."],
+    ["not_saved", "Speichern hat nicht geklappt: wakewords.toml ließ sich nicht schreiben. Bis zum Neustart gelten die eingestellten Werte weiter."],
+  ] as const)("„Merken“ mit Fehler %s: klare Meldung, nichts gespeichert", async (error, text) => {
     const { sock } = await mount((m) => m.voiceTune(1));
     await click(btn("Merken"));
-    sock.tuningFail = "kill";
+    sock.tuningFail = error;
     await click(within(box().getByRole("alertdialog")).getByRole("button", { name: "Dauerhaft merken" }));
-    expect(box().getByRole("status")).toHaveTextContent("Notaus ist aktiv. Nichts wurde gespeichert.");
+    expect(box().getByRole("status")).toHaveTextContent(text);
     expect(sock.tuningSaves).toBe(0);
+    expect(btn("Merken")).toBeEnabled();              // die Werte gelten weiter und lassen sich noch einmal merken
+  });
+
+  it("active:false: Werte aus der Datei, Kasten deaktiviert mit „Sprachdienst läuft nicht“", async () => {
+    await mount((m) => { m.tuningActive = false; m.tuningFile = { ...m.tuningFile, speech_level: 260 }; });
+    expect(box().getByText(/Angezeigt sind die Werte aus wakewords\.toml\./)).toBeInTheDocument();
+    expect(box().getByText("Sprechen ab 260")).toBeInTheDocument();
+    expect(box().getByText("Schwelle 260")).toBeInTheDocument();
+    expect(box().getByText("RMS kein Signal")).toBeInTheDocument();
+    expect(slider("Empfindlichkeit Sprechen")).toBeDisabled();
+  });
+
+  it("active:false und wakewords.toml fehlerhaft (values null): „unbekannt“, keine Marken, ruhiger Hinweis", async () => {
+    await mount((m) => { m.tuningActive = false; m.tuningFileBroken = true; });
+    expect(box().getByText(BROKEN_FILE)).toBeInTheDocument();
+    expect(box().getByText(NOT_RUNNING)).toBeInTheDocument();
+    expect(box().getByText("Sprechen ab unbekannt")).toBeInTheDocument();
+    expect(box().getByText("Unterbrechen ab unbekannt")).toBeInTheDocument();
+    expect(box().getAllByText("Schwelle unbekannt")).toHaveLength(2);
+    expect(slider("Empfindlichkeit Sprechen")).toHaveAttribute("aria-valuetext", "Schwelle unbekannt, nach rechts empfindlicher");
+    expect(slider("Pause bis Satzende")).toHaveAttribute("aria-valuetext", "unbekannt");
+    expect(document.querySelectorAll(".mic-mark")).toHaveLength(0);
+    expect(slider("Empfindlichkeit Sprechen")).toBeDisabled();
+    expect(btn("Merken")).toBeDisabled();
+    expect(btn("Standard")).toBeDisabled();
   });
 
   it("active:false: Kasten deaktiviert mit „Sprachdienst läuft nicht“, seltener abfragen", async () => {

@@ -3,7 +3,7 @@
 // `save` erst nach einer Bestätigung im Kasten. Alles mit confirm: true; das Backend prüft Grenzen, Notaus und Sprachdienst.
 // Beim Laden wird nur gelesen (`get`), nie geschrieben. Abgefragt wird nur, solange der Kasten zu sehen ist.
 import { useCallback, useEffect, useId, useRef, useState, type RefObject } from "react";
-import { TUNING_BOUNDS, TUNING_KEYS, type ApiClient, type ApiReply, type TuningBounds, type TuningKey, type TuningState,
+import { LEVEL_RAW_MAX, TUNING_BOUNDS, TUNING_KEYS, type ApiClient, type ApiReply, type TuningBounds, type TuningKey, type TuningState,
   type TuningValues } from "../lib/api";
 
 export const TUNING_POLL_MS = 250;                      // Live-Pegel, solange der Sprachdienst läuft
@@ -12,10 +12,13 @@ export const SEND_DELAY_MS = 200;                       // Entprellen der Regler
 export const NOTE_NOW = "Änderung gilt sofort, bis zum Neustart.";
 export const SAVE_NOTE = "Gilt dauerhaft, schreibt wakewords.toml (mit Sicherung).";
 export const NOT_RUNNING = "Sprachdienst läuft nicht";
+export const BROKEN_FILE = "wakewords.toml ist fehlerhaft, die Werte sind darum unbekannt. Prüfe die Datei, dann erscheinen sie hier wieder.";
 
-/** Logarithmische Skala des Pegelbalkens: 10 bis 10.000 (drei Zehnerstufen). */
+/** Logarithmische Skala des Pegelbalkens: 10 bis 32.767 (Rohwert, gut dreieinhalb Zehnerstufen). */
 export const METER_MIN = 10;
-export const METER_MAX = 10_000;
+export const METER_MAX = LEVEL_RAW_MAX;
+/** Beschriftete Stellen der Skala (die Lage rechnet `meterPct`, dieselbe Formel wie für Pegel und Marken). */
+export const METER_TICKS = [10, 100, 1000, 10_000] as const;
 export const SENS_MAX = 100;                            // Regler „Empfindlichkeit“: 0 (unempfindlich) bis 100 (empfindlich)
 
 const de = (n: number, digits = 0) => n.toLocaleString("de-DE", { maximumFractionDigits: digits, minimumFractionDigits: digits });
@@ -44,41 +47,52 @@ function parseValues(x: unknown): TuningValues | null {
   if (!v || typeof v !== "object") return null;
   return TUNING_KEYS.every((k) => finite(v[k])) ? (Object.fromEntries(TUNING_KEYS.map((k) => [k, v[k]])) as TuningValues) : null;
 }
+/** Eine Grenze in beiden Formen: {min, max} (Backend) oder [min, max] (erster Vertrag). Unbrauchbar: null. */
+export function parseBound(x: unknown): [number, number] | null {
+  const o = x as Record<string, unknown> | null;
+  const pair = Array.isArray(x) ? (x.length === 2 ? [x[0], x[1]] : null) : o && typeof o === "object" ? [o.min, o.max] : null;
+  return pair && finite(pair[0]) && finite(pair[1]) && pair[0] > 0 && pair[0] < pair[1] ? [pair[0], pair[1]] : null;
+}
 function parseBounds(x: unknown): TuningBounds {
-  const b = (x && typeof x === "object" ? x : {}) as Record<string, unknown>;
-  return Object.fromEntries(TUNING_KEYS.map((k) => {
-    const v = b[k];
-    const ok = Array.isArray(v) && v.length === 2 && finite(v[0]) && finite(v[1]) && v[0] > 0 && v[0] < v[1];
-    return [k, ok ? [v[0], v[1]] : TUNING_BOUNDS[k]];
-  })) as TuningBounds;
+  const b = (x && typeof x === "object" && !Array.isArray(x) ? x : {}) as Record<string, unknown>;
+  return Object.fromEntries(TUNING_KEYS.map((k) => [k, parseBound(b[k]) ?? TUNING_BOUNDS[k]])) as TuningBounds;
 }
 
-/** Antwort von `voice.tuning.get` prüfen, nicht blind vertrauen. Fehlen die Werte, gibt es nichts anzuzeigen (null). */
+/** Antwort von `voice.tuning.get` (und von erfolgreichem set/reset/save) prüfen, nicht blind vertrauen. Läuft der Sprachdienst,
+ *  müssen die Werte da sein (sonst null). Ohne Sprachdienst dürfen sie null sein: dann ist die Datei fehlerhaft. */
 export function parseTuning(r: ApiReply): TuningState | null {
-  if (!r.ok) return null;
+  if (!r.ok || typeof r.active !== "boolean") return null;
   const values = parseValues(r.values);
-  if (!values) return null;
+  if (!values && (r.active || r.values !== null)) return null;
   const src = r.last_source;
+  const level = (x: unknown) => (finite(x) ? clamp(x, 0, LEVEL_RAW_MAX) : 0);
   return {
-    active: r.active === true,
+    active: r.active,
     values,
-    file_values: parseValues(r.file_values) ?? values,
+    file_values: parseValues(r.file_values) ?? (r.active ? values : null),
     bounds: parseBounds(r.bounds),
     step: finite(r.step) ? clamp(Math.round(r.step), -2, 2) : 0,
-    rms: finite(r.rms) && r.rms > 0 ? r.rms : 0,
-    peak: finite(r.peak) && r.peak > 0 ? r.peak : 0,
+    rms: r.active ? level(r.rms) : 0,
+    peak: r.active ? level(r.peak) : 0,
     last_source: src === "ui" || src === "voice" || src === "file" ? src : "file",
+    version: finite(r.version) && r.version >= 0 ? Math.floor(r.version) : 0,
   };
 }
 
-/** Fehler in klaren Worten, ohne Fachbegriffe; `what` sagt, was nicht passiert ist. */
+/** Fehler in klaren Worten, ohne Fachbegriffe; `what` sagt, was nicht passiert ist, dazu meist der nächste Schritt. */
 export function tuningError(error: string, what = "Nichts wurde geändert."): string {
-  if (error === "invalid") return `Dieser Wert ist nicht erlaubt. ${what}`;
-  if (error === "kill") return `Notaus ist aktiv. ${what}`;
-  if (error === "unavailable") return `Der Sprachdienst läuft nicht. ${what} Starte ihn mit „kushim talk“.`;
-  if (error === "offline" || error === "timeout") return `Keine Verbindung zu kushim. ${what}`;
-  if (error === "unknown_type") return "Dieser Dienst kennt die Mikrofon-Einstellung noch nicht. Starte kushim in der neuen Fassung.";
-  return `Das hat nicht geklappt. ${what}`;
+  switch (error) {
+    case "invalid": return `Dieser Wert ist nicht erlaubt. ${what}`;
+    case "kill": return `Notaus ist aktiv. ${what}`;
+    case "unavailable": return `Der Sprachdienst läuft nicht. ${what} Starte ihn mit „kushim talk“.`;
+    case "bad_request": return `kushim hat die Anfrage nicht verstanden. ${what} Lade das Fenster neu.`;
+    case "confirm_required": return `Die Bestätigung fehlte. ${what} Versuch es noch einmal.`;
+    case "broken_file": return "wakewords.toml ist fehlerhaft und wurde nicht überschrieben. Prüfe die Datei, dann noch einmal merken. Bis zum Neustart gelten die eingestellten Werte weiter.";
+    case "not_saved": return "Speichern hat nicht geklappt: wakewords.toml ließ sich nicht schreiben. Bis zum Neustart gelten die eingestellten Werte weiter.";
+    case "offline": case "timeout": return `Keine Verbindung zu kushim. ${what}`;
+    case "unknown_type": return "Dieser Dienst kennt die Mikrofon-Einstellung noch nicht. Starte kushim in der neuen Fassung.";
+    default: return `Das hat nicht geklappt. ${what}`;
+  }
 }
 
 const stepWord = (s: number) => (s > 0 ? `+${s}` : s < 0 ? `−${-s}` : "0");
@@ -171,8 +185,9 @@ export function MicTuning({ client, connected, kill, visible = true, sendDelay =
     if (Object.keys(patch).length === 0) return;
     const r = await read("voice.tuning.set", { values: patch, confirm: true });
     if (!alive.current) return;
-    if (r.ok) {
-      setData((d) => (d ? { ...d, values: { ...d.values, ...patch }, last_source: "ui" } : d));
+    if (r.ok) {                                         // das Backend antwortet mit dem neuen Stand; sonst selbst nachtragen
+      const s = parseTuning(r);
+      setData((d) => s ?? (d?.values ? { ...d, values: { ...d.values, ...patch }, last_source: "ui" } : d));
       setNote("");
     } else setNote(tuningError(r.error));
     setDraft((d) => {                                   // was inzwischen weiter gezogen wurde, bleibt Entwurf
@@ -219,7 +234,8 @@ export function MicTuning({ client, connected, kill, visible = true, sendDelay =
     if (r.ok) {
       pending.current = {};
       setDraft({});
-      setData((d) => (d ? { ...d, values: { ...d.file_values }, step: 0, last_source: "file" } : d));
+      const s = parseTuning(r);
+      setData((d) => s ?? (d?.file_values ? { ...d, values: { ...d.file_values }, step: 0, last_source: "ui" } : d));
       setNote("Zurück auf die Werte aus wakewords.toml.");
     } else setNote(tuningError(r.error));
   };
@@ -241,19 +257,26 @@ export function MicTuning({ client, connected, kill, visible = true, sendDelay =
     setBusy(false);
     closeAsk();
     if (r.ok) {
-      setData((d) => (d ? { ...d, file_values: { ...d.values } } : d));
-      setNote("Gemerkt. Die Werte gelten jetzt auch nach dem Neustart.");
+      const s = parseTuning(r);
+      setData((d) => s ?? (d?.values ? { ...d, file_values: { ...d.values }, step: 0 } : d));
+      setNote(r.backup === false
+        ? "Gemerkt. Die Werte gelten jetzt auch nach dem Neustart. Eine Sicherung gab es nicht, weil wakewords.toml noch fehlte."
+        : r.backup === true ? "Gemerkt, die alte Datei liegt als wakewords.toml.bak daneben. Die Werte gelten jetzt auch nach dem Neustart."
+        : "Gemerkt. Die Werte gelten jetzt auch nach dem Neustart.");
     } else setNote(tuningError(r.error, "Nichts wurde gespeichert."));
   };
 
   // ----- Anzeige
   const active = data?.active === true;
-  const locked = kill || !active || phase !== "ready";
-  const val = (k: TuningKey) => draft[k] ?? data?.values[k] ?? TUNING_BOUNDS[k][0];
+  const values = data?.values ?? null, file = data?.file_values ?? null;
+  const broken = phase === "ready" && !!data && !values;          // ohne Sprachdienst und wakewords.toml fehlerhaft
+  const locked = kill || !active || phase !== "ready" || !values;
+  const val = (k: TuningKey) => draft[k] ?? values?.[k] ?? TUNING_BOUNDS[k][0];
+  const shown = (k: TuningKey, digits = 0) => (values ? de(val(k), digits) : "unbekannt");
   const b = data?.bounds ?? TUNING_BOUNDS;
-  const differs = !!data && TUNING_KEYS.some((k) => data.values[k] !== data.file_values[k]);
+  const differs = !!values && !!file && TUNING_KEYS.some((k) => values[k] !== file[k]);
   const fileNote = (k: TuningKey, unit = "", digits = 0) =>
-    data && data.file_values[k] !== val(k) ? ` (Datei ${de(data.file_values[k], digits)}${unit})` : "";
+    values && file && file[k] !== val(k) ? ` (Datei ${de(file[k], digits)}${unit})` : "";
   const status = phase === "loading" ? "lädt" : phase === "offline" ? "keine Verbindung" : phase === "unknown" ? "nicht verfügbar"
     : phase === "error" ? "unbekannt" : active ? "live" : NOT_RUNNING;
   const speech = val("speech_level"), barge = val("barge_in_level");
@@ -266,7 +289,8 @@ export function MicTuning({ client, connected, kill, visible = true, sendDelay =
         <span className="label">{status}</span>
       </div>
 
-      {phase === "ready" && !active && <p className="mic-text">{NOT_RUNNING}. Starte ihn mit „kushim talk“, dann lassen sich die Schwellen einstellen.</p>}
+      {phase === "ready" && !active && <p className="mic-text">{NOT_RUNNING}. Starte ihn mit „kushim talk“, dann lassen sich die Schwellen einstellen.{values && " Angezeigt sind die Werte aus wakewords.toml."}</p>}
+      {broken && <p className="mic-text">{BROKEN_FILE}</p>}
       {phase === "offline" && <p className="mic-text">Keine Verbindung zu kushim. Die Schwellen lassen sich gerade nicht lesen.</p>}
       {phase === "unknown" && <p className="mic-text">Dieser Dienst kennt die Mikrofon-Einstellung noch nicht. Starte kushim in der neuen Fassung.</p>}
       {phase === "error" && <p className="mic-text">Die Schwellen sind gerade nicht lesbar. Es gelten die Werte aus <code>wakewords.toml</code>.</p>}
@@ -277,16 +301,18 @@ export function MicTuning({ client, connected, kill, visible = true, sendDelay =
           aria-valuenow={Math.round(rms)} aria-valuetext={active ? `RMS ${de(rms)}, Spitze ${de(peak)}` : "kein Signal"}>
           <div className="mic-fill" style={{ width: `${meterPct(rms)}%` }} />
           {active && peak > 0 && <div className="mic-peak" style={{ left: `${meterPct(peak)}%` }} />}
-          {data && <div className="mic-mark mic-mark-speech" style={{ left: `${meterPct(speech)}%` }} />}
-          {data && <div className="mic-mark mic-mark-barge" style={{ left: `${meterPct(barge)}%` }} />}
+          {values && <div className="mic-mark mic-mark-speech" style={{ left: `${meterPct(speech)}%` }} />}
+          {values && <div className="mic-mark mic-mark-barge" style={{ left: `${meterPct(barge)}%` }} />}
         </div>
         <div className="mic-scale" aria-hidden="true">
-          <span className="mic-s0">10</span><span className="mic-s1">100</span><span className="mic-s2">1.000</span><span className="mic-s3">10.000</span>
+          {METER_TICKS.map((t, i) => (
+            <span key={t} className={i === 0 ? "mic-tick mic-tick-first" : "mic-tick"} style={{ left: `${meterPct(t)}%` }}>{de(t)}</span>
+          ))}
         </div>
       </div>
       <ul className="mic-legend">
-        <li><span className="mic-key mic-key-speech" aria-hidden="true" />Sprechen ab {data ? de(speech) : "unbekannt"}</li>
-        <li><span className="mic-key mic-key-barge" aria-hidden="true" />Unterbrechen ab {data ? de(barge) : "unbekannt"}</li>
+        <li><span className="mic-key mic-key-speech" aria-hidden="true" />Sprechen ab {shown("speech_level")}</li>
+        <li><span className="mic-key mic-key-barge" aria-hidden="true" />Unterbrechen ab {shown("barge_in_level")}</li>
         <li>RMS {active ? de(rms) : "kein Signal"}</li>
         <li>Spitze {active ? de(peak) : "kein Signal"}</li>
       </ul>
@@ -295,23 +321,23 @@ export function MicTuning({ client, connected, kill, visible = true, sendDelay =
       <fieldset className="mic-fields" disabled={locked}>
         <legend className="v-sr">Schwellen</legend>
         <Slider id={`${uid}-speech`} label="Empfindlichkeit Sprechen" min={0} max={SENS_MAX} step={1}
-          value={levelToSens(speech, b.speech_level)} text={`Schwelle ${de(speech)}${fileNote("speech_level")}`}
-          valueText={`Schwelle ${de(speech)}, nach rechts empfindlicher`} low="weniger empfindlich" high="empfindlicher"
+          value={levelToSens(speech, b.speech_level)} text={`Schwelle ${shown("speech_level")}${fileNote("speech_level")}`}
+          valueText={`Schwelle ${shown("speech_level")}, nach rechts empfindlicher`} low="weniger empfindlich" high="empfindlicher"
           disabled={locked} onGrab={grab} onChange={(p) => change("speech_level", sensToLevel(p, b.speech_level))} />
         <Slider id={`${uid}-barge`} label="Empfindlichkeit Unterbrechen" min={0} max={SENS_MAX} step={1}
-          value={levelToSens(barge, b.barge_in_level)} text={`Schwelle ${de(barge)}${fileNote("barge_in_level")}`}
-          valueText={`Schwelle ${de(barge)}, nach rechts empfindlicher`} low="weniger empfindlich" high="empfindlicher"
+          value={levelToSens(barge, b.barge_in_level)} text={`Schwelle ${shown("barge_in_level")}${fileNote("barge_in_level")}`}
+          valueText={`Schwelle ${shown("barge_in_level")}, nach rechts empfindlicher`} low="weniger empfindlich" high="empfindlicher"
           disabled={locked} onGrab={grab} onChange={(p) => change("barge_in_level", sensToLevel(p, b.barge_in_level))} />
         <details className="mic-adv">
           <summary>Erweitert</summary>
           <div className="mic-adv-body">
             <Slider id={`${uid}-pause`} label="Pause bis Satzende" min={b.end_silence_seconds[0]} max={b.end_silence_seconds[1]} step={0.1}
-              value={val("end_silence_seconds")} text={`${de(val("end_silence_seconds"), 1)} s${fileNote("end_silence_seconds", " s", 1)}`}
-              valueText={`${de(val("end_silence_seconds"), 1)} Sekunden`} disabled={locked} onGrab={grab}
+              value={val("end_silence_seconds")} text={values ? `${shown("end_silence_seconds", 1)} s${fileNote("end_silence_seconds", " s", 1)}` : "unbekannt"}
+              valueText={values ? `${shown("end_silence_seconds", 1)} Sekunden` : "unbekannt"} disabled={locked} onGrab={grab}
               onChange={(v) => change("end_silence_seconds", Math.round(v * 10) / 10)} />
             <Slider id={`${uid}-ms`} label="Mindestdauer Unterbrechen" min={b.barge_in_ms[0]} max={b.barge_in_ms[1]} step={10}
-              value={val("barge_in_ms")} text={`${de(val("barge_in_ms"))} ms${fileNote("barge_in_ms", " ms")}`}
-              valueText={`${de(val("barge_in_ms"))} Millisekunden`} disabled={locked} onGrab={grab}
+              value={val("barge_in_ms")} text={values ? `${shown("barge_in_ms")} ms${fileNote("barge_in_ms", " ms")}` : "unbekannt"}
+              valueText={values ? `${shown("barge_in_ms")} Millisekunden` : "unbekannt"} disabled={locked} onGrab={grab}
               onChange={(v) => change("barge_in_ms", Math.round(v))} />
           </div>
         </details>
