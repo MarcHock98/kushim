@@ -11,7 +11,7 @@ Inhalt: [Was es heute kann](#was-es-heute-kann) · [Voraussetzungen](#voraussetz
 - **Sprechen per Wake Word:** Du sagst eines deiner Wake Words („hey kushim“, „kushim“, „hi kushim“ …, alle in **einer zentralen Datei** einstellbar), kushim antwortet „Ja?“ und hört deinen Befehl. Vor dem Wake Word läuft nur ein kleines lokales Erkennungsmodell: keine Spracherkennung, keine Weitergabe, keine Speicherung.
 - **Jede Stimme zählt:** Es gibt keine Sprecherprüfung. Jede Person im Raum kann Befehle geben; Freigaben (Claude möchte etwas ausführen) gibt es deshalb nie per Stimme, nur im Claude-Fenster oder in der Oberfläche.
 - **Notaus:** per Desktop-Verknüpfung oder per Sprachbefehl („Notaus“, „stopp alles“). Wirkt für jede Stimme.
-- **Lokal:** Whisper (Spracherkennung, GPU), Piper (deutsche Stimme).
+- **Lokal:** Whisper (Spracherkennung, GPU), Kokoro „Martin“ (deutsche Stimme, eigener Prozess, GPU oder Prozessor). Uhrzeiten, Zahlen, Prozent, °C, Datum und Abkürzungen werden vor dem Vorlesen in Wörter umgeschrieben. Fällt die Stimme aus, kommt ein Hinweiston und die Antwort steht als Text da.
 - **Verschlüsseltes Gedächtnis (Vault)** mit Backups.
 
 **Start:** einfach `kushim` (oder die Desktop-Verknüpfung **kushim**). Claude Code öffnet sich mit dem kushim-Channel, kushim hört zu und liest Claudes Antworten vor. Stand und Pläne: [ROADMAP.md](ROADMAP.md).
@@ -22,9 +22,9 @@ Inhalt: [Was es heute kann](#was-es-heute-kann) · [Voraussetzungen](#voraussetz
 |---|---|
 | System | Windows 10 oder 11 (64 Bit) |
 | Grafikkarte | NVIDIA mit mindestens 8 GB VRAM (getestet: RTX 3070), aktueller NVIDIA-Treiber |
-| Speicher | mindestens 10 GB frei (Modelle ca. 2 GB, Python-Umgebung ca. 3 GB,  |
+| Speicher | mindestens 10 GB frei (Modelle ca. 2 GB, Python-Umgebung ca. 3 GB, Sprachausgabe-Umgebung ca. 2 GB) |
 | RAM | 16 GB, besser 32 GB |
-| Python | 3.11 oder 3.12 von [python.org](https://www.python.org/downloads/) (Haken bei „Add Python to PATH“) |
+| Python | 3.12 von [python.org](https://www.python.org/downloads/) (Haken bei „Add Python to PATH“); die Sprachausgabe braucht genau 3.12 |
 | Hardware | Mikrofon und Lautsprecher/Kopfhörer |
 | Internet | für die Installation; im Betrieb nur Claude Code selbst (zu Anthropic) |
 | Claude Code | installiert und angemeldet (`claude`), siehe [ROADMAP.md](ROADMAP.md) Phase B |
@@ -51,10 +51,11 @@ Das Skript macht der Reihe nach und ist jederzeit wiederholbar (Vorhandenes wird
 1. Voraussetzungen prüfen (Python, NVIDIA-GPU, Speicherplatz)
 2. Python-Umgebung `.venv` anlegen
 3. Python-Pakete in festen Versionen installieren
-4. Modelle laden und per SHA-256 prüfen: Whisper large-v3-turbo, deutsche Piper-Stimme, Sprecher-Modell, Wake-Word-Modelle
-5. Logo-Icon erzeugen
-6. Desktop-Verknüpfungen anlegen: **kushim** (startet alles) und **kushim NOTAUS**
-7. Am Ende fragt es, ob es den Vault anlegen und deine Stimme einschreiben soll (nur mit deinem Ja)
+4. Sprachausgabe (Kokoro, eigenes venv `tools\kokoro\venv`): Pakete aus `scripts\kokoro-requirements.txt`, nur Wheels, jede Datei per SHA-256 geprüft (ca. 2 GB inkl. CUDA-Bibliotheken)
+5. Modelle laden und per SHA-256 prüfen: Whisper large-v3-turbo, Stimme Kokoro „Martin“, Wake-Word-Modelle
+6. Logo-Icon erzeugen
+7. Desktop-Verknüpfungen anlegen: **kushim** (startet alles) und **kushim NOTAUS**
+8. Am Ende fragt es, ob es den Vault anlegen soll (nur mit deinem Ja)
 
 Schalter:
 
@@ -78,13 +79,17 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python -m pip install -e ".[dev,voice]"
 .\.venv\Scripts\python -m pip install "openwakeword==0.6.0" --no-deps
 
-# 2. Modelle (Whisper, Stimme, Sprecher, Wake Words), mit Prüfsummen
+# 2. Sprachausgabe im eigenen venv (Kokoro "Martin", onnxruntime-gpu), nur Wheels mit Prüfsummen
+py -3.12 -m venv tools\kokoro\venv
+.\tools\kokoro\venv\Scripts\python -m pip install --no-deps --require-hashes --only-binary=:all: -r scripts\kokoro-requirements.txt
+
+# 3. Modelle (Whisper, Stimme, Wake Words), mit Prüfsummen
 .\.venv\Scripts\python scripts\fetch_models.py
 
-# 3. Logo-Icon (für die Verknüpfungen)
+# 4. Logo-Icon (für die Verknüpfungen)
 .\.venv\Scripts\python scripts\make_icon.py
 
-# 4. Kontrolle
+# 5. Kontrolle
 .\.venv\Scripts\python -m kushim.cli doctor
 ```
 
@@ -189,6 +194,7 @@ Vault verschieben (z. B. auf ein anderes Laufwerk): `python -m kushim.cli memory
 ## Netzwerk und Datenschutz
 
 - **Installation:** Netzwerk nur zu `pypi.org` (Pakete), `github.com` (Wake-Word-Modelle) und `huggingface.co` (Whisper, Stimme). Alles in festen Versionen, Modelle per Größe und SHA-256 geprüft.
+- **Stimme:** Kokoro „Martin“ läuft als eigener Prozess mit eigenem venv, angebunden nur über stdin/stdout (kein Port). Im Prozess ist jedes Netz gesperrt, auch Loopback; er bekommt nur eine kurze Liste von Umgebungsvariablen (keine Tokens) und schreibt nie den vorgelesenen Text in sein Protokoll (`run/tts-worker.log`). Der Notaus beendet ihn sofort.
 - **Betrieb:** kushim selbst geht nie ins Internet. Sein Netzwerkcode spricht ausschließlich 127.0.0.1: `src/kushim/net/server.py` (API für die eigene Oberfläche) und `src/kushim/net/loopback.py` (für die kommende Brücke zu Claude Code). Ein Test (`tests/test_no_egress.py`) verhindert anderen Netzwerkcode. Nach außen spricht nur Claude Code selbst (zu Anthropic).
 - **Signalton:** Eigene Ansagen von kushim zu Freigaben und zum Notaus beginnen mit einem kurzen Zweiklang. Claude spricht mit derselben Stimme, kann diesen Ton aber nie auslösen; Sätze von Claude, die wie solche Ansagen klingen („Bitte im Terminal bestätigen“, „Freigabe erteilt“, „Notaus …“), ersetzt kushim durch „Das sage ich so nicht; schau bitte ins Terminal.“ Ohne Zweiklang ist es keine echte Freigabe- oder Notaus-Ansage.
 - **Mikrofon:** Audio bleibt im Arbeitsspeicher und wird nicht gespeichert. Vor dem Wake Word sieht nur das kleine Wake-Word-Modell das Signal.
@@ -219,6 +225,7 @@ Meldet kushim nach dem Start „Der Sprachkanal ist in Claude Code noch aus“, 
 | Wake Word löst zu oft aus | `threshold` erhöhen (z. B. 0.25) oder kurze Wörter wie „kush“ ausschalten (`enabled = false`) |
 | kushim unterbricht sich selbst (Lautsprecher) | In `wakewords.toml` unter `[settings]` `echo_schutz = true` setzen (optional `echo_factor`, `echo_ignore_ms`). Dann muss dein Einwurf während kushims Ansage lauter sein als `echo_factor × barge_in_level`. **Achtung:** Ein gesprochener „Notaus“ unter dieser Schwelle wird während der ganzen Wiedergabe überhört, nicht nur am Anfang; in den ersten `echo_ignore_ms` einer Antwort greift er gar nicht. Die Notaus-Verknüpfung wirkt immer. Mit Kopfhörern aus lassen. |
 | Das erste Antworten dauert lange | Beim ersten Mal lädt Whisper sein Modell auf die Grafikkarte, danach geht es schneller |
+| Hinweiston statt Stimme, Antwort nur als Text | Die Sprachausgabe läuft nicht (`run/tts-worker.log` lesen, `kushim doctor`: „Stimme Kokoro Martin“ und „Sprachausgabe-Umgebung“). Ist die Grafikkarte voll oder fällt CUDA aus, wechselt sie von selbst auf den Prozessor; erst wenn auch das scheitert, kommt der Hinweiston. Neustart von kushim versucht es erneut. |
 | PowerShell blockt `install.ps1` | Genau mit `-ExecutionPolicy Bypass` aufrufen (siehe oben) |
 
 ## Deinstallation
@@ -242,7 +249,7 @@ Meldet kushim nach dem Start „Der Sprachkanal ist in Claude Code noch aus“, 
 | Verschlüsselter Vault (SQLCipher), Migration und Backups | fertig |
 | Notaus, Audit, Grundregeln (`safety/rules.py`) | fertig |
 | Statische Prüfung gegen Netzwerkcode außerhalb der Allowlist | fertig |
-| Stimme: Wake Word, Whisper, Piper, Satz-Streaming, Barge-in | fertig, im Live-Test |
+| Stimme: Wake Word, Whisper, Kokoro „Martin“ (eigener Prozess, CPU-Rückfall), Satz-Streaming mit Vorausrechnen, Barge-in | fertig, im Live-Test |
 | Start-Verknüpfungen, `doctor`, Installationsskript | fertig |
 | UI (Tauri, Avatar, Transkript, Notaus, Freigabe-Leiste) | fertig, neues Design in Arbeit |
 | Brücke zu Claude Code (Channel), Antworten vorlesen, Abbrechen | fertig, live getestet |
@@ -263,4 +270,4 @@ Gedächtnis-Befehle: `kushim memory init|info|backup|migrate`. Tests brauchen ke
 
 ## Status
 
-Sprachassistent mit Claude Code als Gehirn: Wake Word, Whisper und Piper lokal, Start mit `kushim`. Freigaben gibt es bewusst nur im Claude-Fenster oder in der Oberfläche.
+Sprachassistent mit Claude Code als Gehirn: Wake Word, Whisper und Kokoro „Martin“ lokal, Start mit `kushim`. Freigaben gibt es bewusst nur im Claude-Fenster oder in der Oberfläche.

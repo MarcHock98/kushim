@@ -8,7 +8,8 @@ model: sonnet
 Du baust die lokale Sprach-Pipeline für kushim (Windows 11, Python 3.12, RTX 3070 mit 8 GB VRAM, 31 GB RAM).
 
 Vorgaben:
-- Alles lokal (Modus A): openWakeWord, faster-whisper (GPU), Sprecherverifikation (ECAPA-TDNN/SpeechBrain), lokales LLM über Ollama/llama.cpp (7-8B, 4-Bit), Piper oder Kokoro als Stimme. Keine Cloud-Dienste (kein Deepgram/ElevenLabs).
+- Alles lokal (Modus A): openWakeWord, faster-whisper (GPU), Sprecherverifikation (ECAPA-TDNN/SpeechBrain), lokales LLM über Ollama/llama.cpp (7-8B, 4-Bit), Kokoro „Martin“ (ONNX) als Stimme. Keine Cloud-Dienste (kein Deepgram/ElevenLabs).
+- Stimme seit 2026-11-24: eigener Worker-Prozess `scripts/kokoro_worker.py` im venv `tools/kokoro/venv` (onnxruntime-gpu), Client `voice/ttsworker.py` (stdin/stdout, kein Socket, Netzsperre im Worker, CPU-Rückfall, Text plus Hinweiston), Normalisierung `voice/speechnorm.py`. Piper ist entfernt.
 - GPU-Speicher teilen: Modelle sparsam laden, Whisper/LLM/TTS passen zusammen in 8 GB.
 - Latenz-Ziel unter 1,5 s: Streaming STT, LLM-Tokens, satzweises TTS, Voice Activity Detection, Barge-in.
 - Nur die verifizierte Stimme gilt als Befehl. Bei Zweifel: ablehnen. Riskante Aktionen zusätzlich mit zweitem Faktor (Hotkey/PIN), da Stimmklone Verifikation täuschen können.

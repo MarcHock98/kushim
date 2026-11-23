@@ -2,14 +2,14 @@
 
 Ziel (Nutzerwunsch 2026-10-26): Per Sprachbefehl Claude Code nutzen. kushim hört lokal zu (Wake Word, Sprecherprüfung, Whisper),
 gibt den Befehl über einen lokalen Channel in die laufende Claude-Code-Sitzung (Anmeldung des Nutzers, kein API-Schlüssel),
-liest die Antwort lokal vor (Piper) und nimmt Freigaben per Stimme entgegen. Oberfläche ist zunächst Claude Code selbst
+liest die Antwort lokal vor (Kokoro „Martin“, seit 2026-11-24; vorher Piper) und nimmt Freigaben per Stimme entgegen. Oberfläche ist zunächst Claude Code selbst
 (Verlauf, Modell, Verbrauch); ein eigenes Fenster ist optional (Phase E).
 
 Oberste Regel: Schäden jeder Art sind verboten. **Sprachdaten verlassen nie den PC.** An Anthropic geht nur der erkannte Befehlstext
 (das ist der Zweck). Die alte Roadmap (v1) steht in der Git-Historie.
 
 ## Datenschutz-Grundregeln (Nutzerwunsch 2026-10-26, gelten für jeden Schritt)
-1. Jeder Server, den kushim mitbringt oder startet (Channel, Brücke, Ollama, Whisper, Piper), bindet nur an **127.0.0.1** und
+1. Jeder Server, den kushim mitbringt oder startet (Channel, Brücke, Ollama, Whisper, Stimme), bindet nur an **127.0.0.1** und
    enthält **keinen Code, der nach außen sendet** (keine Telemetrie, keine Updates, keine Cloud-Fallbacks, keine Downloads im
    Betrieb). Geprüft statisch durch `tests/test_no_egress.py` und im Test mit gesperrtem Netzwerk.
 2. Fremde Werkzeuge nur mit abgeschalteter Außenkommunikation: Claude Code mit `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`
@@ -187,4 +187,9 @@ Claude Code zeigt beides schon selbst (`/model`, `/usage`, Statuszeile). Hier nu
 - [x] ~~Sprecher-Prüfung mit einer zweiten echten Person prüfen~~ (entfällt: Sprecher-Prüfung entfernt 2026-11-12)
 - [x] ~~Eigene Stimme (Klon) Hörtest **(Nutzer)**: `kushim voice clone-test`~~ (2026-11-11: Stimmklon auf Wunsch des Nutzers komplett entfernt)
 - [ ] Echo-Unterdrückung für Lautsprecher-Betrieb
+- [x] Stimme Kokoro „Martin“ statt Piper (2026-11-24, Wahl des Nutzers nach Hörvergleich): eigener Worker-Prozess mit eigenem venv
+      (stdin/stdout, Netzsperre auch für Loopback), CPU-Rückfall, Text plus Hinweiston als letzte Stufe, deutsche Normalisierung,
+      Satz n+1 vorausrechnen, Satz-Cache; `voice-state.json` hat das Feld `tts`. Siehe [docs/research/tts.md](docs/research/tts.md).
+- [ ] Chip „Stimme“ in der Oberfläche aus `voice.state` → `tts` (loading/ready/cpu/failed/off); `ui/src/lib/mock.ts` nennt noch `model_piper` statt `model_tts`/`tts_venv`
+- [ ] Hörprobe im Betrieb **(Nutzer)**: Ja/Nein-Fragen fallen bei Kokoro am Ende ab (Messung −6,5 Halbtöne)
 - [ ] Optional: Microsoft Copilot Cowork / Claude Cowork als zweites Ziel (keine API, nur über Fenster-Einfügen, z. B. mit Handy)

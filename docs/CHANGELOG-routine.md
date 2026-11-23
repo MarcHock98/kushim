@@ -79,3 +79,5 @@ Format: Datum, Datei, Grund (ein Satz).
 - 2026-11-22, `.claude/agents/stage-schema-dev.md`: neuer Agent für die Python-Seite neuer Bausteine (Regeln aus den Audits von P6 und P5a).
 - 2026-11-22, `.claude/agents/ui-builder.md`: Arbeitsweise im Worktree und Regeln für Bausteine der Bühne ergänzt (keine Rechte erweitert).
 - 2026-11-22, `.claude/skills/kushim-manager/SKILL.md`: Regel „nie `git stash`“ (Stash gilt für alle Worktrees, zwei Agenten kamen sich in die Quere) und Opus für alle Agenten (Nutzerwunsch); Proben gehören in jeden Testmanager-Auftrag.
+- 2026-11-24, `.claude/agents/voice-pipeline-dev.md`: Stimme ist jetzt Kokoro „Martin“ im eigenen Worker-Prozess (Piper entfernt, Wahl des Nutzers).
+- 2026-11-24, `.claude/skills/kushim-routine/SKILL.md`: Hinweis „echte Kette mit synthetischer Stimme“ nennt nicht mehr Piper als aktuelle Stimme.

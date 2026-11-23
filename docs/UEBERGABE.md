@@ -6,7 +6,7 @@ Plan: [ROADMAP.md](../ROADMAP.md). Frühere Übergaben stehen in der Git-Histori
 - **Start:** `kushim` (oder Verknüpfung **kushim**) öffnet Claude Code mit dem kushim-Channel im Fenster „kushim-Claude“,
   startet das Zuhören und die Oberfläche. Fenster zu = alles aus. `kushim start --no-ui` ohne Oberfläche.
 - **Kette:** Wake Word (KWS für eigene Wörter, OpenWakeWord für fertige Wörter) → Whisper → Claude Code (Channel, Antwort
-  über das Werkzeug `sprich`) → Piper. „abbrechen“, „das war's“, „beende dich“, Notaus.
+  über das Werkzeug `sprich`) → Kokoro „Martin“ (eigener Worker-Prozess, `voice/ttsworker.py`). „abbrechen“, „das war's“, „beende dich“, Notaus.
 - **Keine Sprecher-Prüfung:** jede Stimme kann Befehle geben. Freigaben nie per Stimme: Claude-Fenster oder Freigabe-Leiste
   der Oberfläche; Anfragen werden einmal angesagt.
 - **Gedächtnis:** verschlüsselter Vault (Audit, Feedback, Freigabe-Protokoll, Gedächtnis-Ansicht der UI) bleibt.
