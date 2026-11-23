@@ -1,6 +1,6 @@
 # Plan E2 und E3: kleines Fenster und Setup-Assistent
 
-Stand 2026-11-23. Roadmap Phase E, nach E1 („UI bleibt“, 2026-11-12). **Noch nicht gebaut, zur Freigabe.** Ziel: Das vorhandene Fenster
+Stand 2026-11-23. Roadmap Phase E, nach E1 („UI bleibt“, 2026-11-12). **Gebaut am 2026-11-23 nach allen Empfehlungen aus Abschnitt 9.** Ziel: Das vorhandene Fenster
 bekommt einen **kompakten Modus** (Avatar, letzter Befehl, Freigabe, NOTAUS, Verbrauch). Dazu kommt ein **Setup-Assistent** in der
 Oberfläche (Systemcheck, Mikrofon, Wake Words, Claude-Anmeldung, Arbeitsordner).
 E2 und E3 brauchen **keinen neuen Netzzugang**, **kein neues Paket**, **keine Änderung an CSP oder Tauri-Rechten** (empfohlen).

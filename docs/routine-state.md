@@ -181,6 +181,18 @@ Wird von `/kushim-routine` gepflegt. Keine Geheimnisse, keine Datenpfade.
   Vorleser, echter Aufruf durch Claude Code. Wirkt erst nach neuem `kushim start`.
   Nächster Schritt: P5b im Browser ansehen (Skill `kushim-ui-check`), dann Roadmap E2/E3 prüfen.
 
+- 2026-11-23 Loop (Opus-Agenten): **E2 und E3 gebaut** und gemerged (nicht gepusht): Backend (`routine/e23-backend`: Mikrofonliste,
+  Systemcheck, Mikrofon merken, Pegeltest, Wake Words ändern/testen, `usage.get`, `statusline.py` schreibt `run/usage.json` nur für die
+  kushim-Sitzung), kleines Fenster (`routine/e2-compact`), Setup-Assistent (`routine/e3-wizard`), zusammen `routine/e23-ui`. Sicherheitsprüfer:
+  Backend nach einer Runde (config.toml konnte unlesbar werden) freigegeben, Oberfläche freigegeben (zwei niedrige Funde behoben).
+  **Gesprächsablauf** (`routine/talk-flow`, gemerged): Ursache für „Claude arbeitet“ gefunden: Claude Code schaltete in allen kushim-Sitzungen
+  den Channel ab (`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` verhindert das Laden der Flags). Nutzer wählte Weg (b)
+  (`CLAUDE_CODE_GB_DISK_CACHE_WHEN_TELEMETRY_OFF=1`, Startprüfung im Log). Claude ist kushim (Ich-Form, ehrlich auf Nachfrage),
+  `sprich`/`zeige` ohne Rückfrage, Füllsatz nach 2,5 s, Zustand „denkt/spricht“ richtig, Sonnet mit hohem Aufwand, Weitergeben an Agenten,
+  Signalton vor echten Ansagen, Nachahmungsfilter. Auditor: Runde 1 nicht freigegeben (Notaus während des Sprechens überhört), behoben, freigegeben.
+  **Stimmen-Vergleich** (`tools/tts-eval/`, git-ignoriert, 22 GB): Piper 0,3 s, Chatterbox 2,5 s und 7,4 GB GPU, Qwen langsamer als Echtzeit;
+  Entscheidung des Nutzers offen. Nicht geprüft: Live-Gespräch nach Neustart, ob Weg (b) den Kanal anschaltet, echtes Tauri-Fenster.
+
 ## Slack
 - Nutzer-ID / Kanal-ID: nicht verwendet. Verbundenes Slack-Konto hat andere Mail (Arbeits-Workspace) als die Git-/Claude-Mail, Empfänger unsicher, daher nichts gesendet
 
