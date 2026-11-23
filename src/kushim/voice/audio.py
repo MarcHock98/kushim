@@ -95,22 +95,40 @@ def record_utterance(frames: Iterator[Any], collector: "UtteranceCollector | Non
 
 
 class UtteranceCollector:
-    """Sammelt Frames nach dem Auslöser, bis Stille folgt oder die Maximaldauer erreicht ist."""
+    """Sammelt Frames nach dem Auslöser, bis Stille folgt oder die Maximaldauer erreicht ist.
+
+    `tuning` (optional, `voice.tuning.LiveTuning`): dann gelten bei JEDEM Frame dessen `speech_level` (statt
+    `energy_threshold`) und `end_silence_seconds` (statt `silence_ms`); eine Änderung wirkt ab dem nächsten Frame."""
 
     def __init__(self, silence_ms: int = 800, max_ms: int = 15_000, min_ms: int = 300,
                  energy_threshold: float = 500.0, wait_ms: int = 5_000,
-                 rate: int = SAMPLE_RATE, frame: int = FRAME):
-        n = lambda ms: max(1, round(ms / (frame / rate * 1000)))
+                 rate: int = SAMPLE_RATE, frame: int = FRAME, tuning: Any = None):
+        self._frame_ms = frame / rate * 1000
+        n = self._n
         self.silence_frames, self.max_frames, self.min_frames = n(silence_ms), n(max_ms), n(min_ms)
         self.wait_frames = n(wait_ms)    # so lange auf den Sprechbeginn warten
         self.threshold = energy_threshold
+        self.tuning = tuning
         self._frames: list[np.ndarray] = []
         self._quiet = 0
         self._heard_speech = False
         self.peak = 0.0                  # lautester Frame (RMS), nur zur Diagnose
+        self._live()
+
+    def _n(self, ms: float) -> int:
+        return max(1, round(ms / self._frame_ms))
+
+    def _live(self) -> None:
+        """Schwelle und Stille-Frames aus `tuning` übernehmen (falls vorhanden)."""
+        if self.tuning is None:
+            return
+        v = self.tuning.values
+        self.threshold = float(v.speech_level)
+        self.silence_frames = self._n(v.end_silence_seconds * 1000)
 
     def feed(self, frame: Any) -> bool:
         """True, sobald die Äußerung vollständig ist."""
+        self._live()
         f = np.asarray(frame, dtype=np.int16)
         self._frames.append(f)
         rms = float(np.sqrt(np.mean(f.astype(np.float64) ** 2)))
@@ -129,6 +147,7 @@ class UtteranceCollector:
 
     def preload(self, frames: Any) -> None:
         """Frames von VOR dem Start voranstellen (Vorlauf). Beendet die Äußerung nie von selbst."""
+        self._live()
         for frame in frames:
             f = np.asarray(frame, dtype=np.int16)
             self._frames.append(f)

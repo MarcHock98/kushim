@@ -31,20 +31,37 @@ class BargeIn:
     # Standardwerte wie in wakeconfig (barge_in_level 250, barge_in_ms 240): empfindlich, ein überhörter Notaus wiegt schwerer.
     def __init__(self, level: float = 250.0, min_ms: int = 240, frame_ms: int = 80, preroll_ms: int = 480,
                  echo_guard: bool = False, echo_factor: float = ECHO_FACTOR, echo_ignore_ms: int = ECHO_IGNORE_MS,
-                 echo_tail_ms: int = ECHO_TAIL_MS):
+                 echo_tail_ms: int = ECHO_TAIL_MS, tuning: Any = None):
+        """`tuning` (optional, `voice.tuning.LiveTuning`): dann gelten bei JEDEM Frame dessen `barge_in_level` und
+        `barge_in_ms` (statt `level`/`min_ms`); eine Änderung wirkt ab dem nächsten Frame. Der Echo-Faktor bleibt."""
         self.level = level
+        self.frame_ms = frame_ms
+        self.preroll_frames = max(0, round(preroll_ms / frame_ms))
+        self.tuning = tuning
         self.need = max(1, round(min_ms / frame_ms))
         self.echo_guard = echo_guard
         self.echo_factor = max(1.0, echo_factor)
         self.ignore_frames = max(0, round(echo_ignore_ms / frame_ms))
         self.tail_frames = max(0, round(echo_tail_ms / frame_ms))
         self._run = 0
-        self._recent: deque[np.ndarray] = deque(maxlen=self.need + max(0, round(preroll_ms / frame_ms)))
+        self._recent: deque[np.ndarray] = deque(maxlen=self.need + self.preroll_frames)
+        self._live()
         self._was_speaking = False
         self._ignore = 0
         self._tail = 0
         self._ignored_this_turn = False
         self.last_rms = 0.0             # Pegel des zuletzt gesehenen Frames (für talk.log beim Auslösen, nur eine Zahl)
+
+    def _live(self) -> None:
+        """Schwelle und Mindestdauer aus `tuning` übernehmen (falls vorhanden); der Vorlauf-Puffer wächst bzw. schrumpft mit."""
+        if self.tuning is None:
+            return
+        v = self.tuning.values
+        self.level = float(v.barge_in_level)
+        self.need = max(1, round(v.barge_in_ms / self.frame_ms))
+        size = self.need + self.preroll_frames
+        if self._recent.maxlen != size:
+            self._recent = deque(self._recent, maxlen=size)
 
     def reset(self) -> None:
         """Neue Runde (kushim beginnt zu antworten)."""
@@ -62,6 +79,7 @@ class BargeIn:
 
     def feed(self, frame: Any, speaking: bool = False) -> bool:
         """True, sobald der Nutzer lange genug laut genug spricht. `speaking`: kushim spielt gerade selbst Ton ab."""
+        self._live()
         f = np.asarray(frame, dtype=np.int16)
         self._recent.append(f)
         if self.echo_guard:

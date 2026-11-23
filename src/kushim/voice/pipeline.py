@@ -55,6 +55,67 @@ def is_shutdown_phrase(text: str) -> bool:
         return bool(set(toks) & {"dich", "kushim"})
     return bool(set(toks) & _SHUTDOWN_WORDS) and bool(set(toks) & _SHUTDOWN_SELF)
 
+# --- Mikrofon-Schwellen per Stimme (ohne Claude, wird nie gespeichert; voice/tuning.py) ---------------------------------
+_TUNING_TOPIC = ("mikro", "pegel", "empfindlich", "unempfindlich")       # Wortanfänge: Mikrofon, Pegel, Empfindlichkeit, ...
+_TUNING_NOUN = ("mikro", "pegel", "empfindlichkeit")                    # ohne eines davon nur die kurzen Formen unten
+_TUNING_MORE = {"empfindlicher", "sensibler"}
+_TUNING_LESS = {"unempfindlicher", "unempfindlich", "unsensibler"}
+_TUNING_SENS = ("empfindlich", "sensib")
+_TUNING_RESET = {"normal", "zurück", "zurücksetzen", "zurückstellen", "standard", "reset"}
+_TUNING_VOLUME = {"laut", "lauter", "leise", "leiser", "lautstärke"}    # Lautstärke der Stimme ist etwas anderes
+_TUNING_FILLER = {"bitte", "etwas", "noch", "ein", "bisschen", "wenig", "mach", "stell", "weniger", "nicht", "so"}
+_STEP_WORDS = {-2: "minus zwei", -1: "minus eins", 0: "null", 1: "plus eins", 2: "plus zwei"}
+
+
+def is_tuning_phrase(text: str) -> int | None:
+    """"Mikrofon empfindlicher" (+1), "Mikrofon weniger empfindlich" (-1), "Mikrofon normal" (0), sonst None. Wie
+    `is_shutdown_phrase`: höchstens 6 Wörter, nie wenn es um Claude geht, keine Frage. Nötig ist "Mikrofon", "Pegel" oder
+    "empfindlich" zusammen mit genau EINER Richtung; "lauter"/"leiser" zählen nicht (das wäre die Lautstärke der Stimme).
+    Ohne "Mikrofon"/"Pegel"/"Empfindlichkeit" nur kurze Zurufe ("empfindlicher bitte"), damit ein Satz im Gespräch
+    ("du bist empfindlicher als ich") nicht auslöst. Im Zweifel None."""
+    if text.strip().endswith("?"):
+        return None
+    toks = [t.lower() for t in _TOKEN.findall(re.sub(r"['’`]", "", text))]
+    if not toks or len(toks) > 6 or any(t.startswith(("claud", "klaud")) for t in toks):
+        return None
+    if set(toks) & _TUNING_VOLUME or not any(t.startswith(_TUNING_TOPIC) for t in toks):
+        return None
+    near = lambda i, w: (i > 0 and toks[i - 1] == w) or (i + 1 < len(toks) and toks[i + 1] == w)
+    less_at = set()
+    for i, t in enumerate(toks):
+        if t in _TUNING_LESS:
+            less_at.add(i)
+        elif t.startswith(_TUNING_SENS) and (near(i, "weniger") or toks[max(0, i - 2):i] == ["nicht", "so"]):
+            less_at.add(i)                                     # "weniger empfindlich", "Empfindlichkeit weniger", "nicht so empfindlich"
+    if "nicht" in toks and not any(toks[max(0, i - 2):i] == ["nicht", "so"] for i in less_at):
+        return None                                            # "Mikrofon nicht zurücksetzen", "nicht empfindlicher": unklar
+    less = bool(less_at)
+    more = any(t in _TUNING_MORE and i not in less_at for i, t in enumerate(toks))
+    reset = bool(set(toks) & _TUNING_RESET)
+    found = [d for d, on in ((1, more), (-1, less), (0, reset)) if on]
+    if len(found) != 1:
+        return None
+    noun = any(t.startswith(_TUNING_NOUN) for t in toks)
+    if noun:
+        return found[0]
+    if found[0] == 0:                                           # "zurücksetzen" allein ist kein Mikrofon-Befehl
+        return None
+    allowed = _TUNING_FILLER | _TUNING_MORE | _TUNING_LESS
+    return found[0] if all(t in allowed or t.startswith(_TUNING_SENS) for t in toks) else None
+
+
+def tuning_reply(direction: int, step: int, moved: bool) -> str:
+    """Feste Ansage nach einem Sprachbefehl zu den Mikrofon-Schwellen (kein Text von Claude, keine Werte)."""
+    if direction == 0:
+        return "Mikrofon normal, Stufe null."
+    words = _STEP_WORDS.get(step, str(step))
+    if not moved:
+        edge = "am empfindlichsten" if direction > 0 else "am unempfindlichsten"
+        return f"Mikrofon ist schon {edge}, Stufe {words}. „Mikrofon normal“ setzt zurück."
+    what = "empfindlicher" if direction > 0 else "weniger empfindlich"
+    return f"Mikrofon {what}, Stufe {words}. „Mikrofon normal“ setzt zurück."
+
+
 CANCEL_REPLY = "Okay, abgebrochen."
 NOTHING_REPLY = "Es läuft nichts, das ich abbrechen könnte."
 MATCH = 0.8      # Ähnlichkeit, ab der ein erkanntes Wort als Wake Word zählt ("Kuschim" statt "kushim")
@@ -104,7 +165,10 @@ class Pipeline:
                  kill: KillSwitch,
                  history_limit: int = 6,
                  commands: Any = None, wake_names: Sequence[str] = (), tasks: TaskRegistry | None = None,
-                 notes: Any = None):
+                 notes: Any = None, tuning: Any = None):
+        # `tuning`: Mikrofon-Schwellen zur Laufzeit (`LiveTuning`), optional. Dann wirkt der Sprachbefehl „Mikrofon
+        # empfindlicher/weniger empfindlich/normal“ lokal (nie an Claude, nie gespeichert).
+        self.tuning = tuning
         # `notes`: Live-Transkript (`Transcript`), optional. Die Zeile „Du“ entsteht direkt nach der Spracherkennung
         # (`heard`), danach `sent` oder `drop` mit Grund. Nur Anzeige im Arbeitsspeicher; Fehler darin stören `handle` nie.
         self.notes = notes
@@ -211,6 +275,15 @@ class Pipeline:
         self.speaker.say([reply])
         return Result(text, reply, "cancelled")
 
+    def _tune(self, direction: int) -> str:
+        """Stufe ändern (+1 empfindlicher = niedrigere Schwellen, -1 weniger empfindlich) oder zurücksetzen (0)."""
+        if direction == 0:
+            self.tuning.reset(source="voice")
+            return tuning_reply(0, 0, True)
+        before = self.tuning.snapshot()["step"]
+        after = self.tuning.step_by(direction, source="voice")
+        return tuning_reply(direction, after, after != before)
+
     def handle(self, pcm: Any) -> Result:
         self._interrupted.clear()
         self._reset_metrics()
@@ -244,6 +317,12 @@ class Pipeline:
             self._drop(entry, "shutdown")
             self.speaker.say([SHUTDOWN_REPLY])
             return Result(text, SHUTDOWN_REPLY, "shutdown", entry=entry)
+        direction = is_tuning_phrase(text) if self.tuning is not None else None
+        if direction is not None:                        # Mikrofon-Schwellen: lokal, nichts an Claude, nie gespeichert
+            self._drop(entry, "command")
+            reply = self._tune(direction)
+            self.speaker.say(split_sentences(reply) or [reply])
+            return Result(text, reply, "command", entry=entry)
         if self.commands is not None:
             answer = self.commands.handle(text, verified, strong, score=score)
             if answer is not None:                       # Befehl oder Bestätigung: kein LLM
