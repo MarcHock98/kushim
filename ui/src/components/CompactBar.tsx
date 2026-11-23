@@ -15,6 +15,7 @@ import type { Entry } from "./Transcript";
 
 export const USAGE_POLL_MS = 30_000;
 const STALE_S = 30 * 60;                                   // älter als 30 min: gedämpft mit „veraltet“ (auch wenn der Dienst es nicht meldet)
+const FUTURE_S = 5 * 60;                                   // „Stand“ mehr als 5 min in der Zukunft: Antwort gilt als nicht lesbar
 export const USAGE_HINT = "Verbrauch: Statuszeile oder /usage im Claude-Fenster";
 
 export type Usage =
@@ -29,10 +30,12 @@ const pct = (v: unknown): number | null => (typeof v === "number" && Number.isFi
 export function parseUsage(r: ApiReply): Usage {
   if (!r.ok) return r.error === "unknown_type" ? { kind: "none" } : { kind: "bad" };
   if (r.available !== true) return { kind: "none" };
-  if (typeof r.stand !== "number" || !Number.isFinite(r.stand) || r.stand <= 0) return { kind: "bad" };
-  const model = typeof r.model === "string" ? r.model.replace(/[\u0000-\u001f\u007f-\u009f]/g, "").trim().slice(0, 40) : "";
+  const now = Date.now() / 1000;
+  if (typeof r.stand !== "number" || !Number.isFinite(r.stand) || r.stand <= 0 || r.stand > now + FUTURE_S) return { kind: "bad" };
+  // Steuer- und Formatzeichen (auch Richtungswechsel wie U+202E) und Zeilentrenner fallen weg
+  const model = typeof r.model === "string" ? Array.from(r.model.replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, "").trim()).slice(0, 40).join("").trim() : "";
   const cost = typeof r.cost_usd === "number" && Number.isFinite(r.cost_usd) && r.cost_usd >= 0 ? r.cost_usd : null;
-  const old = Date.now() / 1000 - r.stand > STALE_S;
+  const old = now - r.stand > STALE_S;
   return { kind: "ok", model, context: pct(r.context_pct), five: pct(r.five_h_pct), seven: pct(r.seven_d_pct), cost,
     stand: r.stand, stale: r.stale !== false || old };
 }

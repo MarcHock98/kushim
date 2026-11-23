@@ -6,13 +6,14 @@ export type WindowCommand = "set_compact" | "set_always_on_top" | "grow_for_appr
 
 export const inTauri = (): boolean => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
-/** Sendet einen Fensterbefehl an den Rustteil. Ohne Tauri: nichts. Fehler werden geschluckt (das Fenster bleibt dann, wie es ist). */
-export async function windowCommand(cmd: WindowCommand, args: { on?: boolean } = {}): Promise<boolean> {
-  if (!inTauri()) return false;
-  try {
-    await invoke(cmd, args);
-    return true;
-  } catch {
-    return false;
-  }
+let queue: Promise<unknown> = Promise.resolve();
+
+/** Sendet einen Fensterbefehl an den Rustteil, streng nacheinander: der nächste startet erst, wenn der vorige fertig ist
+ *  (sonst könnte `grow_for_approval` vor `set_compact` ankommen und verworfen werden). Ohne Tauri: nichts. Fehler werden
+ *  geschluckt (das Fenster bleibt dann, wie es ist). */
+export function windowCommand(cmd: WindowCommand, args: { on?: boolean } = {}): Promise<boolean> {
+  if (!inTauri()) return Promise.resolve(false);
+  const run = queue.then(() => invoke(cmd, args)).then(() => true, () => false);
+  queue = run;
+  return run;
 }

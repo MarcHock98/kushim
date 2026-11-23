@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { PermissionBar, type PermissionRequest } from "./components/PermissionBar";
 import { Core3D } from "./components/Core3D";
@@ -86,18 +86,21 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
   const lastId = useRef(0);
   const [rated, setRated] = useState<Record<number, 1 | -1>>({});
   const client = useRef<ApiClient | null>(null);
-  const [compact, setCompact] = useState(false);       // E2: kleines Fenster (siehe unten)
-  // eigener Ref je Modus: nach dem kleinen Fenster ist der Hauptbereich neu und wird wieder gemessen
-  const viewRef = useMemo<{ current: HTMLElement | null }>(() => ({ current: null }), [compact]);
+  const viewRef = useRef<HTMLElement | null>(null);
   const box = useBoxSize(viewRef);
 
   // ----- E2: kleines Fenster (docs/ui-e2e3-plan.md, Abschnitt 3). Ändert nur Größe und Lage des eigenen Fensters; im Browser nur die Klasse.
+  // Das große Layout bleibt im kleinen Fenster ganz eingehängt (nur versteckt): kein Zustand geht verloren (Lösch-Fristen,
+  // Suchtext, Entwürfe, Bühne). Nur sein Kern (Core3D) wird abgebaut, damit es nie zwei WebGL-Kerne gibt.
+  const [compact, setCompact] = useState(false);
   const [onTop, setOnTop] = useState(false);
   const compactRef = useRef(false);
   const onTopRef = useRef(false);
   const kleinRef = useRef<HTMLButtonElement | null>(null);
+  const bigScroll = useRef(0);
   const toggleCompact = useCallback(() => {
     const on = !compactRef.current;
+    if (on) bigScroll.current = viewRef.current?.scrollTop ?? 0;     // versteckt verliert der Bereich die Scrollposition
     compactRef.current = on;
     onTopRef.current = on;                              // klein: immer im Vordergrund an (abschaltbar), groß: aus
     setCompact(on);
@@ -119,8 +122,14 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [toggleCompact]);
+  useEffect(() => {                                     // Start (auch nach F5 im kleinen Fenster): Rustteil auf groß, wie die Oberfläche
+    void windowCommand("set_compact", { on: false });
+  }, []);
   const wasCompact = useRef(false);
-  useEffect(() => {                                     // zurück im großen Fenster: Tastaturfokus auf „Klein“
+  useLayoutEffect(() => {                               // zurück im großen Fenster: dieselbe Scrollposition, bevor gezeichnet wird
+    if (!compact && wasCompact.current && viewRef.current) viewRef.current.scrollTop = bigScroll.current;
+  }, [compact]);
+  useEffect(() => {                                     // und Tastaturfokus auf „Klein“ (nach den Effekten der Kinder)
     if (wasCompact.current && !compact) kleinRef.current?.focus();
     wasCompact.current = compact;
   }, [compact]);
@@ -218,7 +227,7 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
   }, [connected, view]);
 
   useEffect(() => {                                     // Übersicht nur abfragen, solange sie offen ist
-    if (!connected || view !== "dashboard") return;
+    if (!connected || compact || view !== "dashboard") return;
     let stop = false;
     const pull = async () => {
       if (document.hidden) return;
@@ -343,23 +352,19 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
 
   // ----- E2: Verbrauch (im kleinen Fenster und in der Übersicht) und das kleine Fenster selbst
   const usage = useUsage(client, connected, compact || view === "dashboard");
-  if (compact) {
-    return (
-      <div className={`app is-compact ${state === "halted" ? "is-halted" : ""}`}>
-        <CompactBar state={state} level={voice.level} connected={connected} voiceActive={voice.active}
-          last={entries.length > 0 ? entries[entries.length - 1] : null}
-          request={pending.length > 0 && state === "asking" ? pending[0] : null} more={pending.length - 1}
-          onDecide={(p, a) => void decide(p, a)} onKill={() => void doKill()} onResume={() => void doResume()}
-          onBig={toggleCompact} onTop={onTop} onToggleTop={toggleOnTop} usage={usage}
-          view={shownView ? { id: shownView.id, titel: shownView.titel } : null} toast={toast} />
-      </div>
-    );
-  }
+  const compactBar = compact ? (
+    <CompactBar state={state} level={voice.level} connected={connected} voiceActive={voice.active}
+      last={entries.length > 0 ? entries[entries.length - 1] : null}
+      request={pending.length > 0 && state === "asking" ? pending[0] : null} more={pending.length - 1}
+      onDecide={(p, a) => void decide(p, a)} onKill={() => void doKill()} onResume={() => void doResume()}
+      onBig={toggleCompact} onTop={onTop} onToggleTop={toggleOnTop} usage={usage}
+      view={shownView ? { id: shownView.id, titel: shownView.titel } : null} toast={toast} />
+  ) : null;
   // ----- Ende E2
 
   return (
-    <div className={`app ${state === "halted" ? "is-halted" : ""}`}>
-      <header className="head">
+    <div className={`app ${compact ? "is-compact " : ""}${state === "halted" ? "is-halted" : ""}`}>
+      <header className="head" hidden={compact}>
         <img className="logo" src="/kushim.png" alt="" width={28} height={28} />
         <span className="brand">kushim</span>
         <span className="label brand-sub">Sprachassistent</span>
@@ -367,19 +372,20 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
         <button ref={kleinRef} type="button" className="head-small" onClick={toggleCompact} title="Kleines Fenster (Strg+Umschalt+M)">Klein</button>
         <KillButton onKill={() => void doKill()} />
       </header>
-      <nav className="rail" aria-label="Bereiche">
+      <nav className="rail" aria-label="Bereiche" hidden={compact}>
         {NAV.map((n) => (
           <button key={n.id} type="button" aria-current={view === n.id ? "page" : undefined} onClick={() => setView(n.id)}>
             {n.icon}<span className="rail-label">{n.label}</span>
           </button>
         ))}
       </nav>
-      <main className="view" ref={viewRef}>
-        {state === "halted" && <HaltedBanner onResume={() => void doResume()} />}
-        {pending.length > 0 && state === "asking" && <PermissionBar request={pending[0]} more={pending.length - 1} onDecide={(p, a) => void decide(p, a)} />}
-        <div className="toast" role="status" aria-live="polite">{toast}</div>
+      {compactBar}
+      <main className="view" ref={viewRef} hidden={compact}>
+        {!compact && state === "halted" && <HaltedBanner onResume={() => void doResume()} />}
+        {!compact && pending.length > 0 && state === "asking" && <PermissionBar request={pending[0]} more={pending.length - 1} onDecide={(p, a) => void decide(p, a)} />}
+        {!compact && <div className="toast" role="status" aria-live="polite">{toast}</div>}
         <div className="content">
-          <MemoryPanel client={client} connected={connected} active={view === "memory"} />
+          <MemoryPanel client={client} connected={connected} active={!compact && view === "memory"} />
           {view === "dashboard" && (
             <div className="overview">
               {connected && <div className="overview-usage"><UsageLine usage={usage} /></div>}
@@ -412,7 +418,7 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
           {view === "home" && (
             <section className="stage" aria-label="Gespräch" data-state={state} data-mode={shownView ? "zeige" : "dialog"}>
               <div className="stage-core">
-                <Core3D state={state} size={shownView ? coreSmall(box) : avatarSize(box)} level={voice.level} />
+                {!compact && <Core3D state={state} size={shownView ? coreSmall(box) : avatarSize(box)} level={voice.level} />}
                 <p className="line">{stateView.label}</p>
                 {connected && !voice.active && state === "idle" && (
                   <p className="hint">Der Sprachdienst läuft nicht. Starte ihn mit „kushim talk“.</p>
