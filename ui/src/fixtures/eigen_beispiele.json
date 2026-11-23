@@ -1,0 +1,88 @@
+{
+ "hinweis": "Die vier Beispiele aus dem P7-Plan, von Hand in RPN übersetzt (Form wie die geprüfte Ansicht, alle Standardwerte gefüllt).",
+ "pendel": {
+  "typ": "sim_eigen", "name": "Gedämpftes Pendel", "beschreibung": "", "form": "ode",
+  "parameter": [
+   {"name": "g", "wert": 9.81, "min": 0.1, "max": 30, "einheit": "m/s²"},
+   {"name": "l", "wert": 1, "min": 0.1, "max": 10, "einheit": "m"},
+   {"name": "d", "wert": 0.2, "min": 0, "max": 5, "einheit": "1/s"}
+  ],
+  "zustand": [{"name": "phi", "start": 1.2, "einheit": "rad"}, {"name": "w", "start": 0, "einheit": "rad/s"}],
+  "hilf": [],
+  "ableitungen": {
+   "phi": {"rpn": [["v", 2]], "tex": "w"},
+   "w": {"rpn": [["v", 3], ["o", "neg"], ["v", 4], ["o", "/"], ["v", 1], ["f", "sin"], ["o", "*"], ["v", 5], ["v", 2], ["o", "*"], ["o", "-"]],
+         "tex": "-\\frac{g}{l} \\sin(\\varphi) - d\\, w"}
+  },
+  "darstellung": [
+   {"form": "koerper", "x": {"rpn": [["v", 4], ["v", 1], ["f", "sin"], ["o", "*"]], "tex": "l \\sin(\\varphi)"},
+    "y": {"rpn": [["v", 4], ["o", "neg"], ["v", 1], ["f", "cos"], ["o", "*"]], "tex": "-l \\cos(\\varphi)"}, "anker": [0, 0]},
+   {"form": "zeitreihe", "groessen": ["phi"]}
+  ],
+  "kennwerte": [
+   {"name": "Energie", "einheit": "",
+    "formel": {"rpn": [["c", 0.5], ["v", 4], ["v", 2], ["o", "*"], ["c", 2], ["o", "^"], ["o", "*"], ["v", 3], ["v", 4], ["o", "*"], ["c", 1], ["v", 1], ["f", "cos"], ["o", "-"], ["o", "*"], ["o", "+"]],
+               "tex": "0.5 (l w)^2 + g l (1 - \\cos(\\varphi))"}}
+  ],
+  "erhaltung": null, "dt": 0.01, "laufzeit": 30, "tempo": 0, "spur": true,
+  "env": {"ode": ["t", "phi", "w", "g", "l", "d"]}
+ },
+ "raeuber_beute": {
+  "typ": "sim_eigen", "name": "Räuber-Beute", "beschreibung": "", "form": "ode",
+  "parameter": [
+   {"name": "a", "wert": 1.1, "min": 0, "max": 5, "einheit": ""},
+   {"name": "b", "wert": 0.4, "min": 0, "max": 5, "einheit": ""},
+   {"name": "c", "wert": 0.4, "min": 0, "max": 5, "einheit": ""},
+   {"name": "dd", "wert": 0.1, "min": 0, "max": 5, "einheit": ""}
+  ],
+  "zustand": [{"name": "B", "start": 10, "einheit": ""}, {"name": "R", "start": 5, "einheit": ""}],
+  "hilf": [],
+  "ableitungen": {
+   "B": {"rpn": [["v", 3], ["v", 1], ["o", "*"], ["v", 4], ["v", 1], ["o", "*"], ["v", 2], ["o", "*"], ["o", "-"]], "tex": "a B - b B R"},
+   "R": {"rpn": [["v", 6], ["v", 1], ["o", "*"], ["v", 2], ["o", "*"], ["v", 5], ["v", 2], ["o", "*"], ["o", "-"]], "tex": "dd B R - c R"}
+  },
+  "darstellung": [{"form": "zeitreihe", "groessen": ["B", "R"]}, {"form": "phasenraum", "x": "B", "y": "R"}],
+  "kennwerte": [],
+  "erhaltung": {"rpn": [["v", 6], ["v", 1], ["o", "*"], ["v", 5], ["v", 1], ["f", "log"], ["o", "*"], ["o", "-"], ["v", 4], ["v", 2], ["o", "*"], ["o", "+"], ["v", 3], ["v", 2], ["f", "log"], ["o", "*"], ["o", "-"]],
+                "tex": "dd B - c \\log(B) + b R - a \\log(R)"},
+  "dt": 0.01, "laufzeit": 30, "tempo": 0, "spur": true,
+  "env": {"ode": ["t", "B", "R", "a", "b", "c", "dd"]}
+ },
+ "lorenz": {
+  "typ": "sim_eigen", "name": "Lorenz-System", "beschreibung": "", "form": "ode",
+  "parameter": [
+   {"name": "s", "wert": 10, "min": 0, "max": 50, "einheit": ""},
+   {"name": "r", "wert": 28, "min": 0, "max": 100, "einheit": ""},
+   {"name": "bb", "wert": 2.6667, "min": 0, "max": 10, "einheit": ""}
+  ],
+  "zustand": [{"name": "x", "start": 1, "einheit": ""}, {"name": "y", "start": 1, "einheit": ""}, {"name": "z", "start": 1, "einheit": ""}],
+  "hilf": [],
+  "ableitungen": {
+   "x": {"rpn": [["v", 4], ["v", 2], ["v", 1], ["o", "-"], ["o", "*"]], "tex": "s (y - x)"},
+   "y": {"rpn": [["v", 1], ["v", 5], ["v", 3], ["o", "-"], ["o", "*"], ["v", 2], ["o", "-"]], "tex": "x (r - z) - y"},
+   "z": {"rpn": [["v", 1], ["v", 2], ["o", "*"], ["v", 6], ["v", 3], ["o", "*"], ["o", "-"]], "tex": "x y - bb\\, z"}
+  },
+  "darstellung": [{"form": "phasenraum", "x": "x", "y": "z"}, {"form": "zeitreihe", "groessen": ["x"]}],
+  "kennwerte": [], "erhaltung": null, "dt": 0.005, "laufzeit": 30, "tempo": 0, "spur": true,
+  "env": {"ode": ["t", "x", "y", "z", "s", "r", "bb"]}
+ },
+ "federkette": {
+  "typ": "sim_eigen", "name": "Federkette", "beschreibung": "", "form": "teilchen",
+  "parameter": [
+   {"name": "g", "wert": 9.81, "min": 0, "max": 30, "einheit": "m/s²"},
+   {"name": "c", "wert": 0.3, "min": 0, "max": 5, "einheit": "kg/s"},
+   {"name": "m", "wert": 0.1, "min": 0.01, "max": 10, "einheit": "kg"}
+  ],
+  "anzahl": 12, "start": "linie", "punkte": [], "startwert": 1, "masse": 0.1, "kasten": [4, 3], "waende": "reflektieren",
+  "kraft": {
+   "fx": {"rpn": [["v", 7], ["o", "neg"], ["v", 3], ["o", "*"]], "tex": "-c\\, v_x"},
+   "fy": {"rpn": [["v", 5], ["o", "neg"], ["v", 6], ["o", "*"], ["v", 7], ["v", 4], ["o", "*"], ["o", "-"]], "tex": "-m g - c\\, v_y"}
+  },
+  "paar": null,
+  "federn": {"kette": true, "paare": [], "k": 40, "l0": 0.25, "daempfung": 0.05},
+  "fest": [0, 11],
+  "darstellung": [{"form": "koerper"}],
+  "kennwerte": [], "erhaltung": null, "dt": 0.005, "laufzeit": 30, "tempo": 0, "spur": false,
+  "env": {"kraft": ["t", "x", "y", "vx", "vy", "m", "g", "c", "m"]}
+ }
+}
