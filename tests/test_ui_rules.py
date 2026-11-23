@@ -39,6 +39,46 @@ def test_rust_part_has_no_network_or_process_code():
     assert not re.search(r"reqwest|hyper|tauri-plugin", toml)
 
 
+RUST_COMMANDS = ["api_info", "set_compact", "set_always_on_top", "grow_for_approval", "attention"]
+
+
+def test_rust_commands_are_a_fixed_list_and_never_take_focus():
+    """E2 (docs/ui-e2e3-plan.md, Abschnitt 3): genau diese Befehle, nur das eigene Fenster, nie Fokus holen, nichts Neues öffnen."""
+    rs = (UI / "src-tauri" / "src" / "main.rs").read_text(encoding="utf-8")
+    handler = re.findall(r"generate_handler!\[([^\]]*)\]", rs)
+    assert len(handler) == 1 and [c.strip() for c in handler[0].split(",") if c.strip()] == RUST_COMMANDS, handler
+    assert sorted(re.findall(r"#\[tauri::command\]\s*fn (\w+)", rs)) == sorted(RUST_COMMANDS)
+    assert not re.search(r"set_focus|unminimize|WebviewWindowBuilder|WindowBuilder|\.show\(\)|set_fullscreen|set_ignore_cursor_events|eval\(", rs)
+
+
+def test_ui_calls_only_the_known_rust_commands_and_never_focuses_the_window():
+    calls = {m for p in SRC for m in re.findall(r"\binvoke(?:<[^>]*>)?\(\s*[\"'](\w+)[\"']", p.read_text(encoding="utf-8"))}
+    calls |= {m for p in SRC for m in re.findall(r"\bwindowCommand\(\s*[\"'](\w+)[\"']", p.read_text(encoding="utf-8"))}
+    assert calls and calls <= set(RUST_COMMANDS), calls
+    wrapper = (UI / "src" / "lib" / "windowCmd.ts").read_text(encoding="utf-8")
+    union = re.search(r"export type WindowCommand = ([^;]+);", wrapper)
+    assert union and sorted(re.findall(r'"(\w+)"', union.group(1))) == sorted(RUST_COMMANDS[1:]), union
+    hits = [p.name for p in SRC if re.search(r"\bwindow\.focus\(|getCurrentWindow|getCurrentWebviewWindow|setFocus", p.read_text(encoding="utf-8"))]
+    assert not hits, hits
+
+
+def test_invoke_only_in_the_window_wrapper_and_the_api_info_loader():
+    """Tauri-Aufrufe nur an zwei Stellen: `windowCmd.ts` (Fensterbefehle, nacheinander) und der Loader in `App.tsx` (`api_info`).
+    Kein direkter Griff auf `__TAURI_INTERNALS__` (nur die Abfrage, ob es Tauri gibt) und kein globales `__TAURI__`."""
+    users = sorted(p.name for p in SRC if re.search(r"\binvoke\b", p.read_text(encoding="utf-8")))
+    assert users == ["App.tsx", "windowCmd.ts"], users
+    app = (UI / "src" / "App.tsx").read_text(encoding="utf-8")
+    assert re.findall(r"\binvoke(?:<[^>]*>)?\(\s*[\"'](\w+)[\"']", app) == ["api_info"]
+    assert not re.search(r"\binvoke(?:<[^>]*>)?\(\s*[^\"'\s]", app)                  # in App.tsx nie ein berechneter Befehlsname
+    for p in SRC:
+        text = p.read_text(encoding="utf-8")
+        uses = len(re.findall(r"__TAURI_INTERNALS__", text))
+        checks = len(re.findall(r"[\"']__TAURI_INTERNALS__[\"'] in window\b", text))
+        assert uses == checks, p.name                                                  # nur „gibt es Tauri?“, nie .invoke o. Ä.
+        assert uses == 0 or p.name in {"App.tsx", "windowCmd.ts"}, p.name
+        assert "__TAURI__" not in text, p.name
+
+
 # --- Responsives Verhalten: Regeln im Stylesheet (Vitest liefert CSS leer, deshalb hier) -----------------------------
 
 CSS = (UI / "src" / "styles" / "app.css").read_text(encoding="utf-8")
