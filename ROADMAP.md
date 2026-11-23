@@ -167,9 +167,9 @@ Claude Code zeigt beides schon selbst (`/model`, `/usage`, Statuszeile). Hier nu
 ## Phase E: Eigene Oberfläche (optional, erst nach B–D entscheiden)
 - [x] E1 (2026-11-12: Nutzer entschied „UI bleibt“, Pläne `docs/ui-dynamic-plan.md`, `docs/ui-p2-plan.md`) **Entscheidung (Nutzer):** Reicht Claude Code als Oberfläche plus Statuszeile, oder die vorhandene Tauri-UI (`ui/`)
       weiterverwenden und auf den Channel umstellen (Empfehlung: weiterverwenden)?
-- [ ] E2 Falls ja: kleines Fenster (Tauri, Design aus `.claude/skills/kushim-ui-design/`) mit Avatar, letztem Befehl,
+- [x] E2 (2026-11-23, kompakter Modus und Verbrauch, `docs/ui-e2e3-plan.md`; echtes Fenster nicht geprüft) Falls ja: kleines Fenster (Tauri, Design aus `.claude/skills/kushim-ui-design/`) mit Avatar, letztem Befehl,
       Freigabe-Leiste (Klick parallel zur Stimme), Notaus-Knopf, Verbrauch
-- [ ] E3 Setup-Assistent: Mikrofon, ~~Stimme einschreiben~~ (Sprecher-Prüfung entfernt 2026-11-12), Wake Words, Claude-Anmeldung prüfen
+- [x] E3 (2026-11-23, Setup-Assistent mit sechs Schritten; echtes Mikrofon nicht geprüft) Setup-Assistent: Mikrofon, ~~Stimme einschreiben~~ (Sprecher-Prüfung entfernt 2026-11-12), Wake Words, Claude-Anmeldung prüfen
 
 ## Später / offen
 - [x] ~~Sprecher-Prüfung mit einer zweiten echten Person prüfen~~ (entfällt: Sprecher-Prüfung entfernt 2026-11-12)

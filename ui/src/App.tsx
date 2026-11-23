@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { PermissionBar, type PermissionRequest } from "./components/PermissionBar";
 import { Core3D } from "./components/Core3D";
@@ -15,7 +15,10 @@ import { HaltedBanner, KillButton } from "./components/KillButton";
 import { ApiClient, type Credentials } from "./lib/api";
 import { isAvatarState, resolveState, STATE_VIEW, type AvatarState } from "./lib/avatarState";
 import { MockSocket } from "./lib/mock";
+import { SetupHost } from "./components/SetupWizard";      // E3: Setup-Assistent
 import { avatarSize, coreSmall, useBoxSize } from "./lib/useBoxSize";
+import { CompactBar, UsageLine, useUsage } from "./components/CompactBar";   // E2: kleines Fenster und Verbrauch
+import { windowCommand } from "./lib/windowCmd";
 
 const WHY: Record<string, string> = {
   offline: "kein laufender Dienst gefunden (run/api.json fehlt oder ist nicht lesbar)",
@@ -86,6 +89,52 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
   const client = useRef<ApiClient | null>(null);
   const viewRef = useRef<HTMLElement | null>(null);
   const box = useBoxSize(viewRef);
+
+  // ----- E2: kleines Fenster (docs/ui-e2e3-plan.md, Abschnitt 3). Ändert nur Größe und Lage des eigenen Fensters; im Browser nur die Klasse.
+  // Das große Layout bleibt im kleinen Fenster ganz eingehängt (nur versteckt): kein Zustand geht verloren (Lösch-Fristen,
+  // Suchtext, Entwürfe, Bühne). Nur sein Kern (Core3D) wird abgebaut, damit es nie zwei WebGL-Kerne gibt.
+  const [compact, setCompact] = useState(false);
+  const [onTop, setOnTop] = useState(false);
+  const compactRef = useRef(false);
+  const onTopRef = useRef(false);
+  const kleinRef = useRef<HTMLButtonElement | null>(null);
+  const bigScroll = useRef(0);
+  const toggleCompact = useCallback(() => {
+    const on = !compactRef.current;
+    if (on) bigScroll.current = viewRef.current?.scrollTop ?? 0;     // versteckt verliert der Bereich die Scrollposition
+    compactRef.current = on;
+    onTopRef.current = on;                              // klein: immer im Vordergrund an (abschaltbar), groß: aus
+    setCompact(on);
+    setOnTop(on);
+    void windowCommand("set_compact", { on });
+  }, []);
+  const toggleOnTop = useCallback(() => {
+    const on = !onTopRef.current;
+    onTopRef.current = on;
+    setOnTop(on);
+    void windowCommand("set_always_on_top", { on });
+  }, []);
+  useEffect(() => {                                     // Strg+Umschalt+M: nur mit Fokus im Fenster, nur genau diese Kombination
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.ctrlKey || !e.shiftKey || e.altKey || e.metaKey || e.repeat || e.key.toLowerCase() !== "m" || !document.hasFocus()) return;
+      e.preventDefault();
+      toggleCompact();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [toggleCompact]);
+  useEffect(() => {                                     // Start (auch nach F5 im kleinen Fenster): Rustteil auf groß, wie die Oberfläche
+    void windowCommand("set_compact", { on: false });
+  }, []);
+  const wasCompact = useRef(false);
+  useLayoutEffect(() => {                               // zurück im großen Fenster: dieselbe Scrollposition, bevor gezeichnet wird
+    if (!compact && wasCompact.current && viewRef.current) viewRef.current.scrollTop = bigScroll.current;
+  }, [compact]);
+  useEffect(() => {                                     // und Tastaturfokus auf „Klein“ (nach den Effekten der Kinder)
+    if (wasCompact.current && !compact) kleinRef.current?.focus();
+    wasCompact.current = compact;
+  }, [compact]);
+  // ----- Ende E2 (Zustand)
 
   const refresh = useCallback(async () => {
     const c = client.current;
@@ -179,7 +228,7 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
   }, [connected, view]);
 
   useEffect(() => {                                     // Übersicht nur abfragen, solange sie offen ist
-    if (!connected || view !== "dashboard") return;
+    if (!connected || compact || view !== "dashboard") return;
     let stop = false;
     const pull = async () => {
       if (document.hidden) return;
@@ -193,7 +242,7 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
   }, [connected, view]);
 
   useEffect(() => {                                     // Systemzustand nur abfragen, solange er gezeigt wird und das Fenster sichtbar ist
-    if (!connected || view !== "home" || !hasSystem(views.find((v) => v.id === shown))) return;
+    if (!connected || compact || view !== "home" || !hasSystem(views.find((v) => v.id === shown))) return;
     let stop = false;
     const pull = async () => {
       if (document.hidden) return;
@@ -205,7 +254,7 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
     void pull();
     const id = setInterval(pull, SYSTEM_POLL_MS);
     return () => { stop = true; clearInterval(id); };
-  }, [connected, view, shown, views]);
+  }, [connected, compact, view, shown, views]);
 
   useEffect(() => {                                     // Ansichten von Claude (zeige): neue öffnen die Bühne, schliessen räumt ab
     if (!connected) return;
@@ -285,11 +334,11 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
     if (voice.active && voice.state === "listening" && shownRef.current) closeShown();
   }, [voice.active, voice.state, closeShown]);
   useEffect(() => {
-    if (!shown) return;
+    if (!shown || compact) return;                      // im kleinen Fenster ist die Bühne nicht zu sehen: Esc schliesst dort nichts
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !(e.target as HTMLElement | null)?.closest?.(".approval")) closeShown(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [shown, closeShown]);
+  }, [shown, compact, closeShown]);
 
   const shownView = views.find((v) => v.id === shown) ?? null;
   const state = resolveState({ connected, killActive: kill, backendState: pending.length > 0 ? "asking" : voice.active ? voice.state : undefined });
@@ -302,30 +351,47 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
     { id: "security", label: "Sicherheit", icon: <IconShield /> },
   ];
 
+  // ----- E2: Verbrauch (im kleinen Fenster und in der Übersicht) und das kleine Fenster selbst
+  const usage = useUsage(client, connected, compact || view === "dashboard");
+  const compactBar = compact ? (
+    <CompactBar state={state} level={voice.level} connected={connected} voiceActive={voice.active}
+      last={entries.length > 0 ? entries[entries.length - 1] : null}
+      request={pending.length > 0 && state === "asking" ? pending[0] : null} more={pending.length - 1}
+      onDecide={(p, a) => void decide(p, a)} onKill={() => void doKill()} onResume={() => void doResume()}
+      onBig={toggleCompact} onTop={onTop} onToggleTop={toggleOnTop} usage={usage}
+      view={shownView ? { id: shownView.id, titel: shownView.titel } : null} toast={toast} />
+  ) : null;
+  // ----- Ende E2
+
   return (
-    <div className={`app ${state === "halted" ? "is-halted" : ""}`}>
-      <header className="head">
+    <div className={`app ${compact ? "is-compact " : ""}${state === "halted" ? "is-halted" : ""}`}>
+      <header className="head" hidden={compact}>
         <img className="logo" src="/kushim.png" alt="" width={28} height={28} />
         <span className="brand">kushim</span>
         <span className="label brand-sub">Sprachassistent</span>
         <span className="status" aria-live={stateView.live} title={stateView.label}>{stateView.label}</span>
+        <button ref={kleinRef} type="button" className="head-small" onClick={toggleCompact} title="Kleines Fenster (Strg+Umschalt+M)">Klein</button>
         <KillButton onKill={() => void doKill()} />
       </header>
-      <nav className="rail" aria-label="Bereiche">
+      <nav className="rail" aria-label="Bereiche" hidden={compact}>
         {NAV.map((n) => (
           <button key={n.id} type="button" aria-current={view === n.id ? "page" : undefined} onClick={() => setView(n.id)}>
             {n.icon}<span className="rail-label">{n.label}</span>
           </button>
         ))}
       </nav>
-      <main className="view" ref={viewRef}>
-        {state === "halted" && <HaltedBanner onResume={() => void doResume()} />}
-        {pending.length > 0 && state === "asking" && <PermissionBar request={pending[0]} more={pending.length - 1} onDecide={(p, a) => void decide(p, a)} />}
-        <div className="toast" role="status" aria-live="polite">{toast}</div>
+      {compactBar}
+      <main className="view" ref={viewRef} hidden={compact}>
+        {!compact && state === "halted" && <HaltedBanner onResume={() => void doResume()} />}
+        {!compact && pending.length > 0 && state === "asking" && <PermissionBar request={pending[0]} more={pending.length - 1} onDecide={(p, a) => void decide(p, a)} />}
+        {!compact && <div className="toast" role="status" aria-live="polite">{toast}</div>}
+        {/* E3: Setup-Assistent, Eintrag „Einrichtung“ und Zeile für den eingeschränkten Modus; offen verdeckt er .content per CSS */}
+        <SetupHost client={client} connected={connected} kill={kill === true} view={view} />
         <div className="content">
-          <MemoryPanel client={client} connected={connected} active={view === "memory"} />
+          <MemoryPanel client={client} connected={connected} active={!compact && view === "memory"} />
           {view === "dashboard" && (
             <div className="overview">
+              {connected && <div className="overview-usage"><UsageLine usage={usage} /></div>}
               {connected && (
                 <section className="panel overview-log" aria-labelledby="log-h">
                   <div className="panel-head"><h2 id="log-h">Verlauf</h2><span className="label">{entries.length} Einträge</span></div>
@@ -355,7 +421,7 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
           {view === "home" && (
             <section className="stage" aria-label="Gespräch" data-state={state} data-mode={shownView ? "zeige" : "dialog"}>
               <div className="stage-core">
-                <Core3D state={state} size={shownView ? coreSmall(box) : avatarSize(box)} level={voice.level} />
+                {!compact && <Core3D state={state} size={shownView ? coreSmall(box) : avatarSize(box)} level={voice.level} />}
                 <p className="line">{stateView.label}</p>
                 {connected && !voice.active && state === "idle" && (
                   <p className="hint">Der Sprachdienst läuft nicht. Starte ihn mit „kushim talk“.</p>
