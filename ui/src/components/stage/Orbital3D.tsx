@@ -84,6 +84,7 @@ export function Orbital3D({ b }: { b: TeilchenBlock }) {
         <span className="t-name">{wolke.orbital}</span>
       </div>
       <p className="t-flag">Wasserstoff-Orbital, Wahrscheinlichkeitswolke</p>
+      <p className="v-note">Jeder Punkt ist ein möglicher Ort des Elektrons. Wo viele Punkte liegen, ist das Elektron wahrscheinlicher. Die Farben zeigen nur das Vorzeichen der Wellenfunktion, keine Ladung.</p>
       {orb.angepasst.length > 0 && <p className="v-note">{ADJUSTED}</p>}
       {!wolke.vollstaendig && <p className="v-note">Nur {wolke.anzahl} von {wolke.soll} Punkten gezogen (Rechengrenze erreicht).</p>}
       {gl ? (
@@ -102,6 +103,7 @@ export function Orbital3D({ b }: { b: TeilchenBlock }) {
       <ul className="t-legend" aria-label="Legende">
         <li><span className={`t-dot t-dot-${PHASEN_FARBE.plus}`} aria-hidden="true" /> {phaseWort(1)}: {wolke.plus} Punkte, Farbe {FARBE_WORT[PHASEN_FARBE.plus]}</li>
         <li><span className={`t-dot t-dot-${PHASEN_FARBE.minus}`} aria-hidden="true" /> {phaseWort(-1)}: {wolke.minus} Punkte, Farbe {FARBE_WORT[PHASEN_FARBE.minus]}</li>
+        <li>Kern: im Zentrum, im Bild nicht eingezeichnet, in Wirklichkeit viel kleiner als die Wolke</li>
         <li>Achsen x, y und z durch den Kern, z zeigt nach oben; Längen in Bohr-Radien</li>
       </ul>
       <div className="s-text">

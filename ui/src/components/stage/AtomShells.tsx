@@ -49,6 +49,7 @@ export function AtomShells({ b }: { b: TeilchenBlock }) {
         <span className="t-name">{m.name}</span>
       </div>
       <p className="t-flag">Vereinfachtes Schalenmodell</p>
+      <p className="v-note">Nicht maßstabsgetreu: Der Kern ist im Bild viel größer als in Wirklichkeit, und die Ringe sind nur eine Hilfsvorstellung. Die Elektronen verteilen sich in Wirklichkeit als Wolke.</p>
       {at.angepasst.length > 0 && <p className="v-note">{ADJUSTED}</p>}
       <p className="t-facts">
         <span>Ordnungszahl {m.z}</span>
