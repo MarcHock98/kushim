@@ -56,6 +56,35 @@ def test_channel_server_has_only_stdlib_imports():
     assert set(imports(schema)) <= {"__future__", "json", "math", "re", "typing"}, set(imports(schema))
 
 
+def test_formel_module_has_its_own_fixed_import_list_and_no_evaluator():
+    """P7 (Freigabe 2026-11-23): stage/formel.py liest Formeln für `sim_eigen` selbst. Nur diese vier Module, keine relativen
+    Importe, kein `ast`, kein `eval`/`exec`/`compile`/`__import__`/`open`/`getattr`."""
+    path = SRC / "stage" / "formel.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    mods = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            mods |= {a.name for a in node.names}
+        elif isinstance(node, ast.ImportFrom):
+            assert node.level == 0 and node.module, "formel.py: relativer Import"
+            mods.add(node.module)
+    assert mods <= {"__future__", "math", "re", "typing"}, mods
+    names = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name)}
+    names |= {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute)
+              and not (n.attr == "compile" and isinstance(n.value, ast.Name) and n.value.id == "re")}   # re.compile: nur Muster
+    assert not names & {"eval", "exec", "compile", "__import__", "open", "getattr", "setattr", "globals", "locals", "vars", "ast"}, names
+
+
+def test_schema_imports_exactly_one_relative_module_formel():
+    path = SRC / "stage" / "schema.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    relative = [(n.level, n.module, [a.name for a in n.names]) for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.level]
+    assert relative == [(1, None, ["formel"])], relative
+    plain = {a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}
+    plain |= {n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and not n.level}
+    assert plain <= {"__future__", "json", "math", "re", "typing"}, plain
+
+
 def test_channel_server_binds_only_to_the_fixed_loopback_address():
     import importlib
     import inspect

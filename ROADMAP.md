@@ -171,6 +171,18 @@ Claude Code zeigt beides schon selbst (`/model`, `/usage`, Statuszeile). Hier nu
       Freigabe-Leiste (Klick parallel zur Stimme), Notaus-Knopf, Verbrauch
 - [x] E3 (2026-11-23, Setup-Assistent mit sechs Schritten; echtes Mikrofon nicht geprüft) Setup-Assistent: Mikrofon, ~~Stimme einschreiben~~ (Sprecher-Prüfung entfernt 2026-11-12), Wake Words, Claude-Anmeldung prüfen
 
+## Phase F: Selbst erweitern (Plan `docs/ui-p7-plan.md`, Entscheidungen des Nutzers 2026-11-23)
+- [ ] F1 Stufe 1 „Simulation als Daten“: Baustein `sim_eigen` mit kleiner Formelsprache (`stage/formel.py`, Pratt-Parser mit
+      Tiefenzähler, kein `eval`/`ast`), festes RPN-Format, Probe bei t0, Prüfung zweimal; UI führt nur geprüfte RPN aus
+      (`formel.ts`, `eigenSim.ts`). Python-Seite gebaut am 2026-11-23 (Branch `routine/p7-formel`), UI-Engine auf `routine/p7-engine`;
+      Zusammenführen, Ansicht `EigenSimulation.tsx`, Mock und echtes Fenster offen
+- [ ] F2 Rezeptbuch: geprüfte Rezepte (`stage/rezepte/*.json`, `rezepte.py`), Claude schickt nur Rezeptname und Parameter
+- [ ] F3 Werkstatt: Werkzeug `entwickle` (nur Vorschlag), Karte Annehmen/Ablehnen (nie per Stimme), sichtbares Fenster
+      „kushim-Werkstatt“ (eigene Claude-Code-Sitzung, Opus, ohne Channel/MCP/Web, Standard-Freigabemodus), geschützte Pfade per
+      Deny-Regeln, Notaus beendet die Werkstatt
+- [ ] F4 Übernahme und Rückgängig: Merge nur im Werkstatt-Fenster nach dem Dialog von Claude Code (kushim merged nie), Schutzprüfung
+      nur als Anzeige, Rückgängig per Revert (auch CLI), danach neu bauen oder neu starten
+
 ## Später / offen
 - [x] ~~Sprecher-Prüfung mit einer zweiten echten Person prüfen~~ (entfällt: Sprecher-Prüfung entfernt 2026-11-12)
 - [x] ~~Eigene Stimme (Klon) Hörtest **(Nutzer)**: `kushim voice clone-test`~~ (2026-11-11: Stimmklon auf Wunsch des Nutzers komplett entfernt)

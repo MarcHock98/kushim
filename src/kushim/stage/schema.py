@@ -12,6 +12,8 @@ import math
 import re
 from typing import Any, Callable
 
+from . import formel
+
 MAX_JSON = 48 * 1024
 ID = re.compile(r"[a-z0-9-]{1,40}")
 ARTEN = ("antwort", "rechnung", "markt", "recherche", "auftrag", "mail", "dokument", "modell", "plan", "lernen", "netz",
@@ -21,11 +23,13 @@ RICHTUNG = ("auf", "ab", "gleich")
 
 
 class ViewError(ValueError):
-    """Abgelehnt: `code` ist kurz und fest (z. B. "bad_block_3"), damit nichts aus der Eingabe weitergereicht wird."""
+    """Abgelehnt: `code` ist kurz und fest (z. B. "bad_block_3"), damit nichts aus der Eingabe weitergereicht wird. `detail`
+    (nur bei `sim_eigen`) ist ein fester Pfad mit festem Grund und Stelle, z. B. "ableitungen.1:unbekannter_name@14": nur
+    Feldnamen des Schemas, Indizes und feste Wörter, nie Text aus der Eingabe."""
 
-    def __init__(self, code: str):
-        super().__init__(code)
-        self.code = code
+    def __init__(self, code: str, detail: str = ""):
+        super().__init__(f"{code}:{detail}" if detail else code)
+        self.code, self.detail = code, detail
 
 
 def _text(v: Any, limit: int, code: str, optional: bool = False) -> str:
@@ -812,6 +816,301 @@ def _teilchen(b: dict[str, Any], c: str) -> dict[str, Any]:
     return {"form": form, **TEILCHEN_FORMEN[form](b, c)}
 
 
+# --- P7 Stufe 1: eigene Simulation als Daten (`sim_eigen`, docs/ui-p7-plan.md) --------------------------------
+# Hier (und nur hier) schickt Claude Formeln: in der festen kleinen Sprache aus stage/formel.py. Die geprüfte Ansicht enthält
+# je Formel nur {"rpn", "tex"} und je Platz die Namensliste `env`, nie den Formeltext; die Oberfläche parst keinen Text.
+# Die zweite Prüfung bekommt diese Form zurück: Die RPN wird neu geprüft, TeX, env, Kosten und Integrator neu berechnet und
+# verglichen. Fehler: `bad_block_N` plus festes `detail` (Pfad, Grund, Stelle), nie Text aus der Eingabe.
+
+EIGEN_FORMEN = ("ode", "teilchen")
+EIGEN_START = ("linie", "gitter", "zufall", "liste")
+EIGEN_WAENDE = ("keine", "reflektieren", "periodisch")
+EIGEN_DARSTELLUNG = {"ode": ("koerper", "zeitreihe", "phasenraum"), "teilchen": ("koerper", "pfeile")}
+TEILCHEN_ENV = ("t", "x", "y", "vx", "vy", "m")                                       # Kraft: [t, x, y, vx, vy, m, parameter...]
+PAAR_ENV = ("r",)                                                                      # Paarkraft: [r, parameter...]
+MAX_EIGEN_ZUSTAND, MAX_EIGEN_PARAMETER, MAX_EIGEN_HILF, MAX_EIGEN_KENNWERTE, MAX_EIGEN_DARSTELLUNG = 12, 12, 12, 4, 2
+MAX_EIGEN_KNOTEN, MAX_EIGEN_KOSTEN = 600, 150_000                                      # Knoten je Simulation; Knotenauswertungen je Schritt
+MAX_EIGEN_TEILCHEN, MAX_EIGEN_TEILCHEN_PAAR, MAX_FEDERN, MAX_ZEITREIHE = 300, 100, 400, 4
+EIGEN_START_MAX, EIGEN_PARAM_MAX, EIGEN_V_MAX = 1e9, 1e12, 1e6
+EIGEN_DT = {"ode": (1e-5, 1, 0.01), "teilchen": (1e-5, 1, 0.005)}                       # von, bis, Standard (s)
+
+
+def _bei(c: str, pfad: str, fn: Callable[..., Any], *args: Any) -> Any:
+    """Ruft eine Prüfhilfe auf; schlägt sie fehl, bekommt der Fehler den festen Pfad als `detail`."""
+    try:
+        return fn(*args)
+    except ViewError as e:
+        if e.detail:
+            raise
+        raise ViewError(c, f"{pfad}:ungueltig") from None
+
+
+def _nein(c: str, pfad: str, grund: str = "ungueltig") -> ViewError:
+    return ViewError(c, f"{pfad}:{grund}")
+
+
+def _eigen_formel(v: Any, namen: list[str], c: str, pfad: str) -> dict[str, Any]:
+    try:
+        return formel.kompiliere(v, namen)
+    except formel.FormelError as e:
+        raise ViewError(c, f"{pfad}:{e.code}") from None
+
+
+def _eigen_namen(items: list[tuple[str, Any]], belegt: set[str], c: str) -> list[str]:
+    """Namen für Zustand, Parameter, Hilfsgrößen: gültige Form, keine Funktion, Konstante oder feste Größe des Platzes, eindeutig."""
+    out: list[str] = []
+    for pfad, name in items:
+        if not formel.name_ok(name):
+            raise _nein(c, pfad, "name_ungueltig")
+        if name in belegt or name in out:
+            raise _nein(c, pfad, "name_doppelt")
+        out.append(name)
+    return out
+
+
+def _eigen_parameter(raw: Any, c: str) -> list[dict[str, Any]]:
+    out = []
+    for i, p in enumerate(_bei(c, "parameter", _list, raw, 0, MAX_EIGEN_PARAMETER, c)):
+        p = _bei(c, f"parameter.{i}", _item, p, {"name", "wert", "min", "max", "einheit"}, c)
+        zahlen = {k: _bei(c, f"parameter.{i}.{k}", _bounded, p.get(k), -EIGEN_PARAM_MAX, EIGEN_PARAM_MAX, c) for k in ("wert", "min", "max")}
+        if not zahlen["min"] < zahlen["max"] or not zahlen["min"] <= zahlen["wert"] <= zahlen["max"]:
+            raise _nein(c, f"parameter.{i}", "bereich")
+        out.append({"name": p.get("name"), **zahlen, "einheit": _bei(c, f"parameter.{i}.einheit", _text, p.get("einheit"), 20, c, True)})
+    return out
+
+
+def _eigen_zahl(b: dict[str, Any], key: str, lo: float, hi: float, std: float, c: str) -> float | int:
+    return _bei(c, key, _bounded, b.get(key, std), lo, hi, c)
+
+
+def _zustandsname(v: Any, znamen: list[str], c: str, pfad: str) -> str:
+    if not isinstance(v, str) or v not in znamen:
+        raise _nein(c, pfad, "unbekannter_name")
+    return v
+
+
+def _eigen_darstellung(raw: Any, form: str, env: list[str], znamen: list[str], c: str) -> list[dict[str, Any]]:
+    """ODE: koerper {x, y: Formeln, anker}, zeitreihe {groessen: Zustandsnamen}, phasenraum {x, y: Zustandsnamen}.
+    Teilchen: koerper oder pfeile (Geschwindigkeiten), ohne weitere Felder."""
+    out = []
+    for i, d in enumerate(_bei(c, "darstellung", _list, raw, 1, MAX_EIGEN_DARSTELLUNG, c)):
+        pfad = f"darstellung.{i}"
+        if not isinstance(d, dict) or not isinstance(d.get("form"), str) or d["form"] not in EIGEN_DARSTELLUNG[form]:
+            raise _nein(c, pfad, "form")
+        art = d["form"]
+        if form == "teilchen":                                                         # Teilchen: Körper oder Geschwindigkeitspfeile, ohne Formeln
+            _bei(c, pfad, _item, d, {"form"}, c)
+            out.append({"form": art})
+        elif art == "koerper":
+            _bei(c, pfad, _item, d, {"form", "x", "y", "anker"}, c)
+            anker = d.get("anker")
+            out.append({"form": art, "x": _eigen_formel(d.get("x"), env, c, f"{pfad}.x"), "y": _eigen_formel(d.get("y"), env, c, f"{pfad}.y"),
+                        "anker": None if anker is None else _bei(c, f"{pfad}.anker", _point, anker, 2, c)})
+        elif art == "zeitreihe":
+            _bei(c, pfad, _item, d, {"form", "groessen"}, c)
+            groessen = _bei(c, f"{pfad}.groessen", _list, d.get("groessen"), 1, MAX_ZEITREIHE, c)
+            namen = [_zustandsname(g, znamen, c, f"{pfad}.groessen.{j}") for j, g in enumerate(groessen)]
+            if len(set(namen)) != len(namen):
+                raise _nein(c, f"{pfad}.groessen", "doppelt")
+            out.append({"form": art, "groessen": namen})
+        else:                                                                          # phasenraum
+            _bei(c, pfad, _item, d, {"form", "x", "y"}, c)
+            out.append({"form": art, "x": _zustandsname(d.get("x"), znamen, c, f"{pfad}.x"), "y": _zustandsname(d.get("y"), znamen, c, f"{pfad}.y")})
+    return out
+
+
+def _formeln_in(v: Any) -> list[dict[str, Any]]:
+    """Alle geprüften Formeln ({"rpn", "tex"}) in einem Teil der Ausgabe."""
+    if isinstance(v, dict):
+        if set(v) == {"rpn", "tex"}:
+            return [v]
+        return [f for x in v.values() for f in _formeln_in(x)]
+    if isinstance(v, list):
+        return [f for x in v for f in _formeln_in(x)]
+    return []
+
+
+def _endlich(rpn: list[list[Any]], env: list[float], c: str, pfad: str) -> float:
+    wert = formel.auswerten(rpn, env)
+    if not math.isfinite(wert):
+        raise _nein(c, pfad, "nicht_endlich")
+    return wert
+
+
+def _eigen_ode(b: dict[str, Any], params: list[dict[str, Any]], c: str) -> dict[str, Any]:
+    zustand = []
+    for i, z in enumerate(_bei(c, "zustand", _list, b.get("zustand"), 1, MAX_EIGEN_ZUSTAND, c)):
+        z = _bei(c, f"zustand.{i}", _item, z, {"name", "start", "einheit"}, c)
+        zustand.append({"name": z.get("name"), "start": _bei(c, f"zustand.{i}.start", _bounded, z.get("start"), -EIGEN_START_MAX, EIGEN_START_MAX, c),
+                        "einheit": _bei(c, f"zustand.{i}.einheit", _text, z.get("einheit"), 20, c, True)})
+    hilf_roh = [_bei(c, f"hilf.{j}", _item, h, {"name", "formel"}, c) for j, h in enumerate(_bei(c, "hilf", _list, b.get("hilf", []), 0, MAX_EIGEN_HILF, c))]
+    namen = _eigen_namen([(f"zustand.{i}.name", z["name"]) for i, z in enumerate(zustand)]
+                         + [(f"parameter.{i}.name", p["name"]) for i, p in enumerate(params)]
+                         + [(f"hilf.{j}.name", h.get("name")) for j, h in enumerate(hilf_roh)], {"t"}, c)
+    env = ["t", *namen]
+    basis = 1 + len(zustand) + len(params)
+    hilf = [{"name": h["name"], "formel": _eigen_formel(h.get("formel"), env[:basis + j], c, f"hilf.{j}.formel")} for j, h in enumerate(hilf_roh)]
+    roh = b.get("ableitungen")
+    if not isinstance(roh, dict):
+        raise _nein(c, "ableitungen")
+    znamen = [z["name"] for z in zustand]
+    if any(not isinstance(k, str) or k not in znamen for k in roh):
+        raise _nein(c, "ableitungen", "unbekannter_name")
+    ableitungen = {}
+    for i, zn in enumerate(znamen):                                                    # genau eine je Zustand, in Zustandsreihenfolge
+        if zn not in roh:
+            raise _nein(c, f"ableitungen.{i}", "fehlt")
+        ableitungen[zn] = _eigen_formel(roh[zn], env, c, f"ableitungen.{i}")
+    kennwerte = []
+    for i, k in enumerate(_bei(c, "kennwerte", _list, b.get("kennwerte", []), 0, MAX_EIGEN_KENNWERTE, c)):
+        k = _bei(c, f"kennwerte.{i}", _item, k, {"name", "formel", "einheit"}, c)
+        kennwerte.append({"name": _bei(c, f"kennwerte.{i}.name", _text, k.get("name"), 40, c),
+                          "formel": _eigen_formel(k.get("formel"), env, c, f"kennwerte.{i}.formel"),
+                          "einheit": _bei(c, f"kennwerte.{i}.einheit", _text, k.get("einheit"), 20, c, True)})
+    erhaltung = b.get("erhaltung")
+    out = {"zustand": zustand, "hilf": hilf, "ableitungen": ableitungen, "kennwerte": kennwerte,
+           "erhaltung": None if erhaltung is None else _eigen_formel(erhaltung, env, c, "erhaltung"),
+           "darstellung": _eigen_darstellung(b.get("darstellung"), "ode", env, znamen, c), "env": {"ode": env}, "integrator": "rk4"}
+    schritt = sum(len(h["formel"]["rpn"]) for h in hilf) + sum(len(f["rpn"]) for f in ableitungen.values())
+    out["kosten"] = formel.kosten(schritt, 4, 1)
+    werte = [0.0, *(float(z["start"]) for z in zustand), *(float(p["wert"]) for p in params)]      # Probe bei t0 = 0
+    for j, h in enumerate(hilf):
+        werte.append(_endlich(h["formel"]["rpn"], werte, c, f"hilf.{j}.formel"))
+    for i, f in enumerate(ableitungen.values()):
+        _endlich(f["rpn"], werte, c, f"ableitungen.{i}")
+    for i, d in enumerate(out["darstellung"]):
+        if d["form"] == "koerper":
+            _endlich(d["x"]["rpn"], werte, c, f"darstellung.{i}.x")
+            _endlich(d["y"]["rpn"], werte, c, f"darstellung.{i}.y")
+    return out
+
+
+def _eigen_teilchen(b: dict[str, Any], params: list[dict[str, Any]], c: str) -> dict[str, Any]:
+    pnamen = _eigen_namen([(f"parameter.{i}.name", p["name"]) for i, p in enumerate(params)], set(TEILCHEN_ENV) | set(PAAR_ENV), c)
+    kraft_env, paar_env = [*TEILCHEN_ENV, *pnamen], [*PAAR_ENV, *pnamen]
+    kasten = [_bei(c, "kasten", _bounded, x, 0.1, 1000, c) for x in _bei(c, "kasten", _list, b.get("kasten"), 2, 2, c)]
+    if max(kasten) / min(kasten) > 10:
+        raise _nein(c, "kasten", "seitenverhaeltnis")
+    paar_roh = b.get("paar")
+    anzahl = _bei(c, "anzahl", _int, b.get("anzahl"), 1, MAX_EIGEN_TEILCHEN_PAAR if paar_roh is not None else MAX_EIGEN_TEILCHEN, c)
+    masse = _eigen_zahl(b, "masse", 0, 1e6, 1, c)
+    if masse <= 0:
+        raise _nein(c, "masse")
+    start = b.get("start", "linie")
+    if not isinstance(start, str) or start not in EIGEN_START:
+        raise _nein(c, "start")
+    punkte = []
+    roh_punkte = b.get("punkte", [])
+    if start == "liste":
+        for i, p in enumerate(_bei(c, "punkte", _list, roh_punkte, anzahl, anzahl, c)):
+            if not isinstance(p, list) or len(p) not in (2, 4):
+                raise _nein(c, f"punkte.{i}")
+            x, y = _bei(c, f"punkte.{i}", _bounded, p[0], 0, kasten[0], c), _bei(c, f"punkte.{i}", _bounded, p[1], 0, kasten[1], c)
+            v = [_bei(c, f"punkte.{i}", _bounded, w, -EIGEN_V_MAX, EIGEN_V_MAX, c) for w in p[2:]] or [0, 0]
+            punkte.append([x, y, *v])
+    elif _bei(c, "punkte", _list, roh_punkte, 0, 0, c):
+        raise _nein(c, "punkte")
+    kraft_roh = b.get("kraft")
+    kraft = None
+    if kraft_roh is not None:
+        kraft_roh = _bei(c, "kraft", _item, kraft_roh, {"fx", "fy"}, c)
+        kraft = {k: _eigen_formel(kraft_roh.get(k), kraft_env, c, f"kraft.{k}") for k in ("fx", "fy")}
+    paar = None
+    if paar_roh is not None:
+        paar_roh = _bei(c, "paar", _item, paar_roh, {"f_r", "reichweite", "mindestabstand"}, c)
+        reichweite = _bei(c, "paar.reichweite", _bounded, paar_roh.get("reichweite"), 0, max(kasten), c)
+        if reichweite <= 0:
+            raise _nein(c, "paar.reichweite")
+        mindest = _bei(c, "paar.mindestabstand", _num, paar_roh.get("mindestabstand", reichweite / 100), c)
+        if not 0 < mindest < reichweite:
+            raise _nein(c, "paar.mindestabstand")
+        paar = {"f_r": _eigen_formel(paar_roh.get("f_r"), paar_env, c, "paar.f_r"), "reichweite": reichweite, "mindestabstand": mindest}
+    federn = None
+    if b.get("federn") is not None:
+        f = _bei(c, "federn", _item, b["federn"], {"kette", "paare", "k", "l0", "daempfung"}, c)
+        kette = f.get("kette", False)
+        if not isinstance(kette, bool) or kette == ("paare" in f):                    # genau eins: kette=true oder paare
+            raise _nein(c, "federn", "kette_oder_paare")
+        if kette:
+            if anzahl < 2:
+                raise _nein(c, "federn.kette")
+            paare = [[i, i + 1] for i in range(anzahl - 1)]
+        else:
+            paare, gesehen = [], set()
+            for i, pr in enumerate(_bei(c, "federn.paare", _list, f["paare"], 1, MAX_FEDERN, c)):
+                pr = _bei(c, f"federn.paare.{i}", _list, pr, 2, 2, c)
+                von, bis = (_bei(c, f"federn.paare.{i}", _int, x, 0, anzahl - 1, c) for x in pr)
+                if von == bis or (min(von, bis), max(von, bis)) in gesehen:
+                    raise _nein(c, f"federn.paare.{i}")
+                gesehen.add((min(von, bis), max(von, bis)))
+                paare.append([von, bis])
+        k = _bei(c, "federn.k", _bounded, f.get("k"), 0, 1e6, c)
+        if k <= 0:
+            raise _nein(c, "federn.k")
+        federn = {"paare": paare, "k": k, "l0": _bei(c, "federn.l0", _bounded, f.get("l0"), 0, 1000, c),
+                  "daempfung": _bei(c, "federn.daempfung", _bounded, f.get("daempfung", 0), 0, 10_000, c)}
+    fest = [_bei(c, f"fest.{i}", _int, x, 0, anzahl - 1, c) for i, x in enumerate(_bei(c, "fest", _list, b.get("fest", []), 0, anzahl, c))]
+    if len(set(fest)) != len(fest):
+        raise _nein(c, "fest", "doppelt")
+    waende = b.get("waende", "reflektieren")
+    if not isinstance(waende, str) or waende not in EIGEN_WAENDE:
+        raise _nein(c, "waende")
+    if b.get("kennwerte", []) != []:                                                   # Kennwerte und Erhaltung nur bei form ode
+        raise _nein(c, "kennwerte", "nur_ode")
+    if b.get("erhaltung") is not None:
+        raise _nein(c, "erhaltung", "nur_ode")
+    kraft_knoten = sum(len(f["rpn"]) for f in kraft.values()) if kraft else 0
+    paar_knoten = len(paar["f_r"]["rpn"]) if paar else 0
+    schnell = kraft is not None and any(formel.nutzt(f["rpn"], {3, 4}) for f in kraft.values())
+    out = {"anzahl": anzahl, "start": start, "punkte": punkte, "startwert": _bei(c, "startwert", _int, b.get("startwert", 1), 0, MAX_STARTWERT, c),
+           "masse": masse, "kraft": kraft, "paar": paar, "federn": federn, "fest": fest, "waende": waende, "kasten": kasten,
+           "kennwerte": [], "erhaltung": None, "darstellung": _eigen_darstellung(b.get("darstellung"), "teilchen", kraft_env, [], c),
+           "env": {"kraft": kraft_env, "paar": paar_env},
+           "integrator": "euler_semi" if schnell or (federn is not None and federn["daempfung"] > 0) else "verlet",
+           "kosten": formel.kosten(kraft_knoten, 1, anzahl) + formel.kosten(paar_knoten, 1, anzahl * (anzahl - 1) // 2)}
+    werte = [float(p["wert"]) for p in params]
+    if kraft:                                                                          # Probe bei t0 = 0: Mitte des Kastens und jede Startlage
+        lagen = [[kasten[0] / 2, kasten[1] / 2, 0, 0], *punkte]
+        for x, y, vx, vy in lagen:
+            for key, f in kraft.items():
+                _endlich(f["rpn"], [0.0, float(x), float(y), float(vx), float(vy), float(masse), *werte], c, f"kraft.{key}")
+    if paar:
+        for r in (paar["mindestabstand"], paar["reichweite"]):
+            _endlich(paar["f_r"]["rpn"], [float(r), *werte], c, "paar.f_r")
+    return out
+
+
+def _sim_eigen(b: dict[str, Any], c: str) -> dict[str, Any]:
+    form = b.get("form")
+    if not isinstance(form, str) or form not in EIGEN_FORMEN:
+        raise _nein(c, "form")
+    erlaubt = {"form", "name", "beschreibung", "parameter", "kennwerte", "erhaltung", "darstellung", "dt", "laufzeit", "tempo", "spur",
+               "env", "kosten", "integrator"}
+    erlaubt |= {"zustand", "hilf", "ableitungen"} if form == "ode" else {"anzahl", "start", "punkte", "startwert", "masse", "kraft", "paar",
+                                                                       "federn", "fest", "waende", "kasten"}
+    if set(b) - erlaubt - {"typ"}:
+        raise ViewError(c, "unbekanntes_feld")
+    params = _eigen_parameter(b.get("parameter", []), c)
+    tempo = _bei(c, "tempo", _num, b.get("tempo", 1), c)                              # Standard 1 (Echtzeit), wie die Engine
+    if not 0.1 <= tempo <= 100:
+        raise _nein(c, "tempo")
+    spur = b.get("spur", True)
+    if not isinstance(spur, bool):
+        raise _nein(c, "spur")
+    kopf = {"form": form, "name": _bei(c, "name", _text, b.get("name"), 60, c),
+            "beschreibung": _bei(c, "beschreibung", _text, b.get("beschreibung"), 400, c, True), "parameter": params,
+            "dt": _eigen_zahl(b, "dt", *EIGEN_DT[form], c), "laufzeit": _eigen_zahl(b, "laufzeit", 5, 60, 30, c), "tempo": tempo, "spur": spur}
+    teil = _eigen_ode(b, params, c) if form == "ode" else _eigen_teilchen(b, params, c)
+    if sum(len(f["rpn"]) for f in _formeln_in(teil)) > MAX_EIGEN_KNOTEN:
+        raise _nein(c, "knoten", "zu_viele")
+    if teil["kosten"] > MAX_EIGEN_KOSTEN:
+        raise _nein(c, "kosten", "zu_hoch")
+    for key in ("env", "kosten", "integrator"):                                       # abgeleitet: bei der zweiten Prüfung muss es gleich sein
+        if key in b and b[key] != teil[key]:
+            raise _nein(c, key, "passt_nicht")
+    return {**kopf, **teil}
+
+
 BLOCKS: dict[str, Callable[[dict[str, Any], str], dict[str, Any]]] = {
     "text": _text_block, "liste": _liste, "formel": _formel, "schritte": _schritte, "ergebnis": _ergebnis,
     "kennzahlen": _kennzahlen, "tabelle": _tabelle, "diagramm": _diagramm, "aussagen": _aussagen,
@@ -820,7 +1119,7 @@ BLOCKS: dict[str, Callable[[dict[str, Any], str], dict[str, Any]]] = {
     "mail-entwurf": _mail_entwurf, "countdown": _countdown, "dokument": _dokument, "aenderung": _aenderung,
     "szene3d": _szene3d, "plan2d": _plan2d, "vergleich": _vergleich, "zeitstrahl": _zeitstrahl, "gegenueber": _gegenueber,
     "lernkarten": _lernkarten, "quiz": _quiz, "anleitung": _anleitung, "netz": _netz, "simulation": _simulation,
-    "teilchen": _teilchen,
+    "teilchen": _teilchen, "sim_eigen": _sim_eigen,
 }
 
 
@@ -892,7 +1191,7 @@ def _validate(raw: Any) -> dict[str, Any]:
         block = {"typ": b["typ"], **BLOCKS[b["typ"]](b, code)}
         if _claims_system(block):                      # „Freigabe erteilt“, „Notaus aufgehoben“: nur kushim selbst sagt so etwas
             raise ViewError(code)
-        sims += block["typ"] == "simulation"
+        sims += block["typ"] in ("simulation", "sim_eigen")
         webgl += block["typ"] == "szene3d" or (block["typ"] == "teilchen" and block["form"] in WEBGL_FORMEN)
         if sims > MAX_SIM_PRO_ANSICHT or webgl > MAX_WEBGL_PRO_ANSICHT:                 # Last: der erste Baustein über der Grenze
             raise ViewError(code)

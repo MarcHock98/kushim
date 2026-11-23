@@ -96,7 +96,10 @@ INSTRUCTIONS = (
     "Fenster erreicht dich nicht), für Ablaufdiagramme, Bäume und Mindmaps `netz` (art netz). "
     "Für Bewegung zeige eine `simulation` (art simulation) mit einem eingebauten Modell (pendel, feder, wurf, umlauf, gas, "
     "doppelpendel, welle): schick nur den Modellnamen und Zahlen in den festen Einheiten, nie Formeln oder Code, und sag dazu, dass "
-    "es eine Simulation ist, keine Messung. Für Moleküle, Atome und Orbitale zeige einen Baustein `teilchen` (art teilchen, form "
+    "es eine Simulation ist, keine Messung. Nimm zuerst immer ein eingebautes Modell. Nur wenn keines passt, zeige `sim_eigen` "
+    "(art simulation): Gleichungen in der kleinen Formelsprache aus der Beschreibung von `zeige`, nur dort sind Formeln erlaubt, "
+    "sonst nirgends. Sag dem Nutzer dabei, dass es eine eigene, nicht geprüfte Simulation ist, keine Messung. Lehnt `zeige` sie ab, "
+    "korrigiere sie nach dem Fehlercode höchstens zweimal, ohne darüber zu sprechen; klappt es dann nicht, sag es kurz. Für Moleküle, Atome und Orbitale zeige einen Baustein `teilchen` (art teilchen, form "
     "molekuel, atom oder orbital) nur mit Elementsymbolen, Lagen in Ångström, Indizes und Zahlen. "
     "Beim Atom sag dazu, dass das Schalenmodell vereinfacht und nicht maßstabsgetreu ist. Bei Wasserstoff zeige zuerst das "
     "Orbital (die Wahrscheinlichkeitswolke, das realistischere Bild) und, falls nützlich, danach das Schalenmodell."
@@ -129,7 +132,7 @@ ZEIGE_TOOL = {
                     "auch vorher/nachher), plan (plan2d: Linien, Kreise, Maße, Ebenen), lernen (lernkarten, quiz, anleitung; "
                     "Knöpfe ändern nur die Anzeige), netz (netz: ablauf, baum, mindmap), simulation (simulation: eingebautes Modell "
                     "pendel, feder, wurf, umlauf, gas, doppelpendel oder welle, nur Parameter, keine Formeln; eine Simulation, "
-                    "keine Messung), teilchen (teilchen: Molekül, Atom im vereinfachten Schalenmodell oder Orbital, nur Daten); "
+                    "keine Messung; passt kein Modell: sim_eigen, eigene ungeprüfte Simulation, als einziger Baustein mit Formeln), teilchen (teilchen: Molekül, Atom im vereinfachten Schalenmodell oder Orbital, nur Daten); "
                     "vergleich, zeitstrahl und gegenueber passen "
                     "zu antwort und recherche. Nur Text, kein HTML/Markdown; Formeln als "
                     "KaTeX-TeX in `tex`; Adressen nur als Text. Dieselbe id aktualisiert die Ansicht, schliessen=true räumt ab. "
@@ -176,7 +179,15 @@ ZEIGE_TOOL = {
             "darstellung?:kugel-stab|kalotte} oder {form:atom,element,neutronen?,ladung?:-3 bis 3,schalen?:[Elektronen je Schale] "
             "(Summe = Ordnungszahl minus ladung; Pflicht ab Ordnungszahl 21 oder über 20 Elektronen)} oder {form:orbital,orbital:1s|2s|2p_x|2p_y|2p_z|3s|"
             "3p_x|3p_y|3p_z|3d_xy|3d_xz|3d_yz|3d_x2-y2|3d_z2,punkte?:500 bis 5000,startwert?} (art teilchen; nur Daten, keine Formeln; "
-            "höchstens 2 Moleküle, Orbitale und szene3d zusammen je Ansicht)"),
+            "höchstens 2 Moleküle, Orbitale und szene3d zusammen je Ansicht), "
+            "sim_eigen{name,form:ode|teilchen,parameter?:[{name,wert,min,max,einheit?}],darstellung:[1-2],dt? s,laufzeit?,tempo?,spur?,"
+            "beschreibung?; ode: zustand:[{name,start,einheit?}],hilf?:[{name,formel}],ableitungen:{zustand:formel},kennwerte?:[{name,"
+            "formel,einheit?}],erhaltung?:formel, darstellung koerper{x,y:formel,anker?}|zeitreihe{groessen:[zustand]}|phasenraum{x,y:zustand}; teilchen: "
+            "anzahl,kasten:[b,h],start?:linie|gitter|zufall|liste{punkte},masse?,kraft?:{fx,fy},paar?:{f_r,reichweite},federn?:{kette:true|"
+            "paare,k,l0,daempfung?},fest?,waende?, darstellung koerper|pfeile} (art simulation; einzige Formeln). Formel ASCII ≤200: + - * / "
+            "^ < <= > >= == != pi sin cos tan asin acos atan sinh cosh tanh exp log log10 sqrt abs sign floor ceil atan2 min max hypot mod "
+            "clamp wenn(b,a,c); Namen ode: t, Zustand, Parameter, frühere hilf; kraft: t x y vx vy m; paar: r. Bsp: "
+            "ableitungen:{phi:\"w\",w:\"-g/l*sin(phi)\"}"),
             "items": {"type": "object", "required": ["typ"], "properties": {"typ": {"type": "string", "enum": list(stage_schema.BLOCKS)}}}},
     }},
 }
@@ -292,7 +303,8 @@ class Channel:
         try:
             view = stage_schema.validate(raw)
         except stage_schema.ViewError as e:
-            return {"content": [{"type": "text", "text": f"Ansicht abgelehnt ({e.code}). Bitte Format prüfen."}], "isError": True}
+            code = f"{e.code}:{e.detail}" if e.detail else e.code       # detail: fester Pfad und Grund (sim_eigen), nie Eingabetext
+            return {"content": [{"type": "text", "text": f"Ansicht abgelehnt ({code}). Bitte Format prüfen."}], "isError": True}
         with self._cond:
             self._views.append(view)
             self._cond.notify_all()
