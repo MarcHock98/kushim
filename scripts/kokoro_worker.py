@@ -37,8 +37,12 @@ VOICE = "martin"
 SPEED = 1.125                    # wie im Repo-Skript (onnx-docker/main.py) und in der Messung
 MODEL_FILE = "kokoro-martin.onnx"
 VOICES_FILE = "voices-martin.npz"
+MAX_PHONEMES = 480               # kokoro-onnx schafft höchstens 510; darüber wird geteilt
+TEMP_NAME = "tts-tmp"            # eigener Temp-Ordner des Workers (run/tts-tmp), nur dort wird aufgeräumt
+# Offline-Variablen (gegen Nachladeversuche üblicher Bibliotheken). Die onnxruntime-Telemetrie schaltet
+# `ort.disable_telemetry_events()` vor jeder Session ab; dafür gibt es keine Umgebungsvariable.
 OFFLINE_ENV = {"HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1", "HF_DATASETS_OFFLINE": "1", "HF_HUB_DISABLE_TELEMETRY": "1",
-               "DO_NOT_TRACK": "1", "ORT_DISABLE_TELEMETRY": "1"}
+               "DO_NOT_TRACK": "1"}
 CUDA_HINTS = ("cuda", "cudnn", "cublas", "out of memory", "failed to allocate", "bfcarena", "cufft", "curand")
 
 
@@ -158,6 +162,8 @@ class KokoroEngine:
         else:
             providers = ["CPUExecutionProvider"]
         model = os.path.join(model_dir, MODEL_FILE)
+        if hasattr(ort, "disable_telemetry_events"):
+            ort.disable_telemetry_events()  # onnxruntime-Telemetrie (unter Windows ETW) aus, vor jeder Session
         sess = ort.InferenceSession(model, sess_options=so, providers=providers)
         active = sess.get_providers()
         self.provider = "cuda" if active and active[0] == "CUDAExecutionProvider" else "cpu"
@@ -165,9 +171,33 @@ class KokoroEngine:
         self.rate = 24000
 
     def synth(self, text: str) -> bytes:
-        samples, rate = self.kokoro.create(text=text, voice=VOICE, speed=SPEED, lang="de")
+        return wav_bytes(self._samples(text), self.rate)
+
+    def _samples(self, text: str, depth: int = 0):
+        """Zu viele Phoneme (kokoro-onnx: höchstens 510, darüber Abbruch oder stilles Abschneiden): Text halbieren, beide Hälften
+        einzeln sprechen und mit kurzer Pause zusammensetzen. Nichts wird abgeschnitten."""
+        import numpy as np
+        phonemes = self.kokoro.tokenizer.phonemize(text, "de")
+        if len(phonemes) > MAX_PHONEMES and depth < 8:
+            first, second = halves(text)
+            if first and second:
+                pause = np.zeros(int(self.rate * 0.08), dtype=np.float32)
+                return np.concatenate([self._samples(first, depth + 1), pause, self._samples(second, depth + 1)])
+        samples, rate = self.kokoro.create(phonemes, voice=VOICE, speed=SPEED, lang="de", is_phonemes=True)
         self.rate = int(rate)
-        return wav_bytes(samples, rate)
+        return np.asarray(samples, dtype=np.float32).reshape(-1)
+
+
+def halves(text: str) -> tuple[str, str]:
+    """Teilt einen Text nahe der Mitte: bevorzugt an Satzzeichen, sonst an einem Leerzeichen, notfalls hart."""
+    mid = len(text) // 2
+    for marks in (".,;:!?", " "):
+        spots = [i for i, ch in enumerate(text) if ch in marks and 0 < i < len(text) - 1]
+        if spots:
+            i = min(spots, key=lambda s: abs(s - mid))
+            if abs(i - mid) <= len(text) // 3 or marks == " ":
+                return text[:i + 1].strip(), text[i + 1:].strip()
+    return text[:mid], text[mid:]
 
 
 # --- Ablauf --------------------------------------------------------------------------------------------------------------
@@ -279,6 +309,22 @@ def selftest_network(out) -> int:
     return 0 if not open_ else 1
 
 
+def clean_own_temp() -> int:
+    """phonemizer kopiert espeak-ng.dll bei jedem Start in einen neuen `tmp*`-Ordner und räumt ihn nicht immer auf. kushim gibt
+    dem Worker einen eigenen Temp-Ordner (`run/tts-tmp`); nur dort und nur solche Ordner werden beim Start gelöscht."""
+    import shutil
+    tmp = os.environ.get("TEMP") or ""
+    if os.path.basename(os.path.normpath(tmp)) != TEMP_NAME or not os.path.isdir(tmp):
+        return 0
+    removed = 0
+    for name in os.listdir(tmp):
+        path = os.path.join(tmp, name)
+        if name.startswith("tmp") and os.path.isdir(path) and os.path.isfile(os.path.join(path, "espeak-ng.dll")):
+            shutil.rmtree(path, ignore_errors=True)
+            removed += 1
+    return removed
+
+
 def main(argv: list[str] | None = None) -> int:
     import argparse
     ap = argparse.ArgumentParser()
@@ -290,10 +336,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--selftest-net", action="store_true")
     args = ap.parse_args(argv)
     out, inp = sys.stdout.buffer, sys.stdin.buffer
+    try:                                          # -I ignoriert PYTHON*-Variablen: Protokoll selbst auf UTF-8 stellen
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
     sys.stdout = sys.stderr                       # Bibliotheken schreiben gern nach stdout: das gehört nicht ins Protokoll
     if args.selftest_net:
         return selftest_network(out)
     block_network()                               # vor onnxruntime, numpy, kokoro_onnx, espeak
+    clean_own_temp()
     model_dir = os.path.abspath(args.model_dir or "")
     if not all(os.path.isfile(os.path.join(model_dir, f)) for f in (MODEL_FILE, VOICES_FILE)):
         out.write(encode_frame({"type": "error", "code": "load", "cuda": False, "error": "Modelldateien fehlen"}))

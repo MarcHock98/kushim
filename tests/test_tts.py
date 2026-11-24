@@ -189,7 +189,7 @@ def test_voice_failure_gives_hint_tone_and_text_never_silence():
     spk = Speaker(eng, out.append)
     spk.hint = "HINT"
     spk.on_unspoken = shown.append
-    assert spk.say(["Eins.", "Zwei.", "Drei."]) == 1                # wirklich gesprochen: nur Satz 1
+    assert spk.say(["Eins.", "Zwei.", "Drei."]) == 3                # geliefert: 1 gesprochen, 2 und 3 als Text
     assert out == ["EINS.", "HINT"] and shown == ["Zwei.", "Drei."]  # Hinweiston einmal, dann Text
 
 
@@ -198,7 +198,7 @@ def test_total_voice_failure_shows_the_original_text():
     spk = Speaker(Eng(fail={"Es ist vierzehn Uhr."}), out.append)
     spk.hint = hint_wav()
     spk.on_unspoken = shown.append
-    assert spk.say([MARK + "Es ist 14:00 Uhr."]) == 0
+    assert spk.say([MARK + "Es ist 14:00 Uhr."]) == 1                 # als Text geliefert
     assert out == [spk.hint] and shown == ["Es ist 14:00 Uhr."]      # Originaltext ohne Steuerzeichen
 
 
@@ -206,7 +206,7 @@ def test_display_errors_never_break_the_output():
     spk = Speaker(Eng(fail={"Eins."}), lambda x: None)
     spk.on_unspoken = lambda text: 1 / 0
     spk.on_played = lambda: 1 / 0
-    assert spk.say(["Eins.", "Zwei."]) == 1
+    assert spk.say(["Eins.", "Zwei."]) == 2
 
 
 def test_cancelled_synthesis_ends_quietly_without_hint():
@@ -238,7 +238,7 @@ def test_serial_mode_behaves_the_same():
     out, shown = [], []
     spk = Speaker(Eng(fail={"b."}), out.append, lookahead=False)
     spk.hint, spk.on_unspoken = "HINT", shown.append
-    assert spk.say(["a.", "b.", "c."]) == 2 and out == ["A.", "HINT", "C."] and shown == ["b."]
+    assert spk.say(["a.", "b.", "c."]) == 3 and out == ["A.", "HINT", "C."] and shown == ["b."]
 
 
 # --- Satz-Cache ----------------------------------------------------------------------------------------------------------

@@ -51,8 +51,10 @@ LOG_MAX = 1_000_000
 # Nur diese Variablen erbt der Worker (Windows braucht SYSTEMROOT u. a. zum Laden von DLLs). Keine Tokens, keine Proxys.
 ALLOWED_ENV = ("SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "PATH", "PATHEXT", "TEMP", "TMP", "NUMBER_OF_PROCESSORS",
                "PROCESSOR_ARCHITECTURE", "PROCESSOR_IDENTIFIER", "OS", "COMSPEC", "CUDA_DEVICE_ORDER", "CUDA_VISIBLE_DEVICES")
+# Der Worker läuft mit `-I`: PYTHON*-Variablen wirken dort nicht (UTF-8 für stderr stellt der Worker selbst ein).
 OFFLINE_ENV = {"HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1", "HF_DATASETS_OFFLINE": "1", "HF_HUB_DISABLE_TELEMETRY": "1",
-               "DO_NOT_TRACK": "1", "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8", "PYTHONDONTWRITEBYTECODE": "1"}
+               "DO_NOT_TRACK": "1"}
+TEMP_DIR = Path("run") / "tts-tmp"      # eigener Temp-Ordner des Workers (phonemizer legt dort Kopien von espeak-ng.dll ab)
 
 
 class ProtocolError(ValueError):
@@ -139,10 +141,12 @@ class KokoroWorker:
                  env: dict[str, str] | None = None, log_path: Path | None = None, cwd: Path | None = None,
                  clock: Callable[[], float] = time.monotonic, load_timeout: float = LOAD_TIMEOUT,
                  restart_pauses: Sequence[float] = RESTART_PAUSES, watchdog: Callable[[str], float] = watchdog_seconds,
-                 popen: Callable[..., Any] | None = None, kill: Callable[[int], None] = kill_tree):
+                 popen: Callable[..., Any] | None = None, kill: Callable[[int], None] = kill_tree,
+                 blocked: Callable[[], bool] = lambda: False):
+        """`blocked()`: True, solange der Notaus aktiv ist (Marker-Datei); dann startet der Worker weder neu noch erneut."""
         self._command, self._env, self._log_path, self._cwd = command, env, log_path, cwd
         self._clock, self._load_timeout, self._pauses, self._watchdog = clock, load_timeout, tuple(restart_pauses), watchdog
-        self._popen, self._kill_tree = popen, kill
+        self._popen, self._kill_tree, self._blocked = popen, kill, blocked
         self.provider = provider if provider in ("cuda", "cpu") else "cpu"   # gewünschter Provider des nächsten Starts
         self.active: str | None = None            # tatsächlicher Provider laut "ready"
         self.on_state: Callable[[str], None] = lambda state: None
@@ -150,6 +154,7 @@ class KokoroWorker:
         self._state = "off"
         self._lock = threading.RLock()
         self._req_lock = threading.Lock()
+        self._write_lock = threading.Lock()       # stdin des Workers: synth, cancel und quit nie ineinander
         self._proc: Any = None
         self._gen = 0
         self._epoch = 0
@@ -164,13 +169,25 @@ class KokoroWorker:
     def for_root(cls, root: Path, provider: str = "cuda", device_id: int = 0, assets: Path | None = None,
                  **kw: Any) -> "KokoroWorker":
         """Worker-Skript aus `root/scripts`; venv und Modell aus `assets` (Standard: dasselbe `root`; Tests im Worktree
-        zeigen damit auf die nicht versionierten Ordner des Hauptprojekts)."""
+        zeigen damit auf die nicht versionierten Ordner des Hauptprojekts). Eigener Temp-Ordner `run/tts-tmp` (der Worker
+        räumt dort beim Start die Kopien von espeak-ng.dll auf); ein aktiver Notaus verhindert jeden Start."""
+        from ..safety.killswitch import is_triggered
         assets = root if assets is None else assets
         python, script, model = assets / VENV_PYTHON, root / WORKER_SCRIPT, assets / MODEL_DIR
 
         def command(p: str) -> list[str]:
             return [str(python), "-I", str(script), "--model-dir", str(model), "--provider", p, "--device-id", str(int(device_id))]
-        return cls(command, provider, log_path=root / LOG_FILE, cwd=root, **kw)
+        env = kw.pop("env", None)
+        if env is None:
+            env = worker_env()
+            tmp = root / TEMP_DIR
+            try:
+                tmp.mkdir(parents=True, exist_ok=True)
+                env["TEMP"] = env["TMP"] = str(tmp)
+            except OSError:
+                pass
+        kw.setdefault("blocked", lambda: is_triggered(root))
+        return cls(command, provider, env=env, log_path=root / LOG_FILE, cwd=root, **kw)
 
     # --- Zustand
     @property
@@ -192,10 +209,40 @@ class KokoroWorker:
         except Exception:                         # noqa: BLE001
             pass
 
+    def _is_blocked(self) -> bool:
+        try:
+            return bool(self._blocked())
+        except Exception:                         # noqa: BLE001 (im Zweifel: gesperrt)
+            return True
+
+    def _send(self, proc: Any, header: dict) -> None:
+        """Ein Rahmen an den Worker; mehrere Threads (Speaker, Abbruch, Beenden) schreiben nie gleichzeitig."""
+        frame = encode_frame(header)
+        with self._write_lock:
+            proc.stdin.write(frame)
+            proc.stdin.flush()
+
+    def _terminate(self, proc: Any) -> None:
+        """kill_tree; läuft der Prozess danach noch, `proc.kill()` als Rückfall. Das PID bleibt gültig, solange wir `proc` halten."""
+        self._kill_tree(proc.pid)
+        try:
+            if proc.poll() is None:
+                try:
+                    proc.wait(timeout=0.5)
+                except Exception:                 # noqa: BLE001
+                    pass
+            if proc.poll() is None:
+                proc.kill()
+        except Exception:                         # noqa: BLE001 (z. B. schon beendet)
+            pass
+
     # --- Start, Ende, Notaus
     def start(self) -> None:
         with self._lock:
             if self._stopped or self._proc is not None:
+                return
+            if self._is_blocked():
+                self._set_state("off")
                 return
             self._spawn()
 
@@ -257,40 +304,40 @@ class KokoroWorker:
                 return False
             self._ready.wait(min(0.1, remaining))
 
+    def _detach(self) -> Any:
+        """Unter `_lock`: aktuellen Prozess lösen, nie wieder starten, Wartende freigeben."""
+        self._stopped = True
+        proc, self._proc = self._proc, None
+        self._gen += 1
+        self._ready.clear()
+        self._cancel_timers()
+        self._set_state("off")
+        return proc
+
     def kill(self) -> None:
         """Notaus: Worker samt Kindern sofort beenden, kein Neustart. Wartende Synthese endet sofort."""
         with self._lock:
-            self._stopped = True
-            proc, self._proc = self._proc, None
-            self._gen += 1
-            self._ready.clear()
-            self._cancel_timers()
-            self._set_state("off")
+            proc = self._detach()
         if proc is not None:
-            self._kill_tree(proc.pid)
+            self._terminate(proc)
 
     def close(self) -> None:
-        """Regulär beenden: `quit` schicken, kurz warten, dann sicherheitshalber `kill_tree`."""
+        """Regulär beenden: `quit` schicken, kurz warten, dann sicherheitshalber `kill_tree` (und `proc.kill()`)."""
         with self._lock:
-            self._stopped = True
-            proc, self._proc = self._proc, None
-            self._gen += 1
-            self._ready.clear()
-            self._cancel_timers()
-            self._set_state("off")
+            proc = self._detach()
         if proc is None:
             return
         try:
-            proc.stdin.write(encode_frame({"type": "quit"}))
-            proc.stdin.flush()
-            proc.stdin.close()
+            self._send(proc, {"type": "quit"})
+            with self._write_lock:
+                proc.stdin.close()
         except (OSError, ValueError, AttributeError):
             pass
         try:
             proc.wait(timeout=QUIT_WAIT)
         except Exception:                         # noqa: BLE001
             pass
-        self._kill_tree(proc.pid)
+        self._terminate(proc)
 
     def _cancel_timers(self) -> None:
         for t in self._timers:
@@ -342,10 +389,12 @@ class KokoroWorker:
             self._restarts = [t for t in self._restarts if now - t < RESTART_WINDOW]
             if provider == "cuda":
                 self.provider = "cpu"                        # GPU voll oder CUDA ausgefallen: auf dem Prozessor weiter
-            if len(self._restarts) >= MAX_RESTARTS:
+            if self._is_blocked():                           # Notaus über Verknüpfung oder Oberfläche: kein Neustart
+                self._stopped = True
+                self._set_state("off")
+            elif len(self._restarts) >= MAX_RESTARTS:
                 self._set_state("failed")
                 self._note(f"Sprachausgabe aus ({reason}); Antworten kommen als Text mit Hinweiston.")
-                kill_pid = proc.pid if proc is not None else None
             else:
                 pause = self._pauses[min(len(self._restarts), len(self._pauses) - 1)] if self._pauses else 0.0
                 self._restarts.append(now)
@@ -356,13 +405,16 @@ class KokoroWorker:
                 timer.daemon = True
                 self._timers.append(timer)
                 timer.start()
-                kill_pid = proc.pid if proc is not None else None
-        if kill_pid is not None:
-            self._kill_tree(kill_pid)
+        if proc is not None:
+            self._terminate(proc)
 
     def _restart(self) -> None:
         with self._lock:
             if self._stopped or self._proc is not None:
+                return
+            if self._is_blocked():
+                self._stopped = True
+                self._set_state("off")
                 return
             self._spawn()
 
@@ -371,7 +423,7 @@ class KokoroWorker:
             if gen != self._gen or self._ready.is_set() or self._proc is None:
                 return
             proc = self._proc
-        # beendet den Prozess (kill_tree) und plant den Neustart; GPU-Start, der nicht fertig wird: danach auf der CPU
+        # beendet den Prozess und plant den Neustart; GPU-Start, der nicht fertig wird: danach auf der CPU
         self._crashed(gen, self.provider if self.active is None else self.active, proc, "lädt nicht")
 
     # --- Engine
@@ -382,15 +434,15 @@ class KokoroWorker:
             epoch, proc = self._epoch, self._proc
         if proc is not None:
             try:
-                proc.stdin.write(encode_frame({"type": "cancel", "epoch": epoch}))
-                proc.stdin.flush()
+                self._send(proc, {"type": "cancel", "epoch": epoch})
             except (OSError, ValueError, AttributeError):
                 pass
 
     def synthesize(self, text: str) -> bytes:
         if not isinstance(text, str) or not text.strip():
             raise TTSUnavailable("leerer Text")
-        text = text[:MAX_TEXT]
+        if len(text) > MAX_TEXT:                  # nie still abschneiden; der Speaker teilt lange Abschnitte vorher
+            raise TTSUnavailable(f"Abschnitt zu lang ({len(text)} Zeichen)")
         with self._req_lock:
             if not self._ready.is_set():
                 raise TTSUnavailable(f"Sprachausgabe {self._state}")
@@ -401,8 +453,7 @@ class KokoroWorker:
             if proc is None:
                 raise TTSUnavailable("kein Worker")
             try:
-                proc.stdin.write(encode_frame({"type": "synth", "id": rid, "epoch": epoch, "text": text}))
-                proc.stdin.flush()
+                self._send(proc, {"type": "synth", "id": rid, "epoch": epoch, "text": text})
             except (OSError, ValueError, AttributeError) as e:
                 raise TTSUnavailable("Worker nimmt nichts an") from e
             deadline = self._clock() + self._watchdog(text)
@@ -437,5 +488,5 @@ class KokoroWorker:
                 raise TTSUnavailable(f"Synthese-Fehler ({code})")
 
     def _hung(self, gen: int, proc: Any, provider: str | None = None) -> None:
-        """Hänger oder CUDA-Fehler: wie ein Absturz behandeln (`_crashed` beendet den Prozess per kill_tree)."""
+        """Hänger oder CUDA-Fehler: wie ein Absturz behandeln (`_crashed` beendet den Prozess)."""
         self._crashed(gen, provider or self.active or self.provider, proc, "hängt" if provider is None else "CUDA-Fehler")

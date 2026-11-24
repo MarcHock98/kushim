@@ -89,7 +89,7 @@ def test_without_voice_ack_is_the_hint_tone_and_answers_come_as_text(live):
     r.ack()
     assert r.played == [earcon.hint_wav()]
     r.played.clear()
-    assert r.pipeline.say_text("Es ist 14:35 Uhr. Alles gut.") == 0
+    assert r.pipeline.say_text("Es ist 14:35 Uhr. Alles gut.") == 2                 # beide als Text geliefert
     assert r.played == [earcon.hint_wav()]                                   # einmal der Hinweiston, nie Stille
     assert [n for n in r.notes if n.startswith("Ohne Stimme:")] == ["Ohne Stimme: Es ist 14:35 Uhr.", "Ohne Stimme: Alles gut."]
 
