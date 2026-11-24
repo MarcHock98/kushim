@@ -45,7 +45,10 @@ beide git-ignoriert); dieses Dokument fasst sie zusammen.
     `OWN` (Folgesätze), jeder mit `END`; `split_sentences` leitet nichts ab. Freigabe-Ansagen und Texte von Claude laufen als
     getrennte Stücke (Listen), auch beim Nachreichen. Keines der Zeichen kann Claude senden. Die zweite Prüfung läuft über ein
     gleitendes Fenster (160 Zeichen) aller fremden Sätze eines `say` und über verschärfte Fassungen (Trennzeichen in Wörtern
-    entfernt, Nachbarwörter zusammengezogen); `safety/` bleibt unverändert. In gesprochenen Freigabe-Ansagen entschärft
+    entfernt, Nachbarwörter zusammengezogen); `safety/` bleibt unverändert. Seit der dritten Prüfung faltet
+    `voice/imitation_fold.py` den Text zusätzlich (NFKD, ohne kombinierende Zeichen, Doppelgänger-Buchstaben), zieht 2–4
+    Wortteile über sprechbare Lücken zusammen und sucht Kernwörter (Notaus samt „Nohtaus“/„Notausschalter“, aber nicht
+    „Notausgang“; Freigabe … erteilt; Terminal … bestätig; „erlauben?“). Bekannte Falsch-Positive: „Not, aus der man lernt“. In gesprochenen Freigabe-Ansagen entschärft
     `speakable.announce` eingebaute Befehle, Dateinamen, Suchbegriffe usw. (keine eigenen Sätze, Nachahmungen ausgeblendet).
   - Kokoro schafft höchstens 510 Phoneme (darüber IndexError bzw. stilles Abschneiden). Der Speaker teilt jeden Abschnitt auf
     höchstens 250 Zeichen (Komma, Doppelpunkt, Strich, „und“/„oder“, Wortgrenze), der Worker halbiert zusätzlich ab 480
