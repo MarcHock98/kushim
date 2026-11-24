@@ -89,10 +89,11 @@ def ordinal(n: int, case: str = "nom") -> str:
 
 
 # Artikel/Präpositionen vor einer Ordinalzahl oder einem Datum und der passende Fall
-_DAT = {"am", "im", "zum", "vom", "dem", "den", "einen", "einem", "jeden", "jedem", "beim", "seit", "ab", "bis zum", "nach dem"}
+_DAT = {"am", "im", "zum", "vom", "dem", "den", "einen", "einem", "jeden", "jedem", "beim", "seit", "ab", "bis zum", "nach dem",
+        "bis"}
 _WEAK = {"der", "die", "das", "eine", "jede", "jeder"}
 _PREFIX_RE = (r"(?:(?<![\wäöüß])(bis\s+zum|nach\s+dem|am|im|zum|vom|dem|den|der|die|das|eine|einen|einem|jede|jeden|jedem|"
-              r"jeder|beim|seit|ab)\s+)?")
+              r"jeder|beim|seit|ab|bis)\s+)?")
 
 
 def _case(prefix: str | None) -> str:
@@ -144,6 +145,7 @@ UNITS = (
     (r"s", "Sekunde", "Sekunden", "f"),
     (r"W", "Watt", "Watt", None),
     (r"V", "Volt", "Volt", None),
+    (r"A", "Ampere", "Ampere", None),
     (r"Tsd\.", "Tausend", "Tausend", None),
     (r"Mio\.", "Million", "Millionen", "f"),
     (r"Mrd\.", "Milliarde", "Milliarden", "f"),
@@ -210,6 +212,12 @@ _QUOTES = {**dict.fromkeys(map(ord, "«»‹›„“”‚‘\""), None), ord("
 _DASH = "–—‒―"
 _LABELS = {"kapitel", "nummer", "seite", "absatz", "gleis", "version", "punkt", "schritt", "teil", "folge", "staffel", "level",
            "stufe", "raum", "zimmer", "platz", "abschnitt", "zeile", "spalte", "tag", "woche", "runde", "minus", "plus", "mal"}
+# Weibliche Endungen für „1 Datei“ → „eine Datei“ (Faustregel; sonst „ein“)
+_FEMININE = re.compile(r"(?:e|ei|ung|heit|keit|schaft|ion|tät|ik|ur|enz|anz|in)$")
+_WEEKDAYS = {"Mo": "Montag", "Di": "Dienstag", "Mi": "Mittwoch", "Do": "Donnerstag", "Fr": "Freitag", "Sa": "Samstag",
+             "So": "Sonntag"}
+_VERSION_WORDS = (r"Version|Versionen|Python|Node|Java|Kotlin|iOS|Android|macOS|Windows|Ubuntu|Debian|Firefox|Chrome|Release|"
+                  r"Update|Build|Kernel|Claude Code|kushim|onnxruntime|CUDA|cuDNN")
 
 
 # --- Teilschritte -------------------------------------------------------------------------------------------------------
@@ -244,27 +252,80 @@ def _is_one(raw: str) -> bool:
     return re.fullmatch(r"[-−]?0*1", raw) is not None
 
 
+def _digits(raw: str) -> str:
+    return " ".join(_ONES[int(d)] for d in raw if d.isdigit())
+
+
 _NUM = r"[-−]?\d+(?:,\d+)?"
 _BEFORE = r"(?<![\w.,:/])"           # Zahl beginnt nicht mitten in einem Wort, einer Version oder Uhrzeit
 _AFTER_UNIT = r"(?![\wäöüßÄÖÜ²³])"
 
 
+def _weekdays(t: str) -> str:
+    """„Mo. bis Fr.“, „Mo.–Fr.“, „Sa./So.“ → „Montag bis Freitag“ (nur als Paar; ein einzelnes „Fr.“ bleibt „Frau“)."""
+    days = "|".join(_WEEKDAYS)
+
+    def pair(m: re.Match) -> str:
+        sep = " und " if m.group(2).strip() in ("/", "und", "+") else " bis "
+        return _WEEKDAYS[m.group(1)] + sep + _WEEKDAYS[m.group(3)]
+    return re.sub(rf"\b({days})\.?(\s?(?:bis|und|[-–—/+])\s?)({days})\b\.?", pair, t)
+
+
+def _phones(t: str) -> str:
+    """Telefonnummern („+49 170 1234567“, „089/123456“, „0170-1234567“): „plus neunundvierzig“, dann Ziffer für Ziffer."""
+    def phone(m: re.Match) -> str:
+        head, rest = m.group(1), m.group(2)
+        if sum(c.isdigit() for c in head + rest) < 6:
+            return m.group(0)
+        if head.startswith("+"):
+            if rest[:1].isdigit():                    # „+491701234567“ ohne Trennung: alles einzeln
+                return "plus " + _digits(head + rest)
+            spoken = "plus " + number_to_words(int(head[1:]))
+        else:
+            spoken = _digits(head)
+        groups = [g for g in re.split(r"[ /-]", rest) if g]
+        return " ".join([spoken] + [_digits(g) for g in groups])
+    return re.sub(r"(?<![\w.,+])(\+\d{1,3}|0\d{1,5})((?:[ /-]?\d{2,}){1,6})(?![\w.,]?\d)", phone, t)
+
+
+def _spoken_version(raw: str) -> str:
+    return " Punkt ".join(number_to_words(int(p)) for p in raw.split("."))
+
+
+def _named_versions(t: str) -> str:
+    """Versionen nach einem passenden Wort („Python 3.12“, „Version 1.0“, „v2.5“), VOR dem Datum: sonst wäre „3.12.“ ein Datum."""
+    t = re.sub(rf"\b({_VERSION_WORDS})(\s+v?)(\d+(?:\.\d+)+)",
+               lambda m: m.group(1) + m.group(2).replace("v", "") + _spoken_version(m.group(3)), t, flags=re.I)
+    return re.sub(r"(?<![\w.])v(\d+(?:\.\d+)+)\b", lambda m: "Version " + _spoken_version(m.group(1)), t)
+
+
 def _versions(t: str) -> str:
-    """„2.1.321“ → „zwei Punkt eins Punkt dreihunderteinundzwanzig“ (nicht bei Tausenderpunkten wie „1.234.567“)."""
+    """„2.1.321“ → „zwei Punkt eins Punkt dreihunderteinundzwanzig“ (nicht bei Tausenderpunkten wie „1.234.567“); nach dem Datum."""
     def version(m: re.Match) -> str:
         if re.fullmatch(r"\d{1,3}(?:\.\d{3})+", m.group(1)):
             return m.group(1)
-        return " Punkt ".join(number_to_words(int(p)) for p in m.group(1).split("."))
+        return _spoken_version(m.group(1))
     return re.sub(r"(?<![\w.])(\d+(?:\.\d+){2,})(?![\w.]*\d)", version, t)
 
 
+def _clock(h: int, mi: int) -> str:
+    return ("ein" if h == 1 else number_to_words(h)) + " Uhr" + (f" {number_to_words(mi)}" if mi else "")
+
+
 def _iso_dates(t: str) -> str:
+    """„2026-11-24“ und Zeitstempel „2026-03-07T10:00“ (Sekunden und Zeitzone werden nicht vorgelesen)."""
     def iso(m: re.Match) -> str:
         prefix, y, mo, d = m.group(1), int(m.group(2)), int(m.group(3)), int(m.group(4))
         if not (1 <= mo <= 12 and 1 <= d <= 31):
             return m.group(0)
-        return _with_prefix(prefix, f"{ordinal(d, _case(prefix))} {MONTH_NAMES[mo - 1]} {number_to_words(y)}")
-    return re.sub(_PREFIX_RE + r"(?<![\w.-])(\d{4})-(\d{2})-(\d{2})(?![\w-])", iso, t, flags=re.I)
+        out = _with_prefix(prefix, f"{ordinal(d, _case(prefix))} {MONTH_NAMES[mo - 1]} {number_to_words(y)}")
+        if m.group(5) is not None:
+            h, mi = int(m.group(5)), int(m.group(6))
+            if h <= 24 and mi <= 59:
+                out += ", " + _clock(h, mi)
+        return out
+    return re.sub(_PREFIX_RE + r"(?<![\w.-])(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::\d{2}(?:\.\d+)?)?"
+                  r"(?:Z|[+-]\d{2}:?\d{2})?)?(?![\w-])", iso, t, flags=re.I)
 
 
 def _ranges(t: str) -> str:
@@ -275,12 +336,16 @@ def _ranges(t: str) -> str:
 
 def _dates(t: str) -> str:
     def numeric(m: re.Match) -> str:
-        prefix, d, mo, y = m.group(1), int(m.group(2)), int(m.group(3)), m.group(4)
+        prefix, d, mo = m.group(1), int(m.group(2)), int(m.group(3))
+        year = m.group(4) or m.group(5)
         if not (1 <= mo <= 12 and 1 <= d <= 31):
             return m.group(0)
         out = _with_prefix(prefix, f"{ordinal(d, _case(prefix))} {MONTH_NAMES[mo - 1]}")
-        return out + (f" {number_to_words(int(y))}" if y else "")
-    t = re.sub(_PREFIX_RE + r"(?<![\w.])(\d{1,2})\.(\d{1,2})\.(?:\s?(\d{4}))?(?![\w.]*\d)", numeric, t, flags=re.I)
+        if year:
+            return out + f" {number_to_words(int(year))}"
+        return out + ("." if not m.string[m.end():].strip() else "")      # Satzende-Punkt bleibt („der 24.11.“)
+    t = re.sub(_PREFIX_RE + r"(?<![\w.])(\d{1,2})\.(\d{1,2})\.(?:(\d{2})(?![\d.])|\s?(\d{4}))?(?![\w.]*\d)", numeric, t,
+               flags=re.I)
 
     def named(m: re.Match) -> str:
         prefix, d, month, y = m.group(1), int(m.group(2)), m.group(3), m.group(4)
@@ -292,18 +357,23 @@ def _dates(t: str) -> str:
 def _times(t: str) -> str:
     def clock(m: re.Match) -> str:
         h, mi = int(m.group(1)), int(m.group(2))
-        if h > 24 or mi > 59:
-            return m.group(0)
-        hw = "ein" if h == 1 else number_to_words(h)
-        return f"{hw} Uhr" + (f" {number_to_words(mi)}" if mi else "")
-    t = re.sub(r"(?<![\w.:,])(\d{1,2})[:.](\d{2})\s?Uhr\b", clock, t)
+        return m.group(0) if h > 24 or mi > 59 else _clock(h, mi)
+
+    def duration(m: re.Match) -> str:
+        parts = [(int(m.group(1)), "eine Stunde", "Stunden"), (int(m.group(2)), "eine Minute", "Minuten"),
+                 (int(m.group(3)), "eine Sekunde", "Sekunden")]
+        said = [one if n == 1 else f"{number_to_words(n)} {many}" for n, one, many in parts if n]
+        return " ".join(said) if said else "null Sekunden"
+    t = re.sub(r"(?<![\w.:,])(\d{1,2})[:.](\d{2})(?::\d{2})?\s?Uhr\b", clock, t)
+    t = re.sub(r"(?<![\w.:,])(\d{1,3}):([0-5]\d):([0-5]\d)(?![\d:])", duration, t)       # Dauer „1:30:00“
     t = re.sub(r"(?<![\w.:,])(\d{1,2}):(\d{2})(?![\d:])", clock, t)
     t = re.sub(r"(?<![\w.,])1\s?Uhr\b", "ein Uhr", t)
     return re.sub(r"(?<![\w.,:])(\d{1,3}):(\d{1,3})(?![\d:])", r"\1 zu \2", t)      # Verhältnis, Spielstand „3:1“
 
 
 def _thousands(t: str) -> str:
-    return re.sub(r"(?<![\w.,])(\d{1,3}(?:\.\d{3})+)(?![.,]?\d)", lambda m: m.group(1).replace(".", ""), t)
+    """„1.234.567“ und „1.299,99“: Tausenderpunkte weg (ein Dezimalkomma danach ist erlaubt)."""
+    return re.sub(r"(?<![\w.,])(\d{1,3}(?:\.\d{3})+)(?!\.?\d)", lambda m: m.group(1).replace(".", ""), t)
 
 
 def _money(t: str) -> str:
@@ -311,8 +381,11 @@ def _money(t: str) -> str:
         whole, cents = m.group(1), m.group(2)
         c = int(cents.ljust(2, "0")[:2])
         return _num(whole) + " Euro" + (f" {number_to_words(c)}" if c else "")
-    t = re.sub(_BEFORE + r"([-−]?\d+),(\d{1,2})\s?(?:EUR|€)(?!\w)", euro, t)
-    return re.sub(r"€\s?(" + _NUM + r")(?![\d,])", lambda m: _num(m.group(1)) + " Euro", t)
+    t = re.sub(_BEFORE + r"([-−]?\d+),-{1,2}\s?(?:EUR|€|Euro)(?!\w)", lambda m: _num(m.group(1)) + " Euro", t)      # „5,- €“
+    t = re.sub(_BEFORE + r"([-−]?\d+),(\d{1,2})\s?(?:EUR|€|Euro)(?!\w)", euro, t)
+    t = re.sub(r"€\s?(\d+),(\d{1,2})(?!\d)", euro, t)                                                           # „€ 1299,99“
+    t = re.sub(r"€\s?(" + _NUM + r")(?![\d,])", lambda m: _num(m.group(1)) + " Euro", t)
+    return re.sub(r"\$\s?(" + _NUM + r")(?![\d,])", lambda m: _num(m.group(1)) + " Dollar", t)
 
 
 def _percent_degrees(t: str) -> str:
@@ -332,26 +405,32 @@ def _units(t: str) -> str:
 
 
 def _abbreviations(t: str) -> str:
+    t = re.sub(r"\b([A-ZÄÖÜ][a-zäöüß]+)str\.", r"\1straße", t)              # „Hauptstr. 5“ → „Hauptstraße 5“
     for pattern, repl in ABBREVIATIONS:
         t = re.sub(pattern, repl, t)
     return t
 
 
 def _numbers(t: str) -> str:
-    # Ordinalzahl „die 2. Schiene“, „am 3. Tag“: nur mitten im Satz (danach ein Wort), nie am Satzende
+    # „am 3.“ am Satzende (nach dem Teilen von „am 3. Danach …“): Tag im Monat, also „am dritten.“
+    t = re.sub(r"(?i)(?<![\wäöüß])(am|zum|vom|bis\s+zum)\s+(\d{1,2})\.\s*$",
+               lambda m: f"{m.group(1)} {ordinal(int(m.group(2)), 'dat')}." if 1 <= int(m.group(2)) <= 31 else m.group(0), t)
+    # Ordinalzahl „die 2. Schiene“, „am 3. Tag“: nur mitten im Satz (danach ein Wort)
     t = re.sub(_PREFIX_RE + r"(?<![\w.,])(\d{1,4})\.(?=\s+[\wäöüÄÖÜ])",
                lambda m: _with_prefix(m.group(1), ordinal(int(m.group(2)), _case(m.group(1)))), t, flags=re.I)
+    # übrige Zahl mit Punkt („3.5“, „1.0“): Punkt sprechen
+    t = re.sub(r"(?<![\w.,])(\d+)\.(\d+)(?![\w.]*\d)", lambda m: f"{m.group(1)} Punkt {m.group(2)}", t)
 
     def cardinal(m: re.Match) -> str:
         raw = m.group(0)
         digits = raw.lstrip("-−").split(",")[0]
-        if len(digits) > 1 and digits.startswith("0") or len(digits) > 12:      # 007, Telefonnummern: Ziffer für Ziffer
-            return " ".join(_ONES[int(d)] for d in raw if d.isdigit())
+        if len(digits) > 1 and digits.startswith("0") or len(digits) > 12:      # 007, Kennungen: Ziffer für Ziffer
+            return _digits(raw)
         if _is_one(raw):
             before = re.search(r"([\wäöüÄÖÜß]+)\s*$", t[:m.start()])
-            after_noun = re.match(r"\s+[A-ZÄÖÜ]", t[m.end():])
-            if after_noun and not (before and before.group(1).lower() in _LABELS):
-                return "ein"                                 # „1 Datei“: „ein“ ist näher als „eins“
+            noun = re.match(r"\s+([A-ZÄÖÜ][\wäöüß]*)", t[m.end():])
+            if noun and not (before and before.group(1).lower() in _LABELS):
+                return "eine" if _FEMININE.search(noun.group(1)) else "ein"     # „eine Datei“, „ein Tag“ (Faustregel)
         return _num(raw, "eins")
     return re.sub(r"(?<![\w.,])(?:[-−](?=\d))?\d+(?:,\d+)?(?!\w)", cardinal, t)
 
@@ -363,12 +442,18 @@ def _symbols(t: str) -> str:
 
 
 def normalize(text: str) -> str:
-    """Text so umschreiben, dass die Stimme ihn richtig liest. Leerer Text bleibt leer."""
+    """Text so umschreiben, dass die Stimme ihn richtig liest. Leerer Text bleibt leer.
+
+    Achtung: Entfernt Zeichen (Anführungszeichen, Emoji, Symbole). Was danach wie eine Systemansage klingt, prüft der Speaker
+    für Claudes Sätze noch einmal mit `safety.imitation` (die Normalisierung läuft NACH dem ersten Filter)."""
     if not text:
         return ""
     t = _strip_controls(text)
     t = t.translate(_QUOTES)
+    t = _weekdays(t)
     t = _iso_dates(t)
+    t = _phones(t)
+    t = _named_versions(t)
     t = _dates(t)
     t = _versions(t)
     t = _ranges(t)

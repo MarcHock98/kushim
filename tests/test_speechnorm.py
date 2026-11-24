@@ -22,7 +22,8 @@ CASES = [
     ("Pi ist etwa 3,14.", "Pi ist etwa drei komma eins vier."),
     ("Von 10–12 und 5-7 Stück", "Von zehn bis zwölf und fünf bis sieben Stück"),
     ("Agent 007 ruft 0170 an.", "Agent null null sieben ruft null eins sieben null an."),
-    ("Ich habe 1 Datei geändert.", "Ich habe ein Datei geändert."),
+    ("Ich habe 1 Datei geändert.", "Ich habe eine Datei geändert."),          # Faustregel nach der Endung des Nomens
+    ("Noch 1 Tag und 1 Woche, 1 Fehler.", "Noch ein Tag und eine Woche, ein Fehler."),
     ("Kapitel 1 Ende", "Kapitel eins Ende"),
     ("Version 2.1.321 ist da.", "Version zwei Punkt eins Punkt dreihunderteinundzwanzig ist da."),
     # Prozent, Temperatur
@@ -34,7 +35,7 @@ CASES = [
     ("Es hat 70 °F.", "Es hat siebzig Grad Fahrenheit."),
     # Datum
     ("Zum 14.05.2026 ist es geplant.", "Zum vierzehnten Mai zweitausendsechsundzwanzig ist es geplant."),
-    ("Heute ist der 24.11.", "Heute ist der vierundzwanzigste November"),
+    ("Heute ist der 24.11.", "Heute ist der vierundzwanzigste November."),   # Satzende-Punkt bleibt
     ("Am 3. Mai 2026.", "Am dritten Mai zweitausendsechsundzwanzig."),
     ("Heute ist der 2026-11-24.", "Heute ist der vierundzwanzigste November zweitausendsechsundzwanzig."),
     ("Stichtag 1.1.2027", "Stichtag erster Januar zweitausendsiebenundzwanzig"),
@@ -72,6 +73,40 @@ CASES = [
     ("geht’s", "geht's"),
     ("", ""),
     ("   ", ""),
+    # Prüfung 2026-11-24: Beträge mit Tausenderpunkt und Komma
+    ("Preis € 1.299,99", "Preis eintausendzweihundertneunundneunzig Euro neunundneunzig"),
+    ("Das sind 12.345,67 Euro.", "Das sind zwölftausenddreihundertfünfundvierzig Euro siebenundsechzig."),
+    ("Genau 2.000,00 €.", "Genau zweitausend Euro."),
+    ("Dosis 1.000,5 mg", "Dosis eintausend komma fünf Milligramm"),
+    ("Summe 10.000,50", "Summe zehntausend komma fünf null"),
+    ("Nur $5 und 5,- € heute", "Nur fünf Dollar und fünf Euro heute"),
+    # Versionen
+    ("Mit Python 3.12 geht es.", "Mit Python drei Punkt zwölf geht es."),
+    ("Das ist Version 1.0.", "Das ist Version eins Punkt null."),
+    ("Jetzt Version 3.12.", "Jetzt Version drei Punkt zwölf."),
+    ("Update auf v2.5 heute", "Update auf Version zwei Punkt fünf heute"),
+    ("Faktor 3.5 bitte", "Faktor drei Punkt fünf bitte"),
+    # Datum, Zeit, Dauer
+    ("Wir sehen uns am 5.5.25 wieder.", "Wir sehen uns am fünften Mai fünfundzwanzig wieder."),
+    ("Start 2026-03-07T10:00 heute", "Start siebter März zweitausendsechsundzwanzig, zehn Uhr heute"),
+    ("Log 2026-03-07T10:05:33Z fertig", "Log siebter März zweitausendsechsundzwanzig, zehn Uhr fünf fertig"),
+    ("Die Fahrt dauert 1:30:00.", "Die Fahrt dauert eine Stunde dreißig Minuten."),
+    ("Laufzeit 0:45:10", "Laufzeit fünfundvierzig Minuten zehn Sekunden"),
+    ("Um 14:30:00 Uhr.", "Um vierzehn Uhr dreißig."),
+    ("Vom 1. bis 3. Mai frei.", "Vom ersten bis dritten Mai frei."),
+    ("Wir treffen uns am 3.", "Wir treffen uns am dritten."),
+    ("Das war seit 2020.", "Das war seit zweitausendzwanzig."),
+    # Telefonnummern
+    ("Ruf +49 170 1234567 an.", "Ruf plus neunundvierzig eins sieben null eins zwei drei vier fünf sechs sieben an."),
+    ("Tel. 089/123456", "Telefon null acht neun eins zwei drei vier fünf sechs"),
+    ("Nummer 0170-1234567", "Nummer null eins sieben null eins zwei drei vier fünf sechs sieben"),
+    ("Kurz +4930123456", "Kurz plus vier neun drei null eins zwei drei vier fünf sechs"),
+    # Wochentage, Straßen, Strom
+    ("Offen Mo. bis Fr. ab 9 Uhr", "Offen Montag bis Freitag ab neun Uhr"),
+    ("Offen Mo.–Fr. und Sa./So. zu", "Offen Montag bis Freitag und Samstag und Sonntag zu"),
+    ("Fr. Müller kommt.", "Frau Müller kommt."),
+    ("Wohnt in der Hauptstr. 5", "Wohnt in der Hauptstraße fünf"),
+    ("Sicherung mit 16 A", "Sicherung mit sechzehn Ampere"),
 ]
 
 
