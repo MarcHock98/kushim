@@ -1,0 +1,65 @@
+{
+ "name": "Epidemie (SIR)",
+ "form": "ode",
+ "dt": 0.05,
+ "tempo": 5,
+ "laufzeit": 40,
+ "beschreibung": "Anteile der Empfänglichen S, Infizierten I und Genesenen R; die Zeit zählt in Tagen. Steckt ein Infizierter im Mittel mehr als einen an (beta/gamma über 1), gibt es eine Welle.",
+ "parameter": [
+  {
+   "name": "beta",
+   "wert": 0.3,
+   "min": 0,
+   "max": 2,
+   "einheit": "1/Tag"
+  },
+  {
+   "name": "gamma",
+   "wert": 0.1,
+   "min": 0.01,
+   "max": 1,
+   "einheit": "1/Tag"
+  }
+ ],
+ "zustand": [
+  {
+   "name": "S",
+   "start": 0.99
+  },
+  {
+   "name": "I",
+   "start": 0.01
+  },
+  {
+   "name": "R",
+   "start": 0
+  }
+ ],
+ "ableitungen": {
+  "S": "-beta*S*I",
+  "I": "beta*S*I - gamma*I",
+  "R": "gamma*I"
+ },
+ "erhaltung": "S + I + R",
+ "darstellung": [
+  {
+   "form": "zeitreihe",
+   "groessen": [
+    "S",
+    "I",
+    "R"
+   ]
+  },
+  {
+   "form": "phasenraum",
+   "x": "S",
+   "y": "I"
+  }
+ ],
+ "kennwerte": [
+  {
+   "name": "Basisreproduktionszahl",
+   "formel": "beta/gamma"
+  }
+ ]
+}

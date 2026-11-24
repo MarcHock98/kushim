@@ -1,0 +1,41 @@
+{
+ "name": "Van-der-Pol-Oszillator",
+ "form": "ode",
+ "tempo": 2,
+ "beschreibung": "Ein Schwinger, der kleine Ausschläge anfacht und große dämpft. Jede Bahn läuft in denselben Grenzzyklus; großes mu gibt Kippschwingungen.",
+ "parameter": [
+  {
+   "name": "mu",
+   "wert": 1,
+   "min": 0,
+   "max": 8
+  }
+ ],
+ "zustand": [
+  {
+   "name": "x",
+   "start": 0.5
+  },
+  {
+   "name": "v",
+   "start": 0
+  }
+ ],
+ "ableitungen": {
+  "x": "v",
+  "v": "mu*(1 - x^2)*v - x"
+ },
+ "darstellung": [
+  {
+   "form": "phasenraum",
+   "x": "x",
+   "y": "v"
+  },
+  {
+   "form": "zeitreihe",
+   "groessen": [
+    "x"
+   ]
+  }
+ ]
+}

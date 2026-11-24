@@ -32,6 +32,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from ..safety import imitation, killswitch
 from ..stage import schema as stage_schema
+from ..stage import rezepte
 from ..safety import procs
 
 BIND_HOST = "127.0.0.1"
@@ -96,8 +97,11 @@ INSTRUCTIONS = (
     "Fenster erreicht dich nicht), für Ablaufdiagramme, Bäume und Mindmaps `netz` (art netz). "
     "Für Bewegung zeige eine `simulation` (art simulation) mit einem eingebauten Modell (pendel, feder, wurf, umlauf, gas, "
     "doppelpendel, welle): schick nur den Modellnamen und Zahlen in den festen Einheiten, nie Formeln oder Code, und sag dazu, dass "
-    "es eine Simulation ist, keine Messung. Nimm zuerst immer ein eingebautes Modell. Nur wenn keines passt, zeige `sim_eigen` "
-    "(art simulation): Gleichungen in der kleinen Formelsprache aus der Beschreibung von `zeige`, nur dort sind Formeln erlaubt, "
+    "es eine Simulation ist, keine Messung. Nimm zuerst immer ein eingebautes Modell. Erst eingebautes Modell, dann Rezept, dann "
+    "eigene Formeln: Passt kein Modell, nimm ein Rezept aus der Beschreibung von `zeige` (`sim_eigen` mit `rezept`, dazu höchstens "
+    "`parameter` als Name und Wert, `name` und `beschreibung`); sag dazu, dass es eine Simulation aus kushims Rezeptbuch ist, keine "
+    "Messung. Nur wenn auch kein Rezept passt, zeige `sim_eigen` "
+    "(art simulation) mit eigenen Gleichungen in der kleinen Formelsprache aus der Beschreibung von `zeige`, nur dort sind Formeln erlaubt, "
     "sonst nirgends. Sag dem Nutzer dabei, dass es eine eigene, nicht geprüfte Simulation ist, keine Messung. Lehnt `zeige` sie ab, "
     "korrigiere sie nach dem Fehlercode höchstens zweimal, ohne darüber zu sprechen; klappt es dann nicht, sag es kurz. Für Moleküle, Atome und Orbitale zeige einen Baustein `teilchen` (art teilchen, form "
     "molekuel, atom oder orbital) nur mit Elementsymbolen, Lagen in Ångström, Indizes und Zahlen. "
@@ -132,7 +136,10 @@ ZEIGE_TOOL = {
                     "auch vorher/nachher), plan (plan2d: Linien, Kreise, Maße, Ebenen), lernen (lernkarten, quiz, anleitung; "
                     "Knöpfe ändern nur die Anzeige), netz (netz: ablauf, baum, mindmap), simulation (simulation: eingebautes Modell "
                     "pendel, feder, wurf, umlauf, gas, doppelpendel oder welle, nur Parameter, keine Formeln; eine Simulation, "
-                    "keine Messung; passt kein Modell: sim_eigen, eigene ungeprüfte Simulation, als einziger Baustein mit Formeln), teilchen (teilchen: Molekül, Atom im vereinfachten Schalenmodell oder Orbital, nur Daten); "
+                    "keine Messung; passt kein Modell, dann ein Rezept: sim_eigen{rezept,parameter?:{name:wert} nur innerhalb der "
+                    "Grenzen,name?,beschreibung?}, ohne Formeln und ohne weitere Felder; Rezepte mit Parametern: "
+                    f"{rezepte.uebersicht()}; passt auch kein Rezept: sim_eigen mit eigenen Formeln, eigene ungeprüfte Simulation, als "
+                    "einziger Baustein mit Formeln), teilchen (teilchen: Molekül, Atom im vereinfachten Schalenmodell oder Orbital, nur Daten); "
                     "vergleich, zeitstrahl und gegenueber passen "
                     "zu antwort und recherche. Nur Text, kein HTML/Markdown; Formeln als "
                     "KaTeX-TeX in `tex`; Adressen nur als Text. Dieselbe id aktualisiert die Ansicht, schliessen=true räumt ab. "

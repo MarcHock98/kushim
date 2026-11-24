@@ -1,0 +1,89 @@
+{
+ "name": "Gekoppelte Pendel",
+ "form": "ode",
+ "laufzeit": 60,
+ "beschreibung": "Zwei gleiche Pendel, durch eine weiche Feder verbunden. Das erste startet ausgelenkt; die Schwingung wandert hin und her (Schwebung). Der Körper zeigt das zweite Pendel.",
+ "parameter": [
+  {
+   "name": "g",
+   "wert": 9.81,
+   "min": 0.1,
+   "max": 30,
+   "einheit": "m/s²"
+  },
+  {
+   "name": "l",
+   "wert": 1,
+   "min": 0.1,
+   "max": 10,
+   "einheit": "m"
+  },
+  {
+   "name": "k",
+   "wert": 0.8,
+   "min": 0,
+   "max": 10,
+   "einheit": "1/s²"
+  },
+  {
+   "name": "d",
+   "wert": 0,
+   "min": 0,
+   "max": 2,
+   "einheit": "1/s"
+  }
+ ],
+ "zustand": [
+  {
+   "name": "p1",
+   "start": 0.4,
+   "einheit": "rad"
+  },
+  {
+   "name": "w1",
+   "start": 0,
+   "einheit": "rad/s"
+  },
+  {
+   "name": "p2",
+   "start": 0,
+   "einheit": "rad"
+  },
+  {
+   "name": "w2",
+   "start": 0,
+   "einheit": "rad/s"
+  }
+ ],
+ "ableitungen": {
+  "p1": "w1",
+  "w1": "-g/l*sin(p1) - k*(p1 - p2) - d*w1",
+  "p2": "w2",
+  "w2": "-g/l*sin(p2) + k*(p1 - p2) - d*w2"
+ },
+ "darstellung": [
+  {
+   "form": "zeitreihe",
+   "groessen": [
+    "p1",
+    "p2"
+   ]
+  },
+  {
+   "form": "koerper",
+   "x": "l*sin(p2)",
+   "y": "-l*cos(p2)",
+   "anker": [
+    0,
+    0
+   ]
+  }
+ ],
+ "kennwerte": [
+  {
+   "name": "Energie je Masse",
+   "formel": "0.5*l^2*(w1^2 + w2^2) + g*l*(2 - cos(p1) - cos(p2)) + 0.5*k*l^2*(p1 - p2)^2",
+   "einheit": "J/kg"
+  }
+ ]
+}

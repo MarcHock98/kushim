@@ -1,8 +1,8 @@
 # Plan P7: Selbst erweitern (Simulation als Daten, Rezeptbuch, Werkstatt)
 
 Stand 2026-11-23. Teil von `docs/ui-dynamic-plan.md`, nach P5 (`docs/ui-p5-plan.md`) und P6 (`docs/ui-p6-plan.md`). Roadmap: Phase F.
-**Stufe 1 (Python-Seite und UI-Engine) gebaut am 2026-11-23 nach den Entscheidungen des Nutzers vom selben Tag.** Stufe 1b und
-Stufe 2 sind geplant, nicht gebaut.
+**Stufe 1 (Python-Seite und UI-Engine) gebaut am 2026-11-23 nach den Entscheidungen des Nutzers vom selben Tag.** Stufe 1b
+(Rezeptbuch) gebaut am 2026-11-24 (Branch `routine/p7-rezepte`). Stufe 2 ist geplant, nicht gebaut.
 
 Ziel: Wenn kein eingebautes Modell passt, kann Claude Code eine **eigene Simulation als Daten** beschreiben (Stufe 1). Später kommen
 fertige Rezepte (Stufe 1b) und eine sichtbare **Werkstatt**, in der Claude Code kushim selbst erweitert, nur nach Freigabe (Stufe 2).
@@ -178,11 +178,64 @@ JavaScript, Vektoren, Zufallstest mit 2000 Formeln), `tests/test_formel_parity.p
 übersprungen, solange die Datei fehlt), `tests/test_stage.py` (Baustein: Standardwerte, Beispiele, Grenzen, Probe, Namen, Typen, zweite
 Prüfung, Manipulation, JSON-Grenze, Zufallstest, Channel und Bridge), `tests/test_channel.py`, `tests/test_no_egress.py` (verschärft).
 
-## 3. Stufe 1b: Rezeptbuch (geplant)
+## 3. Stufe 1b: Rezeptbuch (gebaut 2026-11-24)
 
-`src/kushim/stage/rezepte/*.json` und `rezepte.py`: fertige, geprüfte `sim_eigen`-Beschreibungen (Lorenz, Räuber und Beute, Pendel,
-Federkette …). Claude schickt nur `{typ: "sim_eigen", rezept: "lorenz", parameter: {…}}`; das Schema setzt das Rezept ein und prüft es
-wie in Stufe 1. Vorteil: weniger Formeltext, geprüfte Gleichungen, kürzere Beschreibung von `zeige`.
+`src/kushim/stage/rezepte/*.json` und `rezepte.py`: fertige, geprüfte `sim_eigen`-Beschreibungen. Claude schickt nur
+`{typ: "sim_eigen", rezept: "lorenz", parameter: {"s": 12}}`; das Schema setzt das Rezept ein und prüft es wie in Stufe 1. Vorteil:
+weniger Formeltext, geprüfte Gleichungen, weniger Ablehnungen.
+
+### 3.1 Laden (`stage/rezepte.py`)
+
+- Fester Paketordner `stage/rezepte/`, kein Pfad von außen. Nur Dateien `[a-z0-9_]{1,32}.json` direkt im Ordner, keine
+  Verknüpfungen, höchstens 16 KB je Datei, höchstens 24 Rezepte; JSON ohne `NaN`/`Infinity`, ein Objekt in Eingabeform (ohne `typ`,
+  `rezept`, `env`, `kosten`, `integrator`).
+- Jedes Rezept wird beim Import mit `schema.validate` geprüft (als Ansicht mit einem `sim_eigen`). Ein ungültiges wird ausgelassen,
+  sein fester Fehlercode steht in `fehler()` (z. B. `dateiname`, `zu_gross`, `kein_json`, `feld`,
+  `ungueltig:bad_block_1:ableitungen.0:unbekannter_name@0`); der Start scheitert nie daran, der Test meldet es.
+- `namen()`, `hole(name)` (eine Kopie oder None; sucht nur im geladenen Buch), `uebersicht()` (Kurzliste für `zeige`).
+- `schema.py` liest selbst keine Dateien und importiert weiter nur `formel`: `rezepte.py` trägt das Buch mit `rezepte_eintragen` ein;
+  `stage/__init__.py` lädt `rezepte`, damit Channel-Server und Bridge dasselbe Buch haben. Eigene feste Importliste für
+  `rezepte.py` (`json`, `re`, `pathlib`, `typing`, relativ nur `schema`; Dateien nur `"rb"`), geprüft in `tests/test_stage.py`.
+
+### 3.2 Kurzform und Prüfung (`schema.py`)
+
+| Feld | Regel |
+|---|---|
+| `rezept` | Name aus dem Buch, Pflicht; sonst `rezept:unbekannt` |
+| `parameter` | Objekt `{name: wert}` (0 bis 12); nur Parameter des Rezepts (`parameter:unbekannter_name`), Zahl wie überall (`parameter.N:ungueltig`), innerhalb min und max des Rezepts (`parameter.N:bereich`; N ist der Index im Rezept) |
+| `name`, `beschreibung` | optional, ersetzen die des Rezepts; Grenzen, Steuerzeichen und `_claims_system` wie bei `sim_eigen` |
+| alles andere | `unbekanntes_feld` (keine Formeln, kein `dt`, keine Darstellung) |
+
+Danach läuft der normale Validator. Die geprüfte Ansicht ist die voll ausgeschriebene plus das Feld `rezept`. Bei der zweiten Prüfung
+(dann ist `parameter` eine Liste) wird sie aus Rezept, Parameterwerten, Name und Beschreibung neu gebaut und muss genau gleich sein,
+sonst `rezept:passt_nicht`.
+
+### 3.3 Startsatz (zehn Rezepte)
+
+| Rezept | Inhalt | Parameter |
+|---|---|---|
+| `pendel_gedaempft` | Fadenpendel mit Reibung (Plan 2.5) | g, l, d |
+| `raeuber_beute` | Lotka-Volterra mit Erhaltungsgröße (Plan 2.5); b ≥ 0,05 und dd ≥ 0,02, sonst wächst ein Bestand unbegrenzt | a, b, c, dd |
+| `lorenz` | Lorenz-System, dt 0,005 (Plan 2.5) | s, r, bb |
+| `federkette` | zwölf Massen an Federn, Enden fest (Plan 2.5) | g, c |
+| `resonanz` | angetriebener gedämpfter Schwinger, Kennwert Amplitude im eingeschwungenen Zustand; d ≥ 0,01 | w0, wa, d, F |
+| `sir` | Epidemie S, I, R in Tagen (tempo 5), Erhaltung S + I + R, Kennwert beta/gamma | beta, gamma |
+| `van_der_pol` | selbsterregter Schwinger mit Grenzzyklus | mu |
+| `duffing` | angetriebener Schwinger mit kubischer Kraft (zwei Mulden bei a < 0) | d, a, b, F, w |
+| `gekoppelte_pendel` | zwei Pendel mit Feder, Schwebung; Körper zeigt das zweite Pendel | g, l, k, d |
+| `abstossende_teilchen` | 40 Teilchen mit kurzreichweitiger Abstoßung und Reibung, ordnen sich zum Gitter | k, c, g |
+
+Probe: `tests/test_stage.py` rechnet jede ODE mit RK4 über die ganze Laufzeit (Standardwerte) und an den Grenzen (jeder Parameter
+einzeln, alle zugleich), die Teilchen mit einer einfachen Python-Engine; `ui/src/rezepte.test.ts` rechnet alle Ansichten aus
+`ui/src/fixtures/rezept_ansichten.json` (erzeugt von `tests/test_ui_rezept_fixture.py`) mit der echten Engine: nie ungültig, nie
+instabil, keine Zeitlupe.
+
+### 3.4 Anweisungen an Claude
+
+`INSTRUCTIONS`: „Erst eingebautes Modell, dann Rezept, dann eigene Formeln.“ Bei einem Rezept sagt Claude, dass es eine Simulation aus
+kushims Rezeptbuch ist, keine Messung. Die Beschreibung von `zeige` nennt die Kurzform und, beim Start aus dem Buch erzeugt, je Rezept
+die Parameter mit Grenzen (`lorenz(s:0..50,r:0..100,bb:0..10)`). Offen: Die Oberfläche zeigt bei Rezepten denselben festen Hinweis
+wie bei eigenen Simulationen („nicht geprüft“); ein eigener Hinweis für Rezepte bräuchte eine Änderung in `EigenSimulation.tsx`.
 
 ## 4. Stufe 2: Werkstatt (geplant)
 

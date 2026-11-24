@@ -176,7 +176,10 @@ Claude Code zeigt beides schon selbst (`/model`, `/usage`, Statuszeile). Hier nu
       Tiefenzähler, kein `eval`/`ast`), festes RPN-Format, Probe bei t0, Prüfung zweimal; UI führt nur geprüfte RPN aus
       (`formel.ts`, `eigenSim.ts`). Python-Seite gebaut am 2026-11-23 (Branch `routine/p7-formel`), UI-Engine auf `routine/p7-engine`;
       Zusammenführen, Ansicht `EigenSimulation.tsx`, Mock und echtes Fenster offen
-- [ ] F2 Rezeptbuch: geprüfte Rezepte (`stage/rezepte/*.json`, `rezepte.py`), Claude schickt nur Rezeptname und Parameter
+- [x] F2 (2026-11-24, Branch `routine/p7-rezepte`; echter Aufruf durch Claude nicht geprüft) Rezeptbuch: geprüfte Rezepte
+      (`stage/rezepte/*.json`, `rezepte.py`), Claude schickt nur `{typ: sim_eigen, rezept, parameter?: {name: wert}, name?,
+      beschreibung?}`; zehn Rezepte (die vier Plan-Beispiele, Resonanz, SIR, Van der Pol, Duffing, gekoppelte Pendel, abstoßende
+      Teilchen), Beschreibung von `zeige` aus dem Buch erzeugt, Engine-Probe in Python und Vitest
 - [ ] F3 Werkstatt: Werkzeug `entwickle` (nur Vorschlag), Karte Annehmen/Ablehnen (nie per Stimme), sichtbares Fenster
       „kushim-Werkstatt“ (eigene Claude-Code-Sitzung, Opus, ohne Channel/MCP/Web, Standard-Freigabemodus), geschützte Pfade per
       Deny-Regeln, Notaus beendet die Werkstatt

@@ -1,0 +1,80 @@
+{
+ "name": "Duffing-Oszillator",
+ "form": "ode",
+ "tempo": 2,
+ "laufzeit": 60,
+ "beschreibung": "Ein angetriebener Schwinger mit kubischer Rückstellkraft. Mit a < 0 hat er zwei Mulden; dann springt er oft unregelmäßig zwischen ihnen hin und her.",
+ "parameter": [
+  {
+   "name": "d",
+   "wert": 0.3,
+   "min": 0,
+   "max": 2,
+   "einheit": "1/s"
+  },
+  {
+   "name": "a",
+   "wert": -1,
+   "min": -5,
+   "max": 5,
+   "einheit": "1/s²"
+  },
+  {
+   "name": "b",
+   "wert": 1,
+   "min": 0.1,
+   "max": 5,
+   "einheit": "1/(m² s²)"
+  },
+  {
+   "name": "F",
+   "wert": 0.5,
+   "min": 0,
+   "max": 2,
+   "einheit": "m/s²"
+  },
+  {
+   "name": "w",
+   "wert": 1.2,
+   "min": 0.1,
+   "max": 5,
+   "einheit": "1/s"
+  }
+ ],
+ "zustand": [
+  {
+   "name": "x",
+   "start": 1,
+   "einheit": "m"
+  },
+  {
+   "name": "v",
+   "start": 0,
+   "einheit": "m/s"
+  }
+ ],
+ "ableitungen": {
+  "x": "v",
+  "v": "F*cos(w*t) - d*v - a*x - b*x^3"
+ },
+ "darstellung": [
+  {
+   "form": "phasenraum",
+   "x": "x",
+   "y": "v"
+  },
+  {
+   "form": "zeitreihe",
+   "groessen": [
+    "x"
+   ]
+  }
+ ],
+ "kennwerte": [
+  {
+   "name": "Energie je Masse",
+   "formel": "0.5*v^2 + 0.5*a*x^2 + 0.25*b*x^4",
+   "einheit": "J/kg"
+  }
+ ]
+}
