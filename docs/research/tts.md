@@ -41,8 +41,12 @@ beide git-ignoriert); dieses Dokument fasst sie zusammen.
 - Nachträge aus der Prüfung (2026-11-24):
   - Die Normalisierung entfernt Anführungszeichen, Emoji und Symbole und läuft nach `imitation.guard`. Deshalb prüft der
     Speaker jeden Satz von Claude danach noch einmal mit `imitation.imitates_system` (auch über zwei Sätze); Treffer werden zu
-    `imitation.NEUTRAL`. kushims eigene Ansagen tragen `earcon.MARK` (erster Satz, mit Signalton) bzw. `earcon.OWN`
-    (Folgesätze, von `split_sentences` gesetzt); beide Zeichen kann Claude nie senden.
+    `imitation.NEUTRAL`. kushims eigene Ansagen kennzeichnet `earcon.mark` je Satz: `MARK` (erster Satz, mit Signalton) bzw.
+    `OWN` (Folgesätze), jeder mit `END`; `split_sentences` leitet nichts ab. Freigabe-Ansagen und Texte von Claude laufen als
+    getrennte Stücke (Listen), auch beim Nachreichen. Keines der Zeichen kann Claude senden. Die zweite Prüfung läuft über ein
+    gleitendes Fenster (160 Zeichen) aller fremden Sätze eines `say` und über verschärfte Fassungen (Trennzeichen in Wörtern
+    entfernt, Nachbarwörter zusammengezogen); `safety/` bleibt unverändert. In gesprochenen Freigabe-Ansagen entschärft
+    `speakable.announce` eingebaute Befehle, Dateinamen, Suchbegriffe usw. (keine eigenen Sätze, Nachahmungen ausgeblendet).
   - Kokoro schafft höchstens 510 Phoneme (darüber IndexError bzw. stilles Abschneiden). Der Speaker teilt jeden Abschnitt auf
     höchstens 250 Zeichen (Komma, Doppelpunkt, Strich, „und“/„oder“, Wortgrenze), der Worker halbiert zusätzlich ab 480
     Phonemen. Der Client schneidet nie ab.
