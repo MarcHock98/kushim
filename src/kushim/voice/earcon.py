@@ -15,6 +15,11 @@ import struct
 import wave
 
 MARK = "\x07"                   # BEL: nicht druckbar, wird aus jedem fremden Text entfernt
+# Folgesätze einer markierten Ansage („… ausführen. Bitte im Terminal bestätigen.“): ebenfalls kushims eigener Text, aber
+# ohne zweiten Signalton. Setzt nur `tts.split_sentences` beim Teilen eines mit MARK beginnenden Textes; ebenso wie MARK
+# nicht druckbar, also aus Claudes Text immer entfernt. Der Speaker prüft nur Sätze OHNE diese beiden Zeichen nach der
+# Normalisierung noch einmal auf nachgeahmte Systemansagen.
+OWN = "\x0e"                    # SO: nicht druckbar
 RATE = 22050
 TONES = ((660.0, 0.12), (990.0, 0.18))      # zwei Töne aufwärts, zusammen 0,3 s
 # Hinweiston, wenn die Stimme ausfällt (Text statt Sprache): zwei tiefe Töne abwärts, klar anders als der Zweiklang oben

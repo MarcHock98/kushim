@@ -18,7 +18,7 @@ from typing import Any, Callable, Iterable, Sequence
 from ..safety.killswitch import KillSwitch, is_kill_phrase
 from ..tasks import TaskRegistry, is_cancel_phrase
 from .dialog import Dialog, State
-from .earcon import MARK
+from .earcon import MARK, OWN
 from .stt import SpeechToText
 from .tts import Speaker, chunk_stream, prefetch, split_sentences
 
@@ -410,7 +410,7 @@ class Pipeline:
                         marked = True
                     if self.metrics.get("first_text_s") is None:
                         self.metrics["first_text_s"] = self._since()
-                    sentences.append(s.replace(MARK, ""))       # Signalton-Zeichen nur für die Stimme, nie im Verlauf
+                    sentences.append(s.replace(MARK, "").replace(OWN, ""))   # Kennzeichen nur für die Stimme, nie im Verlauf
                     yield s
                 if not marked:                                   # Chat lief ohne Fehler, aber ohne Text
                     self._note("sent", entry)
