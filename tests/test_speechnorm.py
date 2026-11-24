@@ -80,6 +80,19 @@ CASES = [
     ("Dosis 1.000,5 mg", "Dosis eintausend komma fünf Milligramm"),
     ("Summe 10.000,50", "Summe zehntausend komma fünf null"),
     ("Nur $5 und 5,- € heute", "Nur fünf Dollar und fünf Euro heute"),
+    # Nachprüfung: Dollar im englischen Format, Leerzeichen als Tausendertrenner
+    ("Das kostet $1,299.99.", "Das kostet eintausendzweihundertneunundneunzig Dollar neunundneunzig."),
+    ("Budget $12,000 im Jahr", "Budget zwölftausend Dollar im Jahr"),
+    ("Kaffee für $ 3.50", "Kaffee für drei Dollar fünfzig"),
+    ("Preis 1,299.99 USD", "Preis eintausendzweihundertneunundneunzig Dollar neunundneunzig"),
+    ("Nur USD 20.00 heute", "Nur zwanzig Dollar heute"),
+    ("Für US-Dollar 1,000 gekauft", "Für eintausend Dollar gekauft"),
+    ("Miete 1 234,56 €", "Miete eintausendzweihundertvierunddreißig Euro sechsundfünfzig"),
+    ("Es sind 1 234 567 Sterne.", "Es sind eine Million zweihundertvierunddreißigtausendfünfhundertsiebenundsechzig Sterne."),
+    ("Mit 12\u202f345 Leuten", "Mit zwölftausenddreihundertfünfundvierzig Leuten"),
+    ("Mit 1\u2009000 Leuten", "Mit eintausend Leuten"),
+    ("Mit 2\u00a0500 Leuten", "Mit zweitausendfünfhundert Leuten"),
+    ("Zwischen 5 100 Leuten", "Zwischen fünf einhundert Leuten"),          # eine Gruppe ohne Komma/Währung: zwei Zahlen
     # Versionen
     ("Mit Python 3.12 geht es.", "Mit Python drei Punkt zwölf geht es."),
     ("Das ist Version 1.0.", "Das ist Version eins Punkt null."),

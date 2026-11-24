@@ -371,6 +371,29 @@ def _times(t: str) -> str:
     return re.sub(r"(?<![\w.,:])(\d{1,3}):(\d{1,3})(?![\d:])", r"\1 zu \2", t)      # Verhältnis, Spielstand „3:1“
 
 
+_USD = r"(?:\$|USD|US-Dollar)"
+
+
+def _dollars(t: str) -> str:
+    """Dollar im englischen Format: „$1,299.99“, „$12,000“, „$ 3.50“, „1,299.99 USD“ (Komma = Tausender, Punkt = Cent)."""
+    def amount(whole: str, cents: str | None) -> str:
+        n = int(whole.replace(",", ""))
+        c = int(cents) if cents else 0
+        return ("ein" if n == 1 else number_to_words(n)) + " Dollar" + (f" {number_to_words(c)}" if c else "")
+    t = re.sub(_USD + r"\s?(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{2}))?(?![\d,.]?\d)",
+               lambda m: amount(m.group(1), m.group(2)), t)
+    return re.sub(r"(?<![\w.,])(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{2}))?\s?" + _USD + r"(?!\w)",
+                  lambda m: amount(m.group(1), m.group(2)) if ("," in m.group(1) or m.group(2)) else m.group(0), t)
+
+
+def _space_thousands(t: str) -> str:
+    """Leerzeichen als Tausendertrenner: schmale (U+202F, U+2009) und geschützte (U+00A0) immer; ein normales Leerzeichen nur
+    bei mindestens zwei Gruppen („1 234 567“) oder vor Dezimalkomma bzw. Währung („1 234,56 €“), sonst wären es zwei Zahlen."""
+    t = re.sub(r"(?<![\d,.])(\d{1,3}(?:[   ]\d{3})+)(?!\d)", lambda m: re.sub(r"\D", "", m.group(1)), t)
+    return re.sub(r"(?<![\d,.])(\d{1,3}(?: \d{3}){2,}|\d{1,3} \d{3}(?=,\d|\s?(?:€|EUR|Euro|\$|USD)))(?!\d)",
+                  lambda m: m.group(1).replace(" ", ""), t)
+
+
 def _thousands(t: str) -> str:
     """„1.234.567“ und „1.299,99“: Tausenderpunkte weg (ein Dezimalkomma danach ist erlaubt)."""
     return re.sub(r"(?<![\w.,])(\d{1,3}(?:\.\d{3})+)(?!\.?\d)", lambda m: m.group(1).replace(".", ""), t)
@@ -453,6 +476,7 @@ def normalize(text: str) -> str:
     t = _weekdays(t)
     t = _iso_dates(t)
     t = _phones(t)
+    t = _dollars(t)
     t = _named_versions(t)
     t = _dates(t)
     t = _versions(t)
@@ -460,6 +484,7 @@ def normalize(text: str) -> str:
     t = re.sub("[" + _DASH + "]", ",", t)                  # Gedankenstrich: kurze Pause (wie im Martin-Skript)
     t = t.replace("&", " und ").replace("…", "...")
     t = _times(t)
+    t = _space_thousands(t)
     t = _thousands(t)
     t = _money(t)
     t = _percent_degrees(t)
