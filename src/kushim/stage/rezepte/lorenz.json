@@ -1,0 +1,58 @@
+{
+ "name": "Lorenz-System",
+ "form": "ode",
+ "dt": 0.005,
+ "beschreibung": "Drei gekoppelte Größen nach Lorenz. Die Bahn wechselt unregelmäßig zwischen zwei Schleifen.",
+ "parameter": [
+  {
+   "name": "s",
+   "wert": 10,
+   "min": 0,
+   "max": 50
+  },
+  {
+   "name": "r",
+   "wert": 28,
+   "min": 0,
+   "max": 100
+  },
+  {
+   "name": "bb",
+   "wert": 2.6667,
+   "min": 0,
+   "max": 10
+  }
+ ],
+ "zustand": [
+  {
+   "name": "x",
+   "start": 1
+  },
+  {
+   "name": "y",
+   "start": 1
+  },
+  {
+   "name": "z",
+   "start": 1
+  }
+ ],
+ "ableitungen": {
+  "x": "s*(y-x)",
+  "y": "x*(r-z) - y",
+  "z": "x*y - bb*z"
+ },
+ "darstellung": [
+  {
+   "form": "phasenraum",
+   "x": "x",
+   "y": "z"
+  },
+  {
+   "form": "zeitreihe",
+   "groessen": [
+    "x"
+   ]
+  }
+ ]
+}

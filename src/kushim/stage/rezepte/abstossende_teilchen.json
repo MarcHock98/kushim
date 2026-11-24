@@ -1,0 +1,54 @@
+{
+ "name": "Abstoßende Teilchen",
+ "form": "teilchen",
+ "anzahl": 40,
+ "start": "zufall",
+ "startwert": 7,
+ "kasten": [
+  8,
+  6
+ ],
+ "waende": "reflektieren",
+ "masse": 1,
+ "beschreibung": "Vierzig Teilchen stoßen sich auf kurze Entfernung ab und verlieren durch Reibung Energie. Sie ordnen sich dabei zu einem fast regelmäßigen Gitter.",
+ "parameter": [
+  {
+   "name": "k",
+   "wert": 0.5,
+   "min": 0,
+   "max": 5,
+   "einheit": "N m²"
+  },
+  {
+   "name": "c",
+   "wert": 0.3,
+   "min": 0,
+   "max": 3,
+   "einheit": "kg/s"
+  },
+  {
+   "name": "g",
+   "wert": 0,
+   "min": 0,
+   "max": 20,
+   "einheit": "m/s²"
+  }
+ ],
+ "kraft": {
+  "fx": "-c*vx",
+  "fy": "-c*vy - m*g"
+ },
+ "paar": {
+  "f_r": "k*(1/r^2 - 0.25)",
+  "reichweite": 2,
+  "mindestabstand": 0.1
+ },
+ "darstellung": [
+  {
+   "form": "koerper"
+  },
+  {
+   "form": "pfeile"
+  }
+ ]
+}

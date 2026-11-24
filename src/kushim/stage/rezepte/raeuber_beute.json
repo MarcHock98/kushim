@@ -1,0 +1,66 @@
+{
+ "name": "Räuber und Beute",
+ "form": "ode",
+ "beschreibung": "Beute B vermehrt sich, Räuber R fressen sie (Lotka-Volterra). Beide Bestände schwanken gegeneinander versetzt.",
+ "parameter": [
+  {
+   "name": "a",
+   "wert": 1.1,
+   "min": 0,
+   "max": 5,
+   "einheit": "1/Jahr"
+  },
+  {
+   "name": "b",
+   "wert": 0.4,
+   "min": 0.05,
+   "max": 5,
+   "einheit": "1/Jahr"
+  },
+  {
+   "name": "c",
+   "wert": 0.4,
+   "min": 0,
+   "max": 5,
+   "einheit": "1/Jahr"
+  },
+  {
+   "name": "dd",
+   "wert": 0.1,
+   "min": 0.02,
+   "max": 5,
+   "einheit": "1/Jahr"
+  }
+ ],
+ "zustand": [
+  {
+   "name": "B",
+   "start": 10,
+   "einheit": "Tiere"
+  },
+  {
+   "name": "R",
+   "start": 5,
+   "einheit": "Tiere"
+  }
+ ],
+ "ableitungen": {
+  "B": "a*B - b*B*R",
+  "R": "dd*B*R - c*R"
+ },
+ "erhaltung": "dd*B - c*log(B) + b*R - a*log(R)",
+ "darstellung": [
+  {
+   "form": "zeitreihe",
+   "groessen": [
+    "B",
+    "R"
+   ]
+  },
+  {
+   "form": "phasenraum",
+   "x": "B",
+   "y": "R"
+  }
+ ]
+}

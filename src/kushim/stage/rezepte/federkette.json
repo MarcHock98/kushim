@@ -1,0 +1,48 @@
+{
+ "name": "Federkette",
+ "form": "teilchen",
+ "anzahl": 12,
+ "start": "linie",
+ "kasten": [
+  4,
+  3
+ ],
+ "waende": "reflektieren",
+ "beschreibung": "Zwölf Massen, mit Federn verbunden, die äußeren fest. Die Kette hängt unter ihrem Gewicht durch.",
+ "fest": [
+  0,
+  11
+ ],
+ "masse": 0.1,
+ "parameter": [
+  {
+   "name": "g",
+   "wert": 9.81,
+   "min": 0,
+   "max": 30,
+   "einheit": "m/s²"
+  },
+  {
+   "name": "c",
+   "wert": 0.3,
+   "min": 0,
+   "max": 5,
+   "einheit": "kg/s"
+  }
+ ],
+ "kraft": {
+  "fx": "-c*vx",
+  "fy": "-m*g - c*vy"
+ },
+ "federn": {
+  "kette": true,
+  "k": 40,
+  "l0": 0.25,
+  "daempfung": 0.05
+ },
+ "darstellung": [
+  {
+   "form": "koerper"
+  }
+ ]
+}

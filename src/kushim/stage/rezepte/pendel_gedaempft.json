@@ -1,0 +1,68 @@
+{
+ "name": "Gedämpftes Pendel",
+ "form": "ode",
+ "beschreibung": "Ein Fadenpendel mit Reibung, losgelassen bei 1,2 rad. Die Reibung wächst mit der Geschwindigkeit.",
+ "parameter": [
+  {
+   "name": "g",
+   "wert": 9.81,
+   "min": 0.1,
+   "max": 30,
+   "einheit": "m/s²"
+  },
+  {
+   "name": "l",
+   "wert": 1,
+   "min": 0.1,
+   "max": 10,
+   "einheit": "m"
+  },
+  {
+   "name": "d",
+   "wert": 0.2,
+   "min": 0,
+   "max": 5,
+   "einheit": "1/s"
+  }
+ ],
+ "zustand": [
+  {
+   "name": "phi",
+   "start": 1.2,
+   "einheit": "rad"
+  },
+  {
+   "name": "w",
+   "start": 0,
+   "einheit": "rad/s"
+  }
+ ],
+ "ableitungen": {
+  "phi": "w",
+  "w": "-g/l*sin(phi) - d*w"
+ },
+ "darstellung": [
+  {
+   "form": "koerper",
+   "x": "l*sin(phi)",
+   "y": "-l*cos(phi)",
+   "anker": [
+    0,
+    0
+   ]
+  },
+  {
+   "form": "zeitreihe",
+   "groessen": [
+    "phi"
+   ]
+  }
+ ],
+ "kennwerte": [
+  {
+   "name": "Energie je Masse",
+   "formel": "0.5*(l*w)^2 + g*l*(1-cos(phi))",
+   "einheit": "J/kg"
+  }
+ ]
+}

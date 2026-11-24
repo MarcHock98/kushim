@@ -1137,6 +1137,77 @@ def _sim_eigen(b: dict[str, Any], c: str) -> dict[str, Any]:
     return {**kopf, **teil}
 
 
+# --- P7 Stufe 1b: Rezeptbuch (docs/ui-p7-plan.md Abschnitt 3) -------------------------------------------------------------
+# Fertige `sim_eigen`-Beschreibungen aus dem Repo (stage/rezepte/*.json). schema.py liest selbst keine Dateien: stage/rezepte.py
+# lädt und prüft sie beim Import des Pakets `stage` und trägt sie mit `rezepte_eintragen` ein. Claude schickt nur
+# {typ: "sim_eigen", rezept, parameter?: {name: wert}, name?, beschreibung?}. Das Rezept wird eingesetzt (Werte nur für bekannte
+# Parameter und nur innerhalb ihrer Grenzen) und dann wie jede eigene Simulation geprüft. Die geprüfte Form behält `rezept` und ist
+# sonst gleich einer voll ausgeschriebenen; bei der zweiten Prüfung (dann ist `parameter` eine Liste) wird sie aus Rezept,
+# Parameterwerten, Name und Beschreibung neu gebaut und muss genau gleich sein.
+
+REZEPT_FELDER = frozenset({"rezept", "parameter", "name", "beschreibung"})
+_REZEPTE: dict[str, dict[str, Any]] = {}
+
+
+def rezepte_eintragen(rezepte: dict[str, dict[str, Any]]) -> None:
+    """Nur für stage/rezepte.py: ersetzt das Rezeptbuch durch eine Kopie (Name -> Eingabeform eines `sim_eigen` ohne `typ`)."""
+    _REZEPTE.clear()
+    _REZEPTE.update(json.loads(json.dumps(rezepte)))
+
+
+def _rezept_einsetzen(b: dict[str, Any], c: str) -> dict[str, Any]:
+    """Kurzform -> volle Eingabe aus dem Rezeptbuch (eine Kopie). Fehler nennen nur feste Pfade und den Index im Rezept."""
+    name = b.get("rezept")
+    if not isinstance(name, str) or name not in _REZEPTE:
+        raise _nein(c, "rezept", "unbekannt")
+    voll = json.loads(json.dumps(_REZEPTE[name]))
+    werte = b.get("parameter", {})
+    if not isinstance(werte, dict) or len(werte) > MAX_EIGEN_PARAMETER:
+        raise _nein(c, "parameter")
+    params = voll.get("parameter", [])
+    index = {p["name"]: j for j, p in enumerate(params)}
+    for key, wert in werte.items():
+        if not isinstance(key, str) or key not in index:
+            raise _nein(c, "parameter", "unbekannter_name")
+        j = index[key]
+        zahl = _bei(c, f"parameter.{j}", _num, wert, c)
+        if not params[j]["min"] <= zahl <= params[j]["max"]:
+            raise _nein(c, f"parameter.{j}", "bereich")
+        params[j]["wert"] = zahl
+    for key in ("name", "beschreibung"):                                               # geprüft wie immer (Länge, Steuerzeichen, Freigabe-Sätze)
+        if key in b:
+            voll[key] = b[key]
+    return voll
+
+
+def _rezept(b: dict[str, Any], c: str) -> dict[str, Any]:
+    return {"rezept": b["rezept"], **_sim_eigen(_rezept_einsetzen(b, c), c)}
+
+
+def _rezept_nachpruefen(b: dict[str, Any], c: str) -> dict[str, Any]:
+    """Zweite Prüfung: aus Rezept, Parameterwerten, Name und Beschreibung neu bauen; die Ansicht muss genau gleich sein."""
+    werte: dict[str, Any] = {}
+    for p in _bei(c, "parameter", _list, b["parameter"], 0, MAX_EIGEN_PARAMETER, c):
+        if not isinstance(p, dict) or not isinstance(p.get("name"), str) or p["name"] in werte:
+            raise _nein(c, "rezept", "passt_nicht")
+        werte[p["name"]] = p.get("wert")
+    soll = _rezept({"rezept": b["rezept"], "parameter": werte, **{k: b[k] for k in ("name", "beschreibung") if k in b}}, c)
+    if {k: v for k, v in b.items() if k != "typ"} != soll:
+        raise _nein(c, "rezept", "passt_nicht")
+    return soll
+
+
+def _sim_eigen_baustein(b: dict[str, Any], c: str) -> dict[str, Any]:
+    """`sim_eigen` voll ausgeschrieben oder als Rezept (Kurzform von Claude, geprüfte Form bei der zweiten Prüfung)."""
+    if "rezept" not in b:
+        return _sim_eigen(b, c)
+    if isinstance(b.get("parameter"), list):
+        return _rezept_nachpruefen(b, c)
+    if set(b) - REZEPT_FELDER - {"typ"}:
+        raise ViewError(c, "unbekanntes_feld")
+    return _rezept(b, c)
+
+
 BLOCKS: dict[str, Callable[[dict[str, Any], str], dict[str, Any]]] = {
     "text": _text_block, "liste": _liste, "formel": _formel, "schritte": _schritte, "ergebnis": _ergebnis,
     "kennzahlen": _kennzahlen, "tabelle": _tabelle, "diagramm": _diagramm, "aussagen": _aussagen,
@@ -1145,7 +1216,7 @@ BLOCKS: dict[str, Callable[[dict[str, Any], str], dict[str, Any]]] = {
     "mail-entwurf": _mail_entwurf, "countdown": _countdown, "dokument": _dokument, "aenderung": _aenderung,
     "szene3d": _szene3d, "plan2d": _plan2d, "vergleich": _vergleich, "zeitstrahl": _zeitstrahl, "gegenueber": _gegenueber,
     "lernkarten": _lernkarten, "quiz": _quiz, "anleitung": _anleitung, "netz": _netz, "simulation": _simulation,
-    "teilchen": _teilchen, "sim_eigen": _sim_eigen,
+    "teilchen": _teilchen, "sim_eigen": _sim_eigen_baustein,
 }
 
 

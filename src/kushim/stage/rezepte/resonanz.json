@@ -1,0 +1,72 @@
+{
+ "name": "Angetriebener Schwinger",
+ "form": "ode",
+ "laufzeit": 60,
+ "beschreibung": "Eine Masse an einer Feder, periodisch angetrieben. Liegt die Antriebsfrequenz wa nahe der Eigenfrequenz w0, wächst die Amplitude stark (Resonanz).",
+ "parameter": [
+  {
+   "name": "w0",
+   "wert": 2,
+   "min": 0.1,
+   "max": 10,
+   "einheit": "1/s"
+  },
+  {
+   "name": "wa",
+   "wert": 1.9,
+   "min": 0,
+   "max": 20,
+   "einheit": "1/s"
+  },
+  {
+   "name": "d",
+   "wert": 0.1,
+   "min": 0.01,
+   "max": 5,
+   "einheit": "1/s"
+  },
+  {
+   "name": "F",
+   "wert": 1,
+   "min": 0,
+   "max": 10,
+   "einheit": "m/s²"
+  }
+ ],
+ "zustand": [
+  {
+   "name": "x",
+   "start": 0,
+   "einheit": "m"
+  },
+  {
+   "name": "v",
+   "start": 0,
+   "einheit": "m/s"
+  }
+ ],
+ "ableitungen": {
+  "x": "v",
+  "v": "F*cos(wa*t) - w0^2*x - d*v"
+ },
+ "darstellung": [
+  {
+   "form": "koerper",
+   "x": "x",
+   "y": "0"
+  },
+  {
+   "form": "zeitreihe",
+   "groessen": [
+    "x"
+   ]
+  }
+ ],
+ "kennwerte": [
+  {
+   "name": "Amplitude eingeschwungen",
+   "formel": "F/sqrt((w0^2 - wa^2)^2 + (d*wa)^2)",
+   "einheit": "m"
+  }
+ ]
+}

@@ -4,6 +4,7 @@ import json
 import math
 import re
 import threading
+from pathlib import Path
 
 import pytest
 
@@ -12,7 +13,7 @@ from kushim.api.stage_api import register_stage
 from kushim.channel import bridge as br
 from kushim.channel import server as ch
 from kushim.safety import killswitch
-from kushim.stage import schema
+from kushim.stage import formel, rezepte, schema
 from kushim.stage.store import MAX_VIEWS, ViewStore
 
 TOKEN = "t" * 32
@@ -2483,3 +2484,485 @@ def test_zeige_tool_names_the_tree_depth_and_how_to_split_long_sums():
     desc = ch.ZEIGE_TOOL["inputSchema"]["properties"]["bausteine"]["description"]
     block = desc[desc.index("sim_eigen{"):]
     assert f"Baumtiefe ≤{schema.formel.MAX_TIEFE}" in block and "lange Summen in hilf aufteilen" in block
+
+
+# --- P7 Stufe 1b: Rezeptbuch (`sim_eigen` mit `rezept`, stage/rezepte.py und stage/rezepte/*.json) ------------------------------
+
+REZEPTE = ("abstossende_teilchen", "duffing", "federkette", "gekoppelte_pendel", "lorenz", "pendel_gedaempft", "raeuber_beute",
+           "resonanz", "sir", "van_der_pol")
+REZEPT_PARAMETER = [(n, j) for n in REZEPTE for j in range(len(rezepte.hole(n)["parameter"]))]
+RZ_LORENZ = {                                                                       # was die Oberfläche aus {rezept: "lorenz"} bekommt
+    "typ": "sim_eigen", "rezept": "lorenz", "form": "ode", "name": "Lorenz-System",
+    "beschreibung": "Drei gekoppelte Größen nach Lorenz. Die Bahn wechselt unregelmäßig zwischen zwei Schleifen.",
+    "parameter": [{"name": "s", "wert": 10, "min": 0, "max": 50, "einheit": ""}, {"name": "r", "wert": 28, "min": 0, "max": 100, "einheit": ""},
+                  {"name": "bb", "wert": 2.6667, "min": 0, "max": 10, "einheit": ""}],
+    "dt": 0.005, "laufzeit": 30, "tempo": 1, "spur": True,
+    "zustand": [{"name": "x", "start": 1, "einheit": ""}, {"name": "y", "start": 1, "einheit": ""}, {"name": "z", "start": 1, "einheit": ""}],
+    "hilf": [], "ableitungen": {
+        "x": {"rpn": [["v", 4], ["v", 2], ["v", 1], ["o", "-"], ["o", "*"]], "tex": r"s \cdot \left(y - x\right)"},
+        "y": {"rpn": [["v", 1], ["v", 5], ["v", 3], ["o", "-"], ["o", "*"], ["v", 2], ["o", "-"]], "tex": r"x \cdot \left(r - z\right) - y"},
+        "z": {"rpn": [["v", 1], ["v", 2], ["o", "*"], ["v", 6], ["v", 3], ["o", "*"], ["o", "-"]], "tex": r"x \cdot y - \mathrm{bb} \cdot z"}},
+    "kennwerte": [], "erhaltung": None, "darstellung": [{"form": "phasenraum", "x": "x", "y": "z"}, {"form": "zeitreihe", "groessen": ["x"]}],
+    "env": {"ode": ["t", "x", "y", "z", "s", "r", "bb"]}, "integrator": "rk4", "kosten": 76}
+
+
+def rz(rezept="lorenz", **fields):
+    return {"rezept": rezept, **fields}
+
+
+def rz_block(rezept="lorenz", **fields):
+    v = schema.validate(se(rz(rezept, **fields)))
+    assert schema.validate(v) == v and schema.validate(json.loads(json.dumps(v))) == v      # zweite Prüfung unverändert
+    return v["bausteine"][0]
+
+
+def test_p7r_book_loads_every_recipe_from_its_package_folder_without_errors():
+    assert rezepte.fehler() == {}, rezepte.fehler()                             # ein ungültiges Rezept würde hier gemeldet
+    assert rezepte.namen() == REZEPTE
+    assert rezepte.ORDNER == Path(rezepte.__file__).resolve().parent / "rezepte"
+    assert sorted(p.name for p in rezepte.ORDNER.iterdir()) == [f"{n}.json" for n in REZEPTE]
+    assert all(p.stat().st_size <= rezepte.MAX_BYTES for p in rezepte.ORDNER.iterdir())
+
+
+def test_p7r_minimal_recipe_view_gets_the_exact_filled_form():
+    assert rz_block() == RZ_LORENZ
+
+
+@pytest.mark.parametrize("name", REZEPTE)
+def test_p7r_each_recipe_resolves_to_the_same_view_as_written_out_in_full(name):
+    roh = rezepte.hole(name)
+    assert not set(roh) & {"typ", "rezept", "env", "kosten", "integrator"}
+    voll = schema.validate(se(roh))["bausteine"][0]
+    assert rz_block(name) == {"rezept": name, **voll}                          # nur `rezept` kommt dazu
+    assert voll["name"] and voll["beschreibung"] and voll["parameter"]
+
+
+def test_p7r_the_plan_examples_are_in_the_book_with_the_plan_equations():
+    for name, beispiel, felder in (("pendel_gedaempft", SE_PENDEL, ("ableitungen", "zustand", "darstellung")),
+                                   ("raeuber_beute", SE_RAEUBER, ("ableitungen", "erhaltung", "darstellung")),
+                                   ("lorenz", SE_LORENZ, ("ableitungen", "parameter", "dt", "darstellung")),
+                                   ("federkette", SE_KETTE, ("kraft", "federn", "fest", "masse", "kasten", "anzahl"))):
+        roh = rezepte.hole(name)
+        assert all(roh[f] == beispiel[f] for f in felder), name
+        assert [p["name"] for p in roh["parameter"]] == [p["name"] for p in beispiel["parameter"]]
+
+
+@pytest.mark.parametrize("name,j", REZEPT_PARAMETER)
+def test_p7r_parameters_take_values_at_their_limits_and_nothing_beyond(name, j):
+    params = rezepte.hole(name)["parameter"]
+    p = params[j]
+    for wert in (p["min"], p["max"]):
+        b = rz_block(name, parameter={p["name"]: wert})
+        assert b["parameter"][j]["wert"] == wert
+        assert [q["wert"] for i, q in enumerate(b["parameter"]) if i != j] == [q["wert"] for i, q in enumerate(params) if i != j]
+    knapp = (p["max"] - p["min"]) * 1e-6
+    se_bad(rz(name, parameter={p["name"]: p["min"] - knapp}), f"parameter.{j}:bereich")
+    se_bad(rz(name, parameter={p["name"]: p["max"] + knapp}), f"parameter.{j}:bereich")
+
+
+@pytest.mark.parametrize("name", REZEPTE)
+@pytest.mark.parametrize("ecke", ["min", "max"])
+def test_p7r_all_parameters_at_once_at_their_limits_pass(name, ecke):
+    b = rz_block(name, parameter={p["name"]: p[ecke] for p in rezepte.hole(name)["parameter"]})
+    assert [p["wert"] for p in b["parameter"]] == [p[ecke] for p in rezepte.hole(name)["parameter"]]
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf"), 10**400, -10**400, True, False, "1", "s*2", None, [1],
+                                   {"a": 1}, {"rpn": [["c", 1.0]], "tex": "1"}])
+def test_p7r_parameter_values_must_be_finite_real_numbers(value):
+    se_bad(rz(parameter={"s": value}), "parameter.0:ungueltig")
+
+
+def test_p7r_integer_and_float_values_are_both_kept():
+    assert rz_block(parameter={"s": 12})["parameter"][0]["wert"] == 12
+    assert rz_block(parameter={"s": 12.5, "bb": 3})["parameter"][2]["wert"] == 3
+
+
+@pytest.mark.parametrize("value", ["nope", "../lorenz", "..\\lorenz", "lorenz.json", "rezepte/lorenz", "C:/x/lorenz", "LORENZ", " lorenz",
+                                   "lorenz ", "", "lorenz" + chr(0), 1, 0, None, True, 1.5, ["lorenz"], {"lorenz": 1}])
+def test_p7r_unknown_recipes_are_rejected(value):
+    se_bad(rz(value), "rezept:unbekannt")
+
+
+@pytest.mark.parametrize("key", ["x", "q", "S", "env", "", "s ", "S" + chr(0x0455), "__proto__", "parameter"])
+def test_p7r_unknown_parameter_names_are_rejected(key):
+    se_bad(rz(parameter={key: 1}), "parameter:unbekannter_name")
+
+
+@pytest.mark.parametrize("value,detail", [
+    ("s=12", "parameter:ungueltig"), (None, "parameter:ungueltig"), (12, "parameter:ungueltig"), (True, "parameter:ungueltig"),
+    ({f"p{i}": 1 for i in range(13)}, "parameter:ungueltig"), ([{"name": "s", "wert": 12}], "rezept:passt_nicht"), ([], "rezept:passt_nicht"),
+])
+def test_p7r_parameter_field_takes_only_an_object_of_names_and_values(value, detail):
+    se_bad(rz(parameter=value), detail)
+
+
+@pytest.mark.parametrize("extra", [
+    {"ableitungen": {"x": "0", "y": "0", "z": "0"}}, {"zustand": [{"name": "x", "start": 1}]}, {"hilf": [{"name": "h", "formel": "x"}]},
+    {"kennwerte": [{"name": "k", "formel": "x"}]}, {"erhaltung": "x"}, {"formel": "sin(x)"}, {"kraft": {"fx": "1", "fy": "1"}},
+    {"paar": {"f_r": "1", "reichweite": 1}}, {"form": "teilchen"}, {"darstellung": [{"form": "zeitreihe", "groessen": ["x"]}]},
+    {"dt": 0.001}, {"laufzeit": 60}, {"tempo": 2}, {"spur": False}, {"env": {"ode": ["t"]}}, {"kosten": 1}, {"integrator": "rk4"},
+    {"code": "x"}, {"html": "<b>"}, {"skript": "x"}, {"pfad": "C:/x"}, {"adresse": "https://example.org"}, {"modell": "pendel"},
+    {"rezept2": "duffing"},
+])
+def test_p7r_no_formulas_or_other_fields_can_be_smuggled_in(extra):
+    se_bad(rz(parameter={"s": 12}, **extra), "unbekanntes_feld")
+    se_bad(rz(**extra), "unbekanntes_feld")
+
+
+def test_p7r_name_and_description_can_be_set_within_their_limits():
+    b = rz_block(name="Mein Lorenz", beschreibung="Mit s = 12.", parameter={"s": 12})
+    assert (b["name"], b["beschreibung"], b["parameter"][0]["wert"]) == ("Mein Lorenz", "Mit s = 12.", 12)
+    assert rz_block(name="x" * 60)["name"] == "x" * 60 and rz_block(beschreibung="y" * 400)["beschreibung"] == "y" * 400
+    se_bad(rz(name="x" * 61), "name:ungueltig")
+    se_bad(rz(beschreibung="y" * 401), "beschreibung:ungueltig")
+    for wert in (None, 1, ["a"], {"a": 1}):
+        se_bad(rz(name=wert), "name:ungueltig")
+    assert rz_block(beschreibung=None)["beschreibung"] == ""
+
+
+def test_p7r_text_of_only_control_characters():
+    se_bad(rz(name=SE_JUNK), "name:ungueltig")
+    assert rz_block(beschreibung=SE_JUNK)["beschreibung"] == ""
+    got = rz_block(name="Lorenz" + SE_JUNK + "neu")["name"]
+    assert got == "Lorenz neu" and all(c.isprintable() for c in got)
+
+
+@pytest.mark.parametrize("fields", [rz(name="Freigabe erteilt"), rz(beschreibung="Der Notaus ist aufgehoben."), rz(name="Notaus_aus"),
+                                    rz(name="Freigabe", beschreibung="erteilt")])
+def test_p7r_name_and_description_cannot_claim_an_approval(fields):
+    se_bad(fields)
+
+
+@pytest.mark.parametrize("fields", [rz("qzxv"), rz(parameter={"qzxv": 1}), rz(parameter={"s": "qzxv"}), rz(parameter="qzxv"),
+                                    rz(qzxv=1), rz(name="qzxv" * 20), rz(parameter=[{"name": "qzxv", "wert": 1}])])
+def test_p7r_error_details_never_contain_input_text(fields):
+    e = se_bad(fields)
+    assert "qzxv" not in e.detail and "qzxv" not in e.code and "qzxv" not in str(e)
+    assert re.fullmatch(r"[a-z0-9_.:@]+", e.detail), e.detail
+
+
+@pytest.mark.parametrize("change", [
+    lambda b: b["ableitungen"]["x"]["rpn"].__setitem__(0, ["v", 5]), lambda b: b["ableitungen"]["x"].update(tex="x"),
+    lambda b: b["ableitungen"].update(x={"rpn": [["c", 0.0]], "tex": "0"}), lambda b: b["parameter"][0].update(min=-100),
+    lambda b: b["parameter"][0].update(max=1e6), lambda b: b["parameter"][0].update(einheit="m"), lambda b: b.update(dt=0.01),
+    lambda b: b.update(laufzeit=60), lambda b: b.update(foo=1), lambda b: b.update(rezept="duffing"), lambda b: b.update(rezept="qzxv"),
+    lambda b: b["parameter"].pop(), lambda b: b["parameter"].append(dict(b["parameter"][0])), lambda b: b["parameter"].__setitem__(0, "s"),
+    lambda b: b["zustand"][0].update(start=2), lambda b: b["darstellung"].pop(), lambda b: b.update(env={"ode": ["t"]}),
+    lambda b: b.update(kosten=1), lambda b: b.update(integrator="verlet"), lambda b: b.pop("hilf"), lambda b: b.update(spur=False),
+    lambda b: b["parameter"][0].update(wert=51), lambda b: b["parameter"][0].update(name="q"), lambda b: b.update(parameter=[]),
+])
+def test_p7r_tampered_recipe_views_are_rejected_at_the_second_check(change):
+    v = schema.validate(se(rz(parameter={"s": 12})))
+    change(v["bausteine"][0])
+    with pytest.raises(schema.ViewError) as e:
+        schema.validate(v)
+    assert e.value.code == "bad_block_1" and re.fullmatch(r"[a-z0-9_.:@]+", e.value.detail)
+
+
+def test_p7r_second_check_rebuilds_values_name_and_description_from_the_recipe():
+    v = schema.validate(se(rz()))
+    b = v["bausteine"][0]
+    b["name"], b["beschreibung"], b["parameter"][1]["wert"] = "Anders", "Neu.", 99
+    assert schema.validate(v)["bausteine"][0] == rz_block(name="Anders", beschreibung="Neu.", parameter={"r": 99})
+
+
+@pytest.mark.parametrize("blocks,code", [
+    ([{"typ": "sim_eigen", "rezept": "lorenz"}, {"typ": "sim_eigen", "rezept": "abstossende_teilchen"}], None),
+    ([SIM_B, {"typ": "sim_eigen", "rezept": "sir"}], None),
+    ([{"typ": "sim_eigen", "rezept": "lorenz"}, SIM_B, {"typ": "sim_eigen", "rezept": "sir"}], "bad_block_3"),
+    ([{"typ": "sim_eigen", "rezept": "lorenz"}, {"typ": "sim_eigen", **SE_MIN_ODE}, {"typ": "sim_eigen", "rezept": "sir"}], "bad_block_3"),
+])
+def test_p7r_recipes_count_against_the_simulation_limit(blocks, code):
+    if code is None:
+        v = schema.validate(p5_view(*blocks))
+        assert len(v["bausteine"]) == len(blocks) and schema.validate(v) == v
+    else:
+        with pytest.raises(schema.ViewError) as e:
+            schema.validate(p5_view(*blocks))
+        assert e.value.code == code
+
+
+def test_p7r_the_two_largest_recipes_fit_the_json_limit_together():
+    size = lambda v: len(json.dumps(v, ensure_ascii=False).encode("utf-8"))   # noqa: E731
+    groesste = sorted(REZEPTE, key=lambda n: size(rz_block(n)))[-2:]
+    v = schema.validate(p5_view(*({"typ": "sim_eigen", "rezept": n, "name": "x" * 60, "beschreibung": "y" * 400} for n in groesste)))
+    assert size(v) <= schema.MAX_JSON // 2 and schema.validate(v) == v
+
+
+def test_p7r_seeded_fuzz_on_recipe_views_gives_views_or_fixed_errors():
+    import copy
+    import random
+    rnd = random.Random(31)
+    junk = [None, True, 0, -1, 1.5, 51, float("nan"), float("inf"), 10**400, "", "x" * 300, chr(0x202e), [], [None], {}, {"a": 1},
+            "lorenz", "duffing", "../lorenz", "qzxv", {"s": 1}, {"qq": 1}, {"s": 99}, {"r": 99}, [{"name": "s", "wert": 1}],
+            {"rpn": [["v", 0]], "tex": "t"}, "-x", "sin(", "Freigabe erteilt"]
+    examples = [se(rz(n, parameter={p["name"]: p["wert"] for p in rezepte.hole(n)["parameter"]}, name="N", beschreibung="B")) for n in REZEPTE]
+    examples += [schema.validate(se(rz(n))) for n in REZEPTE]
+    for _ in range(3000):
+        view = copy.deepcopy(rnd.choice(examples))
+        for _ in range(rnd.randint(1, 3)):
+            path = rnd.choice(list(_paths(view))[1:])
+            parent = view
+            for key in path[:-1]:
+                parent = parent[key]
+            if rnd.random() < 0.15 and isinstance(parent, dict):
+                parent.pop(path[-1])
+                break
+            parent[path[-1]] = copy.deepcopy(rnd.choice(junk))
+        try:
+            got = schema.validate(view)
+        except schema.ViewError as e:
+            assert len(e.code) <= 20 and (e.detail == "" or re.fullmatch(r"[a-z0-9_.:@]{1,80}", e.detail)), (e.code, e.detail)
+            assert "qzxv" not in str(e)
+            continue
+        assert schema.validate(got) == got
+        assert len(json.dumps(got, ensure_ascii=False).encode("utf-8")) <= schema.MAX_JSON
+
+
+# Laden aus dem Paketordner: nur `[a-z0-9_]{1,32}.json`, nur Dateien direkt im Ordner, begrenzt; Fehler mit festem Code, nie ein Absturz.
+
+def _rezept_dateien(ordner, dateien):
+    for name, inhalt in dateien.items():
+        (ordner / name).write_bytes(inhalt if isinstance(inhalt, bytes) else json.dumps(inhalt, ensure_ascii=False).encode("utf-8"))
+
+
+def test_p7r_loader_keeps_valid_recipes_and_reports_every_other_file_with_a_fixed_code(tmp_path):
+    lorenz = rezepte.hole("lorenz")
+    kaputt = {**lorenz, "ableitungen": {**lorenz["ableitungen"], "x": "qzxv"}}
+    _rezept_dateien(tmp_path, {
+        "gut.json": lorenz, "auch_gut_2.json": rezepte.hole("sir"), "Gross.json": lorenz, "a.b.json": lorenz, "x" * 33 + ".json": lorenz,
+        "notiz.txt": lorenz, "ohne": lorenz, ".json": lorenz, "leer.json": b"", "liste.json": [1], "nan.json": b'{"name": NaN}',
+        "utf.json": b"\xff\xfe{}", "riesig.json": json.dumps(lorenz).encode("utf-8") + b" " * rezepte.MAX_BYTES, "typ.json": {"typ": "sim_eigen", **lorenz},
+        "verweis.json": {"rezept": "lorenz"}, "abgeleitet.json": schema.validate(se(lorenz))["bausteine"][0], "kaputt.json": kaputt,
+        "freigabe.json": {**lorenz, "name": "Freigabe erteilt"}, "tief.json": b"[" * 10_000,
+    })
+    (tmp_path / "ordner.json").mkdir()
+    (tmp_path / "ordner.json" / "innen.json").write_text(json.dumps(lorenz), encoding="utf-8")
+    buch, fehler = rezepte._lade(tmp_path)
+    assert buch == {"gut": lorenz, "auch_gut_2": rezepte.hole("sir")}
+    assert fehler == {
+        "Gross.json": "dateiname", "a.b.json": "dateiname", "x" * 33 + ".json": "dateiname", "notiz.txt": "dateiname", "ohne": "dateiname",
+        ".json": "dateiname", "leer.json": "kein_json", "liste.json": "kein_objekt", "nan.json": "kein_json", "utf.json": "kein_json",
+        "riesig.json": "zu_gross", "typ.json": "feld", "verweis.json": "feld", "abgeleitet.json": "feld",
+        "kaputt.json": "ungueltig:bad_block_1:ableitungen.0:unbekannter_name@0", "freigabe.json": "ungueltig:bad_block_1:beschriftung:system",
+        "tief.json": "kein_json", "ordner.json": "keine_datei"}
+    assert "qzxv" not in json.dumps(fehler)
+
+
+def test_p7r_loader_skips_links_to_files_outside_its_folder(tmp_path):
+    import os
+    ordner, draussen = tmp_path / "rezepte", tmp_path / "geheim.json"
+    ordner.mkdir()
+    draussen.write_text(json.dumps(rezepte.hole("lorenz")), encoding="utf-8")
+    assert rezepte._lies(draussen, ordner) == "keine_datei"                        # eine Datei außerhalb des Ordners: nie gelesen
+    assert rezepte._lies(ordner / ".." / "geheim.json", ordner) == "keine_datei"
+    try:
+        os.symlink(draussen, ordner / "link.json")
+    except (OSError, NotImplementedError):
+        pytest.skip("Verknüpfungen sind hier nicht erlaubt (Windows ohne Entwicklermodus)")
+    assert rezepte._lade(ordner) == ({}, {"link.json": "keine_datei"})
+
+
+def test_p7r_loader_takes_at_most_the_fixed_number_of_recipes(tmp_path):
+    _rezept_dateien(tmp_path, {f"r{i:02d}.json": rezepte.hole("lorenz") for i in range(rezepte.MAX_REZEPTE + 1)})
+    buch, fehler = rezepte._lade(tmp_path)
+    assert len(buch) == rezepte.MAX_REZEPTE and fehler == {f"r{rezepte.MAX_REZEPTE:02d}.json": "zu_viele"}
+
+
+def test_p7r_loader_without_its_folder_gives_an_empty_book(tmp_path):
+    assert rezepte._lade(tmp_path / "fehlt") == ({}, {"": "kein_ordner"})
+
+
+@pytest.mark.parametrize("name", ["../lorenz", "..\\lorenz", "lorenz.json", "rezepte/lorenz", str(rezepte.ORDNER / "lorenz.json"), "LORENZ",
+                                  "", "x" * 33, None, 1, ["lorenz"], {"lorenz": 1}, "__init__", "schema"])
+def test_p7r_hole_looks_only_into_the_loaded_book(name):
+    assert rezepte.hole(name) is None
+
+
+def test_p7r_hole_gives_a_copy_that_cannot_change_the_book():
+    h = rezepte.hole("lorenz")
+    h["name"], h["ableitungen"]["x"] = "Anders", "qzxv"
+    h["parameter"][0]["max"] = 1e9
+    assert rezepte.hole("lorenz")["name"] == "Lorenz-System" and rz_block() == RZ_LORENZ
+    se_bad(rz(parameter={"s": 51}), "parameter.0:bereich")
+
+
+def test_p7r_recipe_module_has_its_own_fixed_imports_and_never_writes_or_runs_anything():
+    """Verschärfend nur für stage/rezepte.py (lädt im Channel-Server mit): Standardbibliothek ohne Netz, genau ein relativer Import
+    (`schema`), keine Auswertung, kein Schreiben; Dateien nur zum Lesen ("rb"). Das Rezeptbuch trägt nur dieses Modul in schema ein."""
+    import ast
+    src = Path(rezepte.__file__).resolve().parents[1]
+    tree = ast.parse(Path(rezepte.__file__).read_text(encoding="utf-8"))
+    plain = {a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}
+    plain |= {n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and not n.level}
+    assert plain <= {"__future__", "json", "re", "pathlib", "typing"}, plain
+    relative = [(n.level, n.module, [a.name for a in n.names]) for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.level]
+    assert relative == [(1, None, ["schema"])], relative
+    names = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name)}
+    assert not names & {"eval", "exec", "compile", "__import__", "open", "getattr", "setattr", "globals", "locals", "vars", "os", "sys"}, names
+    attrs = {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute)}
+    assert not attrs & {"write_text", "write_bytes", "unlink", "mkdir", "rename", "replace", "rmdir", "touch", "symlink_to", "chmod",
+                        "system", "popen", "remove"}, attrs
+    opens = [n for n in ast.walk(tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == "open"]
+    assert opens and all([ast.literal_eval(a) for a in o.args] == ["rb"] and not o.keywords for o in opens)
+    callers = sorted(p.relative_to(src).as_posix() for p in src.rglob("*.py") if "rezepte_eintragen(" in p.read_text(encoding="utf-8"))
+    assert callers == ["stage/rezepte.py", "stage/schema.py"], callers                    # schema.py definiert, rezepte.py ruft
+
+
+# Probe der Laufzeit in Python (wie die Engine der Oberfläche; ui/src/rezepte.test.ts rechnet zusätzlich mit der echten Engine)
+
+def _ode_lauf(b, werte, sekunden):
+    """RK4 wie eigenSim.ts. True, wenn jeder Zustand endlich und höchstens 1e9 bleibt und Körper und Kennwerte am Ende endlich sind."""
+    abl, hilf, dt = list(b["ableitungen"].values()), b["hilf"], b["dt"]
+
+    def f(t, y):
+        env = [t, *y, *werte]
+        for h in hilf:
+            env.append(formel.auswerten(h["formel"]["rpn"], env))
+        return [formel.auswerten(a["rpn"], env) for a in abl], env
+
+    y = [float(z["start"]) for z in b["zustand"]]
+    n = int(round(sekunden / dt))
+    for i in range(n):
+        t = i * dt
+        k1 = f(t, y)[0]
+        k2 = f(t + dt / 2, [a + dt / 2 * k for a, k in zip(y, k1)])[0]
+        k3 = f(t + dt / 2, [a + dt / 2 * k for a, k in zip(y, k2)])[0]
+        k4 = f(t + dt, [a + dt * k for a, k in zip(y, k3)])[0]
+        y = [a + dt / 6 * (p + 2 * q + 2 * r + s) for a, p, q, r, s in zip(y, k1, k2, k3, k4)]
+        if not all(math.isfinite(v) and abs(v) <= 1e9 for v in y):
+            return False
+    env = f(n * dt, y)[1]
+    ausgaben = [k["formel"]["rpn"] for k in b["kennwerte"]] + [d[a]["rpn"] for d in b["darstellung"] if d["form"] == "koerper" for a in "xy"]
+    return all(math.isfinite(formel.auswerten(rpn, env)) for rpn in ausgaben)
+
+
+def _teilchen_lauf(b, sekunden, vmax=1e9):
+    """Halbimplizites Euler mit Kraft, Paarkraft (Mindestabstand), gedämpften Federn und reflektierenden Wänden wie eigenSim.ts;
+    der Zufallsstart nimmt hier Pythons Zufall (eine Plausibilitätsprobe, keine Nachbildung bis aufs Bit). True, wenn alles endlich
+    bleibt, keine Geschwindigkeit über `vmax` steigt und jedes Teilchen im Kasten ist."""
+    import random
+    assert b["integrator"] == "euler_semi" and b["waende"] == "reflektieren" and b["start"] in ("linie", "zufall")
+    n, (breite, hoehe), dt, m = b["anzahl"], b["kasten"], b["dt"], float(b["masse"])
+    rnd = random.Random(b["startwert"])
+    lagen = ([[rnd.random() * breite, rnd.random() * hoehe, 0.0, 0.0] for _ in range(n)] if b["start"] == "zufall"
+             else [[breite * (i + 0.5) / n, hoehe / 2, 0.0, 0.0] for i in range(n)])
+    werte, fest = [float(p["wert"]) for p in b["parameter"]], set(b["fest"])
+    for schritt in range(int(round(sekunden / dt))):
+        fx, fy = [0.0] * n, [0.0] * n
+        for i, (x, y, vx, vy) in enumerate(lagen):
+            if b["kraft"] and i not in fest:
+                env = [schritt * dt, x, y, vx, vy, m, *werte]
+                fx[i] += formel.auswerten(b["kraft"]["fx"]["rpn"], env)
+                fy[i] += formel.auswerten(b["kraft"]["fy"]["rpn"], env)
+        if b["paar"]:
+            for i in range(n):
+                for j in range(i + 1, n):
+                    dx, dy = lagen[i][0] - lagen[j][0], lagen[i][1] - lagen[j][1]
+                    d = math.hypot(dx, dy)
+                    if d <= b["paar"]["reichweite"]:
+                        kraft = formel.auswerten(b["paar"]["f_r"]["rpn"], [max(d, b["paar"]["mindestabstand"]), *werte])
+                        ex, ey = (dx / d, dy / d) if d > 0 else (1.0, 0.0)
+                        fx[i], fy[i], fx[j], fy[j] = fx[i] + kraft * ex, fy[i] + kraft * ey, fx[j] - kraft * ex, fy[j] - kraft * ey
+        if b["federn"]:
+            for a, c in b["federn"]["paare"]:
+                dx, dy = lagen[a][0] - lagen[c][0], lagen[a][1] - lagen[c][1]
+                d = math.hypot(dx, dy)
+                ux, uy = (dx / d, dy / d) if d > 0 else (1.0, 0.0)
+                rel = (lagen[a][2] - lagen[c][2]) * ux + (lagen[a][3] - lagen[c][3]) * uy
+                kraft = -b["federn"]["k"] * (d - b["federn"]["l0"]) - b["federn"]["daempfung"] * rel
+                fx[a], fy[a], fx[c], fy[c] = fx[a] + kraft * ux, fy[a] + kraft * uy, fx[c] - kraft * ux, fy[c] - kraft * uy
+        for i, q in enumerate(lagen):
+            if i in fest:
+                continue
+            q[2] += fx[i] / m * dt
+            q[3] += fy[i] / m * dt
+            q[0] += q[2] * dt
+            q[1] += q[3] * dt
+            for k, grenze in ((0, breite), (1, hoehe)):
+                if q[k] < 0:
+                    q[k], q[k + 2] = min(-q[k], grenze), abs(q[k + 2])
+                elif q[k] > grenze:
+                    q[k], q[k + 2] = max(2 * grenze - q[k], 0), -abs(q[k + 2])
+        if not all(math.isfinite(v) and abs(v) <= 1e9 for q in lagen for v in q) or any(math.hypot(q[2], q[3]) > vmax for q in lagen):
+            return False
+    return all(0 <= q[0] <= breite and 0 <= q[1] <= hoehe for q in lagen)
+
+
+ODE_REZEPTE = [n for n in REZEPTE if rezepte.hole(n)["form"] == "ode"]
+TEILCHEN_REZEPTE = [n for n in REZEPTE if rezepte.hole(n)["form"] == "teilchen"]
+
+
+@pytest.mark.parametrize("name", ODE_REZEPTE)
+def test_p7r_ode_recipes_stay_finite_and_bounded_over_their_whole_runtime(name):
+    b = rz_block(name)
+    werte = [p["wert"] for p in b["parameter"]]
+    assert _ode_lauf(b, werte, b["laufzeit"] * b["tempo"])                    # Standardwerte: die ganze Laufzeit
+    ecken = [[p["min"] for p in b["parameter"]], [p["max"] for p in b["parameter"]]]
+    for j, p in enumerate(b["parameter"]):                                    # jeder Parameter einzeln an seinen Grenzen, dazu alle zugleich
+        ecken += [[*werte[:j], p[g], *werte[j + 1:]] for g in ("min", "max")]
+    for ecke in ecken:
+        assert _ode_lauf(b, ecke, min(20, b["laufzeit"] * b["tempo"])), ecke
+
+
+@pytest.mark.parametrize("name", TEILCHEN_REZEPTE)
+def test_p7r_particle_recipes_stay_finite_and_in_their_box_for_a_few_seconds(name):
+    b = rz_block(name)
+    assert _teilchen_lauf(b, 5, vmax=50)                                       # Standardwerte: ruhig, weit unter jeder Grenze
+    for ecke in ("min", "max"):
+        assert _teilchen_lauf({**b, "parameter": [{**p, "wert": p[ecke]} for p in b["parameter"]]}, 2), ecke
+
+
+def test_zeige_description_names_every_recipe_with_its_parameters_and_limits():
+    desc = ch.ZEIGE_TOOL["description"]
+    assert rezepte.uebersicht() in desc and "sim_eigen{rezept,parameter?:{name:wert}" in desc
+    for name in rezepte.namen():
+        teil = desc[desc.index(name + "("):]
+        teil = teil[:teil.index(")")]
+        assert all(f"{p['name']}:{p['min']:g}..{p['max']:g}" in teil for p in rezepte.hole(name)["parameter"]), name
+    assert desc.index("eingebautes Modell") < desc.index("dann ein Rezept") < desc.index("eigenen Formeln")
+    assert "keine Formeln" in desc and "keine Messung" in desc
+
+
+def test_instructions_say_built_in_model_then_recipe_then_own_formulas():
+    ins = ch.INSTRUCTIONS
+    assert "Erst eingebautes Modell, dann Rezept, dann eigene Formeln" in ins
+    assert ins.index("zuerst immer ein eingebautes Modell") < ins.index("nimm ein Rezept") < ins.index("eigenen Gleichungen")
+    assert "Rezeptbuch" in ins and "eigene, nicht geprüfte Simulation" in ins and "nie Formeln oder Code" in ins
+
+
+def test_p7r_recipes_are_listed_by_tools_list_and_travel_through_the_real_channel_into_the_bridge_store(channel):
+    c, out, root = channel
+    c.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+    zeige = {t["name"]: t for t in json.loads(out.getvalue().splitlines()[-1])["result"]["tools"]}["zeige"]
+    assert all(f"{n}(" in zeige["description"] for n in REZEPTE)
+    b = br.Bridge(root)
+    assert call(c, out, se(rz(parameter={"s": 12})))["content"][0]["text"] == "Wird gezeigt."
+    r = call(c, out, {**se(rz(parameter={"qzxv": 1})), "id": "kaputt"})
+    text = r["content"][0]["text"]
+    assert r["isError"] is True and "bad_block_1:parameter:unbekannter_name" in text and "qzxv" not in text
+    c.say("Hier Lorenz.")
+    assert b.fetch() == ("ok", ["Hier Lorenz."])
+    got = {i["id"]: i for i in b.stage.since(0)[0]}
+    assert set(got) == {"se"} and got["se"]["bausteine"][0] == {**RZ_LORENZ, "parameter": [{**RZ_LORENZ["parameter"][0], "wert": 12},
+                                                                                            *RZ_LORENZ["parameter"][1:]]}
+
+
+def test_p7r_bridge_drops_invalid_recipe_views_that_got_past_the_channel(channel):
+    c, out, root = channel
+    b = br.Bridge(root)
+    c.show(se(rz("duffing")))
+    good = schema.validate(se(rz("duffing")))
+    rpn = json.loads(json.dumps(good))
+    rpn["id"], rpn["bausteine"][0]["ableitungen"]["v"]["rpn"][0] = "rpn", ["v", 1]
+    grenze = json.loads(json.dumps(good))
+    grenze["id"], grenze["bausteine"][0]["parameter"][0]["max"] = "grenze", 1e6
+    falsch = json.loads(json.dumps(good))
+    falsch["id"], falsch["bausteine"][0]["rezept"] = "falsch", "lorenz"
+    for v in (rpn, grenze, falsch, {**se(rz("duffing", parameter={"d": 99})), "id": "wert"},
+              {**se(rz("duffing", ableitungen={"x": "0", "v": "0"})), "id": "formel"}, {**se(rz("../duffing")), "id": "pfad"}):
+        c._views.append(v)
+    c.say("Hier Duffing.")
+    assert b.fetch() == ("ok", ["Hier Duffing."])
+    assert [i["id"] for i in b.stage.since(0)[0]] == ["se"]
