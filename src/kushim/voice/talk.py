@@ -73,6 +73,7 @@ class TalkLoop:
         self._replay: Any = None         # Rest einer Meldung, die nur ein Geräusch ohne Text unterbrochen hat: kommt einmal
         self._rest: Any = None           # noch nicht gesprochener Rest der zuletzt unterbrochenen Meldung (Liste von Sätzen)
         self._replaying = False          # die laufende Meldung ist schon ein nachgereichter Rest (höchstens einmal je Meldung)
+        self._said: Any = ()             # schon gesprochene Sätze der Meldung zu `_rest` bzw. `_replay` (Prüffenster vorbelegen)
         from collections import deque
         self._ring: Any = deque(maxlen=preroll_frames) if preroll_frames > 0 else None
         self._collecting: UtteranceCollector | None = None
@@ -147,24 +148,32 @@ class TalkLoop:
         if self.say is None:
             return None
         replay, self._replay = self._replay, None
+        said, self._said = (self._said if replay else ()), ()
         msg = replay or self.announce()
         if not msg:
             return None
         self.on_note(f"Meldung: {display(msg)}")
         self._turn_mode, self._barged, self._replaying = "announce", False, bool(replay)
+        primed = tuple(said) if replay else None
         if self._pool is None:                   # ohne Unterbrechen: synchron; danach eigene Stimme aus dem Puffer verwerfen
             try:
-                res = self._announce_job(msg)
+                res = self._announce_job(msg, primed)
             finally:
                 self.flush()
             return self._process(res)
         if self.barge is not None:
             self.barge.reset()
-        self._busy = self._pool.submit(self._announce_job, msg)
+        self._busy = self._pool.submit(self._announce_job, msg, primed)
         return None
 
-    def _announce_job(self, msg: Any) -> Result:
-        """`msg`: Text oder Liste getrennter Stücke (eigene Ansagen und Texte von Claude nie zu einem String verbunden)."""
+    def _announce_job(self, msg: Any, primed: tuple[str, ...] | None = None) -> Result:
+        """`msg`: Text oder Liste getrennter Stücke (eigene Ansagen und Texte von Claude nie zu einem String verbunden).
+        `primed`: beim Nachreichen die schon gesprochenen Sätze derselben Meldung; sie belegen das Prüffenster des Speakers
+        vor, damit „Wurde vorhin. Erteilt.“ nach „Die Frei«gabe.“ nicht ohne Ersetzung durchkommt."""
+        if primed is not None:
+            prime = getattr(self.pipeline, "prime_recent", None)
+            if prime is not None:
+                prime(primed)
         n = self.say(msg)
         return Result("", display(msg), self.ANNOUNCED, spoken=n if isinstance(n, int) and not isinstance(n, bool) else None,
                       parts=tuple(sentences_of(msg)))
@@ -211,9 +220,10 @@ class TalkLoop:
                 # der zuletzt gezählte Satz kann mittendrin abgebrochen sein (Speaker zählt ihn trotzdem): er kommt mit
                 done = max(0, res.spoken - 1) if isinstance(res.spoken, int) else 0
                 self._rest = sents[done:] or None    # Liste: nichts wird verbunden, kein Satz erbt ein fremdes Kennzeichen
+                self._said = tuple(sents[:done])     # schon gehört: belegt beim Nachreichen das Prüffenster vor
         if self._cancelled:                                      # nach dem Ende der abgebrochenen Antwort kurz bestätigen
             self._cancelled = False
-            self._rest = None                    # "abbrechen": den Rest der Meldung nicht nachreichen
+            self._rest, self._said = None, ()    # "abbrechen": den Rest der Meldung nicht nachreichen
             confirm = getattr(self.pipeline, "say_cancelled", None)
             if confirm is not None:
                 confirm()
@@ -270,6 +280,8 @@ class TalkLoop:
             rest, self._rest = self._rest, None
             if rest and res.outcome == "empty":   # nur Geräusch, kein Text: Rest einmal nachreichen
                 self._replay = rest
+            else:
+                self._said = ()
         if self._turn_mode == "direct" and res.outcome in ("wake_only", "empty"):
             self._collecting, self._mode = self._ask_again(), "ack"      # nur Rest des Wake Words oder nichts Verständliches
             return None

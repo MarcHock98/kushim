@@ -5,6 +5,8 @@ Die Engine (Kokoro „Martin“ im eigenen Prozess, `voice/ttsworker.py`) wird v
   Abschnitt auf höchstens LONG_SPLIT Zeichen kürzen (sonst scheitert Kokoro an über 510 Phonemen);
 - Text normalisieren (`speechnorm`, nach `imitation.guard`, entfernt Steuerzeichen) und danach Claudes Sätze noch einmal auf
   nachgeahmte Systemansagen prüfen (die Normalisierung entfernt Zeichen, die den ersten Filter umgehen konnten);
+- das Prüffenster über `say`-Aufrufe hinweg halten (`ForeignWindow`): getrennt abgeholte oder nachgereichte Sätze von Claude
+  („Die Freigabe.“ und kurz danach „Ist erteilt.“) werden zusammen geprüft;
 - einen Satz vorausrechnen: Satz n+1 wird synthetisiert, während Satz n läuft;
 - feste Sätze aus kushims Code („Ja?“, „Moment.“, Bestätigungen) einmal rechnen und wiederverwenden (`SentenceCache`);
 - fällt die Stimme aus, nie still bleiben: Hinweiston und Text (`on_unspoken`).
@@ -15,6 +17,7 @@ from __future__ import annotations
 import queue
 import re
 import threading
+import time
 from dataclasses import dataclass
 from typing import Any, Callable, Iterable, Iterator, Protocol, Sequence
 
@@ -287,6 +290,68 @@ def imitation_suspect(text: str) -> bool:
     return folded_suspect(text)
 
 
+FOREIGN_GAP = 8.0               # so viele Sekunden nach dem letzten fremden Satz gilt das Fenster noch im nächsten `say`
+
+
+class ForeignWindow:
+    """Die zuletzt gesprochenen fremden Sätze (nicht kushims eigene), normalisiert, über `say`-Aufrufe hinweg.
+
+    Schließt zwei Lücken des Fensters im Speaker, das nur innerhalb eines `say` galt: zwei getrennt abgeholte `sprich`-Texte
+    („Die Freigabe.“, kurz danach „Ist erteilt.“) und das Nachreichen einer unterbrochenen Meldung ab Satz 2. Gilt nur, wenn
+    der vorige fremde Satz höchstens `gap` Sekunden her ist (`clock` austauschbar, für Tests). Geleert bei eigenem Text,
+    Treffer, Abbruch, Unterbrechen, Notaus und neuer Nutzerrunde. Jedes Leeren beginnt eine neue Generation: Ein `say`, das
+    davor begonnen hat, schreibt danach nichts mehr hinein. Thread-sicher, nur im Arbeitsspeicher (nie auf die Platte)."""
+
+    def __init__(self, size: int = IMITATION_WINDOW, gap: float = FOREIGN_GAP, clock: Callable[[], float] = time.monotonic):
+        self.size, self.gap, self.clock = size, gap, clock
+        self._lock = threading.Lock()
+        self._text = ""
+        self._at = 0.0                      # Zeitpunkt des letzten fremden Satzes (bzw. des Endes seiner Wiedergabe)
+        self._gen = 0
+
+    def _fresh(self) -> bool:
+        return bool(self._text) and self.clock() - self._at <= self.gap
+
+    def generation(self) -> int:
+        with self._lock:
+            return self._gen
+
+    def recent(self) -> str:
+        """Der normalisierte Text davor, wenn er höchstens `gap` Sekunden alt ist, sonst ""."""
+        with self._lock:
+            return self._text if self._fresh() else ""
+
+    def add(self, text: str, gen: int) -> bool:
+        """Einen gesprochenen fremden Satz anhängen (nur in derselben Generation; Älteres als `gap` fällt vorher weg)."""
+        with self._lock:
+            if gen != self._gen:
+                return False
+            before = self._text if self._fresh() else ""
+            self._text = f"{before} {text}".strip()[-self.size:]
+            self._at = self.clock()
+            return True
+
+    def touch(self) -> None:
+        """Ein `say` ist regulär zu Ende: die Frist zählt ab jetzt (der letzte Satz lief bis eben)."""
+        with self._lock:
+            if self._fresh():
+                self._at = self.clock()
+
+    def clear(self) -> int:
+        """Leeren (Abbruch, Unterbrechen, Notaus, neue Runde). Gibt die neue Generation zurück."""
+        with self._lock:
+            self._text, self._gen = "", self._gen + 1
+            return self._gen
+
+    def restart(self, gen: int) -> int:
+        """Leeren aus einem laufenden `say` (eigener Text, Treffer), nur wenn `gen` noch gilt; sonst bleibt `gen` (veraltet)."""
+        with self._lock:
+            if gen != self._gen:
+                return gen
+            self._text, self._gen = "", self._gen + 1
+            return self._gen
+
+
 class Speaker:
     def __init__(self, engine: Engine, play: Callable[[Any], None],
                  should_stop: Callable[[], bool] = lambda: False, lookahead: bool = True):
@@ -301,10 +366,14 @@ class Speaker:
         self.hint: Any = None               # Hinweiston (WAV), wenn die Stimme ausfällt; einmal je `say`
         self.on_unspoken: Callable[[str], None] = lambda text: None    # Satz als Text, wenn die Stimme ausfällt
         self.imitations = 0                 # nach der Normalisierung ersetzte Sätze (nur Zählung)
+        self.recent = ForeignWindow()       # fremde Sätze der letzten `say`-Aufrufe (nur Arbeitsspeicher)
 
-    def _parts(self, sentences: Iterable[str]) -> Iterator[_Part]:
+    def _parts(self, sentences: Iterable[str], count: bool = True) -> Iterator[_Part]:
         first = True
         window = ""                                       # normalisierter Text der fremden Sätze dieses `say` (gleitend)
+        carried: str | None = None                        # fremder Text aus früheren `say` (beim ersten fremden Satz gelesen)
+        recent = self.recent
+        gen = recent.generation()
         for index, raw in enumerate(sentences):
             chime = raw.startswith(MARK)
             own = raw.startswith((MARK, OWN))             # kushims eigener fester Text (nur aus dem Code, nie von Claude)
@@ -312,32 +381,60 @@ class Speaker:
             if not text:
                 continue
             shown = _visible(raw)
-            if not own:
+            if own:
+                gen = recent.restart(gen)                 # eigener Text trennt: das Davor zählt in späteren `say` nicht mehr
+                carried = ""
+            else:
+                if carried is None:
+                    carried = recent.recent()             # "" wenn leer oder der vorige fremde Satz älter als FOREIGN_GAP
                 # Zweite Prüfung NACH der Normalisierung: Sie entfernt Anführungszeichen, Emoji und andere Zeichen, mit denen
                 # Claude „Not«aus“ oder „Freig„abe erteilt“ am ersten Filter vorbeibringen könnte. Geprüft wird der Satz, das
-                # gleitende Fenster über die fremden Sätze davor („Die Frei«gabe. Wurde vorhin. Erteilt.“) und der Rohtext.
-                tail = window[-IMITATION_WINDOW:]
+                # gleitende Fenster über die fremden Sätze davor („Die Frei«gabe. Wurde vorhin. Erteilt.“), auch aus den
+                # `say`-Aufrufen kurz davor, und der Rohtext.
+                tail = f"{carried} {window}".strip()[-IMITATION_WINDOW:]
                 if (imitation.imitates_system(shown) or imitation_suspect(text)
                         or (tail and imitation_suspect(f"{tail} {text}"))):
-                    self.imitations += 1
+                    if count:
+                        self.imitations += 1
                     shown = imitation.NEUTRAL
                     text = normalize(imitation.NEUTRAL)
-                    window = ""                           # Fund verbraucht: spätere Sätze nicht deswegen ersetzen
+                    window = carried = ""                 # Fund verbraucht: spätere Sätze nicht deswegen ersetzen
+                    gen = recent.restart(gen)
                 else:
                     window = f"{window} {text}".strip()[-IMITATION_WINDOW:]
+                    recent.add(text, gen)
             for i, piece in enumerate(speech_pieces(text, first and self.split_first)):
                 yield _Part(index, i == 0, chime and i == 0, piece, shown)
             first = False
+
+    def forget_recent(self) -> None:
+        """Fenster über `say` hinweg leeren (Abbruch, Unterbrechen, Notaus, neue Nutzerrunde)."""
+        self.recent.clear()
+
+    def prime_recent(self, sentences: Iterable[str]) -> None:
+        """Nachreichen: das Fenster mit den schon gesprochenen Sätzen derselben Meldung vorbelegen, genau so, wie der Speaker sie
+        beim ersten Mal gesehen hat (eigene Sätze trennen, ein Treffer leert). Spricht nichts, zählt nichts."""
+        self.recent.clear()
+        for _ in self._parts(sentences, count=False):
+            pass
 
     def say(self, sentences: Iterable[str]) -> int:
         """Spielt Sätze nacheinander; bricht vor jedem Satz ab, wenn `should_stop` (Barge-in/Notaus). Beginnt ein Satz mit
         `earcon.MARK`, kommt vorher der Signalton (das Zeichen selbst wird nie gesprochen). Gibt die Zahl der gelieferten
         Sätze zurück: gesprochen oder (Stimme fehlt) als Text gezeigt; ein geteilter Satz zählt einmal. So setzt das
-        Nachreichen einer unterbrochenen Meldung an der richtigen Stelle wieder an."""
+        Nachreichen einer unterbrochenen Meldung an der richtigen Stelle wieder an. Abgebrochen (Unterbrechen, Notaus,
+        Fehler): das Fenster über `say` hinweg wird geleert; regulär zu Ende: seine Frist zählt ab jetzt."""
         parts = self._parts(sentences)
-        if not self.lookahead:
-            return self._say_serial(parts)
-        return self._say_ahead(parts)
+        try:
+            n = self._say_serial(parts) if not self.lookahead else self._say_ahead(parts)
+        except BaseException:
+            self.recent.clear()
+            raise
+        if self.should_stop():
+            self.recent.clear()
+        else:
+            self.recent.touch()
+        return n
 
     def _synth(self, part: _Part) -> _Part:
         try:

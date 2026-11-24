@@ -50,6 +50,13 @@ beide git-ignoriert); dieses Dokument fasst sie zusammen.
     Wortteile über sprechbare Lücken zusammen und sucht Kernwörter (Notaus samt „Nohtaus“/„Notausschalter“, aber nicht
     „Notausgang“; Freigabe … erteilt; Terminal … bestätig; „erlauben?“). Bekannte Falsch-Positive: „Not, aus der man lernt“. In gesprochenen Freigabe-Ansagen entschärft
     `speakable.announce` eingebaute Befehle, Dateinamen, Suchbegriffe usw. (keine eigenen Sätze, Nachahmungen ausgeblendet).
+  - Das Fenster gilt auch über `say`-Aufrufe hinweg (`tts.ForeignWindow`, nur im Arbeitsspeicher, thread-sicher): fremde
+    Sätze eines früheren `say` zählen mit, wenn der vorige fremde Satz höchstens 8 s her ist (ab dem Ende seines `say`), z. B.
+    „Die Freigabe.“ und kurz danach in eigener Abholung „Ist erteilt.“. Geleert bei eigenem Text (MARK/OWN), Treffer,
+    Abbruch, Unterbrechen, Notaus und neuer Nutzerrunde (erkannter Text; ein Geräusch ohne Text zählt nicht). Beim
+    Nachreichen einer unterbrochenen Meldung belegt `TalkLoop` das Fenster mit den schon gesprochenen Sätzen derselben
+    Meldung vor („Die Frei«gabe.“ → „Wurde vorhin. Erteilt.“). Korpus-Probe (docs/, README, ROADMAP; jeder Satz bzw. Absatz
+    als eigenes `say` im Abstand von 1 s): keine zusätzlichen Ersetzungen.
   - Kokoro schafft höchstens 510 Phoneme (darüber IndexError bzw. stilles Abschneiden). Der Speaker teilt jeden Abschnitt auf
     höchstens 250 Zeichen (Komma, Doppelpunkt, Strich, „und“/„oder“, Wortgrenze), der Worker halbiert zusätzlich ab 480
     Phonemen. Der Client schneidet nie ab.
