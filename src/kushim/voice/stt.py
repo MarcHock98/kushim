@@ -45,6 +45,14 @@ def add_cuda_dll_dirs() -> None:
                 os.environ["PATH"] = d + os.pathsep + os.environ.get("PATH", "")
 
 
+def cpu_threads(count: int | None = None) -> int:
+    """Kerne für Whisper auf dem Prozessor (macOS, keine NVIDIA-Karte): die Hälfte, mindestens 4, höchstens 8.
+    Der Rest bleibt für Wake Word, Stimme und Claude Code."""
+    import os
+    n = os.cpu_count() if count is None else count
+    return max(4, min(8, (n or 8) // 2))
+
+
 def to_float32(pcm: Any) -> np.ndarray:
     """int16-PCM (16 kHz, mono) -> float32 in [-1, 1]. float32-Eingaben werden begrenzt."""
     arr = np.asarray(pcm)
@@ -60,13 +68,14 @@ class SpeechToText:
 
     @classmethod
     def from_local(cls, model_path: str, device: str = "auto", compute_type: str = "default",
-                   device_index: int = 0, **kw) -> "SpeechToText":
+                   device_index: int = 0, cpu_threads: int = 0, **kw) -> "SpeechToText":
         """Lädt ein bereits lokal vorhandenes CTranslate2-Whisper-Modell (Verzeichnis).
-        `device_index`: Nummer der Grafikkarte (nur bei device="cuda", siehe gpu.py)."""
+        `device_index`: Nummer der Grafikkarte (nur bei device="cuda", siehe gpu.py).
+        `cpu_threads`: Rechenkerne auf dem Prozessor (0 = Standard von CTranslate2, 4), siehe `cpu_threads()`."""
         add_cuda_dll_dirs()
         from faster_whisper import WhisperModel
         return cls(WhisperModel(model_path, device=device, device_index=device_index, compute_type=compute_type,
-                                local_files_only=True), **kw)
+                                cpu_threads=cpu_threads, local_files_only=True), **kw)
 
     def transcribe(self, pcm: Any) -> Transcript:
         audio = to_float32(pcm)

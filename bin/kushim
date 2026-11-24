@@ -1,0 +1,13 @@
+#!/bin/sh
+# kushim-Befehl (macOS/Linux): startet die Projekt-venv. install.sh legt einen Link ~/.local/bin/kushim hierher an.
+# Der Link wird aufgelöst, damit der Projektordner auch über ~/.local/bin gefunden wird.
+self="$0"
+while [ -L "$self" ]; do
+    target="$(readlink "$self")"
+    case "$target" in
+        /*) self="$target" ;;
+        *) self="$(dirname "$self")/$target" ;;
+    esac
+done
+root="$(cd "$(dirname "$self")/.." && pwd -P)"
+exec "$root/.venv/bin/python" -m kushim.cli "$@"

@@ -54,3 +54,18 @@ def test_from_local_passes_device_and_card_to_whisper(monkeypatch):
     assert seen["device"] == "cuda" and seen["device_index"] == 2 and seen["local_files_only"] is True
     SpeechToText.from_local("m")
     assert seen["device_index"] == 0
+
+
+def test_cpu_threads_use_half_the_cores_within_bounds(monkeypatch):
+    import sys
+    import types
+    from kushim.voice.stt import cpu_threads
+    assert cpu_threads(14) == 7 and cpu_threads(2) == 4 and cpu_threads(32) == 8 and cpu_threads(0) == 4
+    seen = {}
+
+    class FakeWhisper:
+        def __init__(self, path, **kw):
+            seen.update(kw)
+    monkeypatch.setitem(sys.modules, "faster_whisper", types.SimpleNamespace(WhisperModel=FakeWhisper))
+    SpeechToText.from_local("m", device="cpu", compute_type="int8", cpu_threads=6)
+    assert seen["cpu_threads"] == 6 and seen["device"] == "cpu"

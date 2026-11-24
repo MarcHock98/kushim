@@ -82,7 +82,7 @@ def test_starts_backend_then_window_and_stops_only_its_own_backend_when_the_wind
     code, said = run(make_root(tmp_path), popper)
     assert code == 0 and len(popper.procs) == 2
     backend, ui = popper.procs
-    assert backend.args[-2:] == ["talk", "--ui"] and str(ui.args[0]).endswith("kushim-ui.exe")
+    assert backend.args[-2:] == ["talk", "--ui"] and str(ui.args[0]).endswith(appstart.UI_EXE.name)
     assert ui.waited and backend.terminated and killed == [4242]
 
 
@@ -92,7 +92,7 @@ def test_reuses_a_running_voice_service_and_never_stops_it(tmp_path, monkeypatch
     statefile.StatePublisher(tmp_path).phase("idle")                   # frisches Lebenszeichen
     popper = Popper()
     code, said = run(make_root(tmp_path), popper)
-    assert code == 0 and len(popper.procs) == 1 and str(popper.procs[0].args[0]).endswith("kushim-ui.exe")
+    assert code == 0 and len(popper.procs) == 1 and str(popper.procs[0].args[0]).endswith(appstart.UI_EXE.name)
     assert killed == [] and "läuft schon" in said[0]
 
 

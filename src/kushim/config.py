@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import re
 import threading
 import tomllib
@@ -62,6 +63,8 @@ def config_path() -> Path:
     local = Path("config.toml")
     if local.exists():
         return local
+    if sys.platform == "darwin" and not os.environ.get("APPDATA"):
+        return Path.home() / "Library" / "Application Support" / "kushim" / "config.toml"
     return Path(os.environ.get("APPDATA", Path.home())) / "kushim" / "config.toml"
 
 

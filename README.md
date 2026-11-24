@@ -4,7 +4,7 @@ Ein lokaler „Jarvis“ als Sprach-Vorderseite für **Claude Code**: Du sprichs
 
 **Die Daten gehören dir.** Spracherkennung und Stimme laufen komplett auf deinem Rechner. Audio verlässt nie den PC; an Anthropic geht nur der erkannte Befehlstext über Claude Code selbst.
 
-Inhalt: [Was es heute kann](#was-es-heute-kann) · [Voraussetzungen](#voraussetzungen) · [Installation](#installation) · [Erster Start](#erster-start) · [Täglicher Gebrauch](#täglicher-gebrauch) · [Konfiguration](#konfiguration) · [Netzwerk und Datenschutz](#netzwerk-und-datenschutz) · [Fehlerbehebung](#fehlerbehebung) · [Deinstallation](#deinstallation) · [Entwicklung](#entwicklung)
+Inhalt: [Was es heute kann](#was-es-heute-kann) · [Voraussetzungen](#voraussetzungen) · [Installation](#installation) · [macOS](#macos) · [Erster Start](#erster-start) · [Täglicher Gebrauch](#täglicher-gebrauch) · [Konfiguration](#konfiguration) · [Netzwerk und Datenschutz](#netzwerk-und-datenschutz) · [Fehlerbehebung](#fehlerbehebung) · [Deinstallation](#deinstallation) · [Entwicklung](#entwicklung)
 
 ## Was es heute kann
 
@@ -20,7 +20,7 @@ Inhalt: [Was es heute kann](#was-es-heute-kann) · [Voraussetzungen](#voraussetz
 
 | | |
 |---|---|
-| System | Windows 10 oder 11 (64 Bit) |
+| System | Windows 10 oder 11 (64 Bit); macOS mit Apple Silicon siehe [macOS](#macos) |
 | Grafikkarte | NVIDIA mit mindestens 8 GB VRAM (getestet: RTX 3070), aktueller NVIDIA-Treiber |
 | Speicher | mindestens 10 GB frei (Modelle ca. 2 GB, Python-Umgebung ca. 3 GB, Sprachausgabe-Umgebung ca. 2 GB) |
 | RAM | 16 GB, besser 32 GB |
@@ -96,6 +96,45 @@ py -3.12 -m venv tools\kokoro\venv
 Die Desktop-Verknüpfungen legt nur `install.ps1` an; von Hand erstellst du Verknüpfungen auf `.venv\Scripts\python.exe` mit den Argumenten `-m kushim.cli start` und `-m kushim.cli kill`, Arbeitsordner = Projektordner.
 
 Von früheren Versionen können `tools\ollama`, `models\ollama` und die Verknüpfung **kushim** übrig sein; kushim braucht sie nicht mehr, du kannst sie löschen.
+
+## macOS
+
+kushim läuft auch auf einem Mac mit Apple Silicon (M1 bis M4). Unterschiede zu Windows:
+
+| | Windows | macOS |
+|---|---|---|
+| Installation | `install.ps1` | `./install.sh` |
+| Spracherkennung (Whisper) | NVIDIA-GPU (CUDA) | Prozessor (int8). Auf einem M4 Pro schnell genug für Befehle; der erste Satz nach dem Start dauert länger |
+| Stimme (Kokoro „Martin“) | GPU, Rückfall Prozessor | Prozessor (`onnxruntime`), Pakete aus `scripts/kokoro-requirements-macos.txt` |
+| Claude-Fenster | `cmd`-Fenster „kushim-Claude“ | neues **Terminal**-Fenster „kushim-Claude“ (über `run/kushim-claude.command`, siehe `src/kushim/termwin.py`) |
+| Vault-Schlüssel | Windows-Credential-Manager | macOS-Schlüsselbund (Eintrag „kushim-vault“) |
+| Startdateien | Verknüpfungen **kushim**, **kushim NOTAUS** | `kushim.command`, `kushim NOTAUS.command` auf dem Schreibtisch (Doppelklick öffnet Terminal) |
+| Befehl `kushim` | `bin\kushim.cmd` im Benutzer-PATH | Link `~/.local/bin/kushim` auf `bin/kushim` |
+| Konfiguration | `config.toml` im Projekt oder `%APPDATA%\kushim\` | `config.toml` im Projekt oder `~/Library/Application Support/kushim/` |
+| Oberfläche (Tauri) | `kushim-ui.exe` | `kushim-ui` (bauen braucht Rust: `brew install rust`, dann `cd ui && npm ci && npx tauri build --no-bundle`); ohne gebaute Oberfläche läuft kushim nur im Terminal |
+| Systemwerte in der Oberfläche (CPU, RAM, Akku) | ja | noch nicht (bleiben leer) |
+
+**Voraussetzungen:** Python 3.12 (`brew install python@3.12`), Claude Code installiert und angemeldet, etwa 10 GB frei.
+
+**Installation** im Projektordner:
+
+```bash
+./install.sh             # --check: nur prüfen; --no-prompt; --skip-shortcuts; --skip-path
+```
+
+Das Skript macht dasselbe wie unter Windows (venv, Pakete in festen Versionen, Sprachausgabe-venv mit Prüfsummen, Modelle mit SHA-256), nur ohne CUDA-Pakete.
+
+**Erster Start:**
+
+```bash
+./bin/kushim memory init      # Vault anlegen, Schlüssel in den Schlüsselbund
+./bin/kushim key export       # Schlüssel in den Passwortmanager kopieren
+./bin/kushim claude add <name> <pfad>   # Arbeitsordner für Claude freigeben (Git-Ordner)
+./bin/kushim doctor
+./bin/kushim                  # starten
+```
+
+Beim ersten Start fragt macOS, ob **Terminal** das **Mikrofon** benutzen darf: erlauben (Systemeinstellungen > Datenschutz & Sicherheit > Mikrofon). Das Claude-Fenster öffnet sich als neues Terminal-Fenster; schließt du es (oder drückst dort nach dem Ende von Claude Enter), beendet sich kushim wie unter Windows. Geschützt sind auf dem Mac zusätzlich `~/Library` und die Systemordner (`/System`, `/Library`, `/usr`, …): Dort kann kein Arbeitsordner für Claude liegen.
 
 ## Erster Start
 

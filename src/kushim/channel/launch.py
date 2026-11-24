@@ -23,9 +23,11 @@ from collections import deque
 from pathlib import Path
 from typing import Any, Callable
 
+from .. import termwin
 from ..claude_cli.base import clean_env
 from ..procflags import hidden
 
+PROJECT_ROOT = Path(__file__).resolve().parents[3]   # src/kushim/channel/launch.py -> Projektordner
 SERVER_NAME = "kushim"
 SESSION_NAME = "kushim"
 WINDOW_TITLE = "kushim-Claude"
@@ -125,8 +127,11 @@ def launch(exe: Path, folder: Path, root: Path, popen: Callable[..., Any] = subp
     (root / USAGE_FILE).unlink(missing_ok=True)               # Verbrauch der vorigen Sitzung nicht als diesen zeigen (E2b)
     sid = str(uuid.uuid4())
     (root / SESSION_FILE).write_text(sid, encoding="utf-8")
+    argv = claude_argv(exe, config, sid, *argv_check)
+    if termwin.is_mac() and popen is subprocess.Popen:
+        return termwin.open_window(root, "kushim-claude", WINDOW_TITLE, argv, folder, "claude")
     flags = CREATE_NEW_CONSOLE if os.name == "nt" else 0
-    return popen(visible(claude_argv(exe, config, sid, *argv_check)), cwd=str(folder), env=claude_env(), creationflags=flags)
+    return popen(visible(argv), cwd=str(folder), env=claude_env(), creationflags=flags)
 
 
 def show(exe: Path, root: Path, popen: Callable[..., Any] = subprocess.Popen) -> Any:
@@ -134,8 +139,11 @@ def show(exe: Path, root: Path, popen: Callable[..., Any] = subprocess.Popen) ->
     sid = read_session(root)
     if sid is None:
         return None
+    argv = [str(exe), "attach", job_id(sid)]
+    if termwin.is_mac() and popen is subprocess.Popen:
+        return termwin.open_window(root, "kushim-attach", WINDOW_TITLE, argv, root, "claude")
     flags = CREATE_NEW_CONSOLE if os.name == "nt" else 0
-    return popen(visible([str(exe), "attach", job_id(sid)]), env=claude_env(), creationflags=flags)
+    return popen(visible(argv), env=claude_env(), creationflags=flags)
 
 
 def stop(exe: Path, root: Path, run: Callable[..., Any] = subprocess.run) -> bool:
@@ -187,9 +195,13 @@ def restart_env(base: dict[str, str] | None = None) -> dict[str, str]:
     return env
 
 
-def restart(argv: list[str], popen: Callable[..., Any] = subprocess.Popen) -> Any:
+def restart(argv: list[str], popen: Callable[..., Any] = subprocess.Popen, root: Path | None = None) -> Any:
     """Startet `kushim start` neu in einem eigenen Fenster. Erst aufrufen, wenn das alte vollständig beendet ist (Mikrofon, Port).
-    `argv` ist eine Liste (keine Shell, kein Befehls-String)."""
+    `argv` ist eine Liste (keine Shell, kein Befehls-String). macOS: neues Terminal-Fenster; die Umgebung baut der Helfer
+    dort aus der Login-Umgebung (`restart_env`), Variablen wie KUSHIM_VAULT_KEY werden also nicht in eine Datei geschrieben."""
+    if termwin.is_mac() and popen is subprocess.Popen:
+        base = PROJECT_ROOT if root is None else root
+        return termwin.open_window(base, "kushim-restart", "kushim", list(argv), Path.cwd(), "restart")
     flags = CREATE_NEW_CONSOLE if os.name == "nt" else 0
     return popen(list(argv), env=restart_env(), creationflags=flags)
 

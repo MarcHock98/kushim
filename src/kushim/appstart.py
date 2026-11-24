@@ -19,7 +19,7 @@ from .procflags import kill_tree
 from .safety import killswitch
 from .voice import statefile
 
-UI_EXE = Path("ui") / "src-tauri" / "target" / "release" / "kushim-ui.exe"
+UI_EXE = Path("ui") / "src-tauri" / "target" / "release" / ("kushim-ui.exe" if os.name == "nt" else "kushim-ui")
 API_FILE = Path("run") / "api.json"
 LOG = Path("run") / "app.log"
 WAIT_API = 120.0                      # Sprachmodell und Whisper laden dauern

@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import importlib.util
+import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -30,10 +32,19 @@ TTS_VENV = Path("tools") / "kokoro" / "venv"
 TTS_PACKAGES = ("onnxruntime", "kokoro_onnx", "espeakng_loader")
 
 
+INSTALL_HINT = "install.ps1 erneut ausfuehren" if os.name == "nt" else "./install.sh erneut ausfuehren"
+
+
+def needs_cuda_libs(platform: str | None = None) -> bool:
+    """cuBLAS/cuDNN aus den nvidia-Wheels gibt es nur unter Windows/Linux; macOS hat keine CUDA (Whisper auf dem Prozessor)."""
+    return (sys.platform if platform is None else platform) != "darwin"
+
+
 def tts_venv_ok(root: Path) -> bool:
+    from .procflags import venv_python, venv_site_packages
     venv = root / TTS_VENV
-    site = venv / "Lib" / "site-packages"
-    return (venv / "Scripts" / "python.exe").is_file() and all((site / p / "__init__.py").is_file() for p in TTS_PACKAGES)
+    sites = venv_site_packages(venv)
+    return venv_python(venv).is_file() and any(all((site / p / "__init__.py").is_file() for p in TTS_PACKAGES) for site in sites)
 
 
 def run_checks(root: Path, vault_state: Callable[[], str] | None = None) -> list[Check]:
@@ -41,13 +52,16 @@ def run_checks(root: Path, vault_state: Callable[[], str] | None = None) -> list
     checks: list[Check] = []
     for mod, what in MODULES:
         checks.append(Check(f"Python-Paket {mod} ({what})", importlib.util.find_spec(mod) is not None,
-                            "install.ps1 erneut ausfuehren", f"pkg_{mod}"))
+                            INSTALL_HINT, f"pkg_{mod}"))
     for (name, rel), cid in zip(FILES, FILE_IDS):
-        checks.append(Check(name, (root / rel).exists(), "install.ps1 erneut ausfuehren", cid))
-    checks.append(Check("Sprachausgabe-Umgebung (tools/kokoro/venv)", tts_venv_ok(root), "install.ps1 erneut ausfuehren", "tts_venv"))
-    nv = importlib.util.find_spec("nvidia")
-    gpu_libs = bool(nv and any((Path(p) / "cublas" / "bin").is_dir() for p in (nv.submodule_search_locations or [])))
-    checks.append(Check("GPU-Bibliotheken (cuBLAS/cuDNN)", gpu_libs, "install.ps1 erneut ausfuehren", "gpu_libs"))
+        checks.append(Check(name, (root / rel).exists(), INSTALL_HINT, cid))
+    checks.append(Check("Sprachausgabe-Umgebung (tools/kokoro/venv)", tts_venv_ok(root), INSTALL_HINT, "tts_venv"))
+    if needs_cuda_libs():
+        nv = importlib.util.find_spec("nvidia")
+        gpu_libs = bool(nv and any((Path(p) / "cublas" / "bin").is_dir() for p in (nv.submodule_search_locations or [])))
+        checks.append(Check("GPU-Bibliotheken (cuBLAS/cuDNN)", gpu_libs, INSTALL_HINT, "gpu_libs"))
+    else:                                                  # macOS: keine CUDA, Whisper und Stimme rechnen auf dem Prozessor
+        checks.append(Check("GPU-Bibliotheken (macOS: nicht nötig, Prozessor)", True, "", "gpu_libs"))
     checks.append(Check("Notaus nicht aktiv", not (root / "run" / "KILL").exists(), "kushim resume", "kill_off"))
     if vault_state is not None:
         state = vault_state()

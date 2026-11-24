@@ -1,6 +1,7 @@
 """Ist der kushim-Channel in Claude Code wirklich an? Prüfung über Claude Codes eigenes MCP-Protokoll (2026-11-23).
 
 Claude Code 2.1.329 schreibt je Sitzung eine Datei nach `%LOCALAPPDATA%/claude-cli-nodejs/Cache/<Ordner>/mcp-logs-kushim/`
+(macOS: `~/Library/Caches/claude-cli-nodejs/<Ordner>/mcp-logs-kushim/`)
 (`<Ordner>`: Arbeitsordner, jedes Zeichen außer A-Z, a-z, 0-9 wird "-"). Steht darin "channels feature is not currently
 available" und nicht "Channel notifications registered", verwirft Claude Code alles, was kushim schickt: Der Nutzer redet,
 aber nichts kommt an. Dann sagt kushim das deutlich (Terminal und einmal per Stimme), statt still zu warten.
@@ -32,12 +33,32 @@ def project_key(folder: Path) -> str:
     return re.sub(r"[^A-Za-z0-9]", "-", str(folder))
 
 
+def cache_base(platform: str | None = None, env: dict[str, str] | None = None, home: Path | None = None) -> Path | None:
+    """Cache-Ordner von Claude Code (wie `env-paths`): Windows `%LOCALAPPDATA%/claude-cli-nodejs/Cache`, macOS
+    `~/Library/Caches/claude-cli-nodejs`, sonst `$XDG_CACHE_HOME` bzw. `~/.cache/claude-cli-nodejs`. None, wenn unbekannt."""
+    import sys
+    platform = sys.platform if platform is None else platform
+    env = dict(os.environ) if env is None else env
+    if platform == "win32":
+        base = env.get("LOCALAPPDATA", "")
+        return Path(base) / "claude-cli-nodejs" / "Cache" if base else None
+    home = Path.home() if home is None else home
+    if platform == "darwin":
+        return home / "Library" / "Caches" / "claude-cli-nodejs"
+    xdg = env.get("XDG_CACHE_HOME", "")
+    return (Path(xdg) if xdg else home / ".cache") / "claude-cli-nodejs"
+
+
 def log_dir(folder: Path, local_appdata: str | None = None) -> Path | None:
-    """Ordner mit den MCP-Protokollen des kushim-Servers für diesen Arbeitsordner; None ohne LOCALAPPDATA."""
-    base = local_appdata if local_appdata is not None else os.environ.get("LOCALAPPDATA", "")
-    if not base:
+    """Ordner mit den MCP-Protokollen des kushim-Servers für diesen Arbeitsordner; None, wenn der Cache-Ordner unbekannt ist.
+    `local_appdata` (nur Tests/Windows): Basis wie %LOCALAPPDATA%."""
+    if local_appdata is not None:
+        base = Path(local_appdata) / "claude-cli-nodejs" / "Cache" if local_appdata else None
+    else:
+        base = cache_base()
+    if base is None:
         return None
-    return Path(base) / "claude-cli-nodejs" / "Cache" / project_key(folder) / f"mcp-logs-{SERVER}"
+    return base / project_key(folder) / f"mcp-logs-{SERVER}"
 
 
 def _newest(directory: Path, since: float) -> Path | None:

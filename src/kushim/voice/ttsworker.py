@@ -28,7 +28,7 @@ import wave
 from pathlib import Path
 from typing import Any, Callable, Sequence
 
-from ..procflags import hidden, kill_tree
+from ..procflags import hidden, kill_tree, venv_python
 from .tts import TTSCancelled, TTSUnavailable
 
 MAX_HEADER = 64 * 1024
@@ -42,14 +42,15 @@ RESTART_PAUSES = (1.0, 3.0, 10.0)
 LOAD_TIMEOUT = 120.0            # erster GPU-Start mit kaltem Cache dauerte 20 s; großzügig, danach CPU
 QUIT_WAIT = 2.0
 
-VENV_PYTHON = Path("tools") / "kokoro" / "venv" / "Scripts" / "python.exe"
+VENV_PYTHON = venv_python(Path("tools") / "kokoro" / "venv")     # Windows Scripts/python.exe, macOS/Linux bin/python
 WORKER_SCRIPT = Path("scripts") / "kokoro_worker.py"
 MODEL_DIR = Path("models") / "kokoro"
 LOG_FILE = Path("run") / "tts-worker.log"
 LOG_MAX = 1_000_000
 
 # Nur diese Variablen erbt der Worker (Windows braucht SYSTEMROOT u. a. zum Laden von DLLs). Keine Tokens, keine Proxys.
-ALLOWED_ENV = ("SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "PATH", "PATHEXT", "TEMP", "TMP", "NUMBER_OF_PROCESSORS",
+# TMPDIR: Temp-Ordner unter macOS/Linux (wird wie TEMP/TMP auf run/tts-tmp gesetzt).
+ALLOWED_ENV = ("SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "PATH", "PATHEXT", "TEMP", "TMP", "TMPDIR", "NUMBER_OF_PROCESSORS",
                "PROCESSOR_ARCHITECTURE", "PROCESSOR_IDENTIFIER", "OS", "COMSPEC", "CUDA_DEVICE_ORDER", "CUDA_VISIBLE_DEVICES")
 # Der Worker läuft mit `-I`: PYTHON*-Variablen wirken dort nicht (UTF-8 für stderr stellt der Worker selbst ein).
 OFFLINE_ENV = {"HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1", "HF_DATASETS_OFFLINE": "1", "HF_HUB_DISABLE_TELEMETRY": "1",
@@ -183,7 +184,7 @@ class KokoroWorker:
             tmp = root / TEMP_DIR
             try:
                 tmp.mkdir(parents=True, exist_ok=True)
-                env["TEMP"] = env["TMP"] = str(tmp)
+                env["TEMP"] = env["TMP"] = env["TMPDIR"] = str(tmp)
             except OSError:
                 pass
         kw.setdefault("blocked", lambda: is_triggered(root))

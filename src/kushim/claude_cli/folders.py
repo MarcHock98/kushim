@@ -66,11 +66,17 @@ def _norm(p: Path) -> Path:
     return Path(os.path.normcase(str(p)))
 
 
+POSIX_SYSTEM = ("/System", "/Library", "/Applications", "/usr", "/bin", "/sbin", "/etc", "/opt", "/private/etc")
+
+
 def forbidden_roots(home: Path) -> list[Path]:
     roots = [home / ".ssh", home / ".gnupg", home / ".claude", home / "AppData"]
     for var in ("SystemRoot", "ProgramFiles", "ProgramFiles(x86)", "ProgramData", "APPDATA", "LOCALAPPDATA"):
         if os.environ.get(var):
             roots.append(Path(os.environ[var]))
+    if os.name != "nt":                                # macOS/Linux: Benutzer-Library (Schlüsselbund, Caches) und Systemordner
+        roots.append(home / "Library")
+        roots += [Path(p) for p in POSIX_SYSTEM]
     return roots
 
 
@@ -96,7 +102,7 @@ def validate_path(raw: str | Path, vault: Path | None = None, home: Path | None 
     for bad in forbidden_roots(home):
         bn = _norm(bad.resolve() if bad.exists() else bad)
         if rn == bn or _inside(rn, bn):
-            raise ValueError("Dieser Ordner liegt in einem geschützten Bereich (System, AppData, .ssh, .claude).")
+            raise ValueError("Dieser Ordner liegt in einem geschützten Bereich (System, AppData/Library, .ssh, .claude).")
     if vault is not None:
         vn = _norm(vault.resolve() if vault.exists() else vault)
         if rn == vn or _inside(rn, vn) or _inside(vn, rn):

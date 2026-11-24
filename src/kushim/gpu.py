@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass, field
 from typing import Callable
 
@@ -96,7 +97,8 @@ def make_plan(gpus: list[Gpu], whisper: str = "auto") -> Plan:
     elif whisper == "auto":
         if not gpus:
             w_dev, w_idx = "cpu", 0
-            notes.append("Keine NVIDIA-Karte gefunden: Whisper läuft auf dem Prozessor (langsamer).")
+            notes.append("macOS: Whisper läuft auf dem Prozessor (Apple Silicon, int8)." if sys.platform == "darwin"
+                         else "Keine NVIDIA-Karte gefunden: Whisper läuft auf dem Prozessor (langsamer).")
         elif len(gpus) == 1:
             w_dev, w_idx = "cuda", gpus[0].index
         else:

@@ -309,7 +309,7 @@ def build_live(root: Path, out_device: int | None, in_device: int | None = None,
     from .claude_chat import ClaudeChat
     from .dialog import Dialog
     from .earcon import chime_wav, hint_wav
-    from .stt import SpeechToText
+    from .stt import SpeechToText, cpu_threads
     from .tts import SentenceCache, Speaker
     from .ttsworker import KokoroWorker
 
@@ -320,7 +320,7 @@ def build_live(root: Path, out_device: int | None, in_device: int | None = None,
                                       compute_type="float16", device_index=whisper_index)
     else:                             # ohne NVIDIA-Karte oder per Einstellung: Prozessor
         stt = SpeechToText.from_local(str(root / "models" / "whisper-large-v3-turbo"), device="cpu",
-                                      compute_type="int8")
+                                      compute_type="int8", cpu_threads=cpu_threads())
     worker = KokoroWorker.for_root(root, "cuda" if whisper_device == "cuda" else "cpu", device_id=whisper_index)
     worker.on_note = on_note
     worker.start()

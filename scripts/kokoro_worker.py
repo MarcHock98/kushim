@@ -38,6 +38,7 @@ SPEED = 1.125                    # wie im Repo-Skript (onnx-docker/main.py) und 
 MODEL_FILE = "kokoro-martin.onnx"
 VOICES_FILE = "voices-martin.npz"
 MAX_PHONEMES = 480               # kokoro-onnx schafft höchstens 510; darüber wird geteilt
+ESPEAK_LIBS = ("espeak-ng.dll", "libespeak-ng.dylib", "libespeak-ng.so", "libespeak-ng.so.1")   # Kopien, die phonemizer anlegt
 TEMP_NAME = "tts-tmp"            # eigener Temp-Ordner des Workers (run/tts-tmp), nur dort wird aufgeräumt
 # Offline-Variablen (gegen Nachladeversuche üblicher Bibliotheken). Die onnxruntime-Telemetrie schaltet
 # `ort.disable_telemetry_events()` vor jeder Session ab; dafür gibt es keine Umgebungsvariable.
@@ -313,13 +314,13 @@ def clean_own_temp() -> int:
     """phonemizer kopiert espeak-ng.dll bei jedem Start in einen neuen `tmp*`-Ordner und räumt ihn nicht immer auf. kushim gibt
     dem Worker einen eigenen Temp-Ordner (`run/tts-tmp`); nur dort und nur solche Ordner werden beim Start gelöscht."""
     import shutil
-    tmp = os.environ.get("TEMP") or ""
+    tmp = os.environ.get("TEMP") or os.environ.get("TMPDIR") or ""
     if os.path.basename(os.path.normpath(tmp)) != TEMP_NAME or not os.path.isdir(tmp):
         return 0
     removed = 0
     for name in os.listdir(tmp):
         path = os.path.join(tmp, name)
-        if name.startswith("tmp") and os.path.isdir(path) and os.path.isfile(os.path.join(path, "espeak-ng.dll")):
+        if name.startswith("tmp") and os.path.isdir(path) and any(os.path.isfile(os.path.join(path, lib)) for lib in ESPEAK_LIBS):
             shutil.rmtree(path, ignore_errors=True)
             removed += 1
     return removed

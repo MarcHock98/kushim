@@ -15,6 +15,8 @@ from typing import Any, Callable
 from . import formel
 
 MAX_JSON = 48 * 1024
+MAX_DEPTH = 64                    # Verschachtelung; echte Ansichten bleiben weit darunter. Eigene Prüfung statt RecursionError:
+                                  # das C-Rekursionslimit von json.dumps hängt vom System ab (macOS erlaubt deutlich mehr als Windows)
 ID = re.compile(r"[a-z0-9-]{1,40}")
 ARTEN = ("antwort", "rechnung", "markt", "recherche", "auftrag", "mail", "dokument", "modell", "plan", "lernen", "netz",
          "simulation", "teilchen")
@@ -1182,9 +1184,25 @@ def validate(raw: Any) -> dict[str, Any]:
         raise ViewError("bad_view") from None
 
 
+def _too_deep(raw: Any, limit: int = MAX_DEPTH) -> bool:
+    """Ist `raw` tiefer als `limit` verschachtelt (Listen und Objekte)? Ohne Rekursion, bricht beim ersten zu tiefen Teil ab."""
+    stack = [(raw, 1)]
+    while stack:
+        node, depth = stack.pop()
+        if depth > limit:
+            return True
+        if isinstance(node, dict):
+            stack.extend((v, depth + 1) for v in node.values() if isinstance(v, (dict, list)))
+        elif isinstance(node, list):
+            stack.extend((v, depth + 1) for v in node if isinstance(v, (dict, list)))
+    return False
+
+
 def _validate(raw: Any) -> dict[str, Any]:
     if not isinstance(raw, dict):
         raise ViewError("bad_view")
+    if _too_deep(raw):
+        raise ViewError("too_large")
     try:
         size = len(json.dumps(raw, ensure_ascii=False).encode("utf-8"))
     except (TypeError, ValueError):
