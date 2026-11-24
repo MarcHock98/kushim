@@ -38,6 +38,17 @@ beide git-ignoriert); dieses Dokument fasst sie zusammen.
   abgeleitet von `german_text_rules.py`/`tts_normalizer.py` aus dem Modell-Repo (Apache-2.0, Lizenztext
   `docs/licenses/Apache-2.0.txt`) und erweitert. Läuft nach `imitation.guard` und entfernt Steuerzeichen.
 - Start: zuerst Whisper, dann der Worker (auf derselben Karte wie Whisper; ohne Karte auf dem Prozessor).
+- Nachträge aus der Prüfung (2026-11-24):
+  - Die Normalisierung entfernt Anführungszeichen, Emoji und Symbole und läuft nach `imitation.guard`. Deshalb prüft der
+    Speaker jeden Satz von Claude danach noch einmal mit `imitation.imitates_system` (auch über zwei Sätze); Treffer werden zu
+    `imitation.NEUTRAL`. kushims eigene Ansagen tragen `earcon.MARK` (erster Satz, mit Signalton) bzw. `earcon.OWN`
+    (Folgesätze, von `split_sentences` gesetzt); beide Zeichen kann Claude nie senden.
+  - Kokoro schafft höchstens 510 Phoneme (darüber IndexError bzw. stilles Abschneiden). Der Speaker teilt jeden Abschnitt auf
+    höchstens 250 Zeichen (Komma, Doppelpunkt, Strich, „und“/„oder“, Wortgrenze), der Worker halbiert zusätzlich ab 480
+    Phonemen. Der Client schneidet nie ab.
+  - Der Worker bekommt einen eigenen Temp-Ordner (`run/tts-tmp`; phonemizer legt dort Kopien von `espeak-ng.dll` ab, der
+    Worker räumt beim Start nur dort auf), schaltet die onnxruntime-Telemetrie per `disable_telemetry_events()` ab und startet
+    bei aktivem Notaus (Marker-Datei) nicht und nicht neu.
 
 ## Messung in kushim (2026-11-24, RTX 3070, Whisper large-v3-turbo float16 geladen, kushim lief nicht)
 
