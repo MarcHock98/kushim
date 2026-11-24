@@ -220,6 +220,11 @@ _VERSION_WORDS = (r"Version|Versionen|Python|Node|Java|Kotlin|iOS|Android|macOS|
                   r"Update|Build|Kernel|Claude Code|kushim|onnxruntime|CUDA|cuDNN")
 
 
+# Unsichtbare Zeichen ohne Laut: Combining Grapheme Joiner, mongolische Variationsselektoren, Hangul-Füller (dazu U+FE00–FE0F
+# und U+E0100–E01EF, siehe `_strip_controls`)
+_INVISIBLE = frozenset("͏᠋᠌᠍᠏ㅤᅟᅠﾠ")
+
+
 # --- Teilschritte -------------------------------------------------------------------------------------------------------
 
 def _strip_controls(text: str) -> str:
@@ -227,6 +232,8 @@ def _strip_controls(text: str) -> str:
     text = unicodedata.normalize("NFC", text)
     out = []
     for ch in text:
+        if ch in _INVISIBLE or 0xFE00 <= ord(ch) <= 0xFE0F or 0xE0100 <= ord(ch) <= 0xE01EF:
+            continue                                  # unsichtbar, espeak ignoriert sie: Anzeige und Prüfung wie gesprochen
         if unicodedata.category(ch)[0] == "C":
             if ch in "\t\n\r\x0b\x0c\x85  ":
                 out.append(" ")
@@ -285,7 +292,8 @@ def _phones(t: str) -> str:
             spoken = _digits(head)
         groups = [g for g in re.split(r"[ /-]", rest) if g]
         return " ".join([spoken] + [_digits(g) for g in groups])
-    return re.sub(r"(?<![\w.,+])(\+\d{1,3}|0\d{1,5})((?:[ /-]?\d{2,}){1,6})(?![\w.,]?\d)", phone, t)
+    # nicht nach „1 “: „1 000 000“ ist eine Zahl mit Tausender-Leerzeichen, keine Nummer „000 000“
+    return re.sub(r"(?<![\w.,+])(?<!\d\s)(\+\d{1,3}|0\d{1,5})((?:[ /-]?\d{2,}){1,6})(?![\w.,]?\d)", phone, t)
 
 
 def _spoken_version(raw: str) -> str:
@@ -378,19 +386,31 @@ def _dollars(t: str) -> str:
     """Dollar im englischen Format: „$1,299.99“, „$12,000“, „$ 3.50“, „1,299.99 USD“ (Komma = Tausender, Punkt = Cent)."""
     def amount(whole: str, cents: str | None) -> str:
         n = int(whole.replace(",", ""))
-        c = int(cents) if cents else 0
+        c = int(cents.ljust(2, "0")[:2]) if cents else 0                  # „$1,299.9“: neunzig Cent
         return ("ein" if n == 1 else number_to_words(n)) + " Dollar" + (f" {number_to_words(c)}" if c else "")
-    t = re.sub(_USD + r"\s?(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{2}))?(?![\d,.]?\d)",
+    t = re.sub(_USD + r"\s?(\d+),(\d{1,2})(?![\d,.]?\d)", lambda m: amount(m.group(1), m.group(2)), t)   # „$ 1299,99“
+    t = re.sub(_USD + r"\s?(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{1,2}))?(?![\d,.]?\d)",
                lambda m: amount(m.group(1), m.group(2)), t)
-    return re.sub(r"(?<![\w.,])(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{2}))?\s?" + _USD + r"(?!\w)",
+    return re.sub(r"(?<![\w.,])(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{1,2}))?\s?" + _USD + r"(?!\w)",
                   lambda m: amount(m.group(1), m.group(2)) if ("," in m.group(1) or m.group(2)) else m.group(0), t)
+
+
+def _francs(t: str) -> str:
+    """Schweizer Franken: „1299.99 CHF“, „CHF 12.50“, „5 CHF“ (der Apostroph als Tausendertrenner ist vorher weg)."""
+    def amount(whole: str, cents: str | None) -> str:
+        n, c = int(whole), int(cents.ljust(2, "0")[:2]) if cents else 0
+        return ("ein" if n == 1 else number_to_words(n)) + " Franken" + (f" {number_to_words(c)}" if c else "")
+    t = re.sub(r"\bCHF\s?(\d+)(?:[.,](\d{1,2}))?(?!\d)", lambda m: amount(m.group(1), m.group(2)), t)
+    return re.sub(r"(?<![\w.,])(\d+)(?:[.,](\d{1,2}))?\s?CHF\b", lambda m: amount(m.group(1), m.group(2)), t)
 
 
 def _space_thousands(t: str) -> str:
     """Leerzeichen als Tausendertrenner: schmale (U+202F, U+2009) und geschützte (U+00A0) immer; ein normales Leerzeichen nur
-    bei mindestens zwei Gruppen („1 234 567“) oder vor Dezimalkomma bzw. Währung („1 234,56 €“), sonst wären es zwei Zahlen."""
+    bei mindestens zwei Gruppen („1 234 567“) oder vor Dezimalkomma bzw. Währung („1 234,56 €“), sonst wären es zwei Zahlen;
+    nie nach „+“ oder mit führender 0 (Telefonnummern wie „+49 170 123 456“, „089 123 456“)."""
+    t = re.sub(r"(?<![\d,.])(\d{1,3}(?:['’]\d{3})+)(?!\d)", lambda m: re.sub(r"\D", "", m.group(1)), t)   # „1'299“
     t = re.sub(r"(?<![\d,.])(\d{1,3}(?:[   ]\d{3})+)(?!\d)", lambda m: re.sub(r"\D", "", m.group(1)), t)
-    return re.sub(r"(?<![\d,.])(\d{1,3}(?: \d{3}){2,}|\d{1,3} \d{3}(?=,\d|\s?(?:€|EUR|Euro|\$|USD)))(?!\d)",
+    return re.sub(r"(?<![\d,.+])(?!0)(\d{1,3}(?: \d{3}){2,}|\d{1,3} \d{3}(?=,\d|\s?(?:€|EUR|Euro|\$|USD|CHF)))(?!\d)",
                   lambda m: m.group(1).replace(" ", ""), t)
 
 
@@ -475,8 +495,10 @@ def normalize(text: str) -> str:
     t = t.translate(_QUOTES)
     t = _weekdays(t)
     t = _iso_dates(t)
+    t = _space_thousands(t)                      # vor den Telefonnummern: „1 000 000 €“
     t = _phones(t)
     t = _dollars(t)
+    t = _francs(t)
     t = _named_versions(t)
     t = _dates(t)
     t = _versions(t)
@@ -484,7 +506,6 @@ def normalize(text: str) -> str:
     t = re.sub("[" + _DASH + "]", ",", t)                  # Gedankenstrich: kurze Pause (wie im Martin-Skript)
     t = t.replace("&", " und ").replace("…", "...")
     t = _times(t)
-    t = _space_thousands(t)
     t = _thousands(t)
     t = _money(t)
     t = _percent_degrees(t)

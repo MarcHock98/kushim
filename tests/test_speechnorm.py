@@ -93,6 +93,16 @@ CASES = [
     ("Mit 1\u2009000 Leuten", "Mit eintausend Leuten"),
     ("Mit 2\u00a0500 Leuten", "Mit zweitausendfünfhundert Leuten"),
     ("Zwischen 5 100 Leuten", "Zwischen fünf einhundert Leuten"),          # eine Gruppe ohne Komma/Währung: zwei Zahlen
+    # Nachprüfung 2: Leerzeichen-Tausender vor den Telefonnummern, weitere Formate
+    ("Das sind 1 000 000 €.", "Das sind eine Million Euro."),
+    ("Preis 1 050 000 €", "Preis eine Million fünfzigtausend Euro"),
+    ("Es sind 200 000 000 Menschen.", "Es sind zweihundert Millionen Menschen."),
+    ("Kosten $ 1 299,99", "Kosten eintausendzweihundertneunundneunzig Dollar neunundneunzig"),
+    ("Kosten $1,299.9", "Kosten eintausendzweihundertneunundneunzig Dollar neunzig"),
+    ("Uhr für 1'299.99 CHF", "Uhr für eintausendzweihundertneunundneunzig Franken neunundneunzig"),
+    ("Nur CHF 12.50 heute", "Nur zwölf Franken fünfzig heute"),
+    ("Ruf +49 170 123 456 an.", "Ruf plus neunundvierzig eins sieben null eins zwei drei vier fünf sechs an."),
+    ("Tel. 089 123 456", "Telefon null acht neun eins zwei drei vier fünf sechs"),
     # Versionen
     ("Mit Python 3.12 geht es.", "Mit Python drei Punkt zwölf geht es."),
     ("Das ist Version 1.0.", "Das ist Version eins Punkt null."),
