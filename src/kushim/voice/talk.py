@@ -14,7 +14,7 @@ from typing import Any, Callable, Iterable
 from ..safety.killswitch import KillSwitch
 from .audio import UtteranceCollector
 from .pipeline import Pipeline, Result
-from .tts import split_sentences
+from .tts import display, sentences_of
 
 ACK_TEXT = "Ja?"
 TTS_READY_WAIT = 60.0          # so lange wartet `kushim talk` beim Start auf die Stimme (erster GPU-Start bis 20 s)
@@ -70,8 +70,8 @@ class TalkLoop:
         self.on_frame = on_frame         # nur Anzeige: (Frame, Phase) je Frame, Fehler stören nie
         self.on_barge = on_barge
         self._barged = False             # in der laufenden Runde wurde unterbrochen
-        self._replay: str | None = None  # Rest einer Meldung, die nur ein Geräusch ohne Text unterbrochen hat: kommt einmal
-        self._rest: str | None = None    # noch nicht gesprochener Rest der zuletzt unterbrochenen Meldung (wartet aufs Ergebnis)
+        self._replay: Any = None         # Rest einer Meldung, die nur ein Geräusch ohne Text unterbrochen hat: kommt einmal
+        self._rest: Any = None           # noch nicht gesprochener Rest der zuletzt unterbrochenen Meldung (Liste von Sätzen)
         self._replaying = False          # die laufende Meldung ist schon ein nachgereichter Rest (höchstens einmal je Meldung)
         from collections import deque
         self._ring: Any = deque(maxlen=preroll_frames) if preroll_frames > 0 else None
@@ -150,7 +150,7 @@ class TalkLoop:
         msg = replay or self.announce()
         if not msg:
             return None
-        self.on_note(f"Meldung: {msg}")
+        self.on_note(f"Meldung: {display(msg)}")
         self._turn_mode, self._barged, self._replaying = "announce", False, bool(replay)
         if self._pool is None:                   # ohne Unterbrechen: synchron; danach eigene Stimme aus dem Puffer verwerfen
             try:
@@ -163,9 +163,11 @@ class TalkLoop:
         self._busy = self._pool.submit(self._announce_job, msg)
         return None
 
-    def _announce_job(self, msg: str) -> Result:
+    def _announce_job(self, msg: Any) -> Result:
+        """`msg`: Text oder Liste getrennter Stücke (eigene Ansagen und Texte von Claude nie zu einem String verbunden)."""
         n = self.say(msg)
-        return Result("", msg, self.ANNOUNCED, spoken=n if isinstance(n, int) and not isinstance(n, bool) else None)
+        return Result("", display(msg), self.ANNOUNCED, spoken=n if isinstance(n, int) and not isinstance(n, bool) else None,
+                      parts=tuple(sentences_of(msg)))
 
     # --- Zustand: es läuft gerade eine Antwort (nur mit barge)
     def _tick_busy(self, frame: Any) -> str | None:
@@ -205,10 +207,10 @@ class TalkLoop:
         if res.outcome == self.ANNOUNCED and self._barged:
             res = replace(res, outcome=self.ANNOUNCE_INTERRUPTED)
             if not self._replaying:              # Rest merken; nachgereicht nur, wenn die Unterbrechung leer war
-                sents = split_sentences(res.reply) or [res.reply]
+                sents = list(res.parts) if res.parts else sentences_of(res.reply)     # jeder Satz mit seinen Kennzeichen
                 # der zuletzt gezählte Satz kann mittendrin abgebrochen sein (Speaker zählt ihn trotzdem): er kommt mit
                 done = max(0, res.spoken - 1) if isinstance(res.spoken, int) else 0
-                self._rest = " ".join(sents[done:]) or None
+                self._rest = sents[done:] or None    # Liste: nichts wird verbunden, kein Satz erbt ein fremdes Kennzeichen
         if self._cancelled:                                      # nach dem Ende der abgebrochenen Antwort kurz bestätigen
             self._cancelled = False
             self._rest = None                    # "abbrechen": den Rest der Meldung nicht nachreichen

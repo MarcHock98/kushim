@@ -16,10 +16,13 @@ import wave
 
 MARK = "\x07"                   # BEL: nicht druckbar, wird aus jedem fremden Text entfernt
 # Folgesätze einer markierten Ansage („… ausführen. Bitte im Terminal bestätigen.“): ebenfalls kushims eigener Text, aber
-# ohne zweiten Signalton. Setzt nur `tts.split_sentences` beim Teilen eines mit MARK beginnenden Textes; ebenso wie MARK
-# nicht druckbar, also aus Claudes Text immer entfernt. Der Speaker prüft nur Sätze OHNE diese beiden Zeichen nach der
-# Normalisierung noch einmal auf nachgeahmte Systemansagen.
-OWN = "\x0e"                    # SO: nicht druckbar
+# ohne zweiten Signalton. Jeden eigenen Satz setzt `mark` einzeln in MARK bzw. OWN ... END; nichts wird beim Teilen
+# abgeleitet. So kann ein angehängter Text von Claude nie als „eigener Satz“ gelten, auch nicht, wenn jemand Stücke
+# aneinanderhängt. Alle drei Zeichen sind nicht druckbar, also aus Claudes Text immer entfernt. Der Speaker prüft nur Sätze
+# OHNE MARK/OWN nach der Normalisierung noch einmal auf nachgeahmte Systemansagen.
+OWN = "\x0e"                    # SO: nicht druckbar, Anfang eines eigenen Folgesatzes
+END = "\x0f"                    # SI: nicht druckbar, Ende eines eigenen Satzes
+MARKS = MARK + OWN + END
 RATE = 22050
 TONES = ((660.0, 0.12), (990.0, 0.18))      # zwei Töne aufwärts, zusammen 0,3 s
 # Hinweiston, wenn die Stimme ausfällt (Text statt Sprache): zwei tiefe Töne abwärts, klar anders als der Zweiklang oben
@@ -28,8 +31,16 @@ VOLUME = 0.25
 
 
 def mark(text: str) -> str:
-    """Fester kushim-Text mit Signalton davor."""
-    return MARK + text
+    """Fester kushim-Text mit Signalton davor: jeder Satz einzeln gekennzeichnet (erster MARK, weitere OWN, jeder mit END).
+    Nur für Text aus kushims Code (bzw. dafür entschärfte Teile, siehe `channel.speakable.announce`)."""
+    from .tts import split_sentences
+    parts = [plain(p) for p in split_sentences(plain(text))] or [plain(text)]
+    return " ".join((MARK if i == 0 else OWN) + p + END for i, p in enumerate(parts) if p)
+
+
+def plain(text: str) -> str:
+    """Text ohne Kennzeichen (für Anzeige, Verlauf und Protokoll)."""
+    return text.translate({ord(c): None for c in MARKS})
 
 
 def chime_wav(rate: int = RATE) -> bytes:

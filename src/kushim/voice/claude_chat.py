@@ -74,10 +74,10 @@ class ClaudeChat:
             with self._late_lock:
                 self._late.extend(texts)
 
-    def _take_late(self) -> str | None:
+    def _take_late(self) -> list[str] | None:
         with self._late_lock:
             late, self._late = self._late, []
-        return " ".join(late) if late else None
+        return late or None
 
     def filler(self) -> str:
         """Nächstes Füllwort, reihum (deterministisch, damit Tests und Nutzer wissen, was kommt)."""
@@ -166,11 +166,11 @@ class ClaudeChat:
                 if (status == "ok" and texts and final) or status in ("kill", "not_running"):
                     self._close(mine)                 # nur die eigene Anfrage; eine neuere bleibt offen
                 return
-            if notes:
-                yield " ".join(notes + texts)
+            if notes:                                 # eigene Ansagen und Claudes Text getrennt (nie ein String: H1)
+                yield from notes + texts
                 return                                # bei einer Freigabe wartet Claude: Runde beenden, Anfrage bleibt offen
             if texts:
-                yield " ".join(texts)
+                yield from texts
                 said = heard = True
                 if final:
                     self._close(mine)
@@ -188,8 +188,9 @@ class ClaudeChat:
                 yield SILENT                          # Anfrage bleibt offen; eine spätere Antwort kommt als Meldung
                 return
 
-    def announcement(self) -> str | None:
-        """Für die Sprachschleife im Leerlauf: eine verspätete oder von Claude selbst gesendete Antwort, sonst None."""
+    def announcement(self) -> list[str] | None:
+        """Für die Sprachschleife im Leerlauf: eine verspätete oder von Claude selbst gesendete Antwort, sonst None. Als Liste
+        getrennter Stücke: Freigabe-Ansagen (eigener Text, gekennzeichnet) und Claudes Texte werden nie verbunden."""
         late = self._take_late()
         if late:                                      # nach einem Unterbrechen abgeholt: zuerst nachreichen
             return late
@@ -211,4 +212,4 @@ class ClaudeChat:
         elif status == "kill":
             self._close()
         parts = self.permission_notes() + (texts if status == "ok" else [])
-        return " ".join(parts) if parts else None
+        return parts or None

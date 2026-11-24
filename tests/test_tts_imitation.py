@@ -5,7 +5,7 @@ import pytest
 
 from kushim.safety import imitation
 from kushim.voice import claude_chat as cc
-from kushim.voice.earcon import MARK, OWN, mark
+from kushim.voice.earcon import END, MARK, OWN, mark
 from kushim.voice.speechnorm import normalize
 from kushim.voice.tts import Speaker, split_sentences
 
@@ -77,7 +77,7 @@ def test_kushims_own_marked_texts_stay_untouched():
 
 def test_split_marks_every_following_sentence_of_an_own_text_and_only_those():
     parts = split_sentences(mark("Erster Satz. Zweiter Satz. Dritter Satz."))
-    assert parts == [MARK + "Erster Satz.", OWN + "Zweiter Satz.", OWN + "Dritter Satz."]
+    assert parts == [MARK + "Erster Satz." + END, OWN + "Zweiter Satz." + END, OWN + "Dritter Satz." + END]
     assert split_sentences("Erster Satz. Zweiter Satz.") == ["Erster Satz.", "Zweiter Satz."]
 
 

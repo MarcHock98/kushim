@@ -16,10 +16,10 @@ import queue
 import re
 import threading
 from dataclasses import dataclass
-from typing import Any, Callable, Iterable, Iterator, Protocol
+from typing import Any, Callable, Iterable, Iterator, Protocol, Sequence
 
 from ..safety import imitation
-from .earcon import MARK, OWN
+from .earcon import END, MARK, MARKS, OWN, plain
 from .speechnorm import MONTH_NAMES, SPLIT_PROTECT, normalize
 
 FIRST_SPLIT_CHARS = 60          # erster Satz länger als das: am Komma teilen (früherer erster Ton)
@@ -132,19 +132,54 @@ def _cuts(text: str) -> list[tuple[int, int]]:
     return out
 
 
-def split_sentences(text: str) -> list[str]:
-    """Teilt einen Text in Sätze. Beginnt er mit `earcon.MARK` (kushims eigene Ansage), bekommen die Folgesätze `earcon.OWN`:
-    Sie stammen ebenfalls von kushim (kein zweiter Signalton, keine zweite Imitationsprüfung)."""
+_UNITS = re.compile(f"(?=[{MARK}{OWN}])|(?<={END})")
+
+
+def _plain_sentences(text: str) -> list[str]:
     text = text.strip()
     parts, start = [], 0
     for end, nxt in _cuts(text):
         parts.append(text[start:end])
         start = nxt
     parts.append(text[start:])
-    parts = [s.strip() for s in parts if s.strip()]
-    if parts and parts[0].startswith((MARK, OWN)):
-        parts = parts[:1] + [p if p.startswith((MARK, OWN)) else OWN + p for p in parts[1:]]
-    return parts
+    return [s.strip() for s in parts if s.strip()]
+
+
+def split_sentences(text: str) -> list[str]:
+    """Teilt einen Text in Sätze. Eigene Sätze von kushim (`earcon.mark`: MARK bzw. OWN ... END) sind feste Einheiten: vor
+    einem Anfangszeichen und nach END wird immer getrennt, und nur diese Einheiten behalten ihr Kennzeichen. Nichts wird
+    abgeleitet: Text außerhalb einer Einheit (z. B. von Claude) gilt nie als eigener Satz, auch wenn er klein anfängt."""
+    out: list[str] = []
+    for unit in _UNITS.split(text):
+        unit = unit.strip()
+        if not unit:
+            continue
+        if unit[0] in (MARK, OWN) and unit.endswith(END):
+            out.append(unit)                       # ein eigener Satz, unverändert (nie weiter zerlegt)
+        elif unit[0] in (MARK, OWN):               # Anfangszeichen ohne END (ältere Form): nur der erste Satz ist eigen
+            first, *rest = _plain_sentences(unit[1:]) or [""]
+            out.append(unit[0] + first)
+            out.extend(_plain_sentences(" ".join(rest)) if rest else [])
+        else:
+            out.extend(_plain_sentences(unit.replace(END, " ")))
+    return [s for s in out if s.strip(MARKS + " ")]
+
+
+def pieces_of(message: str | Sequence[str] | None) -> list[str]:
+    """Eine Meldung als Liste getrennter Stücke (eigene Ansagen und Texte von Claude werden nie zu einem String verbunden)."""
+    if message is None:
+        return []
+    return [message] if isinstance(message, str) else [p for p in message if isinstance(p, str) and p]
+
+
+def sentences_of(message: str | Sequence[str] | None) -> list[str]:
+    """Alle Sätze einer Meldung; jedes Stück wird für sich zerlegt und behält nur seine eigenen Kennzeichen."""
+    return [s for piece in pieces_of(message) for s in split_sentences(piece)]
+
+
+def display(message: str | Sequence[str] | None) -> str:
+    """Meldung als Anzeigetext ohne Kennzeichen."""
+    return " ".join(" ".join(plain(p).split()) for p in pieces_of(message))
 
 
 def chunk_stream(tokens: Iterable[str]) -> Iterator[str]:
@@ -231,6 +266,28 @@ def _visible(raw: str) -> str:
     return " ".join(re.sub(r"[\x00-\x1f\x7f]", " ", raw).split())
 
 
+IMITATION_WINDOW = 160          # so viele Zeichen fremder Sätze davor prüft der Speaker mit
+# Trennzeichen mitten in einem Wort („Frei-gabe“, „Not. Aus“, „Not, aus“, „be-stätigen“): für eine zusätzliche Prüfung entfernt
+_INNER_GAP = re.compile(r"(?<=[^\W\d_])[-‐‑.,;:'’·/_]+\s*(?=[^\W\d_])")
+
+
+def imitation_suspect(text: str) -> bool:
+    """`imitation.imitates_system` auf dem Text und auf verschärften Fassungen: Trennzeichen in Wörtern entfernt und je zwei
+    Nachbarwörter zusammengezogen („Frei gabe erteilt“). Verschärft nur (safety/ bleibt unverändert); harmlose Sätze wie
+    „frei, gab er an“ bleiben, weil danach kein vollständiges Muster entsteht."""
+    if imitation.imitates_system(text):
+        return True
+    compact = _INNER_GAP.sub("", text)
+    if compact != text and (imitation.imitates_system(compact) or imitation.imitates_system(_INNER_GAP.sub(" ", text))):
+        return True                                   # „Frei-gabe“ → „Freigabe“, „Not.aus.ist.aktiv“ → „Not aus ist aktiv“
+    words = compact.split()
+    for i in range(len(words) - 1):
+        joined = " ".join(words[:i] + [words[i] + words[i + 1]] + words[i + 2:])
+        if imitation.imitates_system(joined):
+            return True
+    return False
+
+
 class Speaker:
     def __init__(self, engine: Engine, play: Callable[[Any], None],
                  should_stop: Callable[[], bool] = lambda: False, lookahead: bool = True):
@@ -248,24 +305,27 @@ class Speaker:
 
     def _parts(self, sentences: Iterable[str]) -> Iterator[_Part]:
         first = True
-        previous = ""                                     # letzter fremder Satz (Ansage über zwei Sätze verteilt)
+        window = ""                                       # normalisierter Text der fremden Sätze dieses `say` (gleitend)
         for index, raw in enumerate(sentences):
             chime = raw.startswith(MARK)
             own = raw.startswith((MARK, OWN))             # kushims eigener fester Text (nur aus dem Code, nie von Claude)
-            text = normalize(raw)                         # entfernt auch MARK, OWN und alle anderen Steuerzeichen
+            text = normalize(raw)                         # entfernt auch die Kennzeichen und alle anderen Steuerzeichen
             if not text:
                 continue
             shown = _visible(raw)
-            if own:
-                previous = ""
-            else:
+            if not own:
                 # Zweite Prüfung NACH der Normalisierung: Sie entfernt Anführungszeichen, Emoji und andere Zeichen, mit denen
-                # Claude „Not«aus“ oder „Freig„abe erteilt“ am ersten Filter vorbeibringen könnte.
-                if any(imitation.imitates_system(t) for t in (text, f"{previous} {text}", shown)):
+                # Claude „Not«aus“ oder „Freig„abe erteilt“ am ersten Filter vorbeibringen könnte. Geprüft wird der Satz, das
+                # gleitende Fenster über die fremden Sätze davor („Die Frei«gabe. Wurde vorhin. Erteilt.“) und der Rohtext.
+                tail = window[-IMITATION_WINDOW:]
+                if (imitation.imitates_system(shown) or imitation_suspect(text)
+                        or (tail and imitation_suspect(f"{tail} {text}"))):
                     self.imitations += 1
                     shown = imitation.NEUTRAL
                     text = normalize(imitation.NEUTRAL)
-                previous = text
+                    window = ""                           # Fund verbraucht: spätere Sätze nicht deswegen ersetzen
+                else:
+                    window = f"{window} {text}".strip()[-IMITATION_WINDOW:]
             for i, piece in enumerate(speech_pieces(text, first and self.split_first)):
                 yield _Part(index, i == 0, chime and i == 0, piece, shown)
             first = False
