@@ -53,6 +53,7 @@ class StatePublisher:
         self._wake_count = 0
         self._wake_last = ""
         self._tts = "off"
+        self._closed = False                         # nach clear(): nie wieder schreiben (sonst frisches Lebenszeichen)
         self._lock = threading.Lock()                # Sprach-Schleife und Antwort-Thread schreiben dieselbe Datei
 
     def tts(self, state: str) -> None:
@@ -95,6 +96,8 @@ class StatePublisher:
 
     def _write(self, state: str, level: float) -> None:
         with self._lock:
+            if self._closed:
+                return                               # Sprachdienst beendet: kein neues Lebenszeichen mehr
             now = self._clock()
             level = round(min(1.0, max(0.0, float(level))), 3)
             data = {"state": state, "level": level, "ts": now,
@@ -109,6 +112,10 @@ class StatePublisher:
             self._last_state, self._last_write, self._last_level = state, now, level
 
     def clear(self) -> None:
+        """Sprachdienst endet: Datei löschen und danach nichts mehr schreiben (auch nicht der Zustand der Sprachausgabe beim
+        Beenden des Workers), sonst meldet `appstart` noch MAX_AGE Sekunden lang „läuft schon“."""
+        with self._lock:
+            self._closed = True
         try:
             self._path.unlink(missing_ok=True)
         except OSError:

@@ -765,6 +765,9 @@ def _main(argv: list[str] | None = None) -> int:
             talklog.write("ready", wake_words=", ".join(w.name for w in wcfg.enabled()),
                           channel=pipeline.chat.bridge.available())
             reason = loop.run()
+            if tts is not None:                           # zuerst die Stimme beenden, dann das Lebenszeichen löschen
+                tts.on_state = lambda state: None
+                tts.close()
             publisher.clear()
             print("Ende:", reason)
             talklog.write("end", reason=reason)
@@ -777,7 +780,8 @@ def _main(argv: list[str] | None = None) -> int:
             if api is not None:
                 _api_stop(*api)
             if tts is not None:
-                tts.close()                               # quit, dann kill_tree
+                tts.on_state = lambda state: None         # kein Schreiben in voice-state.json mehr
+                tts.close()                               # quit, dann kill_tree (zweiter Aufruf tut nichts)
         return 0
     if args.cmd == "memory":
         if args.sub == "init":

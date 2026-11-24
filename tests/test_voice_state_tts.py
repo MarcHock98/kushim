@@ -50,3 +50,25 @@ def test_tts_state_survives_phase_updates(tmp_path):
     pub.phase("listening", 0.5)
     r = statefile.read(tmp_path, now=clock())
     assert r["tts"] == "cpu" and r["state"] == "listening"
+
+
+def test_nothing_is_written_after_clear(tmp_path):
+    """Prüfung 2026-11-24: Das Beenden des Workers meldete „off“ NACH clear() und schrieb so ein frisches Lebenszeichen;
+    appstart hielt den Sprachdienst danach noch 5 s für laufend."""
+    clock = Clock()
+    pub = statefile.StatePublisher(tmp_path, clock=clock)
+    pub.phase("idle")
+    pub.clear()
+    pub.tts("off")
+    pub.phase("idle")
+    pub.wake("kushim")
+    pub.alarm()
+    assert not (tmp_path / statefile.FILE).exists()
+    assert statefile.read(tmp_path, now=clock())["active"] is False
+
+
+def test_talk_closes_the_voice_before_clearing_the_heartbeat():
+    from pathlib import Path
+    src = (Path(__file__).resolve().parents[1] / "src" / "kushim" / "cli.py").read_text(encoding="utf-8")
+    body = src[src.index("reason = loop.run()"):]
+    assert body.index("tts.on_state = lambda state: None") < body.index("tts.close()") < body.index("publisher.clear()")
