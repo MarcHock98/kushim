@@ -20,6 +20,7 @@ from typing import Any, Callable, Iterable, Iterator, Protocol, Sequence
 
 from ..safety import imitation
 from .earcon import END, MARK, MARKS, OWN, plain
+from .imitation_fold import fold, folded_suspect
 from .speechnorm import MONTH_NAMES, SPLIT_PROTECT, normalize
 
 FIRST_SPLIT_CHARS = 60          # erster Satz länger als das: am Komma teilen (früherer erster Ton)
@@ -267,25 +268,23 @@ def _visible(raw: str) -> str:
 
 
 IMITATION_WINDOW = 160          # so viele Zeichen fremder Sätze davor prüft der Speaker mit
-# Trennzeichen mitten in einem Wort („Frei-gabe“, „Not. Aus“, „Not, aus“, „be-stätigen“): für eine zusätzliche Prüfung entfernt
-_INNER_GAP = re.compile(r"(?<=[^\W\d_])[-‐‑.,;:'’·/_]+\s*(?=[^\W\d_])")
+# Trennzeichen mitten in einem Wort ohne Leerraum („Not.aus“, „Not(aus)“, „Not‧aus“): für eine zusätzliche Prüfung Leerzeichen
+_INNER_GAP = re.compile(r"(?<=[^\W\d_])[^\w\s]+(?=[^\W\d_])")
 
 
 def imitation_suspect(text: str) -> bool:
-    """`imitation.imitates_system` auf dem Text und auf verschärften Fassungen: Trennzeichen in Wörtern entfernt und je zwei
-    Nachbarwörter zusammengezogen („Frei gabe erteilt“). Verschärft nur (safety/ bleibt unverändert); harmlose Sätze wie
-    „frei, gab er an“ bleiben, weil danach kein vollständiges Muster entsteht."""
+    """`imitation.imitates_system` auf dem Text, auf der gefalteten Fassung und auf Fassungen ohne Trennzeichen in Wörtern;
+    dazu die Kernwort-Prüfung über zusammengezogene Wortteile (`imitation_fold`). Verschärft nur (safety/ bleibt unverändert);
+    harmlose Sätze wie „frei, gab er an“, „Notausgang“ oder „Ich war in Not. Aus Angst …“ bleiben."""
     if imitation.imitates_system(text):
         return True
-    compact = _INNER_GAP.sub("", text)
-    if compact != text and (imitation.imitates_system(compact) or imitation.imitates_system(_INNER_GAP.sub(" ", text))):
-        return True                                   # „Frei-gabe“ → „Freigabe“, „Not.aus.ist.aktiv“ → „Not aus ist aktiv“
-    words = compact.split()
-    for i in range(len(words) - 1):
-        joined = " ".join(words[:i] + [words[i] + words[i + 1]] + words[i + 2:])
-        if imitation.imitates_system(joined):
-            return True
-    return False
+    folded = fold(text)
+    if imitation.imitates_system(folded):
+        return True
+    spaced = _INNER_GAP.sub(" ", folded)          # „Not.aus.ist.aktiv“ → „Not aus ist aktiv“ (keine Satzgrenzen betroffen)
+    if spaced != folded and imitation.imitates_system(spaced):
+        return True
+    return folded_suspect(text)
 
 
 class Speaker:
