@@ -235,9 +235,23 @@ class Pipeline:
     def _played(self) -> None:
         self.metrics["spoken"] = int(self.metrics.get("spoken") or 0) + 1
 
+    def _forget(self) -> None:
+        """Prüffenster des Speakers über `say` hinweg leeren (Abbruch, Unterbrechen, Notaus, neue Nutzerrunde)."""
+        forget = getattr(self.speaker, "forget_recent", None)
+        if forget is not None:
+            forget()
+
+    def prime_recent(self, sentences: Sequence[str]) -> None:
+        """Nachreichen einer unterbrochenen Meldung: das Prüffenster mit ihren schon gesprochenen Sätzen vorbelegen, damit
+        „Die Frei«gabe. Wurde vorhin. Erteilt.“ ab Satz 2 nicht ohne Ersetzung durchkommt."""
+        prime = getattr(self.speaker, "prime_recent", None)
+        if prime is not None:
+            prime(list(sentences))
+
     def interrupt(self) -> None:
         """Der Nutzer spricht dazwischen (aus einem anderen Thread): Ausgabe stoppt sofort, nichts wird weitergesprochen."""
         self._interrupted.set()
+        self._forget()
         self.dialog.triggered()                   # stoppt laufende Wiedergabe (Barge-in), setzt auf Zuhören
 
     def try_cancel(self, pcm: Any) -> bool:
@@ -249,6 +263,7 @@ class Pipeline:
         if is_kill_phrase(text):                  # "Notaus" als Zwischenruf: zuerst, wie im normalen Notaus-Pfad
             self.kill.on_transcript(text)
             self._interrupted.set()
+            self._forget()
             self.dialog.halt()
             self.tasks.cancel_all()
             self._note("heard", "", "", "killed")             # Zeile „Du“ ohne Text, nur „Notaus erkannt“
@@ -257,6 +272,7 @@ class Pipeline:
             return False
         self.tasks.cancel_all()
         self._interrupted.set()                   # stoppt auch Denken/Sprechen
+        self._forget()
         self.dialog.triggered()
         self._note("heard", text, strip_wake_words(text, self.wake_names) or text, "cancelled")   # eigene Zeile „Du“
         return True
@@ -316,11 +332,13 @@ class Pipeline:
         self._interrupted.clear()
         self._reset_metrics()
         if self.kill.poll() or self.dialog.state is State.HALTED:
+            self._forget()
             return Result("", "", "halted")
         text = self.stt.transcribe(pcm).text
         self.metrics["stt_s"] = self._since()
         if not text:
             return Result("", "", "empty")
+        self._forget()                            # neue Nutzerrunde: nichts aus früheren Ausgaben zählt mehr zum Prüffenster
         if is_kill_phrase(text):
             self.kill.on_transcript(text)
             self.dialog.halt()
