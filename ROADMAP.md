@@ -190,6 +190,6 @@ Claude Code zeigt beides schon selbst (`/model`, `/usage`, Statuszeile). Hier nu
 - [x] Stimme Kokoro „Martin“ statt Piper (2026-11-24, Wahl des Nutzers nach Hörvergleich): eigener Worker-Prozess mit eigenem venv
       (stdin/stdout, Netzsperre auch für Loopback), CPU-Rückfall, Text plus Hinweiston als letzte Stufe, deutsche Normalisierung,
       Satz n+1 vorausrechnen, Satz-Cache; `voice-state.json` hat das Feld `tts`. Siehe [docs/research/tts.md](docs/research/tts.md).
-- [ ] Chip „Stimme“ in der Oberfläche aus `voice.state` → `tts` (loading/ready/cpu/failed/off); `ui/src/lib/mock.ts` nennt noch `model_piper` statt `model_tts`/`tts_venv`
+- [ ] Chip „Stimme“ in der Oberfläche aus `voice.state` → `tts` (loading/ready/cpu/failed/off); die Doctor-IDs im Mock sind schon `model_tts`/`tts_venv`
 - [ ] Hörprobe im Betrieb **(Nutzer)**: Ja/Nein-Fragen fallen bei Kokoro am Ende ab (Messung −6,5 Halbtöne)
 - [ ] Optional: Microsoft Copilot Cowork / Claude Cowork als zweites Ziel (keine API, nur über Fenster-Einfügen, z. B. mit Handy)
