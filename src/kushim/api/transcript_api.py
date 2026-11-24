@@ -2,7 +2,8 @@
 des Sprachprozesses).
 
 Läuft mit `kushim talk --ui`. `since` ist eine Änderungsnummer (`rev`), keine id. Antwort:
-{"entries": [{id, rev, heard, raw, ts, status, reason, sent_ts, reply, outcome}], "last": höchste rev der Antwort (sonst since)}.
+{"entries": [{id, rev, heard, raw, ts, status, reason, sent_ts, reply, outcome, unspoken}], "last": höchste rev der Antwort (sonst
+since)}. `unspoken`: Zahl der Sätze der Antwort, die nur als Text kamen (Stimme aus), sonst 0.
 Ein Eintrag kommt mehrfach, wenn er sich ändert (erst `pending`, dann `sent` oder `dropped`, dann mit Antwort); die UI führt
 nach `id` zusammen. `id` bleibt stabil (Feedback hängt daran). Texte sind Anzeigetext und werden von der UI nie als HTML
 oder Anweisung behandelt.

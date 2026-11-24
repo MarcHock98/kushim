@@ -6,6 +6,7 @@ import { Core3D } from "./Core3D";
 import { HaltedBanner, KillButton } from "./KillButton";
 import { PermissionBar, type PermissionRequest } from "./PermissionBar";
 import { clockText, STATUS_WORD, youText, type Entry } from "./Transcript";
+import { VoiceChip, type TtsState } from "./VoiceChip";
 
 // E2 (docs/ui-e2e3-plan.md, Abschnitte 3 und 4): kleines Fenster mit Kern, Zustandswort, letztem Befehl, NOTAUS und Verbrauch.
 // Die Leiste entscheidet nichts selbst: Freigaben laufen über dieselbe PermissionBar und denselben Aufruf wie im großen Fenster.
@@ -129,6 +130,7 @@ interface Props {
   usage: Usage | null;
   view: { id: string; titel: string } | null;             // gerade gezeigte Ansicht von Claude
   toast: string;
+  tts?: TtsState | null;                                   // Zustand der Sprachausgabe (nur bei laufendem Sprachdienst), sonst kein Chip
 }
 
 export function CompactBar(p: Props) {
@@ -163,6 +165,7 @@ export function CompactBar(p: Props) {
       <div className="compact-core">
         {!asking && <Core3D state={p.state} size={COMPACT_CORE} level={p.level} />}
         <p className="compact-word" aria-live={stateView.live}>{stateView.label}</p>
+        {p.tts && <VoiceChip tts={p.tts} compact />}
       </div>
       <div className="compact-actions">
         <button type="button" onClick={p.onBig} title="Großes Fenster (Strg+Umschalt+M)" autoFocus>Groß</button>

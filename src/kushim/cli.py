@@ -688,13 +688,16 @@ def _main(argv: list[str] | None = None) -> int:
                                                     tuning=tuning)
             from .voice import statefile
             from .voice.levels import LevelTest
-            from .voice.transcript import Transcript
+            from .voice.transcript import Transcript, track_unspoken
             publisher = statefile.StatePublisher(root, pending=tasks.pending_approvals)
             if tts is not None:                           # Feld `tts` in voice-state.json: loading|ready|cpu|failed|off
                 tts.on_state = publisher.tts
                 publisher.tts(tts.state)
             transcript = Transcript()
             pipeline.notes = transcript                   # Zeile „Du“ direkt nach der Spracherkennung (nur im Speicher)
+            # Vermerk „nicht gesprochen“ im Verlauf: Sätze, die nur als Text kamen, je Runde zählen (Haken des Speakers, der
+            # bisherige Hinweis läuft weiter). Außen um talklog.timed: talk.log bekommt kein neues Feld.
+            pipeline.handle = track_unspoken(pipeline.speaker, pipeline.handle)
             level_test = LevelTest()                      # Pegeltest der Oberfläche: nur Pegelzahlen aus den Frames dieser Schleife
 
             from .voice.levels import frame_rms

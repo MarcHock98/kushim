@@ -1,5 +1,5 @@
 import { useEffect, useId, useState, type KeyboardEvent, type ReactNode } from "react";
-import { IconCheck, IconChevron, IconClock, IconDash, IconThumbDown, IconThumbUp } from "./Icons";
+import { IconCheck, IconChevron, IconClock, IconDash, IconThumbDown, IconThumbUp, IconVoiceOff } from "./Icons";
 
 /** Ein Eintrag aus transcript.get (geprüft mit `parseEntry`). `id` ist stabil, `rev` steigt bei jeder Änderung. */
 export interface Entry {
@@ -13,6 +13,7 @@ export interface Entry {
   sent_ts: number | null;
   reply: string;
   outcome: string;
+  unspoken: number;                  // Sätze der Antwort, die nur als Text kamen (Stimme aus); 0 = gesprochen oder älterer Dienst
 }
 export type EntryStatus = "pending" | "sent" | "dropped" | "unknown";
 
@@ -63,6 +64,7 @@ export function parseEntry(x: unknown): Entry | null {
     id: r.id, rev, heard: cleanText(r.heard), raw: cleanText(r.raw), ts: num(r.ts), status, reason, sent_ts: num(r.sent_ts),
     reply: typeof r.reply === "string" ? r.reply.slice(0, MAX_TEXT) : "",
     outcome: typeof r.outcome === "string" ? r.outcome.slice(0, 40) : "",
+    unspoken: typeof r.unspoken === "number" && Number.isSafeInteger(r.unspoken) && r.unspoken > 0 ? r.unspoken : 0,
   };
 }
 
@@ -104,6 +106,12 @@ export function youText(e: Entry): string {
 }
 
 const reasonText = (code: string) => REASON[code] ?? "unbekannt";
+
+/** Vermerk an einer Antwort, die (ganz oder teilweise) nur als Text kam: „nicht gesprochen (Stimme aus), 2 Sätze“. Sonst leer. */
+export function unspokenText(e: Pick<Entry, "reply" | "unspoken">): string {
+  if (!e.reply || e.unspoken <= 0) return "";
+  return `nicht gesprochen (Stimme aus), ${e.unspoken} ${e.unspoken === 1 ? "Satz" : "Sätze"}`;
+}
 
 function statusDetail(e: Entry): string {
   if (e.status === "sent") return e.sent_ts !== null ? `gesendet um ${clockText(e.sent_ts)}` : "gesendet";
@@ -184,6 +192,7 @@ export function Transcript({ entries, rated = {}, onRate }: {
                     title="Nicht hilfreich" aria-label="Nicht hilfreich" onClick={() => onRate(e.id, -1)}><IconThumbDown /></button>
                 </span>
               )}
+              {unspokenText(e) && <span className="bot-note"><IconVoiceOff />{unspokenText(e)}</span>}
             </p>
           )}
         </li>
