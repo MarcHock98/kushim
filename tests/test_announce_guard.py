@@ -54,9 +54,11 @@ def test_speaker_plays_the_chime_only_before_marked_sentences_and_never_speaks_t
     played, eng = [], Eng()
     spk = Speaker(eng, played.append)
     spk.chime = CHIME
-    spk.say([earcon.mark("Ich möchte den Befehl ls ausführen."), "Bitte im Terminal bestätigen.", "Normaler Satz."])
+    # wie im Betrieb: die markierte Ansage wird geteilt, ihr Folgesatz trägt earcon.OWN (kushims Text, kein zweiter Ton)
+    from kushim.voice.tts import split_sentences
+    spk.say(split_sentences(earcon.mark("Ich möchte den Befehl ls ausführen. Bitte im Terminal bestätigen.")) + ["Normaler Satz."])
     assert played == [CHIME, "Ich möchte den Befehl ls ausführen.", "Bitte im Terminal bestätigen.", "Normaler Satz."]
-    assert all(earcon.MARK not in s for s in eng.said)
+    assert all(earcon.MARK not in s and earcon.OWN not in s for s in eng.said)
 
 
 def test_claude_can_never_send_the_mark():

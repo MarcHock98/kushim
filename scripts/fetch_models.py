@@ -3,9 +3,11 @@
 Aufruf:  .venv\\Scripts\\python scripts/fetch_models.py [--check]
 
 Das ist der EINZIGE Ort ausser pip in install.ps1, der beim Einrichten ins Netz geht,
-und zwar nur zu: huggingface.co (Whisper, Piper-Stimme), github.com (Wake-Word-Modelle
+und zwar nur zu: huggingface.co (Whisper, Stimme Kokoro "Martin"), github.com (Wake-Word-Modelle
 ueber openWakeword). Nach der Installation arbeitet kushim offline. Mit --check wird nur geprueft,
 nichts geladen. Vorhandene, passende Dateien werden uebersprungen.
+Lokale Uebernahme: Liegt eine Datei mit passender Groesse und SHA-256 schon unter `local` (z. B. aus der TTS-Evaluation
+in tools/tts-eval2), wird sie von dort kopiert statt geladen.
 Dieses Skript liegt bewusst ausserhalb von src/ (der Egress-Test gilt fuer das Programm).
 """
 from __future__ import annotations
@@ -31,10 +33,13 @@ class Item:
     hf_revision: str | None = None
     hf_path: str | None = None
     url: str | None = None
+    local: tuple[str, ...] = ()     # relativ zu ROOT: hier zuerst nachsehen (nur bei gleicher Groesse und gleichem SHA-256)
 
 
 WHISPER = ("mobiuslabsgmbh/faster-whisper-large-v3-turbo", "0a363e9161cbc7ed1431c9597a8ceaf0c4f78fcf")
-PIPER = ("rhasspy/piper-voices", "c10ece1aade47bb51c153c893d14e5bf8e5b7117")
+# Kokoro-82M deutsch, Stimme "Martin" (ONNX), Apache-2.0. Die alte URL huggingFresse/... leitet hierher weiter (HF-Umbenennung).
+KOKORO = ("Godelaune/Kokoro-82M-ONNX-German-Martin", "a1cba7fbf0e72fbae38f0a3a48ce0dc8e6077804")
+KOKORO_LOCAL = "tools/tts-eval2/dl/kokoro-martin-hf"
 ITEMS = [
     Item("models/whisper-large-v3-turbo/model.bin", 1617884929,
          "e76620f83d5f5b69efd3d87e3dc180c1bd21df9fbebacfd4335e5e1efcc018da", *WHISPER, "model.bin"),
@@ -43,12 +48,15 @@ ITEMS = [
          "preprocessor_config.json"),
     Item("models/whisper-large-v3-turbo/tokenizer.json", 2710337, None, *WHISPER, "tokenizer.json"),
     Item("models/whisper-large-v3-turbo/vocabulary.json", 1068114, None, *WHISPER, "vocabulary.json"),
-    Item("models/piper/de_DE-thorsten-high.onnx", 113895201,
-         "9df1c43c61149ef9b39e618e2b861fbe41e1fcea9390b2dac62e8761573ea4f1", *PIPER,
-         "de/de_DE/thorsten/high/de_DE-thorsten-high.onnx"),
-    Item("models/piper/de_DE-thorsten-high.onnx.json", 4875,
-         "6de734444e4c3f9e33b7ebe2746dbc19b71e85f613e79c65acf623200b99a76a", *PIPER,
-         "de/de_DE/thorsten/high/de_DE-thorsten-high.onnx.json"),
+    Item("models/kokoro/kokoro-martin.onnx", 325512630,
+         "c302f1d8bc7adf40a842cb550e18c39a5026bdb1afdd29dbb700b501cb49276b", *KOKORO, "kokoro-martin.onnx",
+         local=(f"{KOKORO_LOCAL}/kokoro-martin.onnx",)),
+    Item("models/kokoro/voices-martin.npz", 522506,
+         "5b9c8553398d7abf67498ce500c186cefaa7b68fed3e3d415da5380670105acd", *KOKORO, "voices-martin.npz",
+         local=(f"{KOKORO_LOCAL}/voices-martin.npz",)),
+    Item("models/kokoro/README.md", 12162,              # Model Card mit der Lizenzangabe (Apache-2.0)
+         "4beed07717aaaef3625984f6fc952c207ac3fd7b3d57b69dffdccc80412a1f6d", *KOKORO, "README.md",
+         local=(f"{KOKORO_LOCAL}/README.md",)),
 ]
 
 KWS_URL = ("https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/"
@@ -77,7 +85,29 @@ def is_ok(item: Item) -> bool:
     return item.sha256 is None or sha256_of(p) == item.sha256
 
 
+def adopt_local(item: Item) -> bool:
+    """Kopiert eine schon vorhandene, gepruefte Datei (gleiche Groesse und SHA-256) statt sie zu laden. Das Original bleibt."""
+    if not item.sha256:
+        return False
+    for rel in item.local:
+        src = ROOT / rel
+        if not src.is_file() or src.stat().st_size != item.size or sha256_of(src) != item.sha256:
+            continue
+        dest = ROOT / item.dest
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=dest.parent) as tmp:
+            tmp_file = Path(tmp) / "copy"
+            shutil.copyfile(src, tmp_file)
+            if tmp_file.stat().st_size != item.size or sha256_of(tmp_file) != item.sha256:
+                raise RuntimeError(f"Kopie stimmt nicht: {item.dest} (verworfen)")
+            shutil.move(tmp_file, dest)
+        return True
+    return False
+
+
 def fetch(item: Item) -> None:
+    if adopt_local(item):
+        return
     dest = ROOT / item.dest
     dest.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=dest.parent) as tmp:

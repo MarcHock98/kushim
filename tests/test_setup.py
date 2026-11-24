@@ -10,7 +10,7 @@ from kushim.safety import killswitch
 from kushim.setup import state, status
 
 OK = [Check("a", True)]
-BAD = [Check("Whisper-Modell", False), Check("Ollama", False), Check("Piper-Stimme", False), Check("Vault-Paket", False)]
+BAD = [Check("Whisper-Modell", False), Check("Ollama", False), Check("Stimme Kokoro Martin", False), Check("Vault-Paket", False)]
 
 
 def steps(tmp_path, vault="kein-vault", checks=OK):

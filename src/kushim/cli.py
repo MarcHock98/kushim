@@ -638,6 +638,7 @@ def _main(argv: list[str] | None = None) -> int:
             print(f"[gpu] in config.toml: {e}")
             return 2
         api = None
+        tts = None                                        # Sprachausgabe-Worker (Kindprozess), am Ende beenden
         try:
             from .tasks import TaskRegistry
             from .voice.talklog import TalkLog
@@ -655,6 +656,7 @@ def _main(argv: list[str] | None = None) -> int:
                                                   wake_names=[w.name for w in wcfg.enabled()],
                                                   whisper_device=plan.whisper_device,
                                                   whisper_index=plan.whisper_index)
+            tts = getattr(pipeline, "tts", None)
             pipeline.handle = talklog.timed(pipeline.handle, metrics=lambda: pipeline.metrics)   # Ergebnis, Dauer, Kennzahlen
             raw_ack = ack
 
@@ -688,6 +690,9 @@ def _main(argv: list[str] | None = None) -> int:
             from .voice.levels import LevelTest
             from .voice.transcript import Transcript
             publisher = statefile.StatePublisher(root, pending=tasks.pending_approvals)
+            if tts is not None:                           # Feld `tts` in voice-state.json: loading|ready|cpu|failed|off
+                tts.on_state = publisher.tts
+                publisher.tts(tts.state)
             transcript = Transcript()
             pipeline.notes = transcript                   # Zeile „Du“ direkt nach der Spracherkennung (nur im Speicher)
             level_test = LevelTest()                      # Pegeltest der Oberfläche: nur Pegelzahlen aus den Frames dieser Schleife
@@ -760,6 +765,9 @@ def _main(argv: list[str] | None = None) -> int:
             talklog.write("ready", wake_words=", ".join(w.name for w in wcfg.enabled()),
                           channel=pipeline.chat.bridge.available())
             reason = loop.run()
+            if tts is not None:                           # zuerst die Stimme beenden, dann das Lebenszeichen löschen
+                tts.on_state = lambda state: None
+                tts.close()
             publisher.clear()
             print("Ende:", reason)
             talklog.write("end", reason=reason)
@@ -771,6 +779,9 @@ def _main(argv: list[str] | None = None) -> int:
         finally:
             if api is not None:
                 _api_stop(*api)
+            if tts is not None:
+                tts.on_state = lambda state: None         # kein Schreiben in voice-state.json mehr
+                tts.close()                               # quit, dann kill_tree (zweiter Aufruf tut nichts)
         return 0
     if args.cmd == "memory":
         if args.sub == "init":

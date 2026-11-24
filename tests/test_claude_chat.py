@@ -12,6 +12,11 @@ from kushim.voice import earcon
 
 M = earcon.MARK                      # Signalton vor kushims eigenen Ansagen
 
+
+def ask(cmd):
+    """Freigabe-Ansage, wie kushim sie kennzeichnet (jeder Satz einzeln)."""
+    return earcon.mark(f"Ich möchte den Befehl {cmd} ausführen. Bitte im Terminal bestätigen.")
+
 MSGS = [{"role": "system", "content": "egal"}, {"role": "user", "content": "alt"},
         {"role": "assistant", "content": "x"}, {"role": "user", "content": "Mach die Tests grün"}]
 
@@ -52,7 +57,7 @@ def test_sends_only_the_last_user_text_acknowledges_and_speaks_the_reply():
     b = FakeBridge(replies=[("ok", []), ("ok", ["Erledigt.", "Alles grün."])])
     tasks = TaskRegistry()
     out = list(cc.ClaudeChat(b, tasks)(MSGS))
-    assert b.sent == ["Mach die Tests grün"] and out == ["Erledigt. Alles grün."]                    # keine feste Quittung mehr
+    assert b.sent == ["Mach die Tests grün"] and out == ["Erledigt.", "Alles grün."]               # getrennte Stücke; keine feste Quittung mehr
     assert b.fetches == [cc.POLL, cc.POLL] and tasks.active() == []                  # Aufgabe ist danach wieder weg
 
 
@@ -84,7 +89,7 @@ def test_long_work_ends_the_turn_with_a_note_and_the_reply_comes_later():
     chat = cc.ClaudeChat(b, TaskRegistry(), patience=10, clock=clock)
     assert list(chat(MSGS)) == [cc.FILLERS[0], cc.LATE]
     b.fetch = lambda wait=0.0: ("ok", ["Fertig nach langer Arbeit."])
-    assert chat.announcement() == "Fertig nach langer Arbeit."
+    assert chat.announcement() == ["Fertig nach langer Arbeit."]
     assert chat.announcement() is None                                              # gedrosselt: höchstens alle 2 s
     clock.t += cc.ANNOUNCE_EVERY
     b.fetch = lambda wait=0.0: ("ok", [])
@@ -128,9 +133,9 @@ def test_a_permission_request_ends_the_turn_so_the_loop_can_listen_and_the_reply
         return replies.pop(0)
     b.fetch = fetch
     chat = cc.ClaudeChat(b, TaskRegistry(), clock=clock)
-    assert list(chat(MSGS)) == [M + "Ich möchte den Befehl npm test ausführen. Bitte im Terminal bestätigen."]
+    assert list(chat(MSGS)) == [ask("npm test")]
     b.fetch = lambda wait=0.0: ("ok", ["Tests laufen durch."])
-    assert chat.announcement() == "Tests laufen durch."                             # die Anfrage wird nicht wiederholt
+    assert chat.announcement() == ["Tests laufen durch."]                             # die Anfrage wird nicht wiederholt
 
 
 def test_idle_announcement_reads_new_permission_requests_once():
@@ -138,14 +143,13 @@ def test_idle_announcement_reads_new_permission_requests_once():
     b = FakeBridge()
     chat = cc.ClaudeChat(b, TaskRegistry(), clock=clock)
     b.permissions.extend([perm("r1", "ls"), perm("r2", "git status")])
-    assert chat.announcement() == (M + "Ich möchte den Befehl ls ausführen. Bitte im Terminal bestätigen. "
-                                   + M + "Ich möchte den Befehl git status ausführen. Bitte im Terminal bestätigen.")
+    assert chat.announcement() == [ask("ls"), ask("git status")]                 # getrennte Stücke, nie ein String
     clock.t += cc.ANNOUNCE_EVERY
     assert chat.announcement() is None                                              # schon angesagt
     clock.t += cc.ANNOUNCE_EVERY
     b.replies = [("ok", ["Fertig."])]
     b.permissions.append(perm("r3", "pwd"))
-    assert chat.announcement() == M + "Ich möchte den Befehl pwd ausführen. Bitte im Terminal bestätigen. Fertig."
+    assert chat.announcement() == [ask("pwd"), "Fertig."]
 
 
 def test_through_the_real_channel_a_permission_request_is_spoken(tmp_path):
@@ -159,7 +163,7 @@ def test_through_the_real_channel_a_permission_request_is_spoken(tmp_path):
         c.permission_request({"request_id": "abcde", "tool_name": "Bash", "description": "Run tests",
                               "input_preview": '{ "command": "npm test", "description": "Run tests" }'})
         chat = cc.ClaudeChat(br.Bridge(tmp_path), TaskRegistry())
-        assert chat.announcement() == M + "Ich möchte den Befehl npm test ausführen. Bitte im Terminal bestätigen."
+        assert chat.announcement() == [ask("npm test")]
     finally:
         httpd.shutdown()
 
@@ -210,7 +214,7 @@ def test_a_turn_without_any_sprich_ends_with_a_short_first_person_line_and_a_lat
     assert cc.SILENT_AFTER <= clock.t < cc.SILENT_AFTER + cc.POLL + 0.01             # nach 25 s, nicht erst nach 180 s
     clock.t += cc.ANNOUNCE_EVERY
     b.fetch = lambda wait=0.0: ("ok", ["Doch noch: morgen wird es sonnig."])
-    assert chat.announcement() == "Doch noch: morgen wird es sonnig."
+    assert chat.announcement() == ["Doch noch: morgen wird es sonnig."]
 
 
 def test_cancel_still_reaches_claude_after_silent_and_late_until_a_result_arrives():
@@ -240,11 +244,11 @@ def test_the_open_request_closes_with_the_result_the_late_result_or_the_kill_swi
     clock.t += cc.ANNOUNCE_EVERY
     b.last_final = False
     b.fetch = lambda wait=0.0: ("ok", ["Ich bin halb durch."])
-    assert chat.announcement() == "Ich bin halb durch." and chat.request_open()      # nur Zwischenstand: bleibt offen
+    assert chat.announcement() == ["Ich bin halb durch."] and chat.request_open()      # nur Zwischenstand: bleibt offen
     clock.t += cc.ANNOUNCE_EVERY
     b.last_final = True
     b.fetch = lambda wait=0.0: ("ok", ["Jetzt fertig."])
-    assert chat.announcement() == "Jetzt fertig." and not chat.request_open() and tasks.active() == []
+    assert chat.announcement() == ["Jetzt fertig."] and not chat.request_open() and tasks.active() == []
     silent_then(clock, b, 10_000)
     list(chat(MSGS))
     clock.t += cc.ANNOUNCE_EVERY

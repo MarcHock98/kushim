@@ -18,9 +18,9 @@ from typing import Any, Callable, Iterable, Sequence
 from ..safety.killswitch import KillSwitch, is_kill_phrase
 from ..tasks import TaskRegistry, is_cancel_phrase
 from .dialog import Dialog, State
-from .earcon import MARK
+from .earcon import plain
 from .stt import SpeechToText
-from .tts import Speaker, chunk_stream, prefetch, split_sentences
+from .tts import Speaker, chunk_stream, prefetch, sentences_of, split_sentences
 
 SYSTEM_PROMPT = (
     "Du bist kushim, ein persönlicher, lokaler Assistent. Antworte auf Deutsch, kurz und sachlich, "
@@ -184,6 +184,7 @@ class Result:
     detail: str = ""  # nur Anzeige, z. B. Score und Dauer bei abgelehntem Sprecher (kein Audio)
     entry: int | None = None    # id des Transkript-Eintrags dieser Runde (`notes.heard`), sonst None
     spoken: int | None = None   # wirklich gesprochene Sätze (nur bei Meldungen gesetzt, für talk.log)
+    parts: tuple[str, ...] | None = None    # Meldung: Sätze mit ihren eigenen Kennzeichen (zum Nachreichen), sonst None
 
 
 class Pipeline:
@@ -283,11 +284,12 @@ class Pipeline:
         else:
             self._drop(entry, {"not_running": "not_running", "kill": "killed"}.get(status, "send_failed"))
 
-    def say_text(self, text: str) -> int:
+    def say_text(self, text: str | Sequence[str]) -> int:
         """Spricht einen fertigen Text (z. B. eine Meldung von sich aus, wenn Claude fertig ist). Satzweise, unterbrechbar.
-        Gibt die Zahl der wirklich gesprochenen Sätze zurück."""
+        Eine Meldung aus mehreren Stücken (eigene Ansagen, Texte von Claude) bleibt getrennt: jedes Stück wird für sich
+        zerlegt. Gibt die Zahl der gelieferten Sätze zurück."""
         self._interrupted.clear()
-        return self.speaker.say(split_sentences(text) or [text])
+        return self.speaker.say(sentences_of(text))
 
     def say_cancelled(self) -> None:
         """Kurze Bestätigung nach dem Abbruch (nachdem die laufende Antwort beendet ist)."""
@@ -410,7 +412,7 @@ class Pipeline:
                         marked = True
                     if self.metrics.get("first_text_s") is None:
                         self.metrics["first_text_s"] = self._since()
-                    sentences.append(s.replace(MARK, ""))       # Signalton-Zeichen nur für die Stimme, nie im Verlauf
+                    sentences.append(plain(s))                  # Kennzeichen nur für die Stimme, nie im Verlauf
                     yield s
                 if not marked:                                   # Chat lief ohne Fehler, aber ohne Text
                     self._note("sent", entry)

@@ -302,7 +302,7 @@ def test_chat_stops_polling_when_stopped_and_defers_a_text_fetched_after_the_sto
     chat = cc.ClaudeChat(b, TaskRegistry(), clock=Clock())
     assert list(chat([{"role": "user", "content": "Frage"}], stop=stop.is_set)) == []
     assert b.fetches == 1
-    assert chat.announcement() == "Späte Antwort." and chat.announcement() is None
+    assert chat.announcement() == ["Späte Antwort."] and chat.announcement() is None
 
 
 def test_chat_does_not_fetch_at_all_once_stopped():
@@ -339,7 +339,7 @@ def test_after_an_interruption_the_old_turn_never_takes_the_next_answer(tmp_path
     while late is None and time.monotonic() < deadline:
         late = chat.announcement()
         time.sleep(0.02)
-    assert late == "Alt."                                         # nachgereicht, nicht verloren
+    assert late == ["Alt."]                                       # nachgereicht, nicht verloren
     time.sleep(0.3)
     assert b.fetches == 2                                         # danach holt niemand mehr ab
 
@@ -467,7 +467,7 @@ def test_the_old_interrupted_turn_never_closes_the_request_of_the_new_turn(tmp_p
     release2.set()
     t2.join(timeout=5)
     assert results[2].reply == "Neu." and not chat.request_open() and tasks.active() == []
-    assert chat.announcement() == "Alt."
+    assert chat.announcement() == ["Alt."]
 
 
 def test_without_barge_the_mic_buffer_is_flushed_after_an_announcement(tmp_path):

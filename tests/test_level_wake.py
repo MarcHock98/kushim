@@ -217,7 +217,7 @@ def test_publisher_counts_wake_words_and_keeps_only_the_name(tmp_path):
     pub.phase("idle", 0.3)
     pub.wake("hey kushim")
     r = statefile.read(tmp_path, now=clock())
-    assert r == {"active": True, "state": "idle", "level": 0.3, "wake_count": 1, "wake_last": "hey kushim"}
+    assert r == {"active": True, "state": "idle", "level": 0.3, "wake_count": 1, "wake_last": "hey kushim", "tts": "off"}
     pub.wake("Hey_Jarvis")
     pub.wake("<script>alert(1)</script>")
     r = statefile.read(tmp_path, now=clock())
@@ -254,7 +254,7 @@ def test_reader_validates_wake_fields(tmp_path):
         assert r["active"] is True and r["wake_last"] == "", bad
     write_state(tmp_path, wake_count=7, wake_last="hey_jarvis_v0.1", text="geheim", audio=[1, 2, 3])
     r = statefile.read(tmp_path)
-    assert r == {"active": True, "state": "idle", "level": 0.2, "wake_count": 7, "wake_last": "hey_jarvis_v0.1"}
+    assert r == {"active": True, "state": "idle", "level": 0.2, "wake_count": 7, "wake_last": "hey_jarvis_v0.1", "tts": "off"}
 
 
 def test_reader_rejects_huge_nan_and_odd_files(tmp_path):
@@ -266,7 +266,7 @@ def test_reader_rejects_huge_nan_and_odd_files(tmp_path):
     for raw in ('{"state": "idle", "level": NaN, "ts": %f}' % now, '{"state": "idle", "level": 0.1, "ts": Infinity}',
                 '{"state": ["idle"], "level": 0.1, "ts": %f}' % now, '"idle"', "null", "\xff\xfe"):
         p.write_text(raw, encoding="utf-8")
-        assert statefile.read(tmp_path) == {"active": False, "state": "idle", "level": 0.0, "wake_count": 0, "wake_last": ""}, raw
+        assert statefile.read(tmp_path) == {"active": False, "state": "idle", "level": 0.0, "wake_count": 0, "wake_last": "", "tts": "off"}, raw
     p.write_bytes(b"\xff\xfe\x00")
     assert statefile.read(tmp_path)["active"] is False
 

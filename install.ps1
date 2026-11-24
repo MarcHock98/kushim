@@ -11,8 +11,8 @@
       -SkipPath       Den Befehl `kushim` NICHT in den Benutzer-PATH eintragen (siehe scripts\add-path.ps1).
 
   Das Skript ist wiederholbar: Was schon da und geprueft ist, wird uebersprungen.
-  Netzwerk nur waehrend der Installation und nur zu: pypi.org (Python-Pakete), github.com
-  (Sprecher-Modell, Wake-Word-Modelle), huggingface.co (Whisper, Stimme). Danach arbeitet kushim offline.
+  Netzwerk nur waehrend der Installation und nur zu: pypi.org (Python-Pakete, auch fuer das Sprachausgabe-venv), github.com
+  (Wake-Word-Modelle), huggingface.co (Whisper, Stimme Kokoro "Martin"). Danach arbeitet kushim offline.
   Ein lokales Sprachmodell (Ollama) gibt es nicht mehr: die einzige KI ist Claude Code.
   Den Vault-Schluessel legt NUR du an (Rueckfrage am Ende).
 #>
@@ -43,7 +43,7 @@ function Ask($q) {
 }
 
 # ---------------------------------------------------------------- 1. Voraussetzungen
-Step "1/7 Voraussetzungen"
+Step "1/8 Voraussetzungen"
 $sysPython = $null
 foreach ($cand in @(@("py", "-3.12"), @("py", "-3.11"), @("python"))) {
     try {
@@ -64,7 +64,7 @@ $free = [math]::Round((Get-PSDrive -Name ($Root.Substring(0,1))).Free / 1GB, 1)
 if ($free -lt 15) { Warn "Nur $free GB frei, empfohlen sind mindestens 15 GB." } else { Ok "$free GB frei" }
 
 # ---------------------------------------------------------------- 2. venv
-Step "2/7 Python-Umgebung (.venv)"
+Step "2/8 Python-Umgebung (.venv)"
 if (Test-Path $Py) { Ok ".venv vorhanden" }
 elseif ($Check) { Missing ".venv" }
 else {
@@ -75,9 +75,9 @@ else {
 }
 
 # ---------------------------------------------------------------- 3. Pakete
-Step "3/7 Python-Pakete (feste Versionen, von pypi.org)"
+Step "3/8 Python-Pakete (feste Versionen, von pypi.org)"
 if (Test-Path $Py) {
-    & $Py -c "import faster_whisper, piper, sherpa_onnx, sentencepiece, sounddevice, openwakeword, sqlcipher3, keyring" 2>$null
+    & $Py -c "import faster_whisper, sherpa_onnx, sentencepiece, sounddevice, openwakeword, sqlcipher3, keyring" 2>$null
     if ($LASTEXITCODE -eq 0) { Ok "alle Pakete importierbar" }
     elseif ($Check) { Missing "Python-Pakete" }
     else {
@@ -92,8 +92,38 @@ if (Test-Path $Py) {
     }
 }
 
-# ---------------------------------------------------------------- 4. Modelle
-Step "4/7 Modelle: Whisper, Stimme, Sprecher, Wake Words (geprueft per SHA-256)"
+# ---------------------------------------------------------------- 4. Sprachausgabe
+# Kokoro "Martin" laeuft als eigener Prozess mit eigenem venv (onnxruntime-gpu mit CUDA-13-Wheels; kushims .venv behaelt das
+# CPU-onnxruntime fuer faster-whisper). Nur Wheels, feste Versionen, jede Datei per SHA-256 geprueft (--require-hashes).
+Step "4/8 Sprachausgabe (Kokoro, eigenes venv)"
+$KVenv = Join-Path $Root "tools\kokoro\venv"
+$KPy   = Join-Path $KVenv "Scripts\python.exe"
+$KReq  = Join-Path $Root "scripts\kokoro-requirements.txt"
+$kokoroOk = $false
+if (Test-Path $KPy) {
+    & $KPy -I -c "import onnxruntime, kokoro_onnx, espeakng_loader" 2>$null
+    $kokoroOk = ($LASTEXITCODE -eq 0)
+}
+if ($kokoroOk) { Ok "tools\kokoro\venv vorhanden (onnxruntime-gpu, kokoro-onnx, espeak-ng)" }
+elseif ($Check) { Missing "Sprachausgabe-venv (tools\kokoro\venv)" }
+else {
+    if (-not (Test-Path $KPy)) {
+        $v312 = $null
+        if ($sysPython) { $v312 = & $sysPython[0] @($sysPython[1..($sysPython.Count)] | Where-Object { $_ }) -c "import sys;print('%d.%d' % sys.version_info[:2])" 2>$null }
+        if ($v312 -ne "3.12") { throw "Die Sprachausgabe braucht Python 3.12 (die Pakete gibt es nur dafuer). Bitte installieren und das Skript erneut starten." }
+        Info "lege tools\kokoro\venv an ..."
+        New-Item -ItemType Directory -Force (Split-Path $KVenv) | Out-Null
+        & $sysPython[0] @($sysPython[1..($sysPython.Count)] | Where-Object { $_ }) -m venv $KVenv
+        if ($LASTEXITCODE -ne 0) { throw "Sprachausgabe-venv konnte nicht angelegt werden" }
+    }
+    Info "installiere Pakete der Sprachausgabe (ca. 2 GB inkl. CUDA-Bibliotheken) ..."
+    & $KPy -m pip install --no-deps --require-hashes --only-binary=:all: -r $KReq
+    if ($LASTEXITCODE -ne 0) { throw "Sprachausgabe-Pakete konnten nicht installiert werden" }
+    Ok "Sprachausgabe-venv bereit"
+}
+
+# ---------------------------------------------------------------- 5. Modelle
+Step "5/8 Modelle: Whisper, Stimme, Wake Words (geprueft per SHA-256)"
 if (Test-Path $Py) {
     if ($Check) { & $Py scripts\fetch_models.py --check; if ($LASTEXITCODE -ne 0) { Missing "Modelle (fetch_models.py ausfuehren)" } }
     else {
@@ -102,15 +132,15 @@ if (Test-Path $Py) {
     }
 }
 
-# ---------------------------------------------------------------- 5. Icon
-Step "5/7 Logo und Icon"
+# ---------------------------------------------------------------- 6. Icon
+Step "6/8 Logo und Icon"
 $ico = Join-Path $Root "assets\kushim.ico"
 if (Test-Path $ico) { Ok "Icon vorhanden" }
 elseif ($Check) { Missing "assets\kushim.ico" }
 elseif (Test-Path $Py) { & $Py scripts\make_icon.py; Ok "Icon erzeugt" }
 
-# ---------------------------------------------------------------- 6. Verknuepfungen
-Step "6/7 Desktop-Verknuepfungen"
+# ---------------------------------------------------------------- 7. Verknuepfungen
+Step "7/8 Desktop-Verknuepfungen"
 if ($SkipShortcuts) { Info "uebersprungen (-SkipShortcuts)" }
 elseif ($Check) { Info "(im Check-Modus nicht angelegt)" }
 elseif (Test-Path $Py) {
@@ -133,8 +163,8 @@ if ($SkipPath) { Info "Befehl 'kushim' im PATH uebersprungen (-SkipPath)" }
 elseif ($Check) { & (Join-Path $Root "scripts\add-path.ps1") -Check }
 else { & (Join-Path $Root "scripts\add-path.ps1"); Ok "Befehl 'kushim' (neues Terminal oeffnen)" }
 
-# ---------------------------------------------------------------- 7. Vault und Stimme
-Step "7/7 Vault und deine Stimme (nur du)"
+# ---------------------------------------------------------------- 8. Vault und Stimme
+Step "8/8 Vault und deine Stimme (nur du)"
 if (Test-Path $Py) {
     & $Py -m kushim.cli memory info *> $null
     if ($LASTEXITCODE -eq 0) { Ok "Vault vorhanden" }
