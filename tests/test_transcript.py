@@ -76,7 +76,7 @@ def test_api_needs_token():
 
 # --- Zeile „Du“ direkt nach der Spracherkennung: pending -> sent/dropped, rev steigt bei jeder Änderung
 
-FIELDS = {"id", "rev", "heard", "raw", "ts", "status", "reason", "sent_ts", "reply", "outcome"}
+FIELDS = {"id", "rev", "heard", "raw", "ts", "status", "reason", "sent_ts", "reply", "outcome", "unspoken"}
 
 
 def turn(entry, heard="wie spät ist es", reply="Zehn Uhr.", outcome="spoken"):
@@ -89,7 +89,7 @@ def test_heard_creates_a_pending_entry_with_all_fields():
     e = t.get(i)
     assert set(e) == FIELDS
     assert e == {"id": i, "rev": 1, "heard": "wie spät ist es", "raw": "Hey Kushim, wie spät ist es", "ts": 7.0,
-                 "status": "pending", "reason": "", "sent_ts": None, "reply": "", "outcome": ""}
+                 "status": "pending", "reason": "", "sent_ts": None, "reply": "", "outcome": "", "unspoken": 0}
 
 
 def test_pending_to_sent_then_reply_raises_rev_and_keeps_the_id():

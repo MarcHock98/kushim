@@ -1,8 +1,9 @@
 """API-Typen der Sprach-Pipeline: `voice.state` (nur lesen), der Pegeltest des Setup-Assistenten (E3b) und die
 Mikrofon-Schwellen zur Laufzeit (`voice.tuning.*`).
 
-`voice.state`: {"active", "state", "level", "wake_count", "wake_last"}. Kein Audio, kein Text; `wake_last` ist nur der Name
-des zuletzt erkannten Wake Words (für den Wake-Word-Test). Läuft kein Sprachdienst, ist `active` false.
+`voice.state`: {"active", "state", "level", "wake_count", "wake_last", "tts"}. Kein Audio, kein Text; `wake_last` ist nur der
+Name des zuletzt erkannten Wake Words (für den Wake-Word-Test), `tts` der Zustand der Sprachausgabe (loading | ready | cpu |
+failed | off, für den Stimm-Chip der Oberfläche). Läuft kein Sprachdienst, ist `active` false.
 
 Pegeltest: läuft im Sprachprozess, der das Mikrofon ohnehin hält (`kushim talk --ui`, API im selben Prozess, `LevelTest`
 bekommt jeden Frame der Sprach-Schleife). Ohne diesen Prozess (z. B. `kushim serve`) gibt es keinen Test: `voice.level_test`

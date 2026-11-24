@@ -24,3 +24,9 @@ export const IconCross = () => <Svg size={16}><path d="M6 6l12 12M18 6L6 18" /><
 export const IconClock = () => <Svg size={16}><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></Svg>;
 export const IconDash = () => <Svg size={16}><path d="M6 12h12" /></Svg>;
 export const IconChevron = () => <Svg size={16}><path d="M6 9l6 6 6-6" /></Svg>;
+// Sprachausgabe (Stimm-Chip): Lautsprecher plus Zeichen für den Zustand; das Wort steht immer daneben.
+const SPEAKER = "M3.5 9.5h3l4.5-4v13l-4.5-4h-3z";
+export const IconVoiceReady = () => <Svg size={16}><path d={SPEAKER} /><path d="M14.5 9.5a3.5 3.5 0 0 1 0 5M17 7a7 7 0 0 1 0 10" /></Svg>;
+export const IconVoiceLoading = () => <Svg size={16}><path d={SPEAKER} /><path d="M15 12h.01M18 12h.01M21 12h.01" /></Svg>;
+export const IconVoiceCpu = () => <Svg size={16}><path d={SPEAKER} /><rect x="14.5" y="9" width="6" height="6" rx="1" /><path d="M16.5 7v2M18.5 7v2M16.5 15v2M18.5 15v2" /></Svg>;
+export const IconVoiceOff = () => <Svg size={16}><path d={SPEAKER} /><path d="M15 9.5l5 5M20 9.5l-5 5" /></Svg>;

@@ -20,6 +20,7 @@ import { SetupHost } from "./components/SetupWizard";      // E3: Setup-Assisten
 import { avatarSize, coreSmall, useBoxSize } from "./lib/useBoxSize";
 import { CompactBar, UsageLine, useUsage } from "./components/CompactBar";   // E2: kleines Fenster und Verbrauch
 import { windowCommand } from "./lib/windowCmd";
+import { parseTts, VoiceChip, type TtsState } from "./components/VoiceChip";
 
 const WHY: Record<string, string> = {
   offline: "kein laufender Dienst gefunden (run/api.json fehlt oder ist nicht lesbar)",
@@ -86,7 +87,7 @@ const isRequest = (x: unknown): x is PermissionRequest => {       // Antwort des
 export function App({ load = defaultLoader }: { load?: Loader }) {
   const [connected, setConnected] = useState(false);
   const [kill, setKill] = useState<boolean | null>(null);
-  const [voice, setVoice] = useState<{ active: boolean; state?: AvatarState; level: number }>({ active: false, level: 0 });
+  const [voice, setVoice] = useState<{ active: boolean; state?: AvatarState; level: number; tts: TtsState | null }>({ active: false, level: 0, tts: null });
   const [pending, setPending] = useState<PermissionRequest[]>([]);
   const [toast, setToast] = useState("");
   const [why, setWhy] = useState("");
@@ -182,7 +183,7 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
   }, [connected, refresh]);
 
   useEffect(() => {                                     // Zustand und Pegel der Sprach-Pipeline (nur Zahlen und Namen)
-    if (!connected) { setVoice({ active: false, level: 0 }); return; }
+    if (!connected) { setVoice({ active: false, level: 0, tts: null }); return; }
     let busy = false;
     const id = setInterval(async () => {
       if (busy || document.hidden) return;              // verdeckt: nicht abfragen
@@ -191,8 +192,8 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
       busy = false;
       if (r?.ok && r.active === true && isAvatarState(r.state)) {
         const level = typeof r.level === "number" ? Math.min(1, Math.max(0, r.level)) : 0;
-        setVoice({ active: true, state: r.state, level });
-      } else if (r?.ok) setVoice({ active: false, level: 0 });
+        setVoice({ active: true, state: r.state, level, tts: parseTts(r.tts) });     // tts fehlt (älterer Dienst): kein Stimm-Chip
+      } else if (r?.ok) setVoice({ active: false, level: 0, tts: null });
     }, VOICE_POLL_MS);
     return () => clearInterval(id);
   }, [connected]);
@@ -375,7 +376,7 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
       last={entries.length > 0 ? entries[entries.length - 1] : null}
       request={pending.length > 0 && state === "asking" ? pending[0] : null} more={pending.length - 1}
       onDecide={(p, a) => void decide(p, a)} onKill={() => void doKill()} onResume={() => void doResume()}
-      onBig={toggleCompact} onTop={onTop} onToggleTop={toggleOnTop} usage={usage}
+      onBig={toggleCompact} onTop={onTop} onToggleTop={toggleOnTop} usage={usage} tts={voice.active ? voice.tts : null}
       view={shownView ? { id: shownView.id, titel: shownView.titel } : null} toast={toast} />
   ) : null;
   // ----- Ende E2
@@ -387,6 +388,7 @@ export function App({ load = defaultLoader }: { load?: Loader }) {
         <span className="brand">kushim</span>
         <span className="label brand-sub">Sprachassistent</span>
         <span className="status" aria-live={stateView.live} title={stateView.label}>{stateView.label}</span>
+        {voice.active && voice.tts && <VoiceChip tts={voice.tts} />}
         <button ref={kleinRef} type="button" className="head-small" onClick={toggleCompact} title="Kleines Fenster (Strg+Umschalt+M)">Klein</button>
         <KillButton onKill={() => void doKill()} />
       </header>

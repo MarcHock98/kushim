@@ -5,15 +5,16 @@ import EIGEN_FIXTURE from "../fixtures/eigen_ansichten.json";
 /** Ein Eintrag wie `transcript.get` ihn liefert (src/kushim/voice/transcript.py), mit allen Feldern. */
 export interface MockEntry {
   id: number; rev: number; heard: string; raw: string; ts: number; status: "pending" | "sent" | "dropped"; reason: string;
-  sent_ts: number | null; reply: string; outcome: string;
+  sent_ts: number | null; reply: string; outcome: string; unspoken: number;
 }
 
-/** Vollständiger Eintrag mit den Standardwerten des Backends: rev = id, raw = heard, gesendet zur Erkennungszeit, Antwort leer. */
+/** Vollständiger Eintrag mit den Standardwerten des Backends: rev = id, raw = heard, gesendet zur Erkennungszeit, Antwort leer,
+ *  alles gesprochen (unspoken 0). */
 export function transcriptEntry(p: Partial<MockEntry> & { id: number }): MockEntry {
   const ts = p.ts ?? Date.now() / 1000;
   const status = p.status ?? "sent";
   return { rev: p.id, heard: "", raw: p.heard ?? "", ts, status, reason: "", sent_ts: status === "sent" ? ts : null, reply: "",
-    outcome: "spoken", ...p };
+    outcome: "spoken", unspoken: 0, ...p };
 }
 
 export class MockSocket implements Socket {
@@ -23,6 +24,9 @@ export class MockSocket implements Socket {
   onerror: Socket["onerror"] = null;
   kill = false;
   voice: { active: boolean; state: string; level: number } = { active: false, state: "idle", level: 0 };
+  /** Zustand der Sprachausgabe wie das Feld `tts` von voice.state (statefile.py); null = älterer Dienst ohne das Feld.
+   *  Im Browser: `?mock&tts=loading|ready|cpu|failed|off` (Sprachdienst läuft), `?mock&tts=alt` (Feld fehlt). */
+  tts: "loading" | "ready" | "cpu" | "failed" | "off" | null = "ready";
   pending: { request_id: string; tool_name: string; description: string; input_preview: string; digest: string; summary: string;
     truncated?: boolean }[] = [];
   entries: MockEntry[] = [];                            // wie transcript.get: alle Felder (id, rev, heard, raw, ts, status, ...)
@@ -78,6 +82,7 @@ export class MockSocket implements Socket {
       input_preview: "cd ui && npx vitest run", digest: "d".repeat(64), summary: "Claude möchte die Tests ausführen.", truncated: false }];
     this.setupFromUrl();                                // E3: ?mock&setup (Erststart), ?mock&setup&novoice (ohne Sprachdienst)
     this.tuningFromUrl();                               // Mikrofon: ?mock&mic=aus (Sprachdienst aus), ?mock&mic=stimme (per Stimme verstellt)
+    this.ttsFromUrl();                                  // Stimm-Chip: ?mock&tts=loading|cpu|failed (mit Beispiel „nicht gesprochen“)
     queueMicrotask(() => (this.fail ? this.onerror?.() : this.onopen?.()));
   }
 
@@ -152,8 +157,10 @@ export class MockSocket implements Socket {
       restricted: SETUP_IDS.filter((s) => this.setupSteps[s] === "skipped").map((s) => `${SETUP_TITLES[s]}: ${SETUP_SKIPPED[s]}`) };
   }
   private voiceReply(): Record<string, unknown> {
-    if (this.voiceUnavailable) return { ok: true, active: false, state: "idle", level: 0, wake_count: 0, wake_last: "" };
-    return this.noWakeCount ? { ok: true, ...this.voice } : { ok: true, ...this.voice, wake_count: this.wakeCount, wake_last: this.wakeLast };
+    if (this.voiceUnavailable) return { ok: true, active: false, state: "idle", level: 0, wake_count: 0, wake_last: "", tts: "off" };
+    if (this.noWakeCount) return { ok: true, ...this.voice };                 // älterer Dienst: ohne wake_count/wake_last und ohne tts
+    return { ok: true, ...this.voice, wake_count: this.wakeCount, wake_last: this.wakeLast,
+      ...(this.tts === null ? {} : { tts: this.voice.active ? this.tts : "off" }) };   // wie statefile.read: ohne Dienst „off“
   }
   private levelResult(): Record<string, unknown> {
     if (this.levelOverride) return { ...this.levelOverride };
@@ -326,6 +333,21 @@ export class MockSocket implements Socket {
   }
   // ===== Ende Mikrofon-Schwellen =====
 
+  /** Stimm-Chip im Browser: `?mock&tts=…` setzt den Zustand der Sprachausgabe bei laufendem Sprachdienst; `alt` = Feld fehlt.
+   *  Bei failed/off zusätzlich ein Gespräch, dessen Antwort nur als Text kam (Vermerk „nicht gesprochen“), und eines davor,
+   *  das noch gesprochen wurde. Beispieldaten, nur im Mock. */
+  private ttsFromUrl(): void {
+    if (typeof location === "undefined") return;
+    const q = new URLSearchParams(location.search);
+    const pick = q.get("tts");
+    if (!q.has("mock") || pick === null) return;
+    if (pick === "alt") this.tts = null;
+    else if (pick === "loading" || pick === "ready" || pick === "cpu" || pick === "failed" || pick === "off") this.tts = pick;
+    else return;
+    this.voice = { active: true, state: "idle", level: 0 };
+    if (pick === "failed" || pick === "off") this.entries.push(...unspokenDemo());
+  }
+
   /** Vorführung im Browser (`?mock&demo`): erst ein reines Gespräch (Kern bleibt groß), dann zeigt „Claude“ der Reihe nach
    *  Rechnung, Markt, Recherche und Systemzustand. Nur Mock, Beispieldaten. */
   demo(): void {
@@ -464,6 +486,16 @@ export class MockSocket implements Socket {
   }
 
   close(): void { this.stopSetupDemo(); queueMicrotask(() => this.onclose?.()); }   // E3: Vorführungs-Intervalle aufräumen
+}
+
+/** Beispiel für den Vermerk „nicht gesprochen“ (vollständig wie transcript.get): eine Antwort mit Stimme, dann eine, deren zwei
+ *  Sätze nur als Text kamen. Erfundene Beispieldaten, nur im Mock. */
+export function unspokenDemo(now = Date.now() / 1000): MockEntry[] {
+  return [
+    transcriptEntry({ id: 1, ts: now - 90, heard: "Wie spät ist es?", raw: "Hey kushim, wie spät ist es?", reply: "Es ist zehn nach drei." }),
+    transcriptEntry({ id: 2, ts: now - 30, heard: "Wie wird das Wetter morgen?", raw: "Hey kushim, wie wird das Wetter morgen?",
+      reply: "Morgen 11 Grad. Ab Nachmittag leichter Regen.", unspoken: 2 }),
+  ];
 }
 
 /** E2b: Beispiel für `usage.get` (erfundene Werte, nur im Mock), vollständig wie vom Backend: frisch (vor 2 min), veraltet
